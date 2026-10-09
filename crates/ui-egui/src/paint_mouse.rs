@@ -104,9 +104,17 @@ pub fn canvas_buttons(app: &mut PhotocraftApp, response: &Response, tool: Tool) 
     let right_stroke = erase && app.drag.is_some();
     let right_start = erase && response.drag_started_by(PointerButton::Secondary);
     let right_click = response.secondary_clicked();
-    if right_click
-        && !erase
-        && !layer_menu
+    // Press-to-open: the picker appears the moment the barrel goes down, not on the release. A pen
+    // user holds the barrel while choosing a preset, and a pen tap jitters past egui's click
+    // distance, so waiting for egui's click (a release that never drifted) left the picker closed
+    // after most pen right-clicks (#943). The gestures that own the right button — Alt resize,
+    // ⌘/Ctrl layer menu, Erase — keep the release-based behaviour.
+    let resize_gesture = crate::brush_resize::applies(tool) && crate::brush_resize::is_right_gesture(crate::workspace_ui::sticky_mods(app, mods));
+    // A right press over the canvas (a press on the open picker is the picker's, not the canvas's).
+    let right_press = response.ctx.input(|i| i.pointer.button_pressed(PointerButton::Secondary))
+        && response.ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| response.rect.contains(p)));
+    let right_open = right_press && !resize_gesture && !resizing && !layer_menu && !erase;
+    if right_open
         && has_brush_picker(tool)
         && let Some(p) = response.interact_pointer_pos()
     {
@@ -318,6 +326,7 @@ mod tests {
         h.event(egui::Event::PointerMoved(c));
         h.run_steps(1);
         press(&mut h, c, PointerButton::Secondary, true);
+        assert_eq!(h.state().ui.brush_picker, Some([c.x, c.y]), "press-to-open: up while the barrel is still held");
         press(&mut h, c, PointerButton::Secondary, false);
         assert_eq!(h.state().ui.brush_picker, Some([c.x, c.y]), "opened at the pointer");
         assert!(strokes(&h).is_empty());
@@ -335,9 +344,11 @@ mod tests {
                 assert!(h.query_by_label(n).is_some(), "{n} listed");
             }
         }
-        // A right drag doesn't paint either.
-        drag(&mut h, PointerButton::Secondary);
+        // A right drag doesn't paint either — and press-to-open means the held-and-dragged barrel
+        // has the picker up the whole time, not just when the release counts as a click.
+        let (a, _) = drag(&mut h, PointerButton::Secondary);
         assert!(strokes(&h).is_empty(), "right-drag never paints with the brush picker preference");
+        assert_eq!(h.state().ui.brush_picker, Some([a.x, a.y]), "the dragged press opened the picker at its start point");
         assert_eq!(h.state().session.active().unwrap().history.past_len(), undo, "no edit");
         // Escape closes it.
         h.state_mut().ui.brush_picker = Some([c.x, c.y]);
