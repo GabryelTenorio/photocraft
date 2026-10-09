@@ -13,8 +13,9 @@
   appstream,
   versionCheckHook,
 
-  # Loaded at runtime with dlopen (winit, wgpu), so they are not ELF NEEDED entries: the same
-  # list as packaging/linux/nfpm.yaml and apps/photocraft/src/linux_libs.rs.
+  # Loaded at runtime with dlopen (winit, wgpu, rfd), so they are not ELF NEEDED entries: the
+  # same list as packaging/linux/nfpm.yaml and apps/photocraft/src/linux_libs.rs.
+  dbus,
   libGL,
   libx11,
   libxcb,
@@ -42,6 +43,7 @@ let
   isDebug = buildType == "debug";
 
   runtimeLibraries = lib.optionals stdenv.hostPlatform.isLinux [
+    dbus # libdbus-1.so.3: rfd's file dialogs talk to the xdg-desktop-portal over D-Bus
     libGL # libEGL.so.1 (libglvnd)
     libx11 # libX11.so.6, libX11-xcb.so.1
     libxcb
