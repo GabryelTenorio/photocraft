@@ -3052,3 +3052,16 @@ curves	Smooth	Lisser
 	Remove after each stroke	Supprimer après chaque trait
 	Apply the removal ({key})	Appliquer la suppression ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traits à supprimer : {n} (Entrée applique, Échap annule)
+
+# Art History Brush (#213).
+	Art History Brush Tool	Outil Pinceau d'historique artistique
+	Tight Short	Serré court
+	Tight Medium	Serré moyen
+	Tight Long	Serré long
+	Loose Medium	Lâche moyen
+	Loose Long	Lâche long
+	Dab	Touche
+	Tight Curl	Boucle serrée
+	Loose Curl	Boucle lâche
+	Area	Zone
+	Stylized dabs from a history state	Touches stylisées depuis un état d'historique

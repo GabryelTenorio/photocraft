@@ -3661,3 +3661,15 @@ curves	Smooth	スムーズ
 	Remove after each stroke	ストロークごとに削除
 	Apply the removal ({key})	削除を適用 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	削除するストローク: {n}（Enter で適用、Esc で取り消し）
+
+# Art History Brush (#213).
+	Art History Brush Tool	アートヒストリーブラシツール
+	Tight Short	タイト・ショート
+	Tight Medium	タイト・ミディアム
+	Tight Long	タイト・ロング
+	Loose Medium	ルーズ・ミディアム
+	Loose Long	ルーズ・ロング
+	Dab	ダブ
+	Tight Curl	タイトカール
+	Loose Curl	ルーズカール
+	Stylized dabs from a history state	履歴状態から様式化したダブを描きます

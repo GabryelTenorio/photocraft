@@ -3749,3 +3749,15 @@ curves	Smooth	Згладити
 	Remove after each stroke	Видаляти після кожного штриха
 	Apply the removal ({key})	Застосувати видалення ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихів для видалення: {n} (Enter застосовує, Esc скасовує)
+
+# Art History Brush (#213).
+	Art History Brush Tool	Інструмент «Художній пензель історії»
+	Tight Short	Щільний короткий
+	Tight Medium	Щільний середній
+	Tight Long	Щільний довгий
+	Loose Medium	Вільний середній
+	Loose Long	Вільний довгий
+	Dab	Мазок
+	Tight Curl	Щільний завиток
+	Loose Curl	Вільний завиток
+	Stylized dabs from a history state	Стилізовані мазки зі стану історії

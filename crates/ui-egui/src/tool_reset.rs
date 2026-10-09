@@ -155,6 +155,7 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         Tool::ContentAwareMove => reset!(cam_mode, cam_structure, cam_color, sample_all_layers),
         Tool::RedEye => reset!(red_eye_pupil_size, red_eye_darken),
         Tool::CloneStamp => reset!(clone_aligned, clone_sample),
+        Tool::ArtHistoryBrush => reset!(art_history_style, art_history_area, art_history_tolerance),
         Tool::PatternStamp => reset!(pattern_stamp_aligned, pattern_stamp_impressionist, pattern_stamp_scale, pattern_stamp_angle),
         Tool::Blur | Tool::Sharpen => reset!(strength, sample_all_layers, protect_detail),
         Tool::Smudge => reset!(strength, sample_all_layers, finger_painting),
