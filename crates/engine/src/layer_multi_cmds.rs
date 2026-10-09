@@ -382,6 +382,9 @@ pub fn moved_target(doc: &Document, ids: &[LayerId], dx: i32, dy: i32, mask_targ
         if locks.position || locks.all {
             return Err(EngineError::Other(format!("layer \"{}\" is position-locked", l.name)));
         }
+        if !crate::image_cmds::layer_shift_fits(l, dx, dy) {
+            return Err(EngineError::Other(format!("moving the layers by ({dx}, {dy}) would push pixels outside the 32-bit coordinate range")));
+        }
         if mask_target && moves_mask_alone(l) {
             if let Some(m) = &mut l.mask {
                 m.surface = shift_surface(&m.surface, dx, dy);
@@ -1301,7 +1304,8 @@ fn merge_layers(s: &mut Session) -> Result<Value> {
             *active = Some(mid);
             return Ok(mid);
         }
-        let buf = photocraft_compose::flatten(&solo);        let fmt = doc.pixel_format();
+        let buf = photocraft_compose::flatten(&solo);
+        let fmt = doc.pixel_format();
         let fmt = PixelFormat::new(fmt.mode, fmt.sample, true);
         let mut merged = Layer::raster(top.name.clone(), fmt);
         merged.locks = top.locks;
@@ -1841,6 +1845,28 @@ mod tests {
         locked.layer_mut(a).unwrap().locks.position = true;
         assert!(moved(&locked, &ids, 1, 1).is_err());
         assert!(moved(&before, &[LayerId(999_999)], 1, 1).is_err());
+    }
+
+    #[test]
+    fn moving_layers_refuses_a_deep_origin_overflow() {
+        let mut s = session(8);
+        let deep = LayerContent::Deep(photocraft_doc::DeepData {
+            x: i32::MAX - 5,
+            y: 0,
+            width: 40,
+            height: 20,
+            channels: vec![photocraft_doc::DeepChannel { name: "A".into(), samples: vec![1.0] }],
+            counts: vec![0, 1],
+        });
+        let id = s
+            .edit("deep", |doc, _| {
+                doc.layers.push(Layer::new("deep", deep));
+                Ok(doc.layers.last().unwrap().id)
+            })
+            .unwrap();
+        let before = s.active().unwrap().doc.clone();
+        let err = moved(&before, &[id], 10, 0).unwrap_err();
+        assert!(err.to_string().contains("32-bit coordinate range"), "{err}");
     }
 
     fn select_all(s: &mut Session, ids: &[LayerId]) {
