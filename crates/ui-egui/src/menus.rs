@@ -433,6 +433,16 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             crate::type_tool::cut_selection(app, ctx);
             Ok(Value::Null)
         }
+        "edit.copy" if app.ui.text_edit.is_some() => {
+            crate::type_tool::copy_selection(app, ctx);
+            Ok(Value::Null)
+        }
+        // While typing, Paste inserts the clipboard text (#2976): ask the window for it, as a ⌘V
+        // press does (`shortcuts::clipboard_keys`); it arrives as a Paste event the type editor inserts.
+        "edit.paste" if app.ui.text_edit.is_some() => {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+            Ok(Value::Null)
+        }
         "edit.paste" if params.as_object().is_none_or(|o| o.is_empty()) => {
             // Photoshop: paste in place when the copied area is visible, else centred in the view;
             // images from other apps are always centred.
@@ -624,7 +634,8 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         // "Custom…" is the full Proof Setup dialog.
         "view.proofSetup.custom" => app.session.active().is_some(),
         "view.rulers" | "view.show.grid" | "view.show.guides" | "view.snap" | "view.lockGuides" => true,
-        "edit.cut" if app.ui.text_edit.is_some() => crate::type_tool::selected_range(app).is_some(),
+        "edit.cut" | "edit.copy" if app.ui.text_edit.is_some() => crate::type_tool::selected_range(app).is_some(),
+        "edit.paste" if app.ui.text_edit.is_some() => true,
         // An image copied in another app can only be seen by reading the OS clipboard, which happens
         // on an explicit paste: with a clipboard service these stay enabled. Paste and New from
         // Clipboard need no document (with none open, Paste makes one); Paste in Place does.

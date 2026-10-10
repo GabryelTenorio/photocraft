@@ -1102,6 +1102,51 @@ mod tests {
         }
     }
 
+    /// Edit > Copy and Edit > Paste from the menu use the type editor's text, like ⌘C and ⌘V
+    /// (#2976): Paste asks the window for the clipboard text and inserts it, never a pixel layer.
+    #[test]
+    fn copy_and_paste_type_from_native_menu() {
+        let synced = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut app = app(true);
+        let ctx = egui::Context::default();
+        let id = photocraft_doc::LayerId(app.run("type.create", json!({"text": "Hello", "size": 12, "x": 4, "y": 24})).unwrap()["layer"].as_u64().unwrap());
+        crate::menus::invoke(&mut app, &ctx, "type.editText", json!({})).unwrap();
+        let layers = |app: &PhotocraftApp| app.session.active().unwrap().doc.layer_count();
+        let before = layers(&app);
+        let click = |app: &mut PhotocraftApp, item: &str, extra: Vec<egui::Event>| {
+            app.services.native_menu = Some(NativeMenu::new(Box::new(Fake { synced: synced.clone(), events: vec![Event::Click(item.into())] })));
+            frame(&ctx, egui::RawInput::default(), |ui| sync(app, ui.ctx()));
+            assert!(synced.borrow().last().unwrap().find(item).unwrap().enabled, "{item} must be enabled while typing");
+            let mut raw = egui::RawInput::default();
+            app.services.native_menu.as_mut().unwrap().raw_input(&mut raw);
+            raw.events.extend(extra);
+            let mut out = ctx.run_ui(raw, |ui| {
+                run(app, ui.ctx());
+                crate::shortcuts::handle(app, ui.ctx());
+            });
+            out.textures_delta.clear();
+            out
+        };
+
+        let out = click(&mut app, "edit.copy", Vec::new());
+        assert_eq!(out.platform_output.commands, [egui::OutputCommand::CopyText("Hello".into())]);
+        assert!(app.session.clipboard.is_none(), "text Copy must not copy rendered pixels");
+
+        let out = click(&mut app, "edit.paste", Vec::new());
+        assert!(out.viewport_output[&egui::ViewportId::ROOT].commands.contains(&egui::ViewportCommand::RequestPaste), "Paste must ask for the clipboard text");
+        assert_eq!(layers(&app), before, "Paste while typing must not paste a layer");
+
+        // The window answers with the text in the next frame; it replaces the selection.
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::Paste("World".into()));
+        frame(&ctx, raw, |ui| {
+            crate::shortcuts::handle(&mut app, ui.ctx());
+        });
+        let photocraft_doc::LayerContent::Text(text) = &app.session.active().unwrap().doc.layer(id).unwrap().content else { panic!("type layer changed kind") };
+        assert_eq!(text.text, "World");
+        assert_eq!(layers(&app), before);
+    }
+
     #[test]
     fn native_cut_without_type_edit_keeps_pixel_clipboard_behavior() {
         let synced = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));

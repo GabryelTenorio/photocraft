@@ -303,6 +303,14 @@ pub(crate) fn selected_range(app: &PhotocraftApp) -> Option<[usize; 2]> {
     (a < b).then_some([a, b])
 }
 
+/// Shared by the clipboard Copy event and Edit > Copy during a type edit.
+pub(crate) fn copy_selection(app: &PhotocraftApp, ctx: &egui::Context) {
+    let Some([a, b]) = selected_range(app) else { return };
+    let Some(ed) = app.ui.text_edit.as_ref() else { return };
+    let Some(text) = app.session.active().and_then(|st| text_layer(&st.doc, LayerId(ed.layer))) else { return };
+    ctx.copy_text(text.text.chars().skip(a).take(b - a).collect());
+}
+
 /// Shared by the clipboard Cut event and Edit > Cut during a type edit.
 pub(crate) fn cut_selection(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some([a, b]) = selected_range(app) else { return };
@@ -530,11 +538,7 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
             egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => ime_update(app, text, false),
             egui::Event::Ime(egui::ImeEvent::Commit(s)) => ime_update(app, s, true),
             egui::Event::Ime(_) => {}
-            egui::Event::Copy => {
-                if a < b {
-                    ctx.copy_text(text.chars().skip(a).take(b - a).collect());
-                }
-            }
+            egui::Event::Copy => copy_selection(app, ctx),
             egui::Event::Cut => cut_selection(app, ctx),
             egui::Event::Key { key, pressed: true, modifiers: m, .. } => {
                 use egui::Key;
