@@ -20,6 +20,10 @@ pub struct Query {
     /// Changed paths (repo-relative) to analyse directly.
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Git ref to diff explicit `paths` against (default: the merge-base with origin/main). Shapes
+    /// the command signal: a `*_cmds.rs` edit only counts as a new command when its diff adds one.
+    #[serde(default)]
+    pub base: Option<String>,
     /// An engine command id, e.g. `filter.blur.gaussianBlur`.
     #[serde(default)]
     pub command: Option<String>,
@@ -172,8 +176,9 @@ const PREFERENCE: Signal = Signal {
 /// Rules, in the order they are probed.
 const RULES: &[(&str, Signal)] = &[("crates/doc/", DOC), ("crates/doc/src/adjust", ADJUST), ("crates/codecs/src/format.rs", FORMAT)];
 
-/// Signals for one path.
-fn signals_for(path: &str) -> Vec<&'static Signal> {
+/// Signals for one path. `command_changed` decides whether a `*_cmds.rs` edit is a new/changed
+/// command (a hard coupling) or an internal fix (which needs neither the registry nor parity).
+fn signals_for(path: &str, command_changed: &dyn Fn(&str) -> bool) -> Vec<&'static Signal> {
     let mut out = Vec::new();
     for (prefix, sig) in RULES {
         if path.starts_with(*prefix) {
@@ -181,7 +186,7 @@ fn signals_for(path: &str) -> Vec<&'static Signal> {
         }
     }
     // The adjustment file is under `crates/doc/` too; de-duplicate by id.
-    if path.starts_with("crates/engine/src/") && path.ends_with("_cmds.rs") {
+    if path.starts_with("crates/engine/src/") && path.ends_with("_cmds.rs") && command_changed(path) {
         out.push(&COMMAND);
     }
     if path == "crates/engine/src/prefs.rs" {
@@ -200,13 +205,20 @@ const UNIVERSAL: &[&str] = &[
     "Tests are required; format code needs round-trips and pixels at 8/16/32-bit.",
 ];
 
-/// Analyse a set of changed paths.
+/// Analyse a set of changed paths, assuming any `*_cmds.rs` edit is a command change. Use
+/// [`analyze_with`] to shape that from a diff.
 pub fn analyze(paths: &[String]) -> Impact {
+    analyze_with(paths, &|_| true)
+}
+
+/// Analyse a set of changed paths, with `command_changed` deciding whether a `*_cmds.rs` edit is a
+/// new/changed engine command (vs an internal fix).
+pub fn analyze_with(paths: &[String], command_changed: &dyn Fn(&str) -> bool) -> Impact {
     let mut touch: BTreeMap<String, Touch> = BTreeMap::new();
     let mut regen: BTreeMap<String, Regenerate> = BTreeMap::new();
     let mut invariants: BTreeSet<String> = UNIVERSAL.iter().map(|s| (*s).to_string()).collect();
     for path in paths {
-        for sig in signals_for(path) {
+        for sig in signals_for(path, command_changed) {
             for t in sig.touch {
                 touch
                     .entry((*t).to_string())
@@ -272,7 +284,14 @@ pub fn run(root: &Path, q: Query) -> Result<serde_json::Value, String> {
         notes.push("no paths resolved — pass `paths`, a `command`, a `symbol`, or a recognised `intent`".to_string());
     }
 
-    let impact = analyze(&paths);
+    // Shape the command signal from the diff for explicit `paths`; a lookup query has no diff, so
+    // any resolved `*_cmds.rs` counts as a command (the caller is asking about that command).
+    let impact = if q.paths.is_empty() {
+        analyze(&paths)
+    } else {
+        let base = q.base.clone().unwrap_or_else(|| crate::checks::default_base(root));
+        analyze_with(&paths, &|path| command_change(root, &base, path))
+    };
     // Gates cover the whole change: the input paths *and* everything they touch.
     let mut gate_paths: Vec<String> = paths.clone();
     gate_paths.extend(impact.touch.iter().map(|t| t.path.clone()));
@@ -309,6 +328,26 @@ pub fn run(root: &Path, q: Query) -> Result<serde_json::Value, String> {
         "gates": gates,
         "notes": notes,
     }))
+}
+
+/// Whether a `*_cmds.rs` path's diff adds an engine command (a `CommandSpec` `id: "…"`). A new
+/// (untracked) file counts; when git can't tell, the signal is kept rather than dropped.
+fn command_change(root: &Path, base: &str, path: &str) -> bool {
+    if !path.starts_with("crates/engine/src/") || !path.ends_with("_cmds.rs") {
+        return false;
+    }
+    if crate::git::try_run(root, &["ls-files", "--others", "--exclude-standard", "--", path]).is_some() {
+        return true;
+    }
+    match crate::git::run(root, &["diff", base, "--", path]) {
+        Ok(diff) => adds_command_id(&diff),
+        Err(_) => true,
+    }
+}
+
+/// Does a diff add an engine command id? (`+        id: "…"`, not the `+++` header.)
+fn adds_command_id(diff: &str) -> bool {
+    diff.lines().any(|line| line.starts_with('+') && !line.starts_with("+++") && line.contains("id: \""))
 }
 
 /// Engine files that mention the command id (its `specs()` literal).
@@ -450,6 +489,20 @@ mod tests {
         let impact = analyze(&["crates/doc/src/lib.rs".to_string()]);
         let t = impact.touch.iter().find(|t| t.path == "crates/format/src/manifest.rs").expect("manifest.rs");
         assert_eq!(t.confidence, "must");
+    }
+
+    #[test]
+    fn an_internal_cmds_edit_is_not_a_command_change() {
+        let impact = analyze_with(&["crates/engine/src/retouch_cmds.rs".to_string()], &|_| false);
+        assert!(impact.touch.is_empty(), "no registry/menu touch for an internal edit: {:?}", impact.touch);
+    }
+
+    #[test]
+    fn only_added_command_ids_count_as_a_command_change() {
+        assert!(adds_command_id("@@ -1 +1 @@\n+        id: \"paint.foo\",\n"));
+        assert!(!adds_command_id("-        id: \"paint.foo\",\n"));
+        assert!(!adds_command_id("+    let x = 1;\n"));
+        assert!(!adds_command_id("+++ b/crates/engine/src/foo_cmds.rs\n"));
     }
 
     /// Every path the registry names must still exist: catches a rule gone stale (a file renamed or

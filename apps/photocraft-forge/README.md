@@ -71,12 +71,16 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 
 ### Contracts
 
-`change_impact { paths?: [..], command?: "…", symbol?: "…", intent?: "…", enrich?: bool }`
+`change_impact { paths?: [..], base?: "…", command?: "…", symbol?: "…", intent?: "…", enrich?: bool }`
 → `{ inputs, resolved_paths, touch:[{path,why,confidence,signals}], invariants:[..], regenerate:[{artifact,command,why}], related:[..], graph, gates:{required,recommended}, notes }`.
 Each touch entry carries a `confidence`: `must` for a hard coupling, `verify` for a heuristic (e.g. a
 `*_cmds.rs` edit that *may* be a new command).
-Gates come from the authoritative `cargo xtask plan --json`; `enrich:true` consults the optional host
-MCPs for `related` files (see below).
+For explicit `paths`, the engine-command signal is **shaped from the diff** (`base`, default: the
+merge-base with `origin/main`): a `*_cmds.rs` edit only counts as a command change when it adds a
+command id — an internal fix does not pull in the registry/parity. A `command`/`symbol`/`intent`
+lookup has no diff, so it assumes a command change. Gates come from the authoritative
+`cargo xtask plan --json`; `enrich:true` consults the optional host MCPs for `related` files (see
+below).
 
 `checks_for_changes { paths?: [..], base?: "…" }`
 → `{ base, changed:[..], required:[gate], recommended:[gate], fingerprint, notes }`. With no `paths`,

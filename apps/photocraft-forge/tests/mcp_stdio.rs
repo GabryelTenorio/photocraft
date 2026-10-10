@@ -118,7 +118,9 @@ fn development_context_reports_fingerprint_crates_and_layers() {
 
 #[test]
 fn change_impact_returns_touch_set_and_gates() {
-    let r = forge_tool_call("change_impact", json!({"paths": ["crates/engine/src/retouch_cmds.rs"]}));
+    // A command lookup has no diff, so it assumes a command change: the registry/menu touch set
+    // applies. (An explicit `*_cmds.rs` path is shaped from the diff, so an internal edit does not.)
+    let r = forge_tool_call("change_impact", json!({"command": "paint.smudge"}));
     let touch = r["touch"].as_array().expect("touch array");
     assert!(touch.iter().any(|t| t["path"] == "crates/engine/src/commands.rs"), "{r}");
     let required = r["gates"]["required"].as_array().expect("required gates");
