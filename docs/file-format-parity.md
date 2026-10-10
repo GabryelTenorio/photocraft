@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (Fujifilm lossless compressed RAF) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -70,7 +70,7 @@ supports many more, including CR3).
 | Sony ARW/SR2/SRF (incl. compressed) | yes | |
 | Panasonic RW2, Pentax PEF | yes | |
 | Olympus ORF | uncompressed only | |
-| Fujifilm RAF (Bayer and X-Trans) | uncompressed only; no Fuji colour calibration | |
+| Fujifilm RAF (Bayer and X-Trans) | uncompressed and lossless compressed (14/16-bit); lossy compressed no; no Fuji colour calibration | #50; lossless compressed bit-exact on 4 sample files |
 | Others (CRW, 3FR, IIQ, X3F, SRW, MRW, ERF…) | embedded preview only | |
 | .xmp sidecars, highlight modes, raw preferences | missing | FILE-215-11 |
 | Camera Raw as a PSD smart filter | partial | 2026-10-07: WB, Light/Presence, curves, HSL, grading, detail, grain, vignette mapped (FILE-215-12) |
@@ -140,5 +140,6 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | Fujifilm lossless compressed RAF (X-Trans and Bayer, 14/16-bit) decodes; lossy compressed RAF remains open |
 | 2026-10-11 | minor | D5100 image area and fitted-look preservation in Camera Raw tuning |
 | 2026-10-10 | major | First version: Photoshop 2026 27.11.0's formats from its bundle, against our codecs; Affinity notes moved from `roadmap.md` |
