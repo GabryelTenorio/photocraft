@@ -26,8 +26,9 @@ M3. Tools:
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the finish gates for a diff as serialized background jobs. |
 | `job_status` / `job_logs` / `job_cancel` | Poll status, read cursor-based logs, cancel a job (and its process tree). |
+| `scenario_start` | Exercise a change against the headless app MCP and assert the result (JSON paths, files). |
 
-Planned: `scenario_start`.
+The MVP tool set (D5) is complete.
 
 ## Run
 

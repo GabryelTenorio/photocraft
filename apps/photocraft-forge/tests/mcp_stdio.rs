@@ -87,6 +87,7 @@ fn stdio_handshake_lists_and_calls_capabilities() {
     assert!(names.contains(&"job_status"), "{names:?}");
     assert!(names.contains(&"job_logs"), "{names:?}");
     assert!(names.contains(&"job_cancel"), "{names:?}");
+    assert!(names.contains(&"scenario_start"), "{names:?}");
 
     send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"forge_capabilities","arguments":{}}}));
     let call = recv(3);
@@ -142,4 +143,19 @@ fn validation_start_with_only_recommended_gates_starts_nothing() {
     // A docs-only change has no required gate (mdbook is recommended), so no job is launched.
     let r = forge_tool_call("validation_start", json!({"paths": ["docs/development.md"]}));
     assert_eq!(r["jobs"].as_array().map(Vec::len), Some(0), "{r}");
+}
+
+#[test]
+fn scenario_start_exercises_doc_new_and_asserts() {
+    let r = forge_tool_call(
+        "scenario_start",
+        json!({
+            "steps": [
+                {"tool": "doc_new", "arguments": {"width": 8, "height": 8}},
+                {"tool": "doc_inspect", "arguments": {}}
+            ],
+            "assertions": [{"json": "width", "equals": 8}, {"json": "height", "equals": 8}]
+        }),
+    );
+    assert_eq!(r["passed"], true, "{r}");
 }

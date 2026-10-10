@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{checks, context, impact, jobs, probe};
+use crate::{checks, context, impact, jobs, probe, scenario};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -166,6 +166,20 @@ impl Forge {
         let requested = self.jobs.cancel(query.job);
         let out = serde_json::json!({ "job": query.job, "requested": requested });
         let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize cancel: {e}"), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    /// Exercise a change headlessly.
+    #[tool(
+        description = "Exercise a change against the headless app MCP (`photocraft-cli mcp`): run bounded `steps` (app-MCP tool calls) then evaluate `assertions` over the last step's JSON or files in the scenario work root. Returns the evidence and whether every assertion passed."
+    )]
+    async fn scenario_start(&self, Parameters(params): Parameters<scenario::Params>) -> Result<CallToolResult, McpError> {
+        let root = probe::discover_repo_root().ok_or_else(checkout_error)?;
+        let report = tokio::task::spawn_blocking(move || scenario::run(&root, params))
+            .await
+            .map_err(|e| McpError::internal_error(format!("scenario task: {e}"), None))?
+            .map_err(|e| McpError::internal_error(e, None))?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| McpError::internal_error(format!("serialize report: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 }
