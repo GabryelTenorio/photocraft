@@ -150,6 +150,24 @@ fn validation_start_with_only_recommended_gates_starts_nothing() {
 }
 
 #[test]
+#[ignore = "offscreen snapshot needs a render backend (llvmpipe/GPU); run with --ignored"]
+fn scenario_start_offscreen_renders_a_png() {
+    let r = forge_tool_call(
+        "scenario_start",
+        json!({
+            "backend": "offscreen",
+            "size": "64x48",
+            "scale": 1,
+            "steps": [],
+            "assertions": [{"file": "ui.png", "width": 64, "height": 48, "min_bytes": 1}]
+        }),
+    );
+    assert_eq!(r["passed"], true, "{r}");
+    assert_eq!(r["evidence_tier"], "offscreen", "{r}");
+    assert!(r["artifacts"].as_array().is_some_and(|a| a.iter().any(|x| x["media_type"] == "image/png")), "{r}");
+}
+
+#[test]
 fn scenario_start_exercises_doc_new_and_asserts() {
     let r = forge_tool_call(
         "scenario_start",

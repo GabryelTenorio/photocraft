@@ -58,7 +58,7 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the required gates for a diff as serialized background jobs. |
 | `job_status` / `job_logs` / `job_cancel` | Poll status, read cursor-based logs, cancel a job (and its process tree). |
-| `scenario_start` | Exercise a change against the headless app MCP and assert the result (JSON paths, files, rendered images). |
+| `scenario_start` | Exercise a change and assert the result: headless app-MCP calls (JSON paths, files, rendered images) or offscreen full-UI snapshots. |
 
 ### Contracts
 
@@ -92,14 +92,20 @@ partial run for a green one.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
-`scenario_start { steps:[{tool,arguments}], assertions:[..] }`
-→ `{ passed, evidence_tier, artifacts, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. It spawns
-the headless app MCP (`photocraft-cli mcp`, roots under `target/forge-scenarios/work`), runs the steps,
-then checks assertions over the last **structured** (object/array) step result (`json` + `equals` /
-`contains` / `exists`), files in the work root (`file`, with `width` / `height` / `min_bytes` / `hash`),
-or a step's rendered **image** (`image` step index + `width` / `height` / `min_bytes` / `hash`; PNG
-dimensions are read from the IHDR header). Every rendered image and asserted file is reported as an
-**artifact** with its media type and `blake3` hash.
+`scenario_start { backend?:"headless"|"offscreen", steps:[{tool,arguments}], assertions:[..], size?, scale?, open? }`
+→ `{ passed, evidence_tier, artifacts, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. Every rendered image and asserted file is reported as an **artifact** with its media type and `blake3` hash.
+
+- **`headless`** (default): spawns the headless app MCP (`photocraft-cli mcp`, roots under
+  `target/forge-scenarios/work`), runs the steps (app-MCP tool calls), then checks assertions over the
+  last **structured** (object/array) step result (`json` + `equals` / `contains` / `exists`), files in
+  the work root (`file`), or a step's rendered **image** (`image` step index; PNG dimensions come from
+  the IHDR header). `evidence_tier: "headless"`.
+- **`offscreen`**: runs the steps as control-protocol calls (`photocraft-ui-egui --example snapshot`,
+  no window, no focus stealing), writes `ui.png` (`size` × `scale`, default `1440x900` × 1), and
+  asserts against it as a `file`. `evidence_tier: "offscreen"`.
+
+Assertions accept `width` / `height` / `min_bytes` / `hash` on both an `image` and a `file` (a golden
+PNG can be pinned by content, not just size).
 
 ## Optional companions
 
@@ -125,7 +131,7 @@ installs them.
 | `checks.rs` | `checks_for_changes`: changed-path enumeration + gate lookup. |
 | `xtask.rs` | Read-only bridge to the authoritative `cargo xtask plan --json`. |
 | `jobs.rs` | The serialized job manager + zero-test detection. |
-| `scenario.rs` | `scenario_start`: a minimal MCP client to the headless app MCP. |
+| `scenario.rs` | `scenario_start`: a minimal MCP client to the headless app MCP, plus the offscreen snapshot backend. |
 | `graph.rs` | Optional host-MCP graph enrichment (bounded, degrading). |
 | `git.rs` | Read-only git helper. |
 
@@ -168,6 +174,6 @@ stub stdio server.
 
 ## Not in scope (deferred, D5)
 
-`runtime_*` / `application_call` (native desktop lifecycle); pixel-level assertions in
-`scenario_start`; the triage/evaluation chain (`evidence_ingest`, `investigation_plan`,
-`feature_assess`); durable on-disk job manifests.
+`runtime_*` / `application_call` (native desktop lifecycle and live desktop scenarios); pixel-*value*
+assertions (dimensions and content hashes are checked, not individual pixels); the triage/evaluation
+chain (`evidence_ingest`, `investigation_plan`, `feature_assess`).

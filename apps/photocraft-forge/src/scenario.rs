@@ -20,12 +20,37 @@ use crate::artifact::{self, Artifact};
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Params {
-    /// Setup + exercise steps, each an app-MCP tool call.
+    /// Which backend exercises the change (research §5). Default `headless`.
+    #[serde(default)]
+    pub backend: Backend,
+    /// Headless: setup + exercise steps, each an app-MCP tool call. Offscreen: control-protocol
+    /// calls (`[method, params]`) run hands-off, then the UI is saved to `ui.png`.
     #[serde(default)]
     pub steps: Vec<Step>,
-    /// Assertions evaluated after the steps. The `json` assertions read the **last** step's result.
+    /// Assertions evaluated after the steps. For `headless`, `json` reads the **last** step's result.
     #[serde(default)]
     pub assertions: Vec<Assertion>,
+    /// Offscreen: window size as `WxH` in points (default `1440x900`).
+    #[serde(default)]
+    pub size: Option<String>,
+    /// Offscreen: pixels per point; the PNG is `size × scale` (default 1, so it matches `size`).
+    #[serde(default)]
+    pub scale: Option<f32>,
+    /// Offscreen: a file to open before the script (`--open`).
+    #[serde(default)]
+    pub open: Option<String>,
+}
+
+/// Which runtime a scenario exercises.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    /// The headless app MCP (`photocraft-cli mcp`).
+    #[default]
+    Headless,
+    /// The offscreen UI (`photocraft-ui-egui --example snapshot`) — renders the full UI to a PNG
+    /// with no window and no focus stealing.
+    Offscreen,
 }
 
 /// One app-MCP tool call.
@@ -120,14 +145,77 @@ pub struct AssertionResult {
     pub detail: String,
 }
 
-/// Run a scenario against the headless app MCP.
+/// Run a scenario against the chosen backend.
 pub fn run(root: &Path, params: Params) -> Result<Report, String> {
     let work = root.join("target/forge-scenarios/work");
     std::fs::create_dir_all(&work).map_err(|e| format!("create {}: {e}", work.display()))?;
-    let mut app = AppMcp::spawn(root, &work)?;
-    let run = run_inner(&mut app, &work, &params);
+    match params.backend {
+        Backend::Headless => run_headless(root, &work, &params),
+        Backend::Offscreen => run_offscreen(root, &work, &params),
+    }
+}
+
+/// Run against the headless app MCP.
+fn run_headless(root: &Path, work: &Path, params: &Params) -> Result<Report, String> {
+    let mut app = AppMcp::spawn(root, work)?;
+    let run = run_inner(&mut app, work, params);
     app.kill();
     run
+}
+
+/// Render the full UI offscreen (`--example snapshot`) after running the control-protocol script,
+/// then assert on the produced `ui.png` and any other files in the work root.
+fn run_offscreen(root: &Path, work: &Path, params: &Params) -> Result<Report, String> {
+    let out = work.join("ui.png");
+    let size = params.size.clone().unwrap_or_else(|| "1440x900".to_string());
+    let scale = params.scale.unwrap_or(1.0);
+    let script = script_json(&params.steps)?;
+    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+    command.args(["run", "-q", "-p", "photocraft-ui-egui", "--example", "snapshot", "--", "--out"]).arg(&out).args([
+        "--size",
+        &size,
+        "--scale",
+        &scale.to_string(),
+        "--script",
+        &script,
+    ]);
+    if let Some(open) = &params.open {
+        command.arg("--open").arg(open);
+    }
+    let output = command.current_dir(root).stdout(Stdio::piped()).stderr(Stdio::piped()).output().map_err(|e| format!("spawn offscreen snapshot: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let ran = output.status.success();
+
+    let mut artifacts = Vec::new();
+    if let Some(art) = Artifact::from_file("ui.png".to_string(), artifact::media_type(&out), &out) {
+        artifacts.push(art);
+    }
+    let mut assertions = Vec::new();
+    for a in &params.assertions {
+        assertions.push(evaluate(a, &Value::Null, &[], work));
+    }
+    let passed = ran && assertions.iter().all(|a| a.passed);
+    let mut value = json!({ "backend": "offscreen", "size": size, "scale": scale, "exit": output.status.code() });
+    if !ran && let Some(obj) = value.as_object_mut() {
+        obj.insert("stderr".to_string(), Value::String(tail(&stderr, 2000)));
+    }
+    let steps = vec![StepResult { tool: "snapshot".to_string(), is_error: !ran, value: Some(value), image: None }];
+    Ok(Report { passed, evidence_tier: "offscreen", artifacts, steps, assertions })
+}
+
+/// Build the `--script` JSON: a list of `[method, params]` control-protocol calls.
+fn script_json(steps: &[Step]) -> Result<String, String> {
+    let script: Vec<(&str, &Value)> = steps.iter().map(|s| (s.tool.as_str(), &s.arguments)).collect();
+    serde_json::to_string(&script).map_err(|e| format!("encode offscreen script: {e}"))
+}
+
+/// The last `max` characters of `text`, for a bounded failure detail.
+fn tail(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let start = text.char_indices().map(|(i, _)| i).find(|i| text.len() - i <= max).unwrap_or(text.len());
+    text[start..].to_string()
 }
 
 fn run_inner(app: &mut AppMcp, work: &Path, params: &Params) -> Result<Report, String> {
@@ -457,6 +545,30 @@ mod tests {
         assert_eq!(info.width, Some(32));
         assert_eq!(info.height, Some(16));
         assert_eq!(info.hash, artifact::hash_bytes(&png));
+    }
+
+    #[test]
+    fn backend_defaults_to_headless_and_parses_offscreen() {
+        assert_eq!(Params::default().backend, Backend::Headless);
+        let p: Params = serde_json::from_value(json!({"backend": "offscreen", "size": "800x600"})).expect("parse");
+        assert_eq!(p.backend, Backend::Offscreen);
+        assert_eq!(p.size.as_deref(), Some("800x600"));
+    }
+
+    #[test]
+    fn offscreen_script_is_method_params_pairs() {
+        let steps = vec![
+            Step { tool: "ui.set".into(), arguments: json!({"tool": "type"}) },
+            Step { tool: "ui.menu.invoke".into(), arguments: json!({"id": "image.imageSize"}) },
+        ];
+        let s = script_json(&steps).expect("script");
+        assert_eq!(s, r#"[["ui.set",{"tool":"type"}],["ui.menu.invoke",{"id":"image.imageSize"}]]"#);
+    }
+
+    #[test]
+    fn tail_keeps_the_end() {
+        assert_eq!(tail("abcdef", 3), "def");
+        assert_eq!(tail("abc", 10), "abc");
     }
 
     #[test]
