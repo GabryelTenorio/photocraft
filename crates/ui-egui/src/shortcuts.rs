@@ -289,6 +289,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if crate::menu_nav::is_open(ctx) {
         return;
     }
+    // So does the right-click menu of text being edited: Esc closes only it, and keys typed while
+    // it is open don't reach the text beneath.
+    if app.ui.canvas_tool_menu.as_ref().is_some_and(|m| m.text) {
+        return;
+    }
     let symmetry_editing = app.ui.symmetry_transform.is_some();
     crate::symmetry_ui::track(app, ctx);
     if symmetry_editing && (app.ui.symmetry_transform.is_none() || egui::Popup::is_any_open(ctx)) {
