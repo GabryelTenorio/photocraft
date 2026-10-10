@@ -132,6 +132,15 @@ nothing is silently dropped from `.pcraft` saves. When you add a doc field, add 
 `crates/format/src/manifest.rs` and `convert.rs` with `#[serde(default)]` so older files still load.
 If the field has a PSD equivalent, map it in `crates/io` too, and keep unknown PSD blocks verbatim.
 
+## 9. Local development tooling
+
+- **jCodeMunch is only as fresh as its index: reindex it *before* you call it.** From the repo root,
+  `jcodemunch-mcp index --no-ai-summaries .`. The `jcodemunch-watch` service can lag and leave the
+  index pinned to an old `git_head`, so it answers from a stale tree — check the reported `freshness`
+  and reindex regardless. Even when fresh, this repo's index holds **no Rust symbols**: use its
+  `search_text` / file tools, not `search_symbols`. Prefer `read` and jCodeMunch `search_text` over
+  `grep`/`rg`.
+
 ## Contributor credits (About window)
 
 - About ▸ Contributors/Models are compiled into the binary from `contributors/contributors.json`
