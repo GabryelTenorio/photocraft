@@ -134,17 +134,19 @@ If the field has a PSD equivalent, map it in `crates/io` too, and keep unknown P
 
 ## 9. Local development tooling
 
-- **jCodeMunch is only as fresh as its index: reindex it *before* you call it.** From the repo root,
-  `jcodemunch-mcp index --no-ai-summaries .`. The `jcodemunch-watch` service can lag and leave the
-  index pinned to an old `git_head`, so it answers from a stale tree — check the reported `freshness`
-  and reindex regardless.
-- **Its `languages` allowlist is a silent filter.** `~/.code-index/config.jsonc` `languages` decides
-  which languages get *symbols*; a language absent from the list is indexed for text search only,
-  with no error. The 2026-09-17 trim omitted `rust`, so every `.rs` file here was symbol-less for
-  months (`get_file_outline` → 0, `search_symbols` → 0). **Check `languages` includes the file's
-  language before concluding a symbol is absent; if you change it, rebuild the index** — remove the
-  repo's state (`rm -rf ~/.code-index/<repo>*`) then reindex, because an incremental reindex does not
-  re-parse unchanged files. Prefer `read` and jCodeMunch `search_text`/`search_symbols` over `grep`/`rg`.
+- **jCodeMunch: run `jcm-sync` before you call it.** `~/.local/bin/jcm-sync` derives this repo's
+  languages from `git ls-files` (via jCodeMunch's own extension map), writes the per-project
+  `.jcodemunch.jsonc` (kept out of git by `.git/info/exclude`), and reindexes — a *full* rebuild only
+  when the language set changes. `post-checkout`/`post-merge` hooks run it automatically; their
+  `--if-changed` keeps them cheap. Use it instead of a bare `jcodemunch-mcp index`: a bare reindex is
+  incremental, and the `jcodemunch-watch` service has left the index pinned to an old `git_head`.
+- **Its `languages` allowlist is a silent filter.** A language absent from the effective `languages`
+  (the per-project `.jcodemunch.jsonc`, else the global `~/.code-index/config.jsonc`) is indexed for
+  **text search only**, with no error — the 2026-09-17 global trim omitted `rust`, so every `.rs` file
+  here was symbol-less for months (`get_file_outline`/`search_symbols` → 0). `jcm-sync` derives the
+  list so this cannot recur; if you suspect a missing symbol, check the effective `languages`, run
+  `jcm-sync`, and note a change needs a full rebuild (incremental re-parses nothing). Prefer `read`
+  and jCodeMunch `search_text`/`search_symbols` over `grep`/`rg`.
 
 ## Contributor credits (About window)
 

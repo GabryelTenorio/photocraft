@@ -27,7 +27,7 @@ across sessions, not merely to prune it.
 
 | Thing | Symptom | Fallback |
 |---|---|---|
-| `jCodeMunch` (`enrich:true`) | Rust symbols were absent from the index, so `find_importers` returns nothing | Cause: its `~/.code-index/config.jsonc` `languages` allowlist omitted `rust`, so every `.rs` file was indexed for text search only (silent). Fixed 2026-10-10 (added `rust`, full reindex → 20.6k Rust symbols). Forge still adds local module references (`mod X;` / `::X`) itself; treat an empty graph as "no data", never "no coupling" |
+| `jCodeMunch` (`enrich:true`) | Rust symbols were absent from the index, so `find_importers` returns nothing | Cause: its `~/.code-index/config.jsonc` `languages` allowlist omitted `rust`, so every `.rs` file was indexed for text search only (silent). Fixed 2026-10-10, and `jcm-sync` now derives the per-project `languages` from `git ls-files` (+ reindexes) so it cannot recur. Forge still adds local module references (`mod X;` / `::X`) itself; treat an empty graph as "no data", never "no coupling" |
 | The host MCP process | The OpenCode-spawned server keeps the binary from session start | Rebuild **and** restart the host/session to pick up new Forge code |
 | `rust-lsp` enrichment | Needs `mcp-language-server` + `rust-analyzer` on the MCP's `PATH` | Install them (see `README.md`), or accept the note that symbol enrichment was skipped |
 | `scenario_start` offscreen backend | Does not render the canvas dot background (kittest layout) | Region/pixel assertions are only meaningful where the region is actually rendered; verify canvas-background changes natively |
