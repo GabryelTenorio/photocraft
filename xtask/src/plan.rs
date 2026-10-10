@@ -84,6 +84,13 @@ fn crate_of(p: &str) -> Option<&str> {
     p.strip_prefix("crates/").and_then(|r| r.split('/').next()).filter(|n| !n.is_empty())
 }
 
+/// An engine command source: a `*_cmds.rs` module (or a file inside a `*_cmds/` module), or the
+/// command registry `commands.rs`. Command coverage (`parity`) and the adversarial fuzz
+/// (`panic_hunt`) matter here; ordinary engine modules (prefs, diagnostics) do not need them.
+fn is_engine_command(p: &str) -> bool {
+    p.starts_with("crates/engine/src/") && (p.ends_with("_cmds.rs") || p.contains("_cmds/") || p.ends_with("/commands.rs"))
+}
+
 /// A plan: the paths considered, and the gates they require/recommend.
 #[derive(Debug, Serialize)]
 pub struct Plan {
@@ -112,7 +119,7 @@ pub fn classify(paths: &[String]) -> Plan {
             if is_wasm_crate(name) {
                 insert(&mut required, WASM);
             }
-            if name == "engine" {
+            if is_engine_command(p) {
                 insert(&mut required, PARITY);
                 insert(&mut required, PANIC_HUNT);
             }
@@ -212,6 +219,16 @@ mod tests {
         assert!(has(&plan.required, "wasm"));
         assert!(has(&plan.required, "parity"));
         assert!(has(&plan.required, "panic_hunt"));
+    }
+
+    #[test]
+    fn non_command_engine_file_needs_neither_parity_nor_panic_hunt() {
+        let plan = classify(&["crates/engine/src/prefs.rs".to_string()]);
+        assert!(has(&plan.required, "ci"));
+        assert!(has(&plan.required, "wasm"));
+        assert!(has(&plan.required, "scorecard"));
+        assert!(!has(&plan.required, "parity"), "{:?}", plan.required);
+        assert!(!has(&plan.required, "panic_hunt"), "{:?}", plan.required);
     }
 
     #[test]
