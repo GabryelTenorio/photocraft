@@ -130,6 +130,7 @@ impl Forge {
     )]
     async fn validation_start(&self, Parameters(params): Parameters<jobs::ValidationParams>) -> Result<CallToolResult, McpError> {
         let root = probe::discover_repo_root().ok_or_else(checkout_error)?;
+        let log_root = root.clone();
         let jobs::ValidationParams { paths, base, include_recommended, idle_timeout_secs, timeout_secs } = params;
         let timeout = jobs::Timeout::from_secs(idle_timeout_secs, timeout_secs);
         let query = checks::Query { paths, base };
@@ -184,6 +185,7 @@ impl Forge {
             "unavailable": unavailable,
             "note": "a zero-test match is reported as `notests`, not a pass; `unavailable` gates need another environment",
         });
+        events::append(&log_root, "validation_start", out.clone());
         let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize jobs: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
@@ -228,7 +230,7 @@ impl Forge {
     )]
     async fn forge_events(&self, Parameters(query): Parameters<EventsQuery>) -> Result<CallToolResult, McpError> {
         let root = probe::discover_repo_root().ok_or_else(checkout_error)?;
-        let list = events::read(&root, query.kind.as_deref(), query.limit.unwrap_or(50));
+        let list = events::read(&root, query.kind.as_deref(), query.since, query.limit.unwrap_or(50));
         let out = serde_json::json!({ "events": list });
         let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize events: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
@@ -240,10 +242,20 @@ impl Forge {
     )]
     async fn scenario_start(&self, Parameters(params): Parameters<scenario::Params>) -> Result<CallToolResult, McpError> {
         let root = probe::discover_repo_root().ok_or_else(checkout_error)?;
+        let log_root = root.clone();
         let report = tokio::task::spawn_blocking(move || scenario::run(&root, params))
             .await
             .map_err(|e| McpError::internal_error(format!("scenario task: {e}"), None))?
             .map_err(|e| McpError::internal_error(e, None))?;
+        events::append(
+            &log_root,
+            "scenario_start",
+            serde_json::json!({
+                "passed": report.passed,
+                "evidence_tier": report.evidence_tier,
+                "failed": report.assertions.iter().filter(|a| !a.passed).count(),
+            }),
+        );
         let text = serde_json::to_string_pretty(&report).map_err(|e| McpError::internal_error(format!("serialize report: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
@@ -287,6 +299,9 @@ struct EventsQuery {
     /// Only events of this kind (e.g. `change_impact`, `checks_for_changes`).
     #[serde(default)]
     kind: Option<String>,
+    /// Only events at or after this timestamp (ms since the epoch).
+    #[serde(default)]
+    since: Option<u64>,
     /// Maximum events to return, newest first (default 50, max 500).
     #[serde(default)]
     limit: Option<usize>,
