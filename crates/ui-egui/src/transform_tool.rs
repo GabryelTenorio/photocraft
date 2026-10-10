@@ -14,6 +14,7 @@ use std::sync::Arc;
 use egui::{Color32, CursorIcon, Pos2, Stroke, pos2, vec2};
 use photocraft_algo::transform::Homography;
 use photocraft_doc::{DocId, Document, LayerContent, LayerId};
+use photocraft_engine::jobs::{JobEvent, JobId, JobOutcome};
 use photocraft_geom::warp::{BezierMesh, Warp, WarpStyle};
 use serde_json::json;
 
@@ -85,6 +86,9 @@ pub struct TransformPreview {
     /// A layer's session keeps `doc` and `opacity` up to date with edits made while the box is
     /// open ([`follow_edits`]); `None` for a lone mask or channel and Transform Selection.
     follow: Option<Follow>,
+    /// The commit running as a background job (#1015): the moving pixels stay on screen, without
+    /// the box, until it lands; Esc cancels it. The session ends with the job.
+    committing: Option<JobId>,
     /// Content-Aware Scale's live preview (cas_transform.rs).
     pub(crate) content_aware: Option<crate::cas_transform::Live>,
 }
@@ -229,6 +233,7 @@ pub fn begin(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(), String>
         above: Some(above),
         styled: styled.then(|| crate::transform_fx::StyledPreview::new(format!("transform-{session}-styled"))),
         follow: Some(Follow { revision, hidden: lifted.is_none() }),
+        committing: None,
         gesture: None,
         warp_drag: None,
         split_tool: None,
@@ -327,6 +332,7 @@ pub(crate) fn begin_content_aware(
         opacity: layer.opacity * layer.fill_opacity,
         above: Some(above),
         follow: Some(Follow { revision, hidden: false }),
+        committing: None,
         gesture: None,
         warp_drag: None,
         split_tool: None,
@@ -385,12 +391,19 @@ fn take_back_made(app: &mut PhotocraftApp, document: DocId, layer: LayerId) {
 
 /// After the transform: the step that made the layer and the transform become one history step,
 /// the transform's for a copy and Place Embedded for a placed file.
-fn fold_made(app: &mut PhotocraftApp, made: MadeLayer) {
+fn fold_made(app: &mut PhotocraftApp, document: DocId, made: MadeLayer) {
+    // A background commit lands in its own document, which need not be the active one by then.
+    let Some(index) = app.session.documents().iter().position(|st| st.doc.id == document) else { return };
+    let active = app.session.active_index();
+    app.session.set_active(index);
     if let Some(st) = app.session.active_mut() {
         st.history.purge_last();
         if made == MadeLayer::Place {
             st.history.set_current_label(photocraft_engine::file_cmds::PLACE_EMBEDDED);
         }
+    }
+    if let Some(active) = active {
+        app.session.set_active(active);
     }
 }
 
@@ -440,6 +453,7 @@ fn begin_lone(
         above: None,
         styled: None,
         follow: None,
+        committing: None,
         gesture: None,
         warp_drag: None,
         split_tool: None,
@@ -501,6 +515,7 @@ fn begin_path(app: &mut PhotocraftApp, ctx: &egui::Context, params: serde_json::
         content_aware: None,
         above: None,
         follow: None,
+        committing: None,
     });
     app.ui.transform = Some(TransformSession {
         session,
@@ -574,6 +589,7 @@ pub fn begin_selection(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(
         above: None,
         styled: None,
         follow: None,
+        committing: None,
         gesture: None,
         warp_drag: None,
         split_tool: None,
@@ -946,7 +962,13 @@ fn contains(l: &photocraft_doc::Layer, id: LayerId) -> bool {
     l.id == id || matches!(&l.content, LayerContent::Group(g) if g.children.iter().any(|c| contains(c, id)))
 }
 
+/// Undo and Redo while the commit runs in the background.
+const STILL_APPLYING: &str = "Free Transform is still being applied";
+
 pub fn commit(app: &mut PhotocraftApp) {
+    if committing(app).is_some() {
+        return;
+    }
     let document = app.transform_preview.as_ref().map(|pv| pv.doc.id);
     if document.is_some_and(|id| app.session.active().is_none_or(|st| st.doc.id != id)) {
         cancel(app);
@@ -954,7 +976,7 @@ pub fn commit(app: &mut PhotocraftApp) {
     }
     let type_layer = warps_type(app);
     let Some(t) = app.ui.transform.take() else { return };
-    app.transform_preview = None;
+    let preview = app.transform_preview.take();
     if let Some(options) = &t.content_aware {
         crate::cas_transform::commit(app, &t, options);
         return;
@@ -1004,26 +1026,51 @@ pub fn commit(app: &mut PhotocraftApp) {
             return; // untouched: nothing to do and no history step; a ⌥⌘T copy or a place stays
         }
         let mut p = json!({"layer": t.layer, "rect": t.rect, "quad": t.quad, "interpolation": t.interpolation});
-        if let Some(target) = t.target {
-            p["target"] = target;
+        if let Some(target) = &t.target {
+            p["target"] = target.clone();
         }
         app.run("edit.transform", p)
     };
-    match r {
-        Ok(_) => {
-            if let Some(made) = made {
-                fold_made(app, made);
-            }
-        }
-        Err(e) => {
-            if made.is_some()
-                && let Some(document) = document
-            {
-                take_back_made(app, document, LayerId(t.layer));
-            }
-            app.ui.status = e;
-        }
+    // A large layer's warp runs in the background: the session stays until the job ends.
+    if let Ok(v) = &r
+        && let Some(job) = v.get("pending").and_then(serde_json::Value::as_bool).filter(|p| *p).and(v.get("job")).and_then(serde_json::Value::as_u64)
+        && let Some(mut pv) = preview
+    {
+        pv.committing = Some(JobId(job));
+        app.ui.transform = Some(t);
+        app.transform_preview = Some(pv);
+        return;
     }
+    finish(app, document, LayerId(t.layer), made, r.is_ok());
+    if let Err(e) = r {
+        app.ui.status = e;
+    }
+}
+
+/// After the transform landed or not: fold the layer the session made into its step, or take it
+/// back.
+fn finish(app: &mut PhotocraftApp, document: Option<DocId>, layer: LayerId, made: Option<MadeLayer>, landed: bool) {
+    let (Some(made), Some(document)) = (made, document) else { return };
+    if landed {
+        fold_made(app, document, made);
+    } else {
+        take_back_made(app, document, layer);
+    }
+}
+
+/// The job applying the transform, while it runs.
+pub(crate) fn committing(app: &PhotocraftApp) -> Option<JobId> {
+    app.transform_preview.as_ref().and_then(|pv| pv.committing)
+}
+
+/// A job ended (see [`crate::jobs_ui`]): when it was the commit, the session ends with it. Its
+/// status and errors are reported like any job's.
+pub fn on_job_event(app: &mut PhotocraftApp, e: &JobEvent) {
+    if committing(app) != Some(e.id) {
+        return;
+    }
+    let (Some(t), Some(pv)) = (app.ui.transform.take(), app.transform_preview.take()) else { return };
+    finish(app, Some(pv.doc.id), LayerId(t.layer), t.made, matches!(e.outcome, JobOutcome::Done(_)));
 }
 
 /// A transform whose layer or document went away (undo, close) ends silently; picking another tool
@@ -1033,6 +1080,9 @@ pub fn commit(app: &mut PhotocraftApp) {
 /// that tool.
 pub fn end_if_left(app: &mut PhotocraftApp) {
     let Some(t) = &app.ui.transform else { return };
+    if committing(app).is_some() {
+        return;
+    }
     let Some(st) = app.session.active() else { return cancel(app) };
 
     let layer = LayerId(t.layer);
@@ -1084,6 +1134,11 @@ pub fn follow_edits(app: &mut PhotocraftApp) {
 }
 
 pub fn cancel(app: &mut PhotocraftApp) {
+    // Esc while the commit runs cancels the job; the session ends when it does.
+    if let Some(job) = committing(app) {
+        crate::jobs_ui::cancel(app, job);
+        return;
+    }
     let transform = app.ui.transform.take();
     let preview = app.transform_preview.take();
     if let (Some(t), Some(pv)) = (transform, preview)
@@ -1114,6 +1169,9 @@ pub fn track_steps(app: &mut PhotocraftApp, ctx: &egui::Context) {
 /// Toggle Last State, which would change the document under the box), `None` for the rest.
 pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
     let t = app.ui.transform.as_ref()?;
+    if committing(app).is_some() {
+        return box_command(id).then_some(false);
+    }
     let steps = app.transform_preview.as_ref().map(|pv| &pv.steps);
     match id {
         // Content-Aware Scale's box only scales: no switching it to another transform or Warp.
@@ -1159,8 +1217,16 @@ fn box_preset(id: &str) -> Option<(f64, f64, f64)> {
 /// document under the box, is refused. Edit › Transform's Rotate and Flip turn the box itself, as
 /// in Photoshop, instead of the layer under it; committing stays with ↩ and the options bar.
 /// `None` for other commands or when not transforming.
+/// The commands the open box answers itself ([`is_enabled`], [`intercept`]).
+fn box_command(id: &str) -> bool {
+    matches!(id, "edit.undo" | "edit.redo" | "edit.toggleLastState" | "edit.contentAwareScale" | "edit.puppetWarp") || box_preset(id).is_some()
+}
+
 pub fn intercept(app: &mut PhotocraftApp, id: &str) -> Option<Result<serde_json::Value, String>> {
     let warping = app.ui.transform.as_ref()?.warp.is_some();
+    if committing(app).is_some() {
+        return box_command(id).then(|| Err(STILL_APPLYING.into()));
+    }
     match id {
         "edit.undo" => Some(Ok(step(app, false))),
         "edit.redo" => Some(Ok(step(app, true))),
@@ -1250,6 +1316,9 @@ fn accepts_outside_click(g: Gesture, end: [f64; 2], tol: f64) -> bool {
 /// Pointer input while transforming. Returns false when no transform is active.
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) -> bool {
     let Some(t) = app.ui.transform.clone() else { return false };
+    if committing(app).is_some() {
+        return true;
+    }
     let tol = handle_tolerance(app);
     if t.warp.is_some() {
         warp_pointer(app, ev, tol, mods);
@@ -1970,6 +2039,9 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
     }
     if let Some(a) = &pv.above {
         a.draw(painter, xf);
+    }
+    if pv.committing.is_some() {
+        return;
     }
     let accent = crate::theme::Tokens::get(painter.ctx()).accent;
     if let (Some(path), Some(h)) = (&pv.path, Homography::rect_to_quad(t.rect, t.quad)) {
