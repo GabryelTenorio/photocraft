@@ -38,11 +38,13 @@ pub enum Status {
     /// Exited 0 but matched zero tests — not a pass.
     NoTests,
     Cancelled,
+    /// Was still queued/running when Forge last exited — interrupted, not failed (research §8).
+    Interrupted,
 }
 
 impl Status {
     fn done(self) -> bool {
-        matches!(self, Status::Succeeded | Status::Failed | Status::NoTests | Status::Cancelled)
+        matches!(self, Status::Succeeded | Status::Failed | Status::NoTests | Status::Cancelled | Status::Interrupted)
     }
 }
 
@@ -82,6 +84,8 @@ struct Manifest {
     #[serde(default)]
     duration_ms: Option<u128>,
     #[serde(default)]
+    finished_ms: Option<u128>,
+    #[serde(default)]
     head: Option<String>,
     dirty: bool,
     #[serde(default)]
@@ -101,6 +105,7 @@ struct Job {
     pid: Option<u32>,
     started_ms: Option<u128>,
     duration_ms: Option<u128>,
+    finished_ms: Option<u128>,
     exit: Option<i32>,
     zero_tests: bool,
     head: Option<String>,
@@ -122,6 +127,8 @@ pub struct JobView {
     pub started_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_ms: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit: Option<i32>,
     pub zero_tests: bool,
@@ -191,12 +198,16 @@ impl JobManager {
                     reason: manifest.reason,
                     program: manifest.command,
                     args: Vec::new(),
-                    status: manifest.status,
+                    status: match manifest.status {
+                        Status::Queued | Status::Running => Status::Interrupted,
+                        other => other,
+                    },
                     log: Arc::new(Mutex::new(String::new())),
                     cancel: Arc::new(AtomicBool::new(false)),
                     pid: None,
                     started_ms: manifest.started_ms,
                     duration_ms: manifest.duration_ms,
+                    finished_ms: manifest.finished_ms,
                     exit: manifest.exit,
                     zero_tests: manifest.zero_tests,
                     head: manifest.head,
@@ -230,6 +241,7 @@ impl JobManager {
                 pid: None,
                 started_ms: None,
                 duration_ms: None,
+                finished_ms: None,
                 exit: None,
                 zero_tests: false,
                 head: fingerprint.head,
@@ -238,6 +250,9 @@ impl JobManager {
                 diagnostics: Diagnostics::default(),
             },
         );
+        // Persist immediately so a crash mid-run leaves a non-terminal manifest, which `load` marks
+        // `interrupted` rather than silently `failed` (research §8).
+        self.persist(id);
         let me = Arc::clone(self);
         std::thread::spawn(move || me.run(id, program, args, cwd, log, cancel));
         id
@@ -317,6 +332,7 @@ impl JobManager {
                 if let Some(started) = job.started_ms {
                     job.duration_ms = Some(now_ms().saturating_sub(started));
                 }
+                job.finished_ms = Some(now_ms());
             }
         }
         self.persist(id);
@@ -344,6 +360,7 @@ impl JobManager {
                 zero_tests: job.zero_tests,
                 started_ms: job.started_ms,
                 duration_ms: job.duration_ms,
+                finished_ms: job.finished_ms,
                 head: job.head.clone(),
                 dirty: job.dirty,
                 diagnostics: job.diagnostics.clone(),
@@ -368,6 +385,7 @@ impl JobManager {
             pid: job.pid,
             started_ms: job.started_ms,
             duration_ms: job.duration_ms,
+            finished_ms: job.finished_ms,
             exit: job.exit,
             zero_tests: job.zero_tests,
             kind: job.kind.clone(),
@@ -544,6 +562,22 @@ mod tests {
         assert!(views.iter().any(|v| v.id == id && v.status == Status::Succeeded), "{views:?}");
         let (_, log, _) = reloaded.logs(id, 0).expect("reloaded logs");
         assert!(log.contains("persisted-hello"), "{log}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_non_terminal_manifest_loads_as_interrupted() {
+        let dir = std::env::temp_dir().join(format!("forge-interrupted-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create");
+        let manifest = serde_json::json!({
+            "id": 7, "name": "ci", "command": "cargo xtask ci",
+            "status": "running", "zero_tests": false, "dirty": false
+        });
+        std::fs::write(dir.join("7.json"), manifest.to_string()).expect("write");
+        let mgr = JobManager::new(Some(dir.clone()));
+        let views = mgr.views(Some(7));
+        assert_eq!(views.first().map(|v| v.status), Some(Status::Interrupted), "{views:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

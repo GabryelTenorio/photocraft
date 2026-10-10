@@ -77,9 +77,11 @@ it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 `notests`, never a pass. Each completed job persists an immutable manifest under `target/forge/jobs/`
 (`<id>.json` + `<id>.log`) carrying the source fingerprint, the gate's reason, **parsed diagnostics**
 (Cargo/clippy — human or `--message-format=json` — mapped to `file:line:col`) and
-matched/executed/filtered **test counts** (research §8).
+matched/executed/filtered **test counts** (research §8). A job persisted while still queued or running
+loads as **`interrupted`** — never a silent `failed` — and each manifest carries start, finish and
+duration.
 
-`job_status { job? }` → `{ jobs:[{id,name,kind,status,command,zero_tests,tests,diagnostics,head,dirty,evidence}] }`.
+`job_status { job? }` → `{ jobs:[{id,name,kind,status,command,zero_tests,tests,diagnostics,head,dirty,evidence,finished_ms}] }`.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
