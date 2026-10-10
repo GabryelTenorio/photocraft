@@ -829,19 +829,19 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     if crate::layer_pick_ui::is_gesture(app.ui.tool, mods) {
                         if down {
                             app.ui.canvas_tool_menu = None;
-                            crate::layer_pick_ui::open(app, screen_point(app, x, y), x, y);
+                            crate::layer_pick_ui::open(app, ctx, screen_point(app, x, y), x, y);
                         }
                         continue;
                     }
                     if crate::canvas_tool_menu::pasteboard_at(app, app.ui.tool, [x, y]) {
                         if down {
-                            crate::canvas_tool_menu::open_pasteboard(app, app.ui.tool, screen_point(app, x, y));
+                            crate::canvas_tool_menu::open_pasteboard(app, ctx, app.ui.tool, screen_point(app, x, y));
                         }
                         continue;
                     }
                     if crate::canvas_tool_menu::applies(app.ui.tool) {
                         if down {
-                            crate::canvas_tool_menu::open(app, app.ui.tool, screen_point(app, x, y));
+                            crate::canvas_tool_menu::open(app, ctx, app.ui.tool, screen_point(app, x, y));
                         }
                         continue;
                     }
