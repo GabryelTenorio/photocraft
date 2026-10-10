@@ -41,21 +41,41 @@ const TIMEOUT: Duration = Duration::from_secs(20);
 /// Consult the available companions for affected files.
 pub fn enrich(root: &Path, changed: &[String], symbol: Option<&str>, companions: Companions) -> Enrichment {
     let mut e = Enrichment::default();
-    if companions.jcodemunch {
-        if changed.is_empty() {
-            e.notes.push("jCodeMunch present but no paths to check importers for".to_string());
-        } else {
-            match mcp_call("jcodemunch-mcp", &["serve"], root, "find_importers", json!({ "file_paths": changed }), TIMEOUT) {
+
+    // Companion graph (jCodeMunch), when present. It needs the *repo id* for every call, so resolve
+    // it once from the checkout path first; a tool-level failure is reported, never counted as used.
+    if companions.jcodemunch && !changed.is_empty() {
+        match resolve_repo_id(root) {
+            Ok(repo) => match mcp_call("jcodemunch-mcp", &["serve"], root, "find_importers", json!({ "repo": repo, "file_paths": changed }), TIMEOUT) {
                 Ok(text) => {
-                    e.used.push("jcodemunch:find_importers".to_string());
-                    e.related.extend(extract_repo_paths(&text));
+                    let found = parse_importers(&text, changed);
+                    if found.is_empty() {
+                        e.notes.push("jCodeMunch returned no importers (its Rust index may be empty)".to_string());
+                    } else {
+                        e.used.push("jcodemunch:find_importers".to_string());
+                        e.related.extend(found);
+                    }
                 }
                 Err(err) => e.notes.push(format!("jCodeMunch enrichment skipped: {err}")),
-            }
+            },
+            Err(err) => e.notes.push(format!("jCodeMunch enrichment skipped: {err}")),
         }
+    } else if companions.jcodemunch {
+        e.notes.push("jCodeMunch present but no paths to check importers for".to_string());
     } else {
         e.notes.push("jCodeMunch not found (optional) — `uv tool install jcodemunch-mcp` enables impact-graph enrichment".to_string());
     }
+
+    // Local module references: cheap, deterministic, and works with no companion at all. For each
+    // changed Rust module, find the files that declare or `use` it.
+    if !changed.is_empty() {
+        let local = local_related(root, changed);
+        if !local.is_empty() {
+            e.used.push("local:module-refs".to_string());
+            e.related.extend(local);
+        }
+    }
+
     if let Some(symbol) = symbol {
         if companions.rust_lsp {
             let workspace = root.display().to_string();
@@ -106,6 +126,63 @@ pub fn extract_repo_paths(text: &str) -> Vec<String> {
     out
 }
 
+/// The importer files in a `find_importers` response, never the queried files themselves (the tool
+/// echoes each queried `file_path` back). Falls back to plain path extraction only when the response
+/// is not the expected structured JSON.
+pub fn parse_importers(text: &str, changed: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Ok(v) = serde_json::from_str::<Value>(text)
+        && let Some(results) = v.get("results").and_then(Value::as_array)
+    {
+        for r in results {
+            for imp in r.get("importers").and_then(Value::as_array).into_iter().flatten() {
+                for key in ["file", "file_path", "path"] {
+                    if let Some(p) = imp.get(key).and_then(Value::as_str) {
+                        out.push(p.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if out.is_empty() {
+        out = extract_repo_paths(text);
+    }
+    out.retain(|p| !changed.iter().any(|c| c == p));
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Resolve the jCodeMunch repo id for a checkout (`resolve_repo` needs an absolute path).
+fn resolve_repo_id(root: &Path) -> Result<String, String> {
+    let text = mcp_call("jcodemunch-mcp", &["serve"], root, "resolve_repo", json!({ "path": root.display().to_string() }), TIMEOUT)?;
+    let v: Value = serde_json::from_str(&text).map_err(|e| format!("resolve_repo: {e}"))?;
+    v.get("repo").and_then(Value::as_str).map(str::to_string).ok_or_else(|| "resolve_repo: no repo id".to_string())
+}
+
+/// Files that reference a changed Rust module: its `mod X;` declaration or a `::X` path. Dependency
+/// free, so path enrichment still works when no graph companion is present or its index is empty.
+pub fn local_related(root: &Path, changed: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for path in changed {
+        if !path.ends_with(".rs") {
+            continue;
+        }
+        let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str()) else { continue };
+        if matches!(stem, "lib" | "main" | "mod") {
+            continue;
+        }
+        let mod_needle = format!("mod {stem};");
+        let use_needle = format!("::{stem}");
+        let self_path = path.clone();
+        let hits = crate::impact::grep(root, &["crates", "apps"], &|line| line.contains(&mod_needle) || line.contains(&use_needle), 40);
+        out.extend(hits.into_iter().filter(|h| *h != self_path));
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// A bounded MCP stdio call: spawn, initialize, call one tool, return its first text content.
 fn mcp_call(program: &str, args: &[&str], cwd: &Path, tool: &str, arguments: Value, timeout: Duration) -> Result<String, String> {
     let mut child = Command::new(program)
@@ -144,9 +221,18 @@ fn mcp_call(program: &str, args: &[&str], cwd: &Path, tool: &str, arguments: Val
         write_line(&mut stdin, json!({"jsonrpc":"2.0","method":"notifications/initialized"}))?;
         write_line(&mut stdin, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name": tool, "arguments": arguments}}))?;
         let response = wait_for(&rx, 2, deadline)?;
-        let text = response
-            .get("result")
-            .and_then(|r| r.get("content"))
+        let result = response.get("result").ok_or_else(|| format!("{tool}: no result"))?;
+        // A tool-level `isError` (e.g. a bad argument) is a failure, not empty data.
+        if result.get("isError").and_then(Value::as_bool) == Some(true) {
+            let msg = result
+                .get("content")
+                .and_then(Value::as_array)
+                .and_then(|items| items.iter().find_map(|c| c.get("text")).and_then(Value::as_str))
+                .unwrap_or("tool error");
+            return Err(format!("{tool}: {}", msg.lines().next().unwrap_or("").trim()));
+        }
+        let text = result
+            .get("content")
             .and_then(Value::as_array)
             .and_then(|items| items.iter().find_map(|c| c.get("text")).and_then(Value::as_str))
             .unwrap_or_default()
@@ -218,5 +304,40 @@ mod tests {
             .expect("stub call");
         assert!(text.contains("crates/foo/bar.rs"), "{text}");
         assert_eq!(extract_repo_paths(&text), vec!["crates/foo/bar.rs".to_string()]);
+    }
+
+    #[test]
+    fn mcp_call_treats_a_tool_error_as_a_failure() {
+        let script = r#"while IFS= read -r line; do
+          case "$line" in
+            *'"method":"initialize"'*) echo '{"jsonrpc":"2.0","id":1,"result":{}}' ;;
+            *'"method":"tools/call"'*) echo '{"jsonrpc":"2.0","id":2,"result":{"isError":true,"content":[{"type":"text","text":"Input validation error: boom"}]}}' ;;
+          esac
+        done"#;
+        let err = mcp_call("sh", &["-c", script], Path::new("."), "find_importers", json!({}), Duration::from_secs(10)).expect_err("should be an error");
+        assert!(err.contains("boom"), "{err}");
+    }
+
+    #[test]
+    fn parse_importers_reads_structured_results_and_excludes_the_queried_file() {
+        let text = r#"{"results":[{"file_path":"crates/x/y.rs","importer_count":2,"importers":[{"file":"crates/a/b.rs"},{"file":"crates/x/y.rs"}]}]}"#;
+        assert_eq!(parse_importers(text, &["crates/x/y.rs".to_string()]), vec!["crates/a/b.rs".to_string()]);
+        // A response that only echoes the queried file yields nothing.
+        let echoed = r#"{"results":[{"file_path":"crates/x/y.rs","importer_count":0,"importers":[]}]}"#;
+        assert!(parse_importers(echoed, &["crates/x/y.rs".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn local_related_finds_the_module_declaration() {
+        let dir = std::env::temp_dir().join(format!("forge-graph-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("crates/x/src")).expect("create");
+        std::fs::create_dir_all(dir.join("apps")).expect("apps");
+        std::fs::write(dir.join("crates/x/src/lib.rs"), "mod foo;\n").expect("lib");
+        std::fs::write(dir.join("crates/x/src/foo.rs"), "// foo\n").expect("foo");
+        let related = local_related(&dir, &["crates/x/src/foo.rs".to_string()]);
+        assert!(related.contains(&"crates/x/src/lib.rs".to_string()), "{related:?}");
+        assert!(!related.contains(&"crates/x/src/foo.rs".to_string()), "the changed file itself is excluded");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -306,7 +306,7 @@ fn resolve_intent(intent: &str) -> Vec<String> {
 }
 
 /// Recursive text grep over the given roots, returning repo-relative file paths (capped).
-fn grep(root: &Path, roots: &[&str], predicate: &impl Fn(&str) -> bool, cap: usize) -> Vec<String> {
+pub(crate) fn grep(root: &Path, roots: &[&str], predicate: &impl Fn(&str) -> bool, cap: usize) -> Vec<String> {
     let mut out = Vec::new();
     for r in roots {
         walk(&root.join(r), root, predicate, cap, &mut out);
