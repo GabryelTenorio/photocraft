@@ -24,12 +24,14 @@ across sessions, not merely to prune it.
   code comment. Prefer correcting an existing instruction over adding a new one.
 - **Grow on demand.** When a task repeats and no live tool covers it, build the tool — don't keep
   working around the gap. (That is why Forge has the tools it has.)
-- **Retire, don't delete.** A tool that stops being used is *archived*, not removed: move its code to
-  `archive/` and add a row to `archive/RETIRED.md`. `forge_capabilities.ledger` is the usage signal —
-  a tool flagged `dormant` (no call in `RETIRE_AFTER_DAYS`, 30) is a retirement candidate; retire it
-  unless you know of a live need. Before building a new tool, check the catalog
-  (`forge_capabilities.retired`) and **resurrect a match first** — the MCP advertises only live tools,
-  so the catalog is how a retired tool is still found.
+- **Retire by paging out; resurrect hot.** A tool that stops earning its place moves to
+  `src/dormant.rs` (compiled but unregistered) with a row in `archive/RETIRED.md`; it leaves the live
+  set without a rebuild. The signal is the ledger (`forge_ledger`, or `forge_capabilities.dormant`):
+  a tool flagged `dormant` (no call in `RETIRE_AFTER_DAYS`, 30) is a candidate. Before building a new
+  tool, check `forge_capabilities.dormant` / `retired` and **resurrect a match** with
+  `forge_toolset { "enable": ["<tool>"] }` — instant, and it notifies the client
+  (`notifications/tools/list_changed`). The MCP advertises only live tools, so the catalogs are how a
+  retired tool is still found.
 
 ## Known-bad tools and limitations (with fallbacks)
 
@@ -40,6 +42,7 @@ across sessions, not merely to prune it.
 | `rust-lsp` enrichment | Needs `mcp-language-server` + `rust-analyzer` on the MCP's `PATH` | Install them (see `README.md`), or accept the note that symbol enrichment was skipped |
 | `scenario_start` offscreen backend | Does not render the canvas dot background (kittest layout) | Region/pixel assertions are only meaningful where the region is actually rendered; verify canvas-background changes natively |
 | `change_impact` with explicit `paths` | An internal `*_cmds.rs` edit correctly yields no registry touch | Pass `command`/`symbol` to ask about a command without a diff; `base` shapes the diff |
+| MCP client / agent wrapper | Ignores `notifications/tools/list_changed` (or withholds the `list_changed` capability) | The server swaps its tool set and emits the notification, but the model's schema is only rebuilt on the next `tools/list` — i.e. a session restart. The server side is already swapped; the agent-wrapper/terminal layer is the limit. |
 
 ## Failure / gap registry
 

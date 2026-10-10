@@ -17,6 +17,7 @@ mod artifact;
 mod checks;
 mod context;
 mod diagnostics;
+mod dormant;
 mod events;
 mod git;
 mod graph;
@@ -26,6 +27,7 @@ mod ledger;
 mod maintenance;
 mod scenario;
 mod server;
+mod toolset;
 mod xtask;
 
 pub use server::{Forge, serve_stdio};

@@ -60,13 +60,15 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 
 | Tool | Purpose |
 |---|---|
-| `forge_capabilities` | Report required tools (`git`, `cargo`), required **prerequisites** (`wasm32-unknown-unknown`, which the `wasm` gate needs and rustup does not auto-install; the `corpus/` checkout, which `test-corpus` needs), optional build inputs (`craft-fonts`, `mdbook`) and companions, the checkout root, install/fetch commands for anything missing, Forge's own **open maintenance rows** (`MAINTENANCE.md`), the **call ledger** (per-tool calls/errors/last-used), and the **retired-tool catalog** (`archive/RETIRED.md`). |
+| `forge_capabilities` | Report required tools (`git`, `cargo`), required **prerequisites** (`wasm32-unknown-unknown`, which the `wasm` gate needs and rustup does not auto-install; the `corpus/` checkout, which `test-corpus` needs), optional build inputs (`craft-fonts`, `mdbook`) and companions, the checkout root, install/fetch commands for anything missing, Forge's own **open maintenance rows** (`MAINTENANCE.md`), the **dormant** tool catalog (compiled but unregistered tools, with `enable` via `forge_toolset`), and the **retired-tool catalog** (`archive/RETIRED.md`). |
+| `forge_toolset` | List or change the live tool set: `enable`/`disable` **dormant** (compiled but unregistered) tools. Enabling one is instant and notifies the client (`tools/list_changed`), so a retired tool is resurrected without a rebuild — check this catalog before building a new tool. |
 | `development_context` | Source fingerprint (HEAD, branch, dirty, diff/Cargo.lock hashes, behind origin/main), Forge's own build identity (version, profile, target, hashed binary), the workspace crate map, and the authoritative `cargo xtask layers` report. |
 | `change_impact` | The must-change-together touch set, invariants, artifacts to regenerate, related files, and the gate plan, for `paths` / a `command` / a `symbol` / an `intent`. |
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the required gates for a diff as serialized background jobs. |
 | `job_status` / `job_logs` / `job_cancel` | Poll status, read cursor-based logs, cancel a job (and its process tree). |
 | `forge_events` | Read the append-only event log (`target/forge/events.jsonl`): recent `change_impact` / `checks_for_changes` / `validation_start` / `scenario_start` calls, newest first, filterable by `kind` and `since` (ms). |
+| `forge_ledger` *(dormant)* | Read the per-tool call ledger (`target/forge/tool_calls.json`): calls, errors, last-used, and a `dormant` flag (no call in `RETIRE_AFTER_DAYS`, 30). Dormant by default — enable with `forge_toolset`. |
 | `scenario_start` | Exercise a change and assert the result: headless app-MCP calls (JSON paths, files, rendered images) or offscreen full-UI snapshots. |
 
 ### Contracts
@@ -222,17 +224,15 @@ returns — so the surface stays lean without losing the work. The `ledger` is t
 store the MCP still knows about: a retired tool is one lookup away, not gone.
 
 1. **Grow.** When a task repeats and no live tool covers it, build the tool — never route around the gap.
-2. **Watch.** `forge_capabilities.ledger` (durable at `target/forge/tool_calls.json`) shows calls,
-   errors and last-used per tool, and flags a tool `dormant` when it has not been called in
-   `RETIRE_AFTER_DAYS` (30).
-3. **Retire (archive).** A tool that has stopped earning its place — typically `dormant` — is moved
-   out of the build, not deleted: its code goes to [`archive/`](archive/RETIRED.md), a row is added to
-   [`archive/RETIRED.md`](archive/RETIRED.md) (why it existed, when, where the code is, how to
-   restore), and it is removed from `src/server.rs` and the tool table above.
-4. **Resurrect.** The MCP advertises only live tools, but `forge_capabilities.retired` lists the
-   archived ones. When a task needs a capability no live tool provides, **check `retired` first** and
-   bring a match back (move the code out of `archive/`, re-add the `#[tool]` handler and the table
-   row) before building anything new.
+2. **Watch.** Enable the dormant `forge_ledger` (or read `target/forge/tool_calls.json`): calls,
+   errors, last-used and a `dormant` flag per tool (`dormant` = no call in `RETIRE_AFTER_DAYS`, 30).
+3. **Retire (page out, hot).** Move the handler into `src/dormant.rs` — it stays **compiled** but
+   unregistered — and add a row to [`archive/RETIRED.md`](archive/RETIRED.md). It leaves the live set
+   immediately (no rebuild).
+4. **Resurrect (hot).** `forge_capabilities.dormant` (and `retired`) list what can come back.
+   `forge_toolset { "enable": ["<tool>"] }` makes a dormant tool live **immediately** and sends
+   `notifications/tools/list_changed` — no rebuild, no host restart. (A client that ignores that
+   notification still needs a session restart to *see* it; the server side is already swapped.)
 
 ## Not in scope (deferred, D5)
 

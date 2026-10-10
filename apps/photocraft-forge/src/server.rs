@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{archive, checks, context, events, impact, jobs, ledger, maintenance, probe, scenario};
+use crate::{archive, checks, context, events, impact, jobs, ledger, maintenance, probe, scenario, toolset};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -30,13 +30,20 @@ pub struct Forge {
     tool_router: ToolRouter<Self>,
     jobs: Arc<jobs::JobManager>,
     root: Option<std::path::PathBuf>,
+    toolset: Arc<toolset::Toolset>,
 }
 
 impl Forge {
     pub fn new() -> Self {
         let root = probe::discover_repo_root();
         let evidence = root.as_ref().map(|root| root.join("target/forge/jobs"));
-        Self { tool_router: Self::tool_router(), jobs: Arc::new(jobs::JobManager::new(evidence)), root }
+        let toolset = Arc::new(toolset::Toolset::new(root.clone()));
+        Self { tool_router: Self::tool_router(), jobs: Arc::new(jobs::JobManager::new(evidence)), root, toolset }
+    }
+
+    /// The PhotoCraft checkout root, when Forge found one.
+    pub(crate) fn root(&self) -> Option<&std::path::Path> {
+        self.root.as_deref()
     }
 }
 
@@ -58,8 +65,6 @@ impl Forge {
         // Surface Forge's own open maintenance rows, so the maintainer sees them every session.
         if let Some(obj) = value.as_object_mut() {
             obj.insert("maintenance".to_string(), serde_json::json!({ "file": "apps/photocraft-forge/MAINTENANCE.md", "open": maintenance::open_items() }));
-            // The call ledger: which tools earn their place, so the rest can be retired (archived).
-            obj.insert("ledger".to_string(), serde_json::to_value(ledger::rows(self.root.as_deref())).unwrap_or(serde_json::Value::Null));
             // The retired-tool catalog: tools the MCP no longer serves, to resurrect instead of rebuild.
             obj.insert(
                 "retired".to_string(),
@@ -67,6 +72,16 @@ impl Forge {
                     "file": "apps/photocraft-forge/archive/RETIRED.md",
                     "tools": archive::retired(),
                     "note": "the MCP advertises only live tools; if you need a capability none provides, check these retired tools first and resurrect a match before building a new one",
+                }),
+            );
+            // The dormant (compiled but unregistered) tools, and which are currently live.
+            let available: Vec<String> = Self::dormant_router().list_all().into_iter().map(|t| t.name.to_string()).collect();
+            obj.insert(
+                "dormant".to_string(),
+                serde_json::json!({
+                    "enabled": self.toolset.enabled(),
+                    "available": available,
+                    "note": "enable with forge_toolset; dormant tools are compiled but not advertised until then",
                 }),
             );
         }
@@ -256,6 +271,31 @@ impl Forge {
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 
+    /// List or change the live tool set (the just-in-time surface).
+    #[tool(
+        description = "List or change Forge's live tool set. `enable`/`disable` the dormant (compiled but unregistered) tools; enabling one makes it live immediately and notifies the client (`tools/list_changed`), so a retired tool is resurrected without a rebuild. Omit both to just list."
+    )]
+    async fn forge_toolset(&self, Parameters(query): Parameters<ToolsetQuery>) -> Result<CallToolResult, McpError> {
+        let available: Vec<String> = Self::dormant_router().list_all().into_iter().map(|t| t.name.to_string()).collect();
+        let mut changed: Vec<String> = Vec::new();
+        for name in query.enable.unwrap_or_default() {
+            if !available.contains(&name) {
+                return Err(McpError::invalid_params(format!("`{name}` is not a dormant tool"), None));
+            }
+            if self.toolset.set(&name, true) {
+                changed.push(name);
+            }
+        }
+        for name in query.disable.unwrap_or_default() {
+            if self.toolset.set(&name, false) {
+                changed.push(name);
+            }
+        }
+        let out = serde_json::json!({ "enabled": self.toolset.enabled(), "available": available, "changed": changed });
+        let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize toolset: {e}"), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
     /// Exercise a change headlessly.
     #[tool(
         description = "Exercise a change and assert the result. `backend:\"headless\"` (default) runs `steps` as app-MCP tool calls against `photocraft-cli mcp`; `backend:\"offscreen\"` runs them as control-protocol calls and snapshots the full UI to `ui.png`; `backend:\"cli\"` runs `steps` as engine commands via `photocraft-cli run` with `input`/`new`, `out` and `files`, for commands the app MCP blocks (those that use filesystem paths). Evaluates `assertions` over the last structured step result, files, or rendered images (a `file` image can target a `region` and assert its `color`/`uniform`), and returns the evidence tier, artifacts (with hashes) and whether every assertion passed."
@@ -327,6 +367,18 @@ struct EventsQuery {
     limit: Option<usize>,
 }
 
+/// A toolset query (`enable`/`disable` dormant tools; omit both to list).
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ToolsetQuery {
+    /// Dormant tool names to enable (resurrect).
+    #[serde(default)]
+    enable: Option<Vec<String>>,
+    /// Dormant tool names to disable (retire).
+    #[serde(default)]
+    disable: Option<Vec<String>>,
+}
+
 fn checkout_error() -> McpError {
     McpError::internal_error("no PhotoCraft checkout found — run forge from inside the repo (a directory containing crates/, apps/ and xtask/)", None)
 }
@@ -334,17 +386,39 @@ fn checkout_error() -> McpError {
 #[tool_handler]
 impl ServerHandler for Forge {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_tool_list_changed().build())
             .with_server_info(Implementation::new("photocraft-forge", env!("CARGO_PKG_VERSION")))
             .with_instructions(INSTRUCTIONS)
     }
 
-    /// Every tool call goes through here: record it in the ledger, then dispatch.
+    /// The live tool set: the compiled core plus any dormant tools that are enabled.
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let mut tools = self.tool_router.list_all();
+        let enabled = self.toolset.enabled();
+        for tool in Self::dormant_router().list_all() {
+            if enabled.contains(tool.name.as_ref()) {
+                tools.push(tool);
+            }
+        }
+        Ok(ListToolsResult::with_all_items(tools))
+    }
+
+    /// Record the call, dispatch to the core or a dormant router, and notify on a tool-set change.
     async fn call_tool(&self, request: CallToolRequestParams, context: rmcp::service::RequestContext<rmcp::RoleServer>) -> Result<CallToolResponse, McpError> {
         let tool = request.name.to_string();
+        let peer = context.peer.clone();
+        let generation = self.toolset.generation();
+        let dormant = self.toolset.is_enabled(&tool) && Self::dormant_router().list_all().iter().any(|t| t.name.as_ref() == tool.as_str());
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        let result = self.tool_router.call(tcc).await;
+        let result = if dormant { Self::dormant_router().call(tcc).await } else { self.tool_router.call(tcc).await };
         ledger::record(self.root.as_deref(), &tool, result.is_err());
+        if self.toolset.generation() != generation {
+            let _ = peer.notify_tool_list_changed().await;
+        }
         result
     }
 }
