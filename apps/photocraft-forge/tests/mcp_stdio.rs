@@ -168,6 +168,32 @@ fn scenario_start_offscreen_renders_a_png() {
 }
 
 #[test]
+#[ignore = "runs the headless CLI (photocraft-cli run); run with --ignored"]
+fn scenario_start_cli_runs_file_commands() {
+    // A CSV with a CRLF inside a quoted field (issue #2239): the app MCP disables this command, so
+    // only the `cli` backend can exercise it.
+    let csv = "DataSet,caption\r\nOwned One,\"Owned caption\r\nSecond line\"\r\nOwned Two,Owned healthy second\r\n";
+    let r = forge_tool_call(
+        "scenario_start",
+        json!({
+            "backend": "cli",
+            "new": {"width": 64, "height": 48},
+            "files": {"owned.csv": csv},
+            "steps": [
+                {"tool": "file.import.variableDataSets", "arguments": {"path": "owned.csv"}},
+                {"tool": "variables.list", "arguments": {}}
+            ],
+            "assertions": [
+                {"json": "dataSets.0.name", "equals": "Owned One"},
+                {"json": "dataSets.1.name", "equals": "Owned Two"},
+                {"json": "dataSets.2", "exists": false}
+            ]
+        }),
+    );
+    assert_eq!(r["passed"], true, "{r}");
+}
+
+#[test]
 fn scenario_start_exercises_doc_new_and_asserts() {
     let r = forge_tool_call(
         "scenario_start",

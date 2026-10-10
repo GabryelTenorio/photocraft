@@ -1,10 +1,11 @@
-//! `scenario_start`: exercise a change against the **headless app MCP** (`photocraft-cli mcp`) and
-//! assert the result.
+//! `scenario_start`: exercise a change headlessly and assert the result.
 //!
-//! Forge is an MCP client here: it spawns the headless server, runs bounded `tools/call` steps, then
-//! evaluates assertions over the last step's JSON, on warnings, or on files in the scenario work
-//! root. It never edits source (D7); it drives the same commands the UI does.
+//! Three backends: `headless` (the app MCP, `photocraft-cli mcp`), `offscreen` (the full UI rendered
+//! to a PNG), and `cli` (`photocraft-cli run`, for engine commands that touch files — the app MCP
+//! blocks ambient-path commands). Forge never edits source (D7); it drives the same commands the UI
+//! and CLI do, then evaluates assertions over the last step's JSON or files in the work root.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -39,6 +40,18 @@ pub struct Params {
     /// Offscreen: a file to open before the script (`--open`).
     #[serde(default)]
     pub open: Option<String>,
+    /// CLI: a file (relative to the work root) to open before the commands.
+    #[serde(default)]
+    pub input: Option<String>,
+    /// CLI: a `file.new` document spec, instead of an `input` file.
+    #[serde(default)]
+    pub new: Option<Value>,
+    /// CLI: where to save the result (relative to the work root).
+    #[serde(default)]
+    pub out: Option<String>,
+    /// CLI: setup files written into the work root before running (name → text content).
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
 }
 
 /// Which runtime a scenario exercises.
@@ -51,15 +64,19 @@ pub enum Backend {
     /// The offscreen UI (`photocraft-ui-egui --example snapshot`) — renders the full UI to a PNG
     /// with no window and no focus stealing.
     Offscreen,
+    /// The headless CLI (`photocraft-cli run`) — engine commands with filesystem access scoped to
+    /// the scenario work root. Use this when the app MCP blocks a command that takes a path.
+    Cli,
 }
 
-/// One app-MCP tool call.
+/// One step.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Step {
-    /// App-MCP tool name, e.g. `doc_new`, `command_run`, `doc_inspect`.
+    /// Headless: an app-MCP tool (`doc_new`, `command_run`, …). Offscreen: a control-protocol method.
+    /// CLI: an engine command id (its `arguments` are that command's params).
     pub tool: String,
-    /// Tool arguments.
+    /// Tool arguments / command params.
     #[serde(default)]
     pub arguments: Value,
 }
@@ -152,6 +169,7 @@ pub fn run(root: &Path, params: Params) -> Result<Report, String> {
     match params.backend {
         Backend::Headless => run_headless(root, &work, &params),
         Backend::Offscreen => run_offscreen(root, &work, &params),
+        Backend::Cli => run_cli(&work, &params),
     }
 }
 
@@ -201,6 +219,95 @@ fn run_offscreen(root: &Path, work: &Path, params: &Params) -> Result<Report, St
     }
     let steps = vec![StepResult { tool: "snapshot".to_string(), is_error: !ran, value: Some(value), image: None }];
     Ok(Report { passed, evidence_tier: "offscreen", artifacts, steps, assertions })
+}
+
+/// Run engine commands through the headless CLI (`photocraft-cli run`), which has filesystem access
+/// scoped to the work root. The app MCP disables commands that use ambient paths, so this is how a
+/// scenario exercises them (for example a CSV import).
+fn run_cli(work: &Path, params: &Params) -> Result<Report, String> {
+    if params.input.is_some() && params.new.is_some() {
+        return Err("scenario `cli`: give `input` or `new`, not both".to_string());
+    }
+    for (name, content) in &params.files {
+        if !safe_rel(name) {
+            return Err(format!("scenario `cli` files: `{name}` must be relative to the work root"));
+        }
+        let path = work.join(name);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+        }
+        std::fs::write(&path, content).map_err(|e| format!("write `{name}`: {e}"))?;
+    }
+    for (label, name) in [("input", &params.input), ("out", &params.out)] {
+        if let Some(name) = name
+            && !safe_rel(name)
+        {
+            return Err(format!("scenario `cli` {label}: `{name}` must be relative to the work root"));
+        }
+    }
+
+    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+    command.args(["run", "-q", "-p", "photocraft-cli", "--", "run"]);
+    if let Some(input) = &params.input {
+        command.arg(input);
+    } else if let Some(new) = &params.new {
+        command.arg("--new").arg(serde_json::to_string(new).map_err(|e| format!("encode `new`: {e}"))?);
+    } else {
+        return Err("scenario `cli`: give `input` or `new`".to_string());
+    }
+    for step in &params.steps {
+        command.arg("--cmd").arg(&step.tool);
+        command.arg("--params").arg(serde_json::to_string(&step.arguments).map_err(|e| format!("encode params for `{}`: {e}", step.tool))?);
+    }
+    if let Some(out) = &params.out {
+        command.arg("--out").arg(out);
+    }
+    let output = command.current_dir(work).stdout(Stdio::piped()).stderr(Stdio::piped()).output().map_err(|e| format!("spawn photocraft-cli: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let ran = output.status.success();
+
+    // `photocraft-cli run` prints one `{command, result}` JSON line per command; the last structured
+    // result is the subject for `json` assertions.
+    let mut subject = Value::Null;
+    let mut steps = Vec::new();
+    for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).unwrap_or_else(|_| Value::String(line.to_string()));
+        let tool = v.get("command").and_then(Value::as_str).unwrap_or("command").to_string();
+        let result = v.get("result").cloned().unwrap_or_else(|| v.clone());
+        if result.is_object() || result.is_array() {
+            subject = result.clone();
+        }
+        steps.push(StepResult { tool, is_error: false, value: Some(result), image: None });
+    }
+    if !ran {
+        steps.push(StepResult {
+            tool: "photocraft-cli".to_string(),
+            is_error: true,
+            value: Some(json!({ "exit": output.status.code(), "stderr": tail(&stderr, 2000) })),
+            image: None,
+        });
+    }
+
+    let mut artifacts = Vec::new();
+    if let Some(out) = &params.out
+        && let Some(art) = Artifact::from_file(out.clone(), artifact::media_type(&work.join(out)), &work.join(out))
+    {
+        artifacts.push(art);
+    }
+    collect_file_artifacts(work, &params.assertions, &mut artifacts);
+
+    let mut assertions = Vec::new();
+    for a in &params.assertions {
+        assertions.push(evaluate(a, &subject, &steps, work));
+    }
+    let passed = ran && assertions.iter().all(|a| a.passed) && steps.iter().all(|s| !s.is_error);
+    Ok(Report { passed, evidence_tier: "headless", artifacts, steps, assertions })
+}
+
+/// A scenario path that stays inside the work root: relative and with no `..`.
+fn safe_rel(name: &str) -> bool {
+    !name.is_empty() && !Path::new(name).is_absolute() && !Path::new(name).components().any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
 /// Build the `--script` JSON: a list of `[method, params]` control-protocol calls.
@@ -481,6 +588,15 @@ impl AppMcp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_paths_must_stay_inside_the_work_root() {
+        assert!(safe_rel("owned.csv"));
+        assert!(safe_rel("sub/a.txt"));
+        assert!(!safe_rel("../escape.txt"));
+        assert!(!safe_rel("/etc/passwd"));
+        assert!(!safe_rel(""));
+    }
 
     #[test]
     fn dot_get_walks_objects_and_arrays() {

@@ -101,7 +101,7 @@ partial run for a green one. It is scoped to one `validation_start` batch — th
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
-`scenario_start { backend?:"headless"|"offscreen", steps:[{tool,arguments}], assertions:[..], size?, scale?, open? }`
+`scenario_start { backend?:"headless"|"offscreen"|"cli", steps:[{tool,arguments}], assertions:[..], size?, scale?, open?, input?, new?, out?, files? }`
 → `{ passed, evidence_tier, artifacts, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. Every rendered image and asserted file is reported as an **artifact** with its media type and `blake3` hash.
 
 - **`headless`** (default): spawns the headless app MCP (`photocraft-cli mcp`, roots under
@@ -112,6 +112,11 @@ partial run for a green one. It is scoped to one `validation_start` batch — th
 - **`offscreen`**: runs the steps as control-protocol calls (`photocraft-ui-egui --example snapshot`,
   no window, no focus stealing), writes `ui.png` (`size` × `scale`, default `1440x900` × 1), and
   asserts against it as a `file`. `evidence_tier: "offscreen"`.
+- **`cli`**: runs the steps as engine commands through `photocraft-cli run` (filesystem access scoped
+  to the work root), which is how a scenario exercises commands the app MCP blocks because they take
+  a path (e.g. a CSV import). Give `input` (a file to open) or `new` (a `file.new` spec), write setup
+  files with `files`, and save with `out`; `json` assertions read the last command's result and `file`
+  assertions the outputs. `evidence_tier: "headless"`.
 
 Assertions accept `width` / `height` / `min_bytes` / `hash` on both an `image` and a `file` (a golden
 PNG can be pinned by content, not just size).
