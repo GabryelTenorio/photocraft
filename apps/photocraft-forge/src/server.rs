@@ -221,7 +221,7 @@ fn checkout_error() -> McpError {
 impl ServerHandler for Forge {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("forge", env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new("photocraft-forge", env!("CARGO_PKG_VERSION")))
             .with_instructions(INSTRUCTIONS)
     }
 }

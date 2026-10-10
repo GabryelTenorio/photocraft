@@ -29,7 +29,7 @@ cargo build -p photocraft-forge     # or: cargo build --release -p photocraft-fo
 Point any MCP client at the `photocraft-forge` binary. It takes **no arguments**:
 
 ```json
-{ "mcpServers": { "forge": { "command": "/path/to/photocraft-forge" } } }
+{ "mcpServers": { "photocraft-forge": { "command": "/path/to/photocraft-forge" } } }
 ```
 
 Run it from inside the PhotoCraft checkout (it also walks up from the current directory to find the
@@ -40,7 +40,7 @@ environment-independence principle). Some hosts spawn MCP servers with a minimal
 lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 
 ```jsonc
-"forge": {
+"photocraft-forge": {
   "type": "local",
   "command": ["/path/to/photocraft-forge"],
   "cwd": "/path/to/photocraft",
