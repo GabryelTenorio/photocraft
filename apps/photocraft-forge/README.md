@@ -71,7 +71,9 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 ### Contracts
 
 `change_impact { paths?: [..], command?: "…", symbol?: "…", intent?: "…", enrich?: bool }`
-→ `{ inputs, resolved_paths, touch:[{path,why,signals}], invariants:[..], regenerate:[{artifact,command,why}], related:[..], graph, gates:{required,recommended}, notes }`.
+→ `{ inputs, resolved_paths, touch:[{path,why,confidence,signals}], invariants:[..], regenerate:[{artifact,command,why}], related:[..], graph, gates:{required,recommended}, notes }`.
+Each touch entry carries a `confidence`: `must` for a hard coupling, `verify` for a heuristic (e.g. a
+`*_cmds.rs` edit that *may* be a new command).
 Gates come from the authoritative `cargo xtask plan --json`; `enrich:true` consults the optional host
 MCPs for `related` files (see below).
 

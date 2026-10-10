@@ -34,11 +34,14 @@ pub struct Query {
     pub enrich: bool,
 }
 
-/// One file that must change, and why.
+/// One file to change, and why.
 #[derive(Debug, Clone, Serialize)]
 pub struct Touch {
     pub path: String,
     pub why: String,
+    /// `must` (a hard coupling) or `verify` (a heuristic the agent should check, e.g. "this
+    /// `*_cmds.rs` change may be a new command"). The strongest signal wins.
+    pub confidence: &'static str,
     pub signals: Vec<String>,
 }
 
@@ -58,10 +61,29 @@ pub struct Impact {
     pub regenerate: Vec<Regenerate>,
 }
 
+/// How strongly a signal's touch set binds.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Confidence {
+    /// A hard coupling: the file will not build or behave correctly without the change.
+    Must,
+    /// A heuristic the agent should verify, not a requirement.
+    Verify,
+}
+
+impl Confidence {
+    fn name(self) -> &'static str {
+        match self {
+            Confidence::Must => "must",
+            Confidence::Verify => "verify",
+        }
+    }
+}
+
 /// A detected signal: which rule fired, why, and what it adds.
 struct Signal {
     id: &'static str,
     why: &'static str,
+    confidence: Confidence,
     touch: &'static [&'static str],
     invariants: &'static [&'static str],
     regenerate: &'static [(&'static str, &'static str)],
@@ -70,6 +92,7 @@ struct Signal {
 const DOC: Signal = Signal {
     id: "doc-field",
     why: "a document-model field ripples through format (persistence) and io (PSD mapping)",
+    confidence: Confidence::Must,
     touch: &["crates/format/src/manifest.rs", "crates/format/src/convert.rs", "crates/format/src/finite.rs", "crates/io/src/lib.rs"],
     invariants: &["additive serialized fields need #[serde(default)]; every f32/f64 must remain finite"],
     regenerate: &[("format round-trip", "cargo test -p photocraft-format")],
@@ -78,6 +101,7 @@ const DOC: Signal = Signal {
 const ADJUST: Signal = Signal {
     id: "adjustment-arm",
     why: "an Adjustment arm/shape touches PSD grdm read+write, CPU compose, GPU plan, engine params, the editor and the compile-guard lists",
+    confidence: Confidence::Must,
     touch: &[
         "crates/io/src/adjust_map.rs",
         "crates/compose/src/adjust.rs",
@@ -95,9 +119,11 @@ const ADJUST: Signal = Signal {
 const FORMAT: Signal = Signal {
     id: "codec-format",
     why: "a `codecs::Format` variant needs every enum touch point and both dispatch matches",
+    confidence: Confidence::Must,
     touch: &[
+        "crates/codecs/src/format.rs",
         "crates/codecs/src/lib.rs",
-        "crates/codecs/src/via_image.rs",
+        "crates/codecs/src/codecs/via_image.rs",
         "crates/io/src/flat.rs",
         "crates/codecs/tests/detect_caps.rs",
         "crates/codecs/tests/roundtrip.rs",
@@ -109,7 +135,8 @@ const FORMAT: Signal = Signal {
 
 const COMMAND: Signal = Signal {
     id: "engine-command",
-    why: "a new/changed engine command must be registered and its menu id resolved; parity is regenerated",
+    why: "a `*_cmds.rs` change *may* be a new/changed engine command: verify it is registered and its menu id resolved, and regenerate parity",
+    confidence: Confidence::Verify,
     touch: &["crates/engine/src/commands.rs", "crates/ui-egui/src/menu_catalog.rs"],
     invariants: &[
         "every command has id/label/menu/shortcut/params doc/enabled/run + tests, and records exactly one history step",
@@ -121,6 +148,7 @@ const COMMAND: Signal = Signal {
 const UI_I18N: Signal = Signal {
     id: "ui-strings",
     why: "new user-visible strings must be added to every localization catalog",
+    confidence: Confidence::Must,
     touch: &["crates/ui-egui/src/i18n/mod.rs"],
     invariants: &[
         "new user-visible strings must be added to every localization catalog (*.tsv + i18n/mod.rs)",
@@ -132,6 +160,7 @@ const UI_I18N: Signal = Signal {
 const PREFERENCE: Signal = Signal {
     id: "preference",
     why: "a preference is read by the shell and shown in the schema-driven Preferences dialog, so its UI, its label's localizations and the scorecard prefs audit all move together",
+    confidence: Confidence::Must,
     touch: &["crates/ui-egui/src/prefs_ui.rs", "crates/ui-egui/src/i18n/mod.rs", "docs/scorecard.md"],
     invariants: &[
         "the Preferences dialog renders the field from the struct; a field nothing reads must be wired or listed in HIDDEN_UNTIL_IMPLEMENTED",
@@ -183,10 +212,18 @@ pub fn analyze(paths: &[String]) -> Impact {
                     .entry((*t).to_string())
                     .and_modify(|e| {
                         if !e.signals.iter().any(|s| s == sig.id) {
-                            e.signals.push(sig.id.to_string())
+                            e.signals.push(sig.id.to_string());
+                        }
+                        if sig.confidence == Confidence::Must {
+                            e.confidence = "must";
                         }
                     })
-                    .or_insert_with(|| Touch { path: (*t).to_string(), why: sig.why.to_string(), signals: vec![sig.id.to_string()] });
+                    .or_insert_with(|| Touch {
+                        path: (*t).to_string(),
+                        why: sig.why.to_string(),
+                        confidence: sig.confidence.name(),
+                        signals: vec![sig.id.to_string()],
+                    });
             }
             for inv in sig.invariants {
                 invariants.insert((*inv).to_string());
@@ -399,6 +436,34 @@ mod tests {
     fn ui_change_notes_localization() {
         let impact = analyze(&["crates/ui-egui/src/panels.rs".to_string()]);
         assert!(impact.invariants.iter().any(|i| i.contains("localization")));
+    }
+
+    #[test]
+    fn engine_command_signal_is_advisory_not_must() {
+        let impact = analyze(&["crates/engine/src/retouch_cmds.rs".to_string()]);
+        let t = impact.touch.iter().find(|t| t.path == "crates/engine/src/commands.rs").expect("commands.rs");
+        assert_eq!(t.confidence, "verify", "internal `*_cmds.rs` edits are not a must-change");
+    }
+
+    #[test]
+    fn doc_field_signal_is_must() {
+        let impact = analyze(&["crates/doc/src/lib.rs".to_string()]);
+        let t = impact.touch.iter().find(|t| t.path == "crates/format/src/manifest.rs").expect("manifest.rs");
+        assert_eq!(t.confidence, "must");
+    }
+
+    /// Every path the registry names must still exist: catches a rule gone stale (a file renamed or
+    /// removed) before it sends an agent to a dead end.
+    #[test]
+    fn registry_paths_exist() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).expect("repo root");
+        let mut signals: Vec<&Signal> = RULES.iter().map(|(_, s)| s).collect();
+        signals.extend([&COMMAND, &UI_I18N, &PREFERENCE]);
+        for sig in signals {
+            for path in sig.touch {
+                assert!(root.join(path).exists(), "impact signal `{}` names a missing path: {path}", sig.id);
+            }
+        }
     }
 
     #[test]
