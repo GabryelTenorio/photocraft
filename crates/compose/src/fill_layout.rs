@@ -45,7 +45,7 @@ pub fn gradient_layout(style: GradientStyle, angle: f32, scale: f32, offset: (f3
         (w / c.abs().max(1e-6)).min(h / s.abs().max(1e-6)).max(1.0)
     };
     let a = f64::from(angle).to_radians();
-    let scale64 = f64::from(scale.max(1e-3));
+    let scale64 = f64::from(scale.max(crate::gradient_fill::MIN_SCALE));
     let half = chord_of(a) * scale64 / 2.0;
     let (s, c) = a.sin_cos();
     let (dx, dy) = (c * half, -s * half);
