@@ -43,7 +43,7 @@ One row per distinct item. `status`: `open` or `resolved`. Newest first.
 | 2026-10-10 | touch registry | A rule named a file that no longer existed | `crates/codecs/src/via_image.rs` had moved under `codecs/`. Fixed; `registry_paths_exist` now guards every path. | resolved |
 | 2026-10-10 | touch registry | Rules are hand-maintained, so they can drift | No derivation from the repo or from real changes | open — derive couplings from a local code graph / real change history |
 | 2026-10-10 | `scenario_start` offscreen | Toggling a canvas background changed no pixels | The snapshot harness does not draw the canvas dots; a whole-image hash passes vacuously | open — make the render faithful or fail loudly; region assertions expose it |
-| 2026-10-10 | maintenance loop | The event log is a machine record; there is no queue to work from | — | open — surface open failures at session start (e.g. in `forge_capabilities`) |
+| 2026-10-10 | maintenance loop | The event log was a machine record with no queue to work from | `forge_capabilities` now lists this file's open rows every session | resolved |
 
 ## Review procedure
 

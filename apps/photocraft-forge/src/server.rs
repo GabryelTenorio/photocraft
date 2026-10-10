@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{checks, context, events, impact, jobs, probe, scenario};
+use crate::{checks, context, events, impact, jobs, maintenance, probe, scenario};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -51,7 +51,12 @@ impl Forge {
     )]
     async fn forge_capabilities(&self) -> Result<CallToolResult, McpError> {
         let caps = probe::capabilities();
-        let text = serde_json::to_string_pretty(&caps).map_err(|e| McpError::internal_error(format!("serialize capabilities: {e}"), None))?;
+        let mut value = serde_json::to_value(&caps).map_err(|e| McpError::internal_error(format!("serialize capabilities: {e}"), None))?;
+        // Surface Forge's own open maintenance rows, so the maintainer sees them every session.
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("maintenance".to_string(), serde_json::json!({ "file": "apps/photocraft-forge/MAINTENANCE.md", "open": maintenance::open_items() }));
+        }
+        let text = serde_json::to_string_pretty(&value).map_err(|e| McpError::internal_error(format!("serialize capabilities: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 

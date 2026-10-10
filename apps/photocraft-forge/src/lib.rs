@@ -21,6 +21,7 @@ mod git;
 mod graph;
 mod impact;
 mod jobs;
+mod maintenance;
 mod scenario;
 mod server;
 mod xtask;
