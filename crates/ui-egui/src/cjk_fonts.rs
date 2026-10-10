@@ -72,6 +72,18 @@ impl Sources {
     }
 }
 
+/// Headless test frame pumps do not wait for `request_repaint_after`, so let the optional
+/// Fontconfig worker finish before asserting on installed system fonts.
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn wait_for_fontconfig_cjk_scan() {
+    cjk::start_fontconfig_cjk_scan();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while cjk::fontconfig_cjk_scan_pending() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!cjk::fontconfig_cjk_scan_pending(), "Fontconfig CJK lookup did not finish within 10 seconds");
+}
+
 /// The lazy loader's state: which scripts were tried and which files were read.
 pub struct CjkFallback {
     sources: Sources,
@@ -640,6 +652,8 @@ mod tests {
     /// machine has no font for it, e.g. CI Linux without Noto CJK).
     #[test]
     fn system_fonts_cover_cjk_samples() {
+        #[cfg(target_os = "linux")]
+        wait_for_fontconfig_cjk_scan();
         let available = |s: CjkScript| cjk::font_files(s).iter().any(|f| f.path.is_file());
         let samples = [
             ("图层", CjkScript::SimplifiedChinese),

@@ -528,30 +528,47 @@ fn collect_font_files(dir: &std::path::Path, depth: u32, out: &mut Vec<std::path
 /// installed or Fontconfig cannot enumerate fonts.
 #[cfg(all(target_os = "linux", not(target_arch = "wasm32")))]
 fn fontconfig_font_paths() -> Vec<std::path::PathBuf> {
-    use std::ffi::OsString;
-    use std::os::unix::ffi::OsStringExt;
-
     let Ok(output) = std::process::Command::new("fc-list").arg("--format=%{file}\\n").output() else {
         return Vec::new();
     };
     if !output.status.success() {
         return Vec::new();
     }
+    fontconfig_paths_from_output(&output.stdout).into_iter().filter(|path| path.is_file()).collect()
+}
+
+#[cfg(all(target_os = "linux", not(target_arch = "wasm32")))]
+fn fontconfig_paths_from_output(output: &[u8]) -> Vec<std::path::PathBuf> {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
 
     let mut seen = HashSet::new();
     output
-        .stdout
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
         .map(|line| std::path::PathBuf::from(OsString::from_vec(line.to_vec())))
         .filter(|path| {
             path.is_absolute()
                 && path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc"))
-                && path.is_file()
         })
         .map(|path| path.canonicalize().unwrap_or(path))
         .filter(|path| seen.insert(path.clone()))
         .collect()
+}
+
+#[cfg(all(test, target_os = "linux", not(target_arch = "wasm32")))]
+mod fontconfig_tests {
+    use super::fontconfig_paths_from_output;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parses_unique_absolute_font_paths_from_fontconfig() {
+        let paths = fontconfig_paths_from_output(
+            b"/usr/share/fonts/example.ttf\nrelative.otf\n/usr/share/fonts/README.txt\n/usr/local/fonts/collection.OTC\n/usr/share/fonts/example.ttf\n\n",
+        );
+
+        assert_eq!(paths, vec![PathBuf::from("/usr/share/fonts/example.ttf"), PathBuf::from("/usr/local/fonts/collection.OTC")]);
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
