@@ -198,6 +198,22 @@ fn layer_lifecycle_with_undo() {
 }
 
 #[test]
+fn new_layer_position_below_lands_under_the_active_layer() {
+    let mut s = session_with_doc();
+    s.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+    let below = s.execute("layer.new.layer", json!({"name": "Below", "position": "below"})).unwrap()["layer"].as_u64().unwrap();
+    let names = |s: &Session| s.active().unwrap().doc.layers.iter().map(|l| l.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&s), ["Background", "Below", "A"]);
+    assert_eq!(s.active().unwrap().active_layer, Some(LayerId(below)));
+    // Background stays at the bottom: below it falls back to above.
+    let bg = s.active().unwrap().doc.layers[0].id.0;
+    s.execute("layer.select", json!({"layer": bg})).unwrap();
+    s.execute("layer.new.layer", json!({"name": "OverBg", "position": "below"})).unwrap();
+    assert_eq!(names(&s), ["Background", "OverBg", "Below", "A"]);
+    assert!(matches!(s.execute("layer.new.layer", json!({"position": "sideways"})), Err(EngineError::BadParams { .. })));
+}
+
+#[test]
 fn bad_blend_mode_is_a_param_error() {
     let mut s = session_with_doc();
     let e = s.execute("layer.setProps", json!({"blend": "sparkle"})).unwrap_err();

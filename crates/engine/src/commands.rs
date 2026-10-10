@@ -518,16 +518,36 @@ fn build() -> Vec<CommandSpec> {
             }
         ),
         // Layer
-        cmd!("layer.new.layer", "Layer…", ["Layer", "New"], Some("Cmd+Shift+N"), r##"{"name":str?}"##, has_doc, |s, p| {
-            let id = s.edit("New Layer", |doc, active| {
-                let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
-                let id = doc.insert_above(*active, Layer::raster(name, doc.pixel_format()));
-                *active = Some(id);
-                Ok(id)
-            })?;
-            crate::layer_multi_cmds::note_inert_insert(s, id);
-            Ok(json!({ "layer": id.0 }))
-        }),
+        cmd!(
+            "layer.new.layer",
+            "Layer…",
+            ["Layer", "New"],
+            Some("Cmd+Shift+N"),
+            // `position: below` is the Layers-panel ⌘/Ctrl-click on New Layer (Photoshop).
+            r##"{"name":str?,"position":"above|below"="above"}"##,
+            has_doc,
+            |s, p| {
+                let position = p.get("position").and_then(Value::as_str).unwrap_or("above");
+                if !matches!(position, "above" | "below") {
+                    return Err(EngineError::BadParams {
+                        cmd: "layer.new.layer".into(),
+                        msg: "position must be above or below".into(),
+                    });
+                }
+                let id = s.edit("New Layer", |doc, active| {
+                    let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
+                    let layer = Layer::raster(name, doc.pixel_format());
+                    // Nothing may sit under the Background; ⌘-click then lands above it.
+                    let below = position == "below"
+                        && active.is_some_and(|id| doc.layer(id).is_some_and(|l| !crate::extra_cmds::is_background(l)));
+                    let id = if below { doc.insert_below(*active, layer) } else { doc.insert_above(*active, layer) };
+                    *active = Some(id);
+                    Ok(id)
+                })?;
+                crate::layer_multi_cmds::note_inert_insert(s, id);
+                Ok(json!({ "layer": id.0 }))
+            }
+        ),
         cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
             let id = s.edit("New Group", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
