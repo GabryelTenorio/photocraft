@@ -217,6 +217,35 @@ pub fn marquee_px(a: [f64; 2], b: [f64; 2]) -> [f64; 4] {
     [a[0].min(b[0]).floor(), a[1].min(b[1]).floor(), a[0].max(b[0]).ceil(), a[1].max(b[1]).ceil()]
 }
 
+/// The one-pixel line `[x0, y0, x1, y1]` a Single Row (Single Column) Marquee at `p` selects: the
+/// pixel row (column) under `p`, kept on the canvas, across the whole `size`. `None` for other
+/// tools, an empty canvas or a point that is not a number.
+pub(crate) fn single_line_px(tool: Tool, size: [u32; 2], p: [f64; 2]) -> Option<[f64; 4]> {
+    let [w, h] = size.map(f64::from);
+    if w < 1.0 || h < 1.0 || !p[0].is_finite() || !p[1].is_finite() {
+        return None;
+    }
+    match tool {
+        Tool::SingleRowMarquee => {
+            let y = p[1].floor().clamp(0.0, h - 1.0);
+            Some([0.0, y, w, y + 1.0])
+        }
+        Tool::SingleColumnMarquee => {
+            let x = p[0].floor().clamp(0.0, w - 1.0);
+            Some([x, 0.0, x + 1.0, h])
+        }
+        _ => None,
+    }
+}
+
+/// The line a Single Row / Single Column Marquee gesture `d` selects so far: it follows the
+/// pointer until the release.
+fn single_line_drag_px(app: &PhotocraftApp, d: &Drag) -> Option<[f64; 4]> {
+    let st = app.session.active()?;
+    let last = d.points.last().map_or(d.start, |p| [p[0], p[1]]);
+    single_line_px(d.tool, [st.doc.size.width, st.doc.size.height], last)
+}
+
 /// The marching ants of a marquee drag: its rectangle, or the ellipse inscribed in it, built in
 /// document space and mapped point by point through the view, so the hinting lands where the
 /// release commits the selection.
@@ -883,6 +912,9 @@ pub(crate) fn display_doc(app: &mut PhotocraftApp, idx: usize) -> (std::sync::Ar
     if let Some(shown) = crate::type_transform::display_doc(app, idx) {
         return shown;
     }
+    if let Some(shown) = crate::type_font_preview::display_doc(app, idx) {
+        return shown;
+    }
     // Puppet / Perspective Warp previews hide the layer they draw on a mesh.
     if let Some(shown) = crate::distort_ui::display_doc(app, idx) {
         return shown;
@@ -1127,6 +1159,13 @@ pub(crate) fn damage_since(app: &PhotocraftApp, idx: usize, seen: (u64, u64), no
     if seen.0 == now.0
         && let Some(st) = app.session.documents().get(idx)
         && let Some(r) = crate::blend_preview::damage(app, st.doc.id, now.0, seen.1 ^ display_key, now.1)
+    {
+        return Some(if r.is_empty() { r } else { r.inflate(effect_reach(&st.doc.layers)) });
+    }
+    // Between hovered fonts (and the document): the text layer's old/new ink bounds.
+    if seen.0 == now.0
+        && let Some(st) = app.session.documents().get(idx)
+        && let Some(r) = crate::type_font_preview::damage(app, st.doc.id, now.0, seen.1 ^ display_key, now.1)
     {
         return Some(if r.is_empty() { r } else { r.inflate(effect_reach(&st.doc.layers)) });
     }
@@ -2633,7 +2672,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     // A Magnetic Lasso border left behind by a tool or document switch is dropped.
     crate::magnetic_lasso_ui::frame(app);
     // Held keys (hold_keys.rs): Space repositions a crop frame, marquee, lasso or shape being
-    // drawn; otherwise Space is the Hand and ⌘Space / ⌘⌥Space the Zoom tool while held.
+    // drawn; otherwise Space is the Hand and ⌘Space / ⌥Space the Zoom tool while held.
     let reposition = crate::hold_keys::reposition_held(app, &ctx);
     crate::crop_ui::set_space(app, reposition);
     // ⌘ (Ctrl) held: a temporary Straighten with the Crop tool.
@@ -2732,7 +2771,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         }
         // Capture intent at the press, before egui's drag threshold: Type transforms keep
         // Command, and marquee add/subtract must not become a live Shift/Alt constraint.
-        let capture_press = tool.is_type() || matches!(tool, Tool::RectMarquee | Tool::EllipseMarquee);
+        let capture_press = tool.is_type() || matches!(tool, Tool::RectMarquee | Tool::EllipseMarquee | Tool::SingleRowMarquee | Tool::SingleColumnMarquee);
         let tool_press = egui::Id::new(("tool-pointer-press-modifiers", idx));
         if capture_press
             && let Some((p, press_mods)) = ui.input(|i| {
@@ -3006,6 +3045,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         crate::zoom_tool::draw(&ctx, &painter);
         let resizing = crate::brush_resize::draw(app, &painter, &xf);
         draw_transform_controls(app, &painter, &xf);
+        crate::move_hover::draw(app, &painter, &xf, idx, response.hover_pos());
         crate::layer_pick_ui::show(app, &ctx);
         crate::canvas_tool_menu::show(app, &ctx);
         crate::snap_ui::draw(app, &painter, &xf);
@@ -3742,6 +3782,13 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
             trail.draw(painter, doc_rect, xf.flip, col);
         }
         t if crate::vector_ui::is_shape_tool(t) => crate::vector_ui::draw_shape_preview(app, painter, xf, t, d.start, last, d.live),
+        Tool::SingleRowMarquee | Tool::SingleColumnMarquee => {
+            // Mapped corner by corner like the other marquees, so a rotated view shows the line
+            // where the release commits it (#2512).
+            if let Some([x0, y0, x1, y1]) = single_line_drag_px(app, d) {
+                crate::tool_feedback::draw_ants(painter, &marquee_ants(xf, d.tool, [x0, y0], [x1, y1]), true);
+            }
+        }
         // Nothing selected yet: no outline, as the release would deselect.
         Tool::RectMarquee | Tool::EllipseMarquee if marquee.is_none() => {}
         Tool::RectMarquee | Tool::EllipseMarquee | Tool::ObjectSelection => {
@@ -4442,6 +4489,14 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
             let mode = selection_mode(app, d.modifiers);
             let (aa, feather) = (app.ui.tool_options.anti_alias, app.ui.tool_options.feather);
             let _ = app.run("select.rect", json!({"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0, "mode": mode, "ellipse": d.tool == Tool::EllipseMarquee, "antiAlias": aa, "feather": feather}));
+        }
+        // A click (or the end of a drag) selects the line under the pointer, never deselects.
+        Tool::SingleRowMarquee | Tool::SingleColumnMarquee => {
+            let Some([x0, y0, x1, y1]) = single_line_drag_px(app, &d) else { return };
+            let mode = selection_mode(app, d.modifiers);
+            let feather = app.ui.tool_options.feather;
+            let _ =
+                app.run("select.rect", json!({"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0, "mode": mode, "antiAlias": false, "feather": feather}));
         }
         Tool::Patch if crate::retouch_ui::patch_drags_selection(app, d.start, d.modifiers) => crate::retouch_ui::finish_patch(app, d.start, [end[0], end[1]]),
         Tool::ContentAwareMove if crate::retouch_ui::patch_drags_selection(app, d.start, d.modifiers) => {
