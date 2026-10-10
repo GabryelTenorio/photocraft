@@ -12,6 +12,9 @@
 //!   then shuts down its write half; the server answers `ok\n` once the paths are queued. A
 //!   connection without the header (a liveness probe, anything else) is ignored. Input is capped
 //!   ([`MAX_BYTES`], [`MAX_PATHS`]).
+//! - **Left behind:** the socket file is removed when the listener drops, which a signal (SIGTERM,
+//!   SIGKILL) or a crash skips, so the file can outlive its instance. The next launch finds
+//!   nobody accepting on it and takes it over (below).
 //! - **Never in the way:** a socket nobody accepts on is stale and replaced; no answer within
 //!   [`ANSWER_TIMEOUT`] (a hung instance) or any error starts this launch normally.
 //!   `--new-instance` or `PHOTOCRAFT_NEW_INSTANCE=1` always starts a new window, and so does
