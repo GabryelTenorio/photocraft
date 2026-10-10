@@ -17,12 +17,25 @@ pub const IDS: [&str; 4] = ["edit.fillForeground", "edit.fillBackground", "edit.
 const PARAMS: &str = r##"{"layer":id?,"target":"pixels"|{"channel":i}|"quickMask"?}"##;
 
 fn enabled(s: &Session) -> std::result::Result<(), String> {
+    if let Some(st) = s.active()
+        && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| matches!(l.content, photocraft_doc::LayerContent::Shape(_)))
+    {
+        return Ok(());
+    }
     let edit_fill = crate::commands::find("edit.fill").ok_or_else(|| "Fill is unavailable".to_string())?;
     (edit_fill.enabled)(s)
 }
 
 /// Run `edit.fill` with `color` (the foreground or background colour) and Preserve Transparency.
 fn fill(s: &mut Session, p: &Value, cmd: &str, background: bool, preserve: bool) -> Result<Value> {
+    let c = if background { s.tools.background } else { s.tools.foreground };
+    if let Some(st) = s.active()
+        && let Some(active_id) = st.active_layer
+        && st.doc.layer(active_id).is_some_and(|l| matches!(l.content, photocraft_doc::LayerContent::Shape(_)))
+    {
+        let hex_c = format!("#{:02x}{:02x}{:02x}", (c[0] * 255.0).round().clamp(0.0, 255.0) as u8, (c[1] * 255.0).round().clamp(0.0, 255.0) as u8, (c[2] * 255.0).round().clamp(0.0, 255.0) as u8);
+        return s.execute("shape.edit", json!({"layer": active_id.0, "fill": hex_c}));
+    }
     let mut q: Map<String, Value> = match p {
         Value::Object(m) => m.clone(),
         Value::Null => Map::new(),
@@ -32,7 +45,6 @@ fn fill(s: &mut Session, p: &Value, cmd: &str, background: bool, preserve: bool)
     for k in ["color", "contents", "pattern", "preserveTransparency", "opacity"] {
         q.remove(k);
     }
-    let c = if background { s.tools.background } else { s.tools.foreground };
     q.insert("color".into(), json!([c[0], c[1], c[2], 1.0]));
     q.insert("preserveTransparency".into(), json!(preserve));
     let edit_fill = crate::commands::find("edit.fill").ok_or_else(|| EngineError::Other("Fill is unavailable".into()))?;

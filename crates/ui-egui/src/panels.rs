@@ -2183,7 +2183,7 @@ fn layer_row(
             actions.push(("ui.vectorMaskTarget".into(), json!(true)));
         } else if on_mask || (content_less && l.mask.is_some()) {
             actions.push(("ui.maskTarget".into(), json!(true)));
-        } else if on_thumb || !row.primary {
+        } else {
             actions.push(("ui.maskTarget".into(), json!(false)));
         }
     }
@@ -2203,6 +2203,14 @@ fn layer_row(
                 actions.push(done);
             }
         } else if pos.and_then(|p| masks.hit(p)).is_none() {
+            if on(thumb) && let LayerContent::Shape(sh) = &l.content {
+                let rgb = match &sh.fill {
+                    Some(photocraft_doc::Fill::Solid(c)) => c.to_rgb(),
+                    _ => [0.0, 0.0, 0.0],
+                };
+                crate::color_picker_ui::open_for_command(app, "Color Picker (Shape Fill)", rgb, "shape.edit", json!({"layer": l.id.0}));
+                return;
+            }
             let id = match &l.content {
                 LayerContent::Adjustment(_) | LayerContent::Fill(_) if on(thumb) => "layer.layerContentOptions",
                 LayerContent::Smart(_) if on(thumb) => "layer.smartObjects.editContents",

@@ -11,3 +11,6 @@ target/
 /craft-fonts
 *.log
 __pycache__/
+app-bin/
+*.zip
+MEMORY.md

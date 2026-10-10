@@ -1299,6 +1299,10 @@ impl PhotocraftApp {
             self.ui.mask_target = true;
             self.ui.vector_mask_target = false;
         }
+        let active_has_mask = st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some());
+        if self.ui.mask_target && !active_has_mask {
+            self.ui.mask_target = false;
+        }
         if self.ui.vector_mask_target && !mask_thumbs_ui::has_vector_mask(st) {
             self.ui.vector_mask_target = false;
         }

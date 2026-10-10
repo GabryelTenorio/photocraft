@@ -635,7 +635,7 @@ fn shape_edit(s: &mut Session, p: &Value) -> Result<Value> {
         if let Some(r) = p.get("fillRule").and_then(Value::as_str) {
             sh.path.fill_rule = if r.eq_ignore_ascii_case("evenodd") { FillRule::EvenOdd } else { FillRule::NonZero };
         }
-        if let Some(v) = p.get("fill") {
+        if let Some(v) = p.get("fill").or_else(|| p.get("color")) {
             sh.fill = parse_fill(v).map_err(|e| bad(CMD, e))?;
         }
         if let Some(v) = p.get("stroke") {

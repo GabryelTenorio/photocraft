@@ -1167,6 +1167,7 @@ fn blending_page(ui: &mut egui::Ui, p: &mut Value, names: &[String]) {
             && let Some(e) = p.get_mut("blendIf").and_then(|a| a.get_mut(sel))
         {
             e[key] = json!(q);
+            ui.ctx().request_repaint();
         }
         ui.add_space(4.0);
     }
@@ -1208,8 +1209,9 @@ fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
     // Handles: triangles under the ramp; a split handle shows two half triangles.
     let mut changed = false;
     let drag_key = id.with("handle");
-    if resp.drag_started()
-        && let Some(pos) = resp.interact_pointer_pos()
+    let pointer_pos = resp.interact_pointer_pos().or_else(|| ui.input(|i| i.pointer.latest_pos()));
+    if (resp.drag_started() || (resp.dragged() && ui.data_mut(|d| d.get_persisted::<usize>(drag_key)).is_none()))
+        && let Some(pos) = pointer_pos
     {
         let near = (0..4).min_by(|a, b| (x_of(q[*a]) - pos.x).abs().total_cmp(&(x_of(q[*b]) - pos.x).abs())).unwrap_or(0);
         // Between two coinciding halves, pick by the side of the pointer.
@@ -1218,40 +1220,45 @@ fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
             2 | 3 if q[2] == q[3] => 2 + usize::from(pos.x > x_of(q[2])),
             n => n,
         };
-        ui.data_mut(|d| d.insert_temp(drag_key, near));
+        ui.data_mut(|d| d.insert_persisted(drag_key, near));
     }
-    if resp.dragged()
-        && let (Some(h), Some(pos)) = (ui.data(|d| d.get_temp::<usize>(drag_key)), resp.interact_pointer_pos())
-        && let Some(cur) = q.get(h).copied()
-    {
-        let target = v_of(pos.x);
-        let split = ui.input(|i| i.modifiers.alt);
-        let mut n = *q;
-        let pair = if h < 2 { 0 } else { 2 };
-        if split {
-            n[h] = target;
-        } else {
-            // Unsplit: the pair moves together, keeping its spread.
-            let delta = i16::from(target) - i16::from(cur);
-            for v in &mut n[pair..pair + 2] {
-                *v = (i16::from(*v) + delta).clamp(0, 255) as u8;
+    if resp.dragged() {
+        ui.ctx().request_repaint();
+        if let (Some(h), Some(pos)) = (ui.data_mut(|d| d.get_persisted::<usize>(drag_key)), pointer_pos)
+            && let Some(cur) = q.get(h).copied()
+        {
+            let target = v_of(pos.x);
+            let split = ui.input(|i| i.modifiers.alt);
+            let mut n = *q;
+            let pair = if h < 2 { 0 } else { 2 };
+            if split {
+                n[h] = target;
+            } else {
+                // Unsplit: the pair moves together, keeping its spread.
+                let delta = i16::from(target) - i16::from(cur);
+                for v in &mut n[pair..pair + 2] {
+                    *v = (i16::from(*v) + delta).clamp(0, 255) as u8;
+                }
+            }
+            // Keep the order black low <= black high <= white low <= white high, pushing the others.
+            for i in 0..4 {
+                if i < h {
+                    n[i] = n[i].min(n[h]);
+                } else if i > h {
+                    n[i] = n[i].max(n[h]);
+                }
+            }
+            for i in 1..4 {
+                n[i] = n[i].max(n[i - 1]);
+            }
+            if n != *q {
+                *q = n;
+                changed = true;
             }
         }
-        // Keep the order black low <= black high <= white low <= white high, pushing the others.
-        for i in 0..4 {
-            if i < h {
-                n[i] = n[i].min(n[h]);
-            } else if i > h {
-                n[i] = n[i].max(n[h]);
-            }
-        }
-        for i in 1..4 {
-            n[i] = n[i].max(n[i - 1]);
-        }
-        if n != *q {
-            *q = n;
-            changed = true;
-        }
+    }
+    if resp.drag_stopped() {
+        ui.data_mut(|d| d.remove::<usize>(drag_key));
     }
     let base = ramp.bottom() + 1.0;
     let tri = |x: f32, half: i8, fill: Color32| {
@@ -1945,5 +1952,25 @@ mod tests {
         // Confirm commits the style.
         confirm(&mut app, &f).unwrap();
         assert_eq!(app.session.active().unwrap().doc.layer(id).unwrap().effects.items.len(), 1);
+    }
+
+    #[test]
+    fn blend_if_dialog_fields_and_confirm() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 16, "height": 16})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        let id = app.session.active().unwrap().active_layer.unwrap();
+        let mut f = initial_fields(app.session.active().unwrap().doc.layer(id).unwrap(), Some(BLENDING), 120.0);
+        if let Some(bo) = f.get_mut("p:blendingOptions").and_then(Value::as_object_mut) {
+            bo.insert("blendIf".into(), json!([
+                {"channel": 0, "thisLayer": [30, 60, 200, 240], "underlying": [10, 20, 250, 255]}
+            ]));
+        }
+        confirm(&mut app, &f).unwrap();
+        let st = app.session.active().unwrap();
+        let l = st.doc.layer(id).unwrap();
+        let [this, under] = l.blend_if.get(0);
+        assert_eq!(this.to_bytes(), [30, 60, 200, 240]);
+        assert_eq!(under.to_bytes(), [10, 20, 250, 255]);
     }
 }

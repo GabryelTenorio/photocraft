@@ -53,3 +53,8 @@ sync_github_name = true
 
 [people.stevanmarjanovic]
 sync_github_name = true
+
+[people.Gotix-eg]
+real_name = "Ahmed Tammam"
+display_name = "Mansh"
+sync_github_name = true

@@ -1387,6 +1387,27 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
             }
         });
         ui.add_space(ROW_GAP);
+        use photocraft_doc::text::TextDirection as D;
+        let dir_items = [
+            ("auto", tl!("Auto Direction"), "Auto", D::Auto),
+            ("ltr", tl!("Left-to-Right Direction"), "LTR ¶", D::Ltr),
+            ("rtl", tl!("Right-to-Left Direction"), "¶ RTL", D::Rtl),
+        ];
+        let dw = cell_width(full, 3);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (key, tip, label, d) in dir_items {
+                let clicked = toggle_cell(ui, dw, para.direction == d, tip, |ui, r, col| {
+                    let galley = ui.painter().layout_no_wrap(label.into(), egui::FontId::proportional(11.0), col);
+                    let pos = egui::pos2(r.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0);
+                    ui.painter().galley(pos, galley, col);
+                });
+                if clicked {
+                    apply(app, ui.ctx(), json!({"direction": key}));
+                }
+            }
+        });
+        ui.add_space(ROW_GAP);
         row(ui, &mut |ui| {
             if let Some(v) = num_field(ui, "→|", "Indent left margin", para.start_indent_pt, -1296.0..=1296.0, "pt", w) {
                 apply(app, ui.ctx(), json!({"startIndent": v}));

@@ -366,6 +366,36 @@ impl Tokens {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn load_system_arabic_font() -> Option<Vec<u8>> {
+    #[cfg(target_os = "windows")]
+    let candidates = [
+        r"C:\Windows\Fonts\segoeui.ttf",
+        r"C:\Windows\Fonts\tahoma.ttf",
+        r"C:\Windows\Fonts\arial.ttf",
+    ];
+    #[cfg(target_os = "macos")]
+    let candidates = [
+        "/System/Library/Fonts/GeezaPro.ttc",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+    ];
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let candidates = [
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansArabic-Regular.otf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ];
+    for path in candidates {
+        if let Ok(bytes) = std::fs::read(path)
+            && !bytes.is_empty()
+        {
+            return Some(bytes);
+        }
+    }
+    None
+}
+
 /// Register Inter (UI) and JetBrains Mono (numbers) plus named weights.
 pub fn install_fonts(ctx: &egui::Context) {
     install_fonts_with(ctx, crate::cjk_fonts::Sources::system());
@@ -381,6 +411,12 @@ pub fn install_fonts_with(ctx: &egui::Context, cjk: crate::cjk_fonts::Sources) {
     add(&mut fonts, "Inter-Medium", photocraft_text::fonts::INTER_MEDIUM);
     add(&mut fonts, "Inter-SemiBold", photocraft_text::fonts::INTER_SEMIBOLD);
     add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR);
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(bytes) = load_system_arabic_font() {
+        fonts.font_data.insert("system-arabic".to_owned(), Arc::new(FontData::from_owned(bytes)));
+        fonts.families.entry(FontFamily::Proportional).or_default().push("system-arabic".to_owned());
+        fonts.families.entry(FontFamily::Monospace).or_default().push("system-arabic".to_owned());
+    }
     fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Inter".to_owned());
     fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "JetBrainsMono".to_owned());
     // Named weights fall back to the default stack for missing glyphs.
