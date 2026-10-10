@@ -24,6 +24,12 @@ pub const OUT: &str = "docs/scorecard.md";
 const CORPUS_RS: &str = "crates/io/tests/corpus.rs";
 const PREFS_RS: &str = "crates/engine/src/prefs.rs";
 
+/// Committed sources `gather` reads. A change under any of these can move the scorecard (never-crash
+/// coverage, corpus floors, the dead-prefs audit, the parity count, perf budgets), so it requires
+/// `cargo xtask scorecard --check`. Exported so `cargo xtask plan` — and PhotoCraft Forge — reuse
+/// this list instead of re-encoding it.
+pub const SOURCES: &[&str] = &[perf::BUDGETS, perf::BASELINE, CORPUS_RS, "scorecard/", "docs/parity.md", PREFS_RS, "crates/engine/src/prefs_ui.rs"];
+
 // ---- checklists ------------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]

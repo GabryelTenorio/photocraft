@@ -137,6 +137,12 @@ jobs:
       - name: Dependency layering
         run: cargo xtask layers
 
+      # docs/parity.md must match the menu/command catalog. Static: it reads the code only.
+      # Added for the forge development MCP's checks_for_changes; also catches a stale parity file.
+      - name: Parity up to date
+        if: runner.os == 'Linux'
+        run: cargo xtask parity --check
+
       # docs/scorecard.md must match its sources (checklists, budgets, baseline, corpus floors,
       # prefs audit). Static: it reads committed files only, no benchmarks run here.
       - name: Scorecard up to date

@@ -10,6 +10,7 @@ mod ico;
 mod layers;
 mod perf;
 mod pinned;
+mod plan;
 mod scorecard;
 mod sha256;
 mod stats;
@@ -35,11 +36,13 @@ commands:
                   --pixls (or -p raw) also fetches corpus/pixls and runs the raw corpus tests;
                   --local takes corpus/photoshop from the photocraft-corpus authoring clone
   stats [--exact] count tests and lines per crate (--exact: ask the test harness via `-- --list`)
-  parity          Photoshop menu parity; rewrites docs/parity.md
+  parity [--check] Photoshop menu parity; --check verifies docs/parity.md, otherwise rewrites it
   i18n-coverage   report stable UI translation coverage for registered languages
   perf [--quick] [--update-baseline] [--threshold PCT] [--bench NAME]... [--skip-build] [--reuse]
                   run the release benches, merge them by scenario id into target/perf/results.json,
                   check perf/budgets.toml and perf/baseline.json (non-zero on a broken budget or regression)
+  plan [--changed | <paths>...] [--json]
+                  map changed paths to the finish gates (required/recommended); the forge MCP bridge
   scorecard [--check]
                   regenerate docs/scorecard.md (--check: fail if it is stale)
   version [set X.Y.Z[-pre]]
@@ -58,9 +61,10 @@ fn main() -> ExitCode {
         Some("corpus") => corpus::cmd(&rest),
         Some("test-corpus") => corpus::test_cmd(&rest),
         Some("stats") => stats::run(&root(), rest.contains(&"--exact")),
-        Some("parity") => cmd_parity(),
+        Some("parity") => cmd_parity(&rest),
         Some("i18n-coverage") => i18n_coverage::run(&root()),
         Some("perf") => perf::run(&root(), &rest),
+        Some("plan") => plan::run(&root(), &rest),
         Some("scorecard") => scorecard::run(&root(), &rest),
         Some("version") => version::run(&root(), &rest),
         Some("ico") => ico::run(&rest),
@@ -180,9 +184,16 @@ fn cmd_wasm() -> Result<(), String> {
     if failed == 0 { Ok(()) } else { Err(format!("{failed} crate(s) failed the wasm check")) }
 }
 
-fn cmd_parity() -> Result<(), String> {
+fn cmd_parity(rest: &[&str]) -> Result<(), String> {
+    let check = rest.contains(&"--check");
+    if let Some(bad) = rest.iter().find(|a| **a != "--check") {
+        return Err(format!("parity: unknown option `{bad}`"));
+    }
+    // `--check` verifies docs/parity.md is current without writing it, so CI and the forge MCP can
+    // gate on it; the default still regenerates the file.
+    let mode = if check { "--check" } else { "--write" };
     let mut c = cargo();
-    c.args(["run", "-q", "-p", "photocraft-ui-egui", "--example", "parity", "--", "--write", "docs/parity.md"]);
+    c.args(["run", "-q", "-p", "photocraft-ui-egui", "--example", "parity", "--", mode, "docs/parity.md"]);
     run(c, "cargo run -p photocraft-ui-egui --example parity")
 }
 
@@ -214,6 +225,7 @@ fn cmd_ci() -> Result<(), String> {
             }),
         ),
         ("layers", Box::new(cmd_layers)),
+        ("parity", Box::new(|| cmd_parity(&["--check"]))),
         ("wasm", Box::new(cmd_wasm)),
     ];
     let mut done = Vec::new();

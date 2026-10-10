@@ -17,7 +17,10 @@ pub const PIXLS_CRATES: &[&str] = &["photocraft-raw"];
 const HEIF_CRATES: &[&str] = &["photocraft-codecs", "photocraft-io"];
 
 /// Paths whose changes make `test-corpus --changed` run (the file-format and rendering crates).
-const CRITICAL: &[&str] = &[
+/// Paths whose changes make `test-corpus --changed` run (the file-format and rendering crates).
+/// Exported so `cargo xtask plan` — and the PhotoCraft `forge` development MCP — reuse the one
+/// authoritative list instead of re-encoding it.
+pub const CRITICAL: &[&str] = &[
     "crates/psd/",
     "crates/io/",
     "crates/codecs/",
