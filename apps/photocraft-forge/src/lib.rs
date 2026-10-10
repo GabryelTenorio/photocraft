@@ -13,6 +13,7 @@ pub mod probe;
 mod checks;
 mod context;
 mod git;
+mod graph;
 mod impact;
 mod jobs;
 mod scenario;

@@ -87,8 +87,8 @@ pub fn assemble(repo_root: Option<PathBuf>, found: impl Fn(&str) -> bool) -> Cap
     Capabilities { repo_root: repo_root.map(|p| p.display().to_string()), tools, recommendations }
 }
 
-/// Is `bin` an executable on `PATH`?
-fn on_path(bin: &str) -> bool {
+/// Is `bin` an executable on `PATH`? (Shared with the optional graph enrichment.)
+pub(crate) fn on_path(bin: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };

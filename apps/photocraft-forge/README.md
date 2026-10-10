@@ -22,7 +22,7 @@ M3. Tools:
 |---|---|
 | `forge_capabilities` | Report the environment; recommend installs for missing companions. |
 | `development_context` | Source fingerprint, workspace crate map, and the authoritative layering report. |
-| `change_impact` | Given paths / a command / a symbol / an intent: the must-change-together touch set, invariants, artifacts to regenerate, and the gate plan. |
+| `change_impact` | Given paths / a command / a symbol / an intent: the must-change-together touch set, invariants, artifacts to regenerate, and the gate plan. Set `enrich:true` to also consult the optional host MCPs. |
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the finish gates for a diff as serialized background jobs. |
 | `job_status` / `job_logs` / `job_cancel` | Poll status, read cursor-based logs, cancel a job (and its process tree). |

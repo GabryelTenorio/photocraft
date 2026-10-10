@@ -29,6 +29,9 @@ pub struct Query {
     /// A natural-language intent (best-effort keyword match).
     #[serde(default)]
     pub intent: Option<String>,
+    /// Consult the optional host MCPs (`jCodeMunch`, `rust-lsp`) for affected files (default false).
+    #[serde(default)]
+    pub enrich: bool,
 }
 
 /// One file that must change, and why.
@@ -229,12 +232,29 @@ pub fn run(root: &Path, q: Query) -> Result<serde_json::Value, String> {
         notes.push("could not obtain the gate plan from `cargo xtask plan`".to_string());
     }
 
+    // Optional graph enrichment from host MCPs — never required (D1/D4).
+    let (related, graph) = if q.enrich {
+        let companions = crate::graph::detect();
+        let enrichment = crate::graph::enrich(root, &paths, q.symbol.as_deref(), companions);
+        let graph = serde_json::json!({
+            "jcodemunch": companions.jcodemunch,
+            "rust_lsp": companions.rust_lsp,
+            "used": enrichment.used,
+            "notes": enrichment.notes,
+        });
+        (enrichment.related, graph)
+    } else {
+        (Vec::new(), serde_json::Value::Null)
+    };
+
     Ok(serde_json::json!({
         "inputs": { "paths": q.paths, "command": q.command, "symbol": q.symbol, "intent": q.intent },
         "resolved_paths": paths,
         "touch": impact.touch,
         "invariants": impact.invariants,
         "regenerate": impact.regenerate,
+        "related": related,
+        "graph": graph,
         "gates": gates,
         "notes": notes,
     }))
