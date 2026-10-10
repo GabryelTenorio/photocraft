@@ -122,6 +122,7 @@ impl Forge {
         }
         let mut started = Vec::new();
         let mut skipped = Vec::new();
+        let mut unavailable = Vec::new();
         for gate in gates {
             let id = gate.get("id").and_then(serde_json::Value::as_str).unwrap_or("gate").to_string();
             let command = gate.get("command").and_then(serde_json::Value::as_str).unwrap_or("").to_string();
@@ -137,10 +138,18 @@ impl Forge {
                     let job = self.jobs.start(spec);
                     started.push(serde_json::json!({"job": job, "gate": id, "command": command}));
                 }
-                _ => skipped.push(id),
+                _ => {
+                    unavailable.push(serde_json::json!({"gate": id.clone(), "reason": "not runnable locally (remote-only gate)"}));
+                    skipped.push(id);
+                }
             }
         }
-        let out = serde_json::json!({"jobs": started, "skipped": skipped, "note": "a zero-test match is reported as `notests`, not a pass"});
+        let out = serde_json::json!({
+            "jobs": started,
+            "skipped": skipped,
+            "unavailable": unavailable,
+            "note": "a zero-test match is reported as `notests`, not a pass; `unavailable` gates need another environment",
+        });
         let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize jobs: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
@@ -148,7 +157,8 @@ impl Forge {
     /// List jobs, or one job's status.
     #[tool(description = "List jobs (running first, then most recent finished), or a single job when `job` is given.")]
     async fn job_status(&self, Parameters(query): Parameters<JobQuery>) -> Result<CallToolResult, McpError> {
-        let out = serde_json::json!({ "jobs": self.jobs.views(query.job) });
+        let views = self.jobs.views(query.job);
+        let out = if query.job.is_none() { serde_json::json!({ "jobs": views, "summary": self.jobs.summary() }) } else { serde_json::json!({ "jobs": views }) };
         let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize status: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }

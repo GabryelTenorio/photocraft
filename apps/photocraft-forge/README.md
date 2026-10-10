@@ -72,7 +72,7 @@ MCPs for `related` files (see below).
 it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 
 `validation_start { paths?: [..], base?: "…", include_recommended?: bool }`
-→ `{ jobs:[{job,gate,command}], skipped:[..], note }`. Jobs run **one at a time** (Cargo jobs sharing
+→ `{ jobs:[{job,gate,command}], skipped:[..], unavailable:[{gate,reason}], note }`. Jobs run **one at a time** (Cargo jobs sharing
 `target/` and the caches must not contend). A `cargo test` that matched **zero tests** ends as
 `notests`, never a pass. Each completed job persists an immutable manifest under `target/forge/jobs/`
 (`<id>.json` + `<id>.log`) carrying the source fingerprint, the gate's reason, **parsed diagnostics**
@@ -81,7 +81,10 @@ matched/executed/filtered **test counts**, and **artifacts** (media type + `blak
 research §8. A job persisted while still queued or running loads as **`interrupted`** — never a silent
 `failed` — and each manifest carries start, finish and duration.
 
-`job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,command,zero_tests,tests,diagnostics,artifacts,head,dirty,evidence,finished_ms}] }`.
+`job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,blocking,unavailable?,command,zero_tests,tests,diagnostics,artifacts,head,dirty,evidence,finished_ms}], summary }`.
+`summary` names what **blocks** the change (`failed`/`notests`), what never ran (`queued`), and where
+evidence is **unavailable** (e.g. a gate needing another platform), so an agent never mistakes a
+partial run for a green one.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 

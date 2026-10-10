@@ -131,6 +131,12 @@ struct Manifest {
     dirty: bool,
     #[serde(default)]
     tier: Tier,
+    /// Whether this job blocks the change (it failed or matched zero tests).
+    #[serde(default)]
+    blocking: bool,
+    /// Why the job could not produce evidence (e.g. a missing tool), when that happened.
+    #[serde(default)]
+    unavailable: Option<String>,
     /// Outputs of the job (its log, and any produced files) with media types + content hashes.
     #[serde(default)]
     artifacts: Vec<Artifact>,
@@ -158,6 +164,7 @@ struct Job {
     dirty: bool,
     log_path: Option<PathBuf>,
     tier: Tier,
+    unavailable: Option<String>,
     artifacts: Vec<Artifact>,
     diagnostics: Diagnostics,
 }
@@ -184,6 +191,11 @@ pub struct JobView {
     pub tests: TestCounts,
     pub diagnostics: usize,
     pub tier: Tier,
+    /// Whether this job blocks the change (failed or matched zero tests).
+    pub blocking: bool,
+    /// Why the job could not produce evidence, when that happened.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<String>,
     /// Outputs with media types + content hashes (research §8).
     pub artifacts: Vec<Artifact>,
     /// Source fingerprint (HEAD) the job ran against.
@@ -265,6 +277,7 @@ impl JobManager {
                     head: manifest.head,
                     dirty: manifest.dirty,
                     log_path: Some(log_path),
+                    unavailable: manifest.unavailable,
                     artifacts: manifest.artifacts,
                     diagnostics: manifest.diagnostics,
                 },
@@ -302,6 +315,7 @@ impl JobManager {
                 head: fingerprint.head,
                 dirty: fingerprint.dirty,
                 log_path: None,
+                unavailable: None,
                 artifacts: Vec::new(),
                 diagnostics: Diagnostics::default(),
             },
@@ -331,7 +345,9 @@ impl JobManager {
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(e) => {
-                append(&log, &format!("forge: failed to spawn `{program}`: {e}\n"));
+                let reason = format!("failed to spawn `{program}`: {e}");
+                append(&log, &format!("forge: {reason}\n"));
+                self.mark_unavailable(id, reason);
                 self.finish(id, Status::Failed, None, false);
                 return;
             }
@@ -370,6 +386,13 @@ impl JobManager {
     fn set_pid(&self, id: u64, pid: u32) {
         if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
             job.pid = Some(pid);
+        }
+    }
+
+    /// Record that a job could not produce evidence (e.g. its tool is missing).
+    fn mark_unavailable(&self, id: u64, reason: String) {
+        if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
+            job.unavailable = Some(reason);
         }
     }
 
@@ -420,6 +443,8 @@ impl JobManager {
                 finished_ms: job.finished_ms,
                 head: job.head.clone(),
                 dirty: job.dirty,
+                blocking: matches!(job.status, Status::Failed | Status::NoTests),
+                unavailable: job.unavailable.clone(),
                 artifacts: Vec::new(),
                 diagnostics: job.diagnostics.clone(),
             };
@@ -452,6 +477,8 @@ impl JobManager {
             tests: job.diagnostics.tests.clone(),
             diagnostics: job.diagnostics.entries.len(),
             tier: job.tier,
+            blocking: matches!(job.status, Status::Failed | Status::NoTests),
+            unavailable: job.unavailable.clone(),
             artifacts: job.artifacts.clone(),
             head: job.head.clone(),
             dirty: job.dirty,
@@ -468,6 +495,35 @@ impl JobManager {
         let mut all: Vec<&Job> = inner.jobs.values().collect();
         all.sort_by_key(|j| (j.status.done(), std::cmp::Reverse(j.id)));
         all.into_iter().map(JobManager::view).collect()
+    }
+
+    /// A run-level summary (research §8): what **blocks** the change, what never ran, and where
+    /// evidence was **unavailable**.
+    pub fn summary(&self) -> serde_json::Value {
+        let views = self.views(None);
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        let mut blocking = Vec::new();
+        let mut unrun = Vec::new();
+        let mut unavailable = Vec::new();
+        for v in &views {
+            *counts.entry(format!("{:?}", v.status).to_lowercase()).or_default() += 1;
+            let entry = serde_json::json!({"job": v.id, "name": v.name, "status": v.status});
+            match v.status {
+                Status::Failed | Status::NoTests => blocking.push(entry),
+                Status::Queued => unrun.push(entry),
+                _ => {}
+            }
+            if let Some(reason) = &v.unavailable {
+                unavailable.push(serde_json::json!({"job": v.id, "name": v.name, "reason": reason}));
+            }
+        }
+        serde_json::json!({
+            "total": views.len(),
+            "counts": counts,
+            "blocking": blocking,
+            "unrun": unrun,
+            "unavailable": unavailable,
+        })
     }
 
     /// `(status, log slice from cursor, next cursor)`, or `None` for an unknown id.
@@ -673,6 +729,39 @@ mod tests {
         assert_eq!(art.media_type, "text/plain");
         assert!(art.hash.starts_with("blake3:"), "{art:?}");
         assert!(art.bytes > 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_reports_blocking_and_unavailable_evidence() {
+        let dir = std::env::temp_dir().join(format!("forge-summary-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mgr = Arc::new(JobManager::new(Some(dir.clone())));
+        let fail = mgr.start(JobSpec {
+            name: "ci".into(),
+            kind: "validation".into(),
+            reason: "test".into(),
+            tier: Tier::Unit,
+            program: "sh".into(),
+            args: vec!["-c".into(), "exit 3".into()],
+            cwd: std::env::temp_dir(),
+        });
+        assert_eq!(wait_done(&mgr, fail), Status::Failed);
+        let missing = mgr.start(JobSpec {
+            name: "tool".into(),
+            kind: "validation".into(),
+            reason: "test".into(),
+            tier: Tier::Unit,
+            program: "forge-no-such-tool-xyz".into(),
+            args: Vec::new(),
+            cwd: std::env::temp_dir(),
+        });
+        assert_eq!(wait_done(&mgr, missing), Status::Failed);
+        let s = mgr.summary();
+        assert_eq!(s["total"], 2, "{s}");
+        assert_eq!(s["counts"]["failed"], 2, "{s}");
+        assert!(s["blocking"].as_array().is_some_and(|a| a.len() == 2), "{s}");
+        assert!(s["unavailable"].as_array().is_some_and(|a| a.iter().any(|u| u["job"] == missing)), "{s}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
