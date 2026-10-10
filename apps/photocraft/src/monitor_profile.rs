@@ -280,6 +280,12 @@ mod linux {
     fn read_icc(path: &Path) -> Option<IccProfile> {
         let mut bytes = Vec::new();
         std::fs::File::open(path).ok()?.take((MAX_ICC_BYTES + 1) as u64).read_to_end(&mut bytes).ok()?;
+        let bytes = checked_icc_bytes(bytes)?;
+        let name = path.file_name()?.to_str()?.to_owned();
+        Some(IccProfile { name, bytes: Arc::new(bytes) })
+    }
+
+    fn checked_icc_bytes(mut bytes: Vec<u8>) -> Option<Vec<u8>> {
         if bytes.len() > MAX_ICC_BYTES || bytes.len() < 132 || bytes.get(36..40) != Some(b"acsp") {
             return None;
         }
@@ -288,8 +294,8 @@ mod linux {
             return None;
         }
         bytes.truncate(declared);
-        let name = path.file_name()?.to_str()?.to_owned();
-        Some(IccProfile { name, bytes: Arc::new(bytes) })
+        let profile = photocraft_cms::Profile::parse(&bytes).ok()?;
+        (profile.color_space == photocraft_cms::ColorSpace::Rgb).then_some(bytes)
     }
 
     fn unambiguous_clone_profile(output_names: &[String], profiles: &HashMap<String, Vec<IccProfile>>) -> Option<IccProfile> {
@@ -306,6 +312,45 @@ mod linux {
             selected = Some(first);
         }
         selected.map(|profile| IccProfile { name: profile.name.clone(), bytes: profile.bytes.clone() })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn checked_icc_bytes_require_a_bounded_parseable_rgb_profile() {
+            let rgb = photocraft_cms::Builtin::Srgb.profile().to_bytes();
+            let bytes = rgb.as_ref().clone();
+            assert_eq!(checked_icc_bytes(bytes.clone()), Some(bytes));
+
+            let cmyk = photocraft_cms::Builtin::CoatedCmyk.profile().to_bytes();
+            assert!(checked_icc_bytes(cmyk.as_ref().clone()).is_none());
+            assert!(checked_icc_bytes(vec![0; 132]).is_none());
+            assert!(checked_icc_bytes(vec![0; MAX_ICC_BYTES + 1]).is_none());
+        }
+
+        #[test]
+        fn cloned_outputs_use_only_one_unambiguous_profile() {
+            let srgb = photocraft_cms::Builtin::Srgb.profile().to_bytes();
+            let p3 = photocraft_cms::Builtin::DisplayP3.profile().to_bytes();
+            let profile = |name: &str, bytes: std::sync::Arc<Vec<u8>>| IccProfile { name: name.into(), bytes };
+            let outputs = ["DP-1".to_owned(), "HDMI-1".to_owned()];
+
+            let matching =
+                HashMap::from([("DP-1".to_owned(), vec![profile("sRGB", srgb.clone())]), ("HDMI-1".to_owned(), vec![profile("sRGB", srgb.clone())])]);
+            assert_eq!(unambiguous_clone_profile(&outputs, &matching).map(|p| p.name), Some("sRGB".into()));
+
+            let differing =
+                HashMap::from([("DP-1".to_owned(), vec![profile("sRGB", srgb.clone())]), ("HDMI-1".to_owned(), vec![profile("Display P3", p3.clone())])]);
+            assert!(unambiguous_clone_profile(&outputs, &differing).is_none());
+
+            let missing = HashMap::from([("DP-1".to_owned(), vec![profile("sRGB", srgb.clone())])]);
+            assert!(unambiguous_clone_profile(&outputs, &missing).is_none());
+
+            let conflicting = HashMap::from([("DP-1".to_owned(), vec![profile("sRGB", srgb), profile("Display P3", p3)])]);
+            assert!(unambiguous_clone_profile(&["DP-1".to_owned()], &conflicting).is_none());
+        }
     }
 }
 

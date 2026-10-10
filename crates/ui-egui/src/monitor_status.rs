@@ -560,4 +560,20 @@ mod tests {
         assert!(app.ui.notices.is_empty());
         assert!(summary_lines(&app).iter().all(|l| l.contains("(manual)")), "{:?}", summary_lines(&app));
     }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn root_window_uses_winit_monitor_name_to_select_its_profile() {
+        let mut app = app();
+        app.session.color.set_displays(Ok(vec![
+            Display { id: 1, name: "DP-1".into(), frame: [0.0, 0.0, 1920.0, 1080.0], profile_name: None, icc: None },
+            Display { id: 2, name: "HDMI-1".into(), frame: [1920.0, 0.0, 1920.0, 1080.0], profile_name: None, icc: None },
+        ]));
+        app.monitors.root_output_name = Some("HDMI-1".into());
+        let ctx = egui::Context::default();
+
+        assert_eq!(view_display(&app, &ctx), Some(2));
+        app.monitors.root_output_name = Some("DP-3".into());
+        assert_eq!(view_display(&app, &ctx), None);
+    }
 }
