@@ -202,7 +202,7 @@ impl Forge {
 
     /// Exercise a change headlessly.
     #[tool(
-        description = "Exercise a change and assert the result. `backend:\"headless\"` (default) runs `steps` as app-MCP tool calls against `photocraft-cli mcp`; `backend:\"offscreen\"` runs them as control-protocol calls and snapshots the full UI to `ui.png`; `backend:\"cli\"` runs `steps` as engine commands via `photocraft-cli run` with `input`/`new`, `out` and `files`, for commands the app MCP blocks (those that use filesystem paths). Evaluates `assertions` over the last structured step result, files, or rendered images, and returns the evidence tier, artifacts (with hashes) and whether every assertion passed."
+        description = "Exercise a change and assert the result. `backend:\"headless\"` (default) runs `steps` as app-MCP tool calls against `photocraft-cli mcp`; `backend:\"offscreen\"` runs them as control-protocol calls and snapshots the full UI to `ui.png`; `backend:\"cli\"` runs `steps` as engine commands via `photocraft-cli run` with `input`/`new`, `out` and `files`, for commands the app MCP blocks (those that use filesystem paths). Evaluates `assertions` over the last structured step result, files, or rendered images (a `file` image can target a `region` and assert its `color`/`uniform`), and returns the evidence tier, artifacts (with hashes) and whether every assertion passed."
     )]
     async fn scenario_start(&self, Parameters(params): Parameters<scenario::Params>) -> Result<CallToolResult, McpError> {
         let root = probe::discover_repo_root().ok_or_else(checkout_error)?;

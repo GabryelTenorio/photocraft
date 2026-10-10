@@ -119,7 +119,10 @@ partial run for a green one. It is scoped to one `validation_start` batch — th
   assertions the outputs. `evidence_tier: "headless"`.
 
 Assertions accept `width` / `height` / `min_bytes` / `hash` on both an `image` and a `file` (a golden
-PNG can be pinned by content, not just size).
+PNG can be pinned by content, not just size). For a `file` image, `region: {x,y,width,height}`
+restricts the pixel checks to a rectangle, and `color: "#rrggbb"` / `uniform: true|false` (with
+`tolerance`, default 2) assert its average colour or that it is flat — so a localized UI change (a
+canvas background, a panel) can be checked instead of only a whole-image hash.
 
 ## Optional companions
 

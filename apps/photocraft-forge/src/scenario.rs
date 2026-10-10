@@ -115,6 +115,28 @@ pub struct Assertion {
     /// The content hash must equal this `blake3:<hex>` digest (for an `image` or a `file`).
     #[serde(default)]
     pub hash: Option<String>,
+    /// For a `file` image: check only this rectangle of it (pixels), not the whole image.
+    #[serde(default)]
+    pub region: Option<Region>,
+    /// The `region`'s (or the whole image's) average colour must be this `#rrggbb`.
+    #[serde(default)]
+    pub color: Option<String>,
+    /// Whether the `region` (or the whole image) must be a single uniform colour.
+    #[serde(default)]
+    pub uniform: Option<bool>,
+    /// Allowed per-channel difference for `color` / `uniform` (default 2).
+    #[serde(default)]
+    pub tolerance: Option<u8>,
+}
+
+/// A pixel rectangle within a rendered image.
+#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Region {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// A scenario run: whether every assertion passed, plus the evidence.
@@ -428,8 +450,9 @@ fn evaluate_file(a: &Assertion, work: &Path, file: &str) -> AssertionResult {
     if let Some(expect) = &a.hash {
         checks.push((artifact.hash == *expect, format!("hash {} == {expect}", artifact.hash)));
     }
+    let want_pixels = a.region.is_some() || a.color.is_some() || a.uniform.is_some();
+    let bytes = if a.width.is_some() || a.height.is_some() || want_pixels { std::fs::read(&path).unwrap_or_default() } else { Vec::new() };
     if a.width.is_some() || a.height.is_some() {
-        let bytes = std::fs::read(&path).unwrap_or_default();
         let (w, h) = png_dims(&bytes);
         if let Some(want) = a.width {
             checks.push((w == Some(want), format!("width {} == {want}", show(w))));
@@ -438,8 +461,70 @@ fn evaluate_file(a: &Assertion, work: &Path, file: &str) -> AssertionResult {
             checks.push((h == Some(want), format!("height {} == {want}", show(h))));
         }
     }
+    if want_pixels {
+        checks.extend(pixel_checks(a, &bytes));
+    }
     let passed = checks.iter().all(|(ok, _)| *ok);
     AssertionResult { description: format!("file `{file}`"), passed, detail: join_checks(&checks) }
+}
+
+/// Decode a PNG and check a `region`'s average colour and/or uniformity. Only called when a `file`
+/// assertion asks for pixels, so size/hash checks never decode.
+fn pixel_checks(a: &Assertion, bytes: &[u8]) -> Vec<(bool, String)> {
+    let mut checks = Vec::new();
+    let Ok(img) = image::load_from_memory(bytes) else {
+        checks.push((false, "could not decode the image".to_string()));
+        return checks;
+    };
+    let img = img.to_rgba8();
+    let (iw, ih) = img.dimensions();
+    let r = a.region.clone().unwrap_or(Region { x: 0, y: 0, width: iw, height: ih });
+    if r.width == 0 || r.height == 0 || r.x.saturating_add(r.width) > iw || r.y.saturating_add(r.height) > ih {
+        checks.push((false, format!("region {}x{}+{}+{} is outside {}x{}", r.width, r.height, r.x, r.y, iw, ih)));
+        return checks;
+    }
+    let tol = i32::from(a.tolerance.unwrap_or(2));
+    let (mut sum, mut count, mut uniform) = ([0u64; 3], 0u64, true);
+    let mut first = [0u8; 3];
+    for y in r.y..r.y + r.height {
+        for x in r.x..r.x + r.width {
+            let p = img.get_pixel(x, y);
+            let rgb = [p[0], p[1], p[2]];
+            if count == 0 {
+                first = rgb;
+            } else if uniform && (0..3).any(|i| (i32::from(rgb[i]) - i32::from(first[i])).abs() > tol) {
+                uniform = false;
+            }
+            for (i, v) in rgb.iter().enumerate() {
+                sum[i] += u64::from(*v);
+            }
+            count += 1;
+        }
+    }
+    let mean = [(sum[0] / count) as u8, (sum[1] / count) as u8, (sum[2] / count) as u8];
+    if let Some(expect) = &a.color {
+        match parse_hex(expect) {
+            Some(c) => {
+                let ok = (0..3).all(|i| (i32::from(mean[i]) - i32::from(c[i])).abs() <= tol);
+                checks.push((ok, format!("region mean #{:02x}{:02x}{:02x} ~= {expect}", mean[0], mean[1], mean[2])));
+            }
+            None => checks.push((false, format!("colour `{expect}` must be #rrggbb"))),
+        }
+    }
+    if let Some(want) = a.uniform {
+        checks.push((uniform == want, format!("uniform={uniform} (want {want})")));
+    }
+    checks
+}
+
+/// Parse a `#rrggbb` colour.
+fn parse_hex(s: &str) -> Option<[u8; 3]> {
+    let h = s.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok();
+    Some([byte(0)?, byte(2)?, byte(4)?])
 }
 
 /// Evaluate an image assertion against a step's rendered image.
@@ -588,6 +673,33 @@ impl AppMcp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn region_colour_and_uniformity_checks() {
+        let dir = std::env::temp_dir().join(format!("forge-region-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create");
+        let img = image::RgbaImage::from_fn(4, 2, |x, _| if x < 2 { image::Rgba([255, 0, 0, 255]) } else { image::Rgba([0, 0, 255, 255]) });
+        img.save(dir.join("t.png")).expect("save png");
+        let left = Region { x: 0, y: 0, width: 2, height: 2 };
+        let ok = evaluate(
+            &Assertion { file: Some("t.png".into()), region: Some(left.clone()), color: Some("#ff0000".into()), uniform: Some(true), ..Default::default() },
+            &Value::Null,
+            &[],
+            &dir,
+        );
+        assert!(ok.passed, "{ok:?}");
+        let not_uniform = evaluate(&Assertion { file: Some("t.png".into()), uniform: Some(false), ..Default::default() }, &Value::Null, &[], &dir);
+        assert!(not_uniform.passed, "{not_uniform:?}");
+        let wrong = evaluate(
+            &Assertion { file: Some("t.png".into()), region: Some(left), color: Some("#00ff00".into()), ..Default::default() },
+            &Value::Null,
+            &[],
+            &dir,
+        );
+        assert!(!wrong.passed, "{wrong:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn cli_paths_must_stay_inside_the_work_root() {
