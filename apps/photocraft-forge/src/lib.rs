@@ -10,6 +10,8 @@
 
 pub mod probe;
 
+mod context;
+mod git;
 mod server;
 
 pub use server::{Forge, serve_stdio};

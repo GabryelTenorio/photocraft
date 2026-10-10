@@ -8,7 +8,7 @@ use rmcp::model::*;
 use rmcp::transport::io::stdio;
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 
-use crate::probe;
+use crate::{context, probe};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -45,6 +45,22 @@ impl Forge {
     async fn forge_capabilities(&self) -> Result<CallToolResult, McpError> {
         let caps = probe::capabilities();
         let text = serde_json::to_string_pretty(&caps).map_err(|e| McpError::internal_error(format!("serialize capabilities: {e}"), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    /// The orientation snapshot.
+    #[tool(
+        description = "Snapshot for orienting on the repository: the source fingerprint (HEAD, branch, dirty state, worktree/staged diff hashes, Cargo.lock hash, commits behind origin/main), the workspace crate map with workspace deps, and the authoritative `cargo xtask layers` report."
+    )]
+    async fn development_context(&self) -> Result<CallToolResult, McpError> {
+        let root = probe::discover_repo_root().ok_or_else(|| {
+            McpError::internal_error("no PhotoCraft checkout found — run forge from inside the repo (a directory containing crates/, apps/ and xtask/)", None)
+        })?;
+        let ctx = tokio::task::spawn_blocking(move || context::build(&root))
+            .await
+            .map_err(|e| McpError::internal_error(format!("context task: {e}"), None))?
+            .map_err(|e| McpError::internal_error(e, None))?;
+        let text = serde_json::to_string_pretty(&ctx).map_err(|e| McpError::internal_error(format!("serialize context: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 }
