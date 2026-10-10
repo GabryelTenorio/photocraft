@@ -673,6 +673,10 @@
 	Classic Theme	Klassiek thema
 	Solarized dark	Solarized donker
 	Solarized Dark Theme	Solarized-thema donker
+	Breeze dark	Breeze donker
+	Breeze Dark Theme	Breeze-thema donker
+	Breeze light	Breeze licht
+	Breeze Light Theme	Breeze-thema licht
 	Adwaita Light Theme	Adwaita-thema licht
 	Adwaita Dark Theme	Adwaita-thema donker
 	Adwaita	Adwaita
@@ -1883,6 +1887,7 @@
 	Show only crosshair while painting	Alleen dradenkruis tonen tijdens schilderen
 	Show slice numbers	Segmentnummers tonen
 	Show tooltips	Knopinfo tonen
+	Show highlight on rollover	Markering bij aanwijzen tonen
 	Show bounding box when dragging layer	Selectiekader tonen bij slepen van laag
 	System title bar	Titelbalk van systeem
 	Show transformation values	Transformatiewaarden tonen
