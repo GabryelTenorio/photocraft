@@ -35,6 +35,8 @@
 	Right	Rechts
 	Open Recent	Recent geopend
 	Clear Recent Files	Recente bestanden wissen
+	Remove from Recent	Verwijderen uit recente bestanden
+	Remove {name} from Recent	{name} verwijderen uit recente bestanden
 	Close	Sluiten
 	Minimize	Minimaliseren
 	Maximize	Maximaliseren
@@ -670,6 +672,10 @@
 	Classic Theme	Klassiek thema
 	Solarized dark	Solarized donker
 	Solarized Dark Theme	Solarized-thema donker
+	Breeze dark	Breeze donker
+	Breeze Dark Theme	Breeze-thema donker
+	Breeze light	Breeze licht
+	Breeze Light Theme	Breeze-thema licht
 	Adwaita Light Theme	Adwaita-thema licht
 	Adwaita Dark Theme	Adwaita-thema donker
 	Adwaita	Adwaita
@@ -1514,6 +1520,7 @@
 	Blur Tool	Vervagingsgereedschap
 	Bold	Vet
 	Brush	Penseel
+	Block	Blok
 	Brush Pose	Penseelhouding
 	Brush Tip Shape	Vorm penseelpunt
 	Brush Tool	Penseelgereedschap
@@ -1730,6 +1737,7 @@
 	Invalid {mode} profile	Ongeldig {mode}-profiel
 	Unnamed {mode} profile	Naamloos {mode}-profiel
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Resolutie: {dpi} pixels/inch
 	Doc: {w} × {h} px	Doc: {w} × {h} px
 	Frame {current} / {total}	Frame {current} / {total}
@@ -1880,6 +1888,7 @@
 	Show only crosshair while painting	Alleen dradenkruis tonen tijdens schilderen
 	Show slice numbers	Segmentnummers tonen
 	Show tooltips	Knopinfo tonen
+	Show highlight on rollover	Markering bij aanwijzen tonen
 	Show bounding box when dragging layer	Selectiekader tonen bij slepen van laag
 	System title bar	Titelbalk van systeem
 	Show transformation values	Transformatiewaarden tonen
@@ -3604,3 +3613,6 @@ cameraRaw	Whites	Witten
 	Previous Document	Vorig document
 	W x H x Resolution	B x H x Resolutie
 	Front Image	Voorste afbeelding
+	Search settings…	Instellingen zoeken…
+	No matching settings	Geen overeenkomende instellingen
+	PhotoCraft — Screen Color Picker	PhotoCraft — Schermkleurkiezer
