@@ -218,5 +218,5 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-11 | minor | Reassignable layer-under-cursor selection (#2298) spring-loaded Z Zoom (#2672), immediate canvas scrolling (#1989), and short gradients (#1243), verified with full-UI input tests |
+| 2026-10-11 | minor | Reassignable layer-under-cursor selection (#2298), spring-loaded Z Zoom (#2672), immediate canvas scrolling (#1989), and short gradients (#1243), verified with full-UI input tests |
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |

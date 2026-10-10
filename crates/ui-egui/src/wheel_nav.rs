@@ -134,12 +134,12 @@ fn alt_id() -> Id {
 }
 
 /// Read this frame's wheel input. Call it every frame (hovered or not) so the Alt state of the
-/// gesture follows the latest wheel event.
+/// gesture follows the latest wheel movement; a zero-delta End event cannot change it.
 pub fn read(ctx: &Context, zoom_with_wheel: bool) -> Option<Wheel> {
     let notch = ctx.options(|o| o.input_options.line_scroll_speed);
     let (scroll, zoom_delta, latest, wheel, page) = ctx.input(|i| {
         let latest = i.events.iter().rev().find_map(|e| match e {
-            Event::MouseWheel { modifiers, .. } => Some(modifiers.alt && !modifiers.command && !modifiers.ctrl),
+            Event::MouseWheel { delta, modifiers, .. } if *delta != Vec2::ZERO => Some(modifiers.alt && !modifiers.command && !modifiers.ctrl),
             _ => None,
         });
         let wheel: Vec<(MouseWheelUnit, Vec2, Modifiers)> = i
@@ -274,6 +274,21 @@ mod tests {
             out.textures_delta.clear();
             assert_eq!(actual, Some(Wheel::Pan(expected)), "{modifiers:?}, preference {zoom_with_wheel}");
         }
+    }
+
+    #[test]
+    fn trackpad_end_without_modifiers_does_not_turn_alt_zoom_into_pan() {
+        let ctx = Context::default();
+        configure(&ctx);
+        let events = vec![
+            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: Vec2::new(0.0, 40.0), phase: TouchPhase::Move, modifiers: Modifiers::ALT },
+            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: Vec2::ZERO, phase: TouchPhase::End, modifiers: Modifiers::NONE },
+        ];
+        let mut actual = None;
+        let mut out = ctx.run_ui(RawInput { events, ..Default::default() }, |ui| actual = read(ui.ctx(), false));
+        out.textures_delta.clear();
+        let Some(Wheel::Zoom(f)) = actual else { panic!("Alt wheel must zoom: {actual:?}") };
+        assert!((f - 1.1).abs() < 1e-5);
     }
 
     #[test]
