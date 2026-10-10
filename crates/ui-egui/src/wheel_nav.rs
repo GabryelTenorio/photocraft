@@ -16,7 +16,8 @@
 //! The target behaviour is exact ×1.1 steps, one per notch, with no easing in between
 //! (measured frame by frame on a screen recording). egui smooths a wheel notch over several
 //! frames, so zooming reads the wheel events themselves and ignores that smoothed tail; panning
-//! keeps the smoothed delta. The Alt state is taken from the wheel events and kept until the next
+//! also consumes the original events, preserving OS trackpad inertia without adding latency
+//! or dropping movement when egui clears its smoothing buffer at gesture end (#1989). The Alt state is taken from the wheel events and kept until the next
 //! wheel event: releasing Alt while the tail is still settling must not turn it into a pan.
 
 use egui::{Context, Event, Id, Modifiers, MouseWheelUnit, RawInput, Vec2};
@@ -40,7 +41,7 @@ pub enum Wheel {
 /// Inputs of one frame's wheel gesture.
 #[derive(Clone, Copy, Debug)]
 pub struct Input {
-    /// Smoothed scroll delta (points, content direction); what panning uses.
+    /// This frame's scroll delta (points, content direction), with scroll modifiers folded; what panning uses.
     pub scroll: Vec2,
     /// This frame's wheel events for the gesture in progress, unsmoothed (points, content
     /// direction); what zooming uses.
@@ -149,7 +150,24 @@ pub fn read(ctx: &Context, zoom_with_wheel: bool) -> Option<Wheel> {
                 _ => None,
             })
             .collect();
-        (i.smooth_scroll_delta, i.zoom_delta(), latest, wheel, i.content_rect().height())
+        let page = i.content_rect().height();
+        let scroll = wheel.iter().fold(Vec2::ZERO, |sum, (unit, delta, m)| {
+            let delta = *delta
+                * match unit {
+                    MouseWheelUnit::Point => 1.0,
+                    MouseWheelUnit::Line => notch,
+                    MouseWheelUnit::Page => page,
+                };
+            let horizontal = m.shift || m.command || m.ctrl || m.mac_cmd;
+            let vertical = m.alt;
+            let delta = match (horizontal, vertical) {
+                (true, false) => Vec2::new(delta.x + delta.y, 0.0),
+                (false, true) => Vec2::new(0.0, delta.x + delta.y),
+                _ => delta,
+            };
+            sum + delta
+        });
+        (scroll, i.zoom_delta(), latest, wheel, page)
     });
     let alt = match latest {
         Some(a) => {
@@ -219,6 +237,46 @@ mod tests {
     }
 
     #[test]
+    fn fast_trackpad_pan_arrives_in_full_without_a_synthetic_tail() {
+        let ctx = Context::default();
+        configure(&ctx);
+        for (frame, delta) in [Vec2::new(15.0, -120.0), Vec2::new(-30.0, -240.0), Vec2::ZERO].into_iter().enumerate() {
+            let events = if delta == Vec2::ZERO {
+                vec![]
+            } else {
+                vec![Event::MouseWheel { unit: MouseWheelUnit::Point, delta, phase: TouchPhase::Move, modifiers: Modifiers::NONE }]
+            };
+            let mut actual = None;
+            let mut out = ctx.run_ui(RawInput { time: Some(frame as f64 / 60.0), events, ..Default::default() }, |ui| actual = read(ui.ctx(), false));
+            out.textures_delta.clear();
+            let expected = (delta != Vec2::ZERO).then_some(Wheel::Pan(delta));
+            assert_eq!(actual, expected, "frame {frame}: trackpad displacement must not be delayed or repeated");
+        }
+    }
+
+    #[test]
+    fn trackpad_end_preserves_the_last_delta_and_modifier_directions() {
+        for (modifiers, zoom_with_wheel, expected) in [
+            (Modifiers::NONE, false, Vec2::new(12.0, -120.0)),
+            (Modifiers::SHIFT, false, Vec2::new(-108.0, 0.0)),
+            (CTRL, false, Vec2::new(-108.0, 0.0)),
+            (CMD, true, Vec2::new(-108.0, 0.0)),
+            (Modifiers::ALT, true, Vec2::new(0.0, -108.0)),
+        ] {
+            let ctx = Context::default();
+            configure(&ctx);
+            let events = vec![
+                Event::MouseWheel { unit: MouseWheelUnit::Point, delta: Vec2::new(12.0, -120.0), phase: TouchPhase::Move, modifiers },
+                Event::MouseWheel { unit: MouseWheelUnit::Point, delta: Vec2::ZERO, phase: TouchPhase::End, modifiers },
+            ];
+            let mut actual = None;
+            let mut out = ctx.run_ui(RawInput { events, ..Default::default() }, |ui| actual = read(ui.ctx(), zoom_with_wheel));
+            out.textures_delta.clear();
+            assert_eq!(actual, Some(Wheel::Pan(expected)), "{modifiers:?}, preference {zoom_with_wheel}");
+        }
+    }
+
+    #[test]
     fn plain_scroll_pans() {
         assert_eq!(classify(input(Vec2::new(3.0, -40.0), false)), Some(Wheel::Pan(Vec2::new(3.0, -40.0))));
         assert_eq!(classify(input(Vec2::ZERO, false)), None);
@@ -243,7 +301,7 @@ mod tests {
         assert_eq!(classify(tail), None);
         let tail = Input { raw: Vec2::ZERO, zoom_with_wheel: true, ..input(Vec2::new(0.0, 12.0), false) };
         assert_eq!(classify(tail), None);
-        // Plain scrolling without the preference still pans from the smoothed delta.
+        // The classifier takes the already-folded raw pan delta supplied by read().
         let pan = Input { raw: Vec2::ZERO, ..input(Vec2::new(0.0, 12.0), false) };
         assert_eq!(classify(pan), Some(Wheel::Pan(Vec2::new(0.0, 12.0))));
     }
