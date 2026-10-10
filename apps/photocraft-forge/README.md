@@ -199,6 +199,20 @@ never a panic or a dropped connection (`AGENTS.md` rule 9).
 5. `cargo test -p photocraft-forge`, `cargo clippy -p photocraft-forge --all-targets -- -D warnings`,
    `cargo fmt`, and `cargo xtask layers` (Forge is registered `Exempt`).
 
+## Maintaining Forge
+
+Forge is dev-only and AI-maintained, so its own maintenance record lives in
+[`MAINTENANCE.md`](MAINTENANCE.md): the standing rules, the known-bad companions and their
+fallbacks, and a failure/gap registry. Read it when a session touches Forge, and update it in the
+same change — a failure not written down is rediscovered or routed around forever. The rule is also
+in the server's instructions, so the agent is told to record failures there rather than work around
+them quietly.
+
+At a high level: **prefer fixing to routing around**; tell the human when a failure blocks the task;
+record one row per distinct failure with a `status`; review periodically; keep the `README.md` tool
+table current when a tool is added, renamed, or removed; and put durable learnings in the right doc
+(`README.md`, `MAINTENANCE.md`, `docs/`), not in a comment.
+
 ## Not in scope (deferred, D5)
 
 `runtime_*` / `application_call` (native desktop lifecycle and live desktop scenarios); pixel-*value*

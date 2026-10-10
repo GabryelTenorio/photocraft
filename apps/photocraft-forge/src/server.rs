@@ -19,7 +19,8 @@ const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first
 building PhotoCraft. It reports the must-change-together touch set, the finish gates, and verified \
 evidence for a change. It never edits source — you (the agent) edit with your own tools, then ask \
 Forge what to run and whether the result is right. Call `forge_capabilities` first to see what is \
-available in this environment.";
+available in this environment. If a Forge tool or companion fails or looks stale, tell the human and \
+record it in apps/photocraft-forge/MAINTENANCE.md — don't route around it quietly.";
 
 /// The Forge MCP server.
 #[derive(Clone)]
