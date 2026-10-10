@@ -690,6 +690,10 @@
 	Classic Theme	Motyw klasyczny
 	Solarized dark	Solarized ciemny
 	Solarized Dark Theme	Ciemny motyw Solarized
+	Breeze dark	Breeze ciemny
+	Breeze Dark Theme	Ciemny motyw Breeze
+	Breeze light	Breeze jasny
+	Breeze Light Theme	Jasny motyw Breeze
 	Next Theme	Następny motyw
 	Actions	Akcje
 	Brush Settings	Ustawienia pędzla
@@ -1529,6 +1533,7 @@
 	Blur Tool	Narzędzie Rozmycie
 	Bold	Pogrubiona
 	Brush	Pędzel
+	Block	Blok
 	Brush Pose	Pozycja pędzla
 	Brush Tip Shape	Kształt końcówki pędzla
 	Brush Tool	Narzędzie Pędzel
@@ -1746,6 +1751,7 @@
 	Invalid {mode} profile	Nieprawidłowy profil {mode}
 	Unnamed {mode} profile	Profil {mode} bez nazwy
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Rozdzielczość: {dpi} pikseli/cal
 	Doc: {w} × {h} px	Dok.: {w} × {h} px
 	Frame {current} / {total}	Klatka {current} / {total}
@@ -1897,6 +1903,7 @@
 	Show only crosshair while painting	Podczas malowania pokaż tylko celownik
 	Show slice numbers	Pokaż numery plasterków
 	Show tooltips	Pokaż podpowiedzi
+	Show highlight on rollover	Pokaż podświetlenie po najechaniu
 	Show bounding box when dragging layer	Pokaż ramkę ograniczającą podczas przeciągania warstwy
 	Show transformation values	Pokaż wartości przekształcenia
 	Slice color	Kolor plasterków
@@ -3447,3 +3454,5 @@ cameraRaw	Roughness	Chropowatość
 	W x H x Resolution	Szer. x Wys. x Rozdzielczość
 	Front Image	Obraz na wierzchu
 	Include in playback	Uwzględnij w odtwarzaniu
+	Search settings…	Szukaj ustawień…
+	No matching settings	Brak pasujących ustawień

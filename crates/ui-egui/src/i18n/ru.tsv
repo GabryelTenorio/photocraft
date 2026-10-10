@@ -492,6 +492,7 @@
 	Wand	Волшебная палочка
 	Eyedropper	Пипетка
 	Brush	Кисть
+	Block	Квадрат
 	Pencil	Карандаш
 	Eraser	Ластик
 	Clone Stamp	Штамп
@@ -646,6 +647,7 @@
 	Resolution:	Разрешение:
 	Resolution: {dpi} pixels/inch	Разрешение: {dpi} пикс./дюйм
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppi)
 	Pixels:	Пикселы:
 	Pixel Length:	Длина в пикселах:
 	Logical Length:	Логическая длина:
@@ -1391,6 +1393,10 @@
 	Classic Theme	Классическая тема
 	Solarized dark	Solarized тёмная
 	Solarized Dark Theme	Тёмная тема Solarized
+	Breeze dark	Breeze тёмная
+	Breeze Dark Theme	Тёмная тема Breeze
+	Breeze light	Breeze светлая
+	Breeze Light Theme	Светлая тема Breeze
 	Studio Theme	Тема Studio
 	Studio Light Theme	Светлая тема Studio
 	Adwaita Light Theme	Светлая тема Adwaita
@@ -2318,6 +2324,7 @@
 	Show only crosshair while painting	Только перекрестье при рисовании
 	Show slice numbers	Показывать номера фрагментов
 	Show tooltips	Показывать подсказки
+	Show highlight on rollover	Показывать подсветку при наведении
 	Show bounding box when dragging layer	Показывать рамку при перетаскивании слоя
 	System title bar	Системная строка заголовка
 	Show transformation values	Показывать значения трансформации
@@ -2712,3 +2719,5 @@ fontWeight	Italic	Курсив
 	Front Image	Изображение переднего плана
 	Swaps height and width	Меняет местами высоту и ширину
 	Include in playback	Включить в воспроизведение
+	Search settings…	Поиск настроек…
+	No matching settings	Нет подходящих настроек

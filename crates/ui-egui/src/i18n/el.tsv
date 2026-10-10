@@ -1438,6 +1438,7 @@
 	Show only crosshair while painting	Εμφάνιση μόνο σταυρονήματος κατά τη ζωγραφική
 	Show slice numbers	Εμφάνιση αριθμών τομών
 	Show tooltips	Εμφάνιση επεξηγήσεων
+	Show highlight on rollover	Εμφάνιση επισήμανσης κατά την κατάδειξη
 	Show bounding box when dragging layer	Εμφάνιση πλαισίου οριοθέτησης κατά τη μετακίνηση επιπέδου
 	Show transformation values	Εμφάνιση τιμών μετασχηματισμού
 	Slice color	Χρώμα τομής
@@ -2070,6 +2071,10 @@
 	Classic Theme	Κλασικό θέμα
 	Solarized dark	Solarized σκούρο
 	Solarized Dark Theme	Σκούρο θέμα Solarized
+	Breeze dark	Breeze σκούρο
+	Breeze Dark Theme	Σκούρο θέμα Breeze
+	Breeze light	Breeze φωτεινό
+	Breeze Light Theme	Φωτεινό θέμα Breeze
 	Clear Canvas Guides	Απαλοιφή οδηγών καμβά
 	Clear Override	Απαλοιφή παράκαμψης
 	Clear Samples	Απαλοιφή δειγμάτων
@@ -3342,6 +3347,7 @@ cameraRaw	Yellow	Κίτρινο
 	open source	ανοιχτού κώδικα
 	{size} (was {old})	{size} (ήταν {old})
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	…and {n} more	…και {n} ακόμη
 	125%	125%
 	150%	150%
@@ -3360,6 +3366,8 @@ cameraRaw	Yellow	Κίτρινο
 	Apple Watch 45mm	Apple Watch 45mm
 	Black Matte	Μαύρο ματ
 	Brush	Πινέλο
+	Pencil	Μολύβι
+	Block	Μπλοκ
 	Color…	Χρώμα…
 	Cone (Inverted)	Κώνος (αντεστραμμένος)
 	Could not open	Δεν ήταν δυνατό το άνοιγμα
@@ -3535,3 +3543,5 @@ fontWeight	Thin	Πολύ λεπτά
 	W x H x Resolution	Π x Υ x Ανάλυση
 	Front Image	Μπροστινή εικόνα
 	Include in playback	Συμπερίληψη στην αναπαραγωγή
+	Search settings…	Αναζήτηση ρυθμίσεων…
+	No matching settings	Δεν βρέθηκαν ρυθμίσεις

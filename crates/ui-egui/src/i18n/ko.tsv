@@ -664,6 +664,10 @@
 	Classic Theme	클래식 테마
 	Solarized dark	Solarized 어두움
 	Solarized Dark Theme	Solarized 어두운 테마
+	Breeze dark	Breeze 어두움
+	Breeze Dark Theme	Breeze 어두운 테마
+	Breeze light	Breeze 밝게
+	Breeze Light Theme	Breeze 밝은 테마
 	Next Theme	다음 테마
 	Actions	액션
 	Brush Settings	브러시 설정
@@ -1503,6 +1507,8 @@
 	Blur Tool	흐림 효과 도구
 	Bold	굵게
 	Brush	브러시
+	Pencil	연필
+	Block	블록
 	Brush Pose	브러시 자세
 	Brush Tip Shape	브러시 끝 모양
 	Brush Tool	브러시 도구
@@ -1715,6 +1721,7 @@
 	Scratch: {size}	스크래치: {size}
 	Untagged {mode}	프로파일 없는 {mode}
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	해상도: {dpi}픽셀/인치
 	Doc: {w} × {h} px	문서: {w} × {h} px
 	Frame {current} / {total}	프레임 {current} / {total}
@@ -1865,6 +1872,7 @@
 	Show only crosshair while painting	칠하는 동안 십자선만 표시
 	Show slice numbers	분할 영역 번호 표시
 	Show tooltips	도구 설명 표시
+	Show highlight on rollover	롤오버 시 강조 표시
 	Show transformation values	변형 값 표시
 	Slice color	분할 영역 색상
 	Smart guide color	고급 안내선 색상
@@ -3005,3 +3013,5 @@ fontWeight	Italic	기울임
 	W x H x Resolution	폭 x 높이 x 해상도
 	Front Image	전면 이미지
 	Include in playback	재생에 포함
+	Search settings…	설정 검색…
+	No matching settings	일치하는 설정 없음
