@@ -3548,3 +3548,9 @@ fontWeight	Thin	Πολύ λεπτά
 	Show Edge	Εμφάνιση άκρης
 	Show Original	Εμφάνιση αρχικού
 	F cycles the views; hold X to see the image	Το F εναλλάσσει τις προβολές· κρατήστε το X για να δείτε την εικόνα
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	Πινέλο βελτίωσης ακμής (R)
+	Expand Detection Area	Επέκταση περιοχής ανίχνευσης
+	Restore Original Edge	Επαναφορά αρχικής ακμής
+	Paint over hair or fur on the image; Alt paints the other mode	Βάψτε πάνω σε μαλλιά ή γούνα στην εικόνα· το Alt βάφει με την άλλη λειτουργία
+	Clear Brush Strokes	Απαλοιφή πινελιών
