@@ -121,6 +121,7 @@ impl Forge {
         if include_recommended {
             gates.extend(report.recommended);
         }
+        let run = self.jobs.begin_run();
         let mut started = Vec::new();
         let mut skipped = Vec::new();
         let mut unavailable = Vec::new();
@@ -139,6 +140,7 @@ impl Forge {
                         kind: "validation".to_string(),
                         reason,
                         tier,
+                        run,
                         program: program.to_string(),
                         args,
                         cwd: root.clone(),
@@ -154,6 +156,7 @@ impl Forge {
             }
         }
         let out = serde_json::json!({
+            "run": run,
             "jobs": started,
             "skipped": skipped,
             "unavailable": unavailable,
@@ -167,7 +170,11 @@ impl Forge {
     #[tool(description = "List jobs (running first, then most recent finished), or a single job when `job` is given.")]
     async fn job_status(&self, Parameters(query): Parameters<JobQuery>) -> Result<CallToolResult, McpError> {
         let views = self.jobs.views(query.job);
-        let out = if query.job.is_none() { serde_json::json!({ "jobs": views, "summary": self.jobs.summary() }) } else { serde_json::json!({ "jobs": views }) };
+        let out = if query.job.is_none() {
+            serde_json::json!({ "jobs": views, "summary": self.jobs.summary(query.run) })
+        } else {
+            serde_json::json!({ "jobs": views })
+        };
         let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize status: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
@@ -215,6 +222,9 @@ struct JobQuery {
     /// Job id (omit to list all jobs).
     #[serde(default)]
     job: Option<u64>,
+    /// Scope the summary to one `validation_start` batch (default: the latest run).
+    #[serde(default)]
+    run: Option<u64>,
 }
 
 /// A logs query.

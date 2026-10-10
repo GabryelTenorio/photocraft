@@ -39,6 +39,10 @@ Point any MCP client at the `photocraft-forge` binary. It takes **no arguments**
 Run it from inside the PhotoCraft checkout (it also walks up from the current directory to find the
 repo root). First action for an agent: **`forge_capabilities`**.
 
+A host that spawns the server at session start keeps that **exact binary until it restarts**, so
+after rebuilding Forge, restart the host (or the MCP server) to pick up the new code — the binary on
+disk being newer is not enough.
+
 **PATH note.** Forge finds `git`/`cargo` on `PATH` (it does not hardcode paths — see the
 environment-independence principle). Some hosts spawn MCP servers with a minimal `PATH`; if `cargo`
 lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
@@ -76,7 +80,7 @@ MCPs for `related` files (see below).
 it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 
 `validation_start { paths?: [..], base?: "…", include_recommended?: bool, idle_timeout_secs?: n, timeout_secs?: n }`
-→ `{ jobs:[{job,gate,command}], skipped:[..], unavailable:[{gate,reason}], note }`. Jobs run **one at a time** (Cargo jobs sharing
+→ `{ run, jobs:[{job,gate,command}], skipped:[..], unavailable:[{gate,reason}], note }`. Jobs run **one at a time** (Cargo jobs sharing
 `target/` and the caches must not contend). A `cargo test` that matched **zero tests** ends as
 `notests`, never a pass. Each completed job persists an immutable manifest under `target/forge/jobs/`
 (`<id>.json` + `<id>.log`) carrying the source fingerprint, the gate's reason, **parsed diagnostics**
@@ -89,10 +93,11 @@ terminated after no output for `idle_timeout_secs` (default 900) — a suspected
 `failed`) and records which limit fired and whether a hang was suspected, so a slow-but-printing build
 is not mistaken for a stuck test (research §8).
 
-`job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,blocking,unavailable?,command,zero_tests,tests,diagnostics,artifacts,head,dirty,evidence,finished_ms}], summary }`.
+`job_status { job?, run? }` → `{ jobs:[{id,name,kind,status,tier,run,blocking,unavailable?,command,zero_tests,tests,diagnostics,artifacts,head,dirty,evidence,finished_ms}], summary }`.
 `summary` names what **blocks** the change (`failed`/`notests`/`timedout`), what never ran (`queued`), and where
 evidence is **unavailable** (e.g. a gate needing another platform), so an agent never mistakes a
-partial run for a green one.
+partial run for a green one. It is scoped to one `validation_start` batch — the latest run by default
+(durable history never reads as a failure of the current change); pass `run` to pick one.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
@@ -163,7 +168,8 @@ cargo test -p photocraft-forge
 The suite is self-contained and deterministic: geometry/probe/impact/checks units, a job-manager test,
 and integration tests that spawn the built binary over raw JSON-RPC stdio (including a live
 `scenario_start`). No network; no host MCP required. The optional graph client is tested against a
-stub stdio server.
+stub stdio server. `tests/adversarial.rs` feeds every tool bad params and asserts a graceful error —
+never a panic or a dropped connection (`AGENTS.md` rule 9).
 
 ## Adding a tool
 

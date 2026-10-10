@@ -145,6 +145,8 @@ pub struct JobSpec {
     pub kind: String,
     pub reason: String,
     pub tier: Tier,
+    /// The `validation_start` batch this job belongs to (0 when run outside a batch).
+    pub run: u64,
     pub program: String,
     pub args: Vec<String>,
     pub cwd: PathBuf,
@@ -178,6 +180,9 @@ struct Manifest {
     dirty: bool,
     #[serde(default)]
     tier: Tier,
+    /// The `validation_start` batch this job belongs to (0 when run outside a batch).
+    #[serde(default)]
+    run: u64,
     /// Whether this job blocks the change (it failed or matched zero tests).
     #[serde(default)]
     blocking: bool,
@@ -214,6 +219,7 @@ struct Job {
     dirty: bool,
     log_path: Option<PathBuf>,
     tier: Tier,
+    run: u64,
     unavailable: Option<String>,
     timeout: Option<TimeoutHit>,
     artifacts: Vec<Artifact>,
@@ -242,6 +248,8 @@ pub struct JobView {
     pub tests: TestCounts,
     pub diagnostics: usize,
     pub tier: Tier,
+    /// The `validation_start` batch this job belongs to (0 outside a batch).
+    pub run: u64,
     /// Whether this job blocks the change (failed or matched zero tests).
     pub blocking: bool,
     /// Why the job could not produce evidence, when that happened.
@@ -270,6 +278,7 @@ pub struct JobManager {
     inner: Mutex<Inner>,
     gate: Mutex<()>,
     next: AtomicU64,
+    run_counter: AtomicU64,
     evidence: Option<PathBuf>,
 }
 
@@ -280,9 +289,20 @@ impl JobManager {
         if let Some(dir) = &evidence {
             let _ = std::fs::create_dir_all(dir);
         }
-        let manager = Self { inner: Mutex::new(Inner { jobs: BTreeMap::new() }), gate: Mutex::new(()), next: AtomicU64::new(1), evidence };
+        let manager = Self {
+            inner: Mutex::new(Inner { jobs: BTreeMap::new() }),
+            gate: Mutex::new(()),
+            next: AtomicU64::new(1),
+            run_counter: AtomicU64::new(now_ms_u64()),
+            evidence,
+        };
         manager.load();
         manager
+    }
+
+    /// A fresh id for a `validation_start` batch, so its jobs' summary is not polluted by history.
+    pub fn begin_run(&self) -> u64 {
+        self.run_counter.fetch_add(1, Ordering::Relaxed)
     }
 
     fn load(&self) {
@@ -314,6 +334,7 @@ impl JobManager {
                     kind: manifest.kind,
                     reason: manifest.reason,
                     tier: manifest.tier,
+                    run: manifest.run,
                     program: manifest.command,
                     args: Vec::new(),
                     status: match manifest.status {
@@ -355,6 +376,7 @@ impl JobManager {
                 kind: spec.kind.clone(),
                 reason: spec.reason.clone(),
                 tier: spec.tier,
+                run: spec.run,
                 program: spec.program.clone(),
                 args: spec.args.clone(),
                 status: Status::Queued,
@@ -531,6 +553,7 @@ impl JobManager {
                 kind: job.kind.clone(),
                 reason: job.reason.clone(),
                 tier: job.tier,
+                run: job.run,
                 command: command_string(&job.program, &job.args),
                 status: job.status,
                 exit: job.exit,
@@ -575,6 +598,7 @@ impl JobManager {
             tests: job.diagnostics.tests.clone(),
             diagnostics: job.diagnostics.entries.len(),
             tier: job.tier,
+            run: job.run,
             blocking: job.status.blocking(),
             unavailable: job.unavailable.clone(),
             timeout: job.timeout.clone(),
@@ -597,9 +621,12 @@ impl JobManager {
     }
 
     /// A run-level summary (research §8): what **blocks** the change, what never ran, and where
-    /// evidence was **unavailable**.
-    pub fn summary(&self) -> serde_json::Value {
-        let views = self.views(None);
+    /// evidence was **unavailable**. Scoped to one `validation_start` batch: `run` when given, else
+    /// the latest run, so durable history never reads as a failure of the current change.
+    pub fn summary(&self, run: Option<u64>) -> serde_json::Value {
+        let all = self.views(None);
+        let run = run.or_else(|| all.iter().map(|v| v.run).max());
+        let views: Vec<&JobView> = all.iter().filter(|v| run.is_none_or(|r| v.run == r)).collect();
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut blocking = Vec::new();
         let mut unrun = Vec::new();
@@ -617,6 +644,7 @@ impl JobManager {
             }
         }
         serde_json::json!({
+            "run": run,
             "total": views.len(),
             "counts": counts,
             "blocking": blocking,
@@ -823,6 +851,7 @@ mod tests {
             args: vec!["-c".into(), "echo forge-hello".into()],
             cwd: std::env::temp_dir(),
             timeout: Timeout::default(),
+            run: 0,
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
@@ -844,6 +873,7 @@ mod tests {
             args: vec!["-c".into(), "echo persisted-hello".into()],
             cwd: std::env::temp_dir(),
             timeout: Timeout::default(),
+            run: 0,
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
@@ -879,6 +909,7 @@ mod tests {
             args: vec!["-c".into(), "echo artifact-hello".into()],
             cwd: std::env::temp_dir(),
             timeout: Timeout::default(),
+            run: 0,
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
@@ -904,6 +935,7 @@ mod tests {
             args: vec!["-c".into(), "exit 3".into()],
             cwd: std::env::temp_dir(),
             timeout: Timeout::default(),
+            run: 0,
         });
         assert_eq!(wait_done(&mgr, fail), Status::Failed);
         let missing = mgr.start(JobSpec {
@@ -915,9 +947,10 @@ mod tests {
             args: Vec::new(),
             cwd: std::env::temp_dir(),
             timeout: Timeout::default(),
+            run: 0,
         });
         assert_eq!(wait_done(&mgr, missing), Status::Failed);
-        let s = mgr.summary();
+        let s = mgr.summary(None);
         assert_eq!(s["total"], 2, "{s}");
         assert_eq!(s["counts"]["failed"], 2, "{s}");
         assert!(s["blocking"].as_array().is_some_and(|a| a.len() == 2), "{s}");
@@ -937,6 +970,7 @@ mod tests {
             args: vec!["-c".into(), "echo starting; sleep 30".into()],
             cwd: std::env::temp_dir(),
             timeout: Timeout { idle_ms: 250, total_ms: 60_000 },
+            run: 0,
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::TimedOut);
@@ -959,6 +993,7 @@ mod tests {
             args: vec!["-c".into(), "i=0; while [ $i -lt 60 ]; do echo tick; i=$((i+1)); sleep 0.1; done".into()],
             cwd: std::env::temp_dir(),
             timeout: Timeout { idle_ms: 60_000, total_ms: 350 },
+            run: 0,
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::TimedOut);
@@ -966,6 +1001,45 @@ mod tests {
         let hit = view.timeout.as_ref().expect("timeout hit");
         assert_eq!(hit.kind, "total");
         assert!(!hit.hang_suspected, "{hit:?}");
+    }
+
+    #[test]
+    fn summary_is_scoped_to_the_latest_run() {
+        let dir = std::env::temp_dir().join(format!("forge-run-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mgr = Arc::new(JobManager::new(Some(dir.clone())));
+        let a = mgr.start(JobSpec {
+            name: "ci".into(),
+            kind: "validation".into(),
+            reason: "old run".into(),
+            tier: Tier::Unit,
+            run: 1,
+            program: "sh".into(),
+            args: vec!["-c".into(), "exit 3".into()],
+            cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
+        });
+        assert_eq!(wait_done(&mgr, a), Status::Failed);
+        let b = mgr.start(JobSpec {
+            name: "ci".into(),
+            kind: "validation".into(),
+            reason: "new run".into(),
+            tier: Tier::Unit,
+            run: 2,
+            program: "sh".into(),
+            args: vec!["-c".into(), "echo ok".into()],
+            cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
+        });
+        assert_eq!(wait_done(&mgr, b), Status::Succeeded);
+        // The default summary is the latest run (2), not the failed history (run 1).
+        let latest = mgr.summary(None);
+        assert_eq!(latest["run"], 2, "{latest}");
+        assert_eq!(latest["total"], 1, "{latest}");
+        assert!(latest["blocking"].as_array().is_some_and(Vec::is_empty), "{latest}");
+        let old = mgr.summary(Some(1));
+        assert_eq!(old["counts"]["failed"], 1, "{old}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
