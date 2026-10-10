@@ -226,16 +226,14 @@ pub fn apply_set(layer: &Layer, f: &Fill, canvas: Rect, p: &Value, fg: [f32; 4],
         let (f0, t0) = (from.unwrap_or(cur.0), to.unwrap_or(cur.1));
         let (a, s, o) = gf::from_handles(*style, f0, t0, frame, *angle);
         (*angle, *scale, *offset) = (a, clamp_scale(s), o);
-        // Past the scale range the dragged handle stops; the other one stays where it is (#1243).
-        // (Linear centres on the midpoint, so a clamped scale would otherwise move both ends.)
+        // Pin the stationary endpoint after either a scale limit or the half-pixel length guard.
+        // Linear centres on the midpoint; otherwise a short drag would move both ends (#1243).
         let anchor = match (from, to) {
             (Some(_), None) => Some((t0, false)),
             (None, Some(_)) => Some((f0, true)),
             _ => None,
         };
-        if let Some((pin, is_start)) = anchor
-            && *scale != s
-        {
+        if let Some((pin, is_start)) = anchor {
             let (f1, t1) = gf::handles(*style, *angle, *scale, *offset, frame);
             let at = if is_start { f1 } else { t1 };
             let (dx, dy) = (pin[0] - at[0], pin[1] - at[1]);
@@ -303,9 +301,12 @@ pub fn new_layer(s: &Session, doc: &Document, p: &Value) -> Result<Layer> {
     if canvas.is_empty() {
         return Err(bad(CMD, "the document is empty"));
     }
-    let (angle, scale, offset) = gf::from_handles(style, from, to, canvas, 0.0);
-    let fill = Fill::Gradient { stops, angle, scale: clamp_scale(scale), style, reverse, opacity_stops, midpoints: Vec::new(), offset, dither, align: false }
-        .in_mode(doc.mode);
+    let (angle, scale, mut offset) = gf::from_handles(style, from, to, canvas, 0.0);
+    let scale = clamp_scale(scale);
+    // The starting point remains where the pointer went down, even for a zero-length drag.
+    let actual_start = gf::handles(style, angle, scale, offset, canvas).0;
+    offset = (offset.0 + (from[0] - actual_start[0]) / canvas.width().max(1) as f32, offset.1 + (from[1] - actual_start[1]) / canvas.height().max(1) as f32);
+    let fill = Fill::Gradient { stops, angle, scale, style, reverse, opacity_stops, midpoints: Vec::new(), offset, dither, align: false }.in_mode(doc.mode);
     let mut l = Layer::new(doc.next_layer_name("Gradient Fill"), LayerContent::Fill(fill));
     l.opacity = opacity;
     l.blend = blend;

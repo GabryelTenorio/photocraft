@@ -419,3 +419,28 @@ fn short_live_gradients_keep_their_handles_through_pcraft_and_psd() {
         }
     }
 }
+
+/// The half-pixel numerical guard must not displace the stationary handle.
+#[test]
+fn subpixel_minimum_keeps_the_stationary_gradient_endpoint_fixed() {
+    let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
+    let close = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 0.01 && (a[1] - b[1]).abs() < 0.01;
+    for style in STYLES {
+        for short in [[100.1, 100.0], [100.0, 100.1], [100.0, 100.0]] {
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width": 6000, "height": 4000, "background": "transparent"})).unwrap();
+            let start = [100.0, 100.0];
+            s.execute(CREATE, json!({"from": start, "to": short, "style": style})).unwrap();
+            let g = s.execute(GET, json!({})).unwrap();
+            assert!(close(pt(&g, "from"), start), "{style}: creation moved the starting point: {g}");
+            let end = pt(&g, "to");
+            assert!(((end[0] - start[0]).hypot(end[1] - start[1]) - 0.5).abs() < 0.01);
+            s.execute(SET, json!({"from": start, "to": [120, 100]})).unwrap();
+            let g = s.execute(SET, json!({"to": short})).unwrap();
+            assert!(close(pt(&g, "from"), start), "{style}: dragging end moved start: {g}");
+            s.execute(SET, json!({"from": [80, 100], "to": start})).unwrap();
+            let g = s.execute(SET, json!({"from": short})).unwrap();
+            assert!(close(pt(&g, "to"), start), "{style}: dragging start moved end: {g}");
+        }
+    }
+}
