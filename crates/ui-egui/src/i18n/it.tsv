@@ -2500,3 +2500,12 @@ fontWeight	Italic	Corsivo
 	Front Image	Immagine in primo piano
 	Search settings…	Cerca impostazioni…
 	No matching settings	Nessuna impostazione corrispondente
+# Select and Mask view modes (#1754)
+	Onion Skin	Velina
+	Marching Ants	Formiche in marcia
+	On Black	Su nero
+	On White	Su bianco
+	On Layers	Su livelli
+	Show Edge	Mostra bordo
+	Show Original	Mostra originale
+	F cycles the views; hold X to see the image	F scorre le viste; tieni premuto X per vedere l'immagine
