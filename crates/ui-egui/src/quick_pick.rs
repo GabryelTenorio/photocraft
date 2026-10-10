@@ -18,6 +18,39 @@ pub fn is_gesture(mods: egui::Modifiers) -> bool {
     mods.mac_cmd && mods.alt && mods.ctrl
 }
 
+/// Keyboard/palette counterpart of Auto-Select. Resolve the latest canvas mapping so zoom,
+/// rotation, mirroring and display scale behave exactly like a pointer pick. An idle pointer
+/// outside the image leaves the current layer selected; an in-progress edit keeps its target.
+pub fn under_cursor(app: &mut PhotocraftApp, ctx: &egui::Context, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    if ctx.text_edit_focused() || app.ui.text_edit.is_some() || !app.ui.dialogs.is_empty() || app.drag.is_some() || app.ui.transform.is_some() {
+        return Ok(json!({"layer": null}));
+    }
+    let Some(xf) = crate::canvas::ViewXform::active(app) else { return Ok(json!({"layer": null})) };
+    let Some(p) = ctx.input(|i| i.pointer.hover_pos()).filter(|p| xf.rect.contains(*p)) else { return Ok(json!({"layer": null})) };
+    let [x, y] = xf.to_doc(p);
+    let Some(st) = app.session.active() else { return Ok(json!({"layer": null})) };
+    if !x.is_finite() || !y.is_finite() || x < 0.0 || y < 0.0 || x >= f64::from(st.doc.size.width) || y >= f64::from(st.doc.size.height) {
+        return Ok(json!({"layer": null}));
+    }
+    let mut fields = match params {
+        serde_json::Value::Null => serde_json::Map::new(),
+        serde_json::Value::Object(fields) => fields,
+        _ => return Err("layer.pickAt parameters must be an object".into()),
+    };
+    let select = fields.get("select").and_then(serde_json::Value::as_bool).unwrap_or(true);
+    let mode = fields.get("mode").cloned().unwrap_or_else(|| json!("replace"));
+    fields.insert("x".into(), json!(x));
+    fields.insert("y".into(), json!(y));
+    fields.insert("select".into(), json!(false));
+    let picked = app.run("layer.pickAt", serde_json::Value::Object(fields))?;
+    if select && let Some(layer) = picked.get("layer").and_then(serde_json::Value::as_u64) {
+        // Auto-Select clicks preserve an existing multiselection for the following drag.
+        // A dedicated keyboard pick instead makes the pointed layer the active selection.
+        app.run("layer.select", json!({"layer": layer, "mode": mode}))?;
+    }
+    Ok(picked)
+}
+
 /// Handles one canvas pointer event; true when it was consumed.
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) -> bool {
     match ev {

@@ -20,6 +20,9 @@
 //! `--right-click-at X,Y` opens a screen-space context menu after the script, including panel
 //! and document-tab menus that are outside the document-coordinate control pointer.
 //! `--quick-click` sends press and release in one raw-input frame for either click flag.
+//! `--scroll-by X,Y` sends one trackpad movement and its end in the same raw-input frame.
+//! `--hold-zoom` holds Z for 250 ms and releases it before capturing the restored tool.
+//! `--pick-under-cursor-at X,Y` moves to document coordinates and sends the default layer-pick shortcut.
 //! `--click-at X,Y` opens a screen-space menu (for example the top Select menu) after the script.
 
 use photocraft_ui_egui::control::{ControlRequest, Outcome, handle};
@@ -155,6 +158,37 @@ fn main() {
             harness.event(egui::Event::PointerButton { pos, button, pressed: false, modifiers: egui::Modifiers::NONE });
         }
         harness.run_steps(4);
+    }
+    if let Some((x, y)) = arg(&args, "--pick-under-cursor-at").and_then(|s| s.split_once(,).and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
+        if let Some(xform) = photocraft_ui_egui::canvas::ViewXform::active(harness.state()) {
+            harness.event(egui::Event::PointerMoved(xform.to_screen(x, y)));
+            harness.run_steps(2);
+            let command = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL | egui::Modifiers::COMMAND };
+            let modifiers = command | egui::Modifiers::ALT | egui::Modifiers::SHIFT;
+            harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
+            for pressed in [true, false] {
+                harness.input_mut().events.push(egui::Event::Key { key: egui::Key::U, physical_key: None, pressed, repeat: false, modifiers });
+            }
+            harness.step();
+            harness.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+            harness.run_steps(2);
+        }
+    }
+    if let Some((x, y)) = arg(&args, "--scroll-by").and_then(|s| s.split_once(,).and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
+        harness.event(egui::Event::PointerMoved(harness.state().last_canvas_rect.center()));
+        harness.run_steps(2);
+        for (delta, phase) in [(egui::vec2(x, y), egui::TouchPhase::Move), (egui::Vec2::ZERO, egui::TouchPhase::End)] {
+            harness.input_mut().events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase, modifiers: egui::Modifiers::NONE });
+        }
+        harness.run_steps(2);
+    }
+    if args.iter().any(|a| a == "--hold-zoom") {
+        harness.event(egui::Event::PointerMoved(harness.state().last_canvas_rect.center()));
+        harness.run_steps(2);
+        harness.input_mut().events.push(egui::Event::Key { key: egui::Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
+        harness.run_steps(16);
+        harness.input_mut().events.push(egui::Event::Key { key: egui::Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::NONE });
+        harness.run_steps(2);
     }
     let t_settle = std::time::Instant::now();
     while t_settle.elapsed() < std::time::Duration::from_millis(settle_ms) {

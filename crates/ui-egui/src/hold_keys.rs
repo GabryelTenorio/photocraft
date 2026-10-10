@@ -36,6 +36,8 @@ pub enum Temporary {
     Hand,
     ZoomIn,
     ZoomOut,
+    /// The spring-loaded Z key, keeping the selected tool and Alt direction.
+    Zoom,
     /// ⌘ held with a tool that [`cmd_moves`]: a modifier, not a rebindable key.
     Move,
 }
@@ -46,6 +48,7 @@ impl Temporary {
             Temporary::Hand => "tools.temporary.hand",
             Temporary::ZoomIn => "tools.temporary.zoomIn",
             Temporary::ZoomOut => "tools.temporary.zoomOut",
+            Temporary::Zoom => "tools.temporary.zoom",
             Temporary::Move => "tools.temporary.move",
         }
     }
@@ -53,7 +56,7 @@ impl Temporary {
     pub fn tool(self) -> Tool {
         match self {
             Temporary::Hand => Tool::Hand,
-            Temporary::ZoomIn | Temporary::ZoomOut => Tool::Zoom,
+            Temporary::ZoomIn | Temporary::ZoomOut | Temporary::Zoom => Tool::Zoom,
             Temporary::Move => Tool::Move,
         }
     }
@@ -162,7 +165,7 @@ pub fn held_tool(app: &PhotocraftApp, ctx: &egui::Context) -> Option<Temporary> 
     // tie with ⌥Space), unless ⌥ is part of the Zoom In key itself.
     let held = best.map(|(_, t, sc)| if t == Temporary::ZoomIn && alt && !sc.modifiers.alt { Temporary::ZoomOut } else { t });
     // A bound key (⌘Space is Zoom In) wins over ⌘ alone.
-    held.or(cmd_move.then_some(Temporary::Move))
+    held.or_else(|| crate::spring_zoom::held(app, ctx).then_some(Temporary::Zoom)).or(cmd_move.then_some(Temporary::Move))
 }
 
 /// Is the reposition key (the Hand key, any modifiers) down?
@@ -189,7 +192,7 @@ pub fn for_frame(app: &PhotocraftApp, ctx: &egui::Context, drawing: bool) -> Opt
     let t = if (down || released) && latched.is_some() {
         latched
     } else if drawing {
-        None
+        crate::spring_zoom::held(app, ctx).then_some(Temporary::Zoom)
     } else {
         held_tool(app, ctx)
     };

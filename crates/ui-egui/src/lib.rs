@@ -146,6 +146,7 @@ pub mod slice_ui;
 pub mod smart_ui;
 pub mod snap_ui;
 pub(crate) mod solid_fill_ui;
+mod spring_zoom;
 pub mod state;
 pub mod stroke_constraint;
 pub mod stroke_trail;
@@ -2307,3 +2308,6 @@ mod channel_tint_tests {
         assert_eq!(channel_tint(Rgb, 0, 77, false), Color32::from_gray(77));
     }
 }
+
+#[cfg(test)]
+mod layer_pick_shortcut_tests;

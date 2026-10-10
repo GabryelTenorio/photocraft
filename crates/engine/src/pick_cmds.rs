@@ -118,9 +118,9 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec {
         id: "layer.pickAt",
-        label: "Auto-Select Layer",
+        label: "Select Layer Under Cursor",
         menu: &[],
-        shortcut: None,
+        shortcut: Some("Cmd+Alt+Shift+U"),
         params: r##"{"x":px,"y":px,"target":"layer|group"="layer","select":bool=true,"mode":"replace|toggle|add"="replace","list":bool=false (return every layer with pixels there, topmost first)} → {layer} | {layers}"##,
         enabled: has_doc,
         journal: false,
