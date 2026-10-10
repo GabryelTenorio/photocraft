@@ -10,6 +10,7 @@
 
 pub mod probe;
 
+mod checks;
 mod context;
 mod git;
 mod impact;

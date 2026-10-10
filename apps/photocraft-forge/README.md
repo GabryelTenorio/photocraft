@@ -23,8 +23,9 @@ M3. Tools:
 | `forge_capabilities` | Report the environment; recommend installs for missing companions. |
 | `development_context` | Source fingerprint, workspace crate map, and the authoritative layering report. |
 | `change_impact` | Given paths / a command / a symbol / an intent: the must-change-together touch set, invariants, artifacts to regenerate, and the gate plan. |
+| `checks_for_changes` | Which finish gates a working diff requires, and why. |
 
-Planned: `checks_for_changes`, `validation_start` + job tools, `scenario_start`.
+Planned: `validation_start` + job tools, `scenario_start`.
 
 ## Run
 

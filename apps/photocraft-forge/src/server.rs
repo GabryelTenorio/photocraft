@@ -9,7 +9,7 @@ use rmcp::model::*;
 use rmcp::transport::io::stdio;
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 
-use crate::{context, impact, probe};
+use crate::{checks, context, impact, probe};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -78,6 +78,22 @@ impl Forge {
             .map_err(|e| McpError::internal_error(format!("impact task: {e}"), None))?
             .map_err(|e| McpError::internal_error(e, None))?;
         let text = serde_json::to_string_pretty(&result).map_err(|e| McpError::internal_error(format!("serialize impact: {e}"), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    /// The finish gates for a working diff.
+    #[tool(
+        description = "Which finish gates a working diff requires, and why. Pass `paths` (most accurate) or omit them to diff against `base` (default: the merge-base with origin/main). Returns the required/recommended gates, the changed paths, and a source fingerprint."
+    )]
+    async fn checks_for_changes(&self, Parameters(query): Parameters<checks::Query>) -> Result<CallToolResult, McpError> {
+        let root = probe::discover_repo_root().ok_or_else(|| {
+            McpError::internal_error("no PhotoCraft checkout found — run forge from inside the repo (a directory containing crates/, apps/ and xtask/)", None)
+        })?;
+        let result = tokio::task::spawn_blocking(move || checks::run(&root, query))
+            .await
+            .map_err(|e| McpError::internal_error(format!("checks task: {e}"), None))?
+            .map_err(|e| McpError::internal_error(e, None))?;
+        let text = serde_json::to_string_pretty(&result).map_err(|e| McpError::internal_error(format!("serialize checks: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 }

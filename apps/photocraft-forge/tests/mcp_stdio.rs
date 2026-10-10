@@ -82,6 +82,7 @@ fn stdio_handshake_lists_and_calls_capabilities() {
     assert!(names.contains(&"forge_capabilities"), "{names:?}");
     assert!(names.contains(&"development_context"), "{names:?}");
     assert!(names.contains(&"change_impact"), "{names:?}");
+    assert!(names.contains(&"checks_for_changes"), "{names:?}");
 
     send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"forge_capabilities","arguments":{}}}));
     let call = recv(3);
@@ -113,4 +114,13 @@ fn change_impact_returns_touch_set_and_gates() {
     let required = r["gates"]["required"].as_array().expect("required gates");
     assert!(required.iter().any(|g| g["id"] == "parity"), "{r}");
     assert!(required.iter().any(|g| g["id"] == "panic_hunt"), "{r}");
+}
+
+#[test]
+fn checks_for_changes_selects_gates_for_a_path() {
+    let r = forge_tool_call("checks_for_changes", json!({"paths": ["crates/engine/src/retouch_cmds.rs"]}));
+    let required = r["required"].as_array().expect("required gates");
+    assert!(required.iter().any(|g| g["id"] == "parity"), "{r}");
+    assert!(required.iter().any(|g| g["id"] == "panic_hunt"), "{r}");
+    assert!(r["fingerprint"]["head"].as_str().is_some(), "{r}");
 }
