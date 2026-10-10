@@ -3983,3 +3983,10 @@ cameraRaw	Zoom and Pan	Zoom e panorâmica
 	White Balance tool (I): click a neutral area	Ferramenta Equilíbrio de branco (I): clique em uma área neutra
 	Zoom Tool (Z)	Ferramenta Zoom (Z)
 cameraRaw	Type	Tipo
+	Demosaic	Demosaico
+	How the camera's colour filter mosaic is filled in. It is applied when the file opens; the preview shows the method it was opened with.	Como o mosaico do filtro de cor da câmera é preenchido. É aplicado ao abrir o arquivo; a visualização mostra o método com que ele foi aberto.
+	AHD (adaptive homogeneity)	AHD (homogeneidade adaptativa)
+	Malvar–He–Cutler	Malvar–He–Cutler
+	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks: as bordas mais limpas e o menor franjamento de cor; o mais lento.
+	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	Interpolação com correção de gradiente: nítida e rápida, com algum franjamento de cor em detalhes finos.
+	The fastest and the softest, with colour fringing on fine detail.	O mais rápido e o mais suave, com franjamento de cor em detalhes finos.

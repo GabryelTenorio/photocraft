@@ -3388,3 +3388,10 @@ cameraRaw	Type	유형
 	Transform Vertical	변형 세로
 	Upright	바로 세우기
 	White Balance	화이트 밸런스
+	Demosaic	디모자이크
+	How the camera's colour filter mosaic is filled in. It is applied when the file opens; the preview shows the method it was opened with.	카메라 컬러 필터 모자이크를 채우는 방법입니다. 파일을 열 때 적용되며, 미리 보기는 파일을 연 방식으로 표시됩니다.
+	AHD (adaptive homogeneity)	AHD (적응형 균질성)
+	Malvar–He–Cutler	Malvar–He–Cutler
+	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks: 가장 깨끗한 가장자리와 가장 적은 색 번짐, 가장 느림.
+	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	기울기 보정 보간: 선명하고 빠르지만 미세한 디테일에 약간의 색 번짐이 있음.
+	The fastest and the softest, with colour fringing on fine detail.	가장 빠르고 가장 부드러우며, 미세한 디테일에 색 번짐이 있음.
