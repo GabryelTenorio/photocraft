@@ -137,9 +137,14 @@ If the field has a PSD equivalent, map it in `crates/io` too, and keep unknown P
 - **jCodeMunch is only as fresh as its index: reindex it *before* you call it.** From the repo root,
   `jcodemunch-mcp index --no-ai-summaries .`. The `jcodemunch-watch` service can lag and leave the
   index pinned to an old `git_head`, so it answers from a stale tree — check the reported `freshness`
-  and reindex regardless. Even when fresh, this repo's index holds **no Rust symbols**: use its
-  `search_text` / file tools, not `search_symbols`. Prefer `read` and jCodeMunch `search_text` over
-  `grep`/`rg`.
+  and reindex regardless.
+- **Its `languages` allowlist is a silent filter.** `~/.code-index/config.jsonc` `languages` decides
+  which languages get *symbols*; a language absent from the list is indexed for text search only,
+  with no error. The 2026-09-17 trim omitted `rust`, so every `.rs` file here was symbol-less for
+  months (`get_file_outline` → 0, `search_symbols` → 0). **Check `languages` includes the file's
+  language before concluding a symbol is absent; if you change it, rebuild the index** — remove the
+  repo's state (`rm -rf ~/.code-index/<repo>*`) then reindex, because an incremental reindex does not
+  re-parse unchanged files. Prefer `read` and jCodeMunch `search_text`/`search_symbols` over `grep`/`rg`.
 
 ## Contributor credits (About window)
 
