@@ -19,6 +19,7 @@
 //! docs/control-protocol.md), applied in order with a few frames between them.
 //! `--right-click-at X,Y` opens a screen-space context menu after the script, including panel
 //! and document-tab menus that are outside the document-coordinate control pointer.
+//! `--quick-click` sends press and release in one raw-input frame for either click flag.
 //! `--click-at X,Y` opens a screen-space menu (for example the top Select menu) after the script.
 
 use photocraft_ui_egui::control::{ControlRequest, Outcome, handle};
@@ -144,9 +145,15 @@ fn main() {
         let pos = egui::pos2(x, y);
         harness.event(egui::Event::PointerMoved(pos));
         harness.step();
-        harness.event(egui::Event::PointerButton { pos, button, pressed: true, modifiers: egui::Modifiers::NONE });
-        harness.step();
-        harness.event(egui::Event::PointerButton { pos, button, pressed: false, modifiers: egui::Modifiers::NONE });
+        if args.iter().any(|a| a == "--quick-click") {
+            for pressed in [true, false] {
+                harness.input_mut().events.push(egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::NONE });
+            }
+        } else {
+            harness.event(egui::Event::PointerButton { pos, button, pressed: true, modifiers: egui::Modifiers::NONE });
+            harness.step();
+            harness.event(egui::Event::PointerButton { pos, button, pressed: false, modifiers: egui::Modifiers::NONE });
+        }
         harness.run_steps(4);
     }
     let t_settle = std::time::Instant::now();

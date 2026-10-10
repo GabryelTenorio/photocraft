@@ -1,8 +1,8 @@
 # Context-menu parity contract
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** trivial (status line and revision history added; linked from ui-parity.md) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (quick canvas-menu presses survive pixel rounding) · **Target:** Adobe Photoshop 2026
 
-Status: implementation contract, updated 2026-10-09. Scope: canvas, document tabs, and panels. “Right-click” means a secondary pointer click; macOS Control-click should also open the same menu where the platform sends a context-menu gesture. Photoshop changes a context menu with the active tool, selection, and panel item. Adobe documents that principle but does not publish a complete current menu catalog. **Documented** means an Adobe source explicitly names the gesture or action. **Inferred** means a PhotoCraft design target or an item known from a main menu whose presence in a Photoshop context menu still needs a current-product capture. Do not present inferred rows as exact Photoshop menus. [Adobe: panels and menus](https://helpx.adobe.com/photoshop/using/panels-menus.html), [Adobe: shortcuts and context menus](https://helpx.adobe.com/sa_en/photoshop/using/customizing-keyboard-shortcuts.html).
+Status: implementation contract, updated 2026-10-11. Scope: canvas, document tabs, and panels. “Right-click” means a secondary pointer click; macOS Control-click should also open the same menu where the platform sends a context-menu gesture. Photoshop changes a context menu with the active tool, selection, and panel item. Adobe documents that principle but does not publish a complete current menu catalog. **Documented** means an Adobe source explicitly names the gesture or action. **Inferred** means a PhotoCraft design target or an item known from a main menu whose presence in a Photoshop context menu still needs a current-product capture. Do not present inferred rows as exact Photoshop menus. [Adobe: panels and menus](https://helpx.adobe.com/photoshop/using/panels-menus.html), [Adobe: shortcuts and context menus](https://helpx.adobe.com/sa_en/photoshop/using/customizing-keyboard-shortcuts.html).
 
 ## Dispatch contract
 
@@ -13,6 +13,15 @@ Status: implementation contract, updated 2026-10-09. Scope: canvas, document tab
 5. Anchor at the pointer and clamp to the viewport; support keyboard context-menu key/Shift+F10 where available, Escape/outside click, separators only between nonempty groups, checked/radio state, keyboard navigation, and screen-reader labels.
 6. Use the same command id and enablement as the menu bar/options bar. Provide UI inspection data and control-channel operations to select a menu item without pixel coordinates, while retaining real pointer tests and screenshots.
 7. Test each menu model independently for conditional rows and wrong-state safety; test actual secondary-click routing, menu selection, undo/redo, and no accidental primary action.
+
+### Quick secondary clicks (2026-10-11, #2849)
+
+The Move layer list and selection-tool menus keep the opening press through their first frame,
+including repeated layout passes. Pixel rounding of the menu anchor cannot dismiss them.
+Later outside presses, Escape and choosing an action retain their usual behavior. Full-app
+raw-input regression tests cover a secondary press and release in the same frame, reopening,
+and all seven selection tools with and without a selection. Before/after offscreen captures
+use `snapshot --quick-click --right-click-at 457.5,363.5` on the same synthetic artwork.
 
 ## Canvas tool matrix
 
@@ -100,6 +109,7 @@ Each slice needs pure model tests (including every item dispatching a known comm
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Quick secondary-click opening and reopening regression coverage (#2849) |
 | 2026-10-10 | trivial | Status line, revision history |
 | 2026-10-09 | minor | Selection canvas reference and tool matrix updates |
 | 2026-10-07 | minor | Pen canvas reference capture |

@@ -18,6 +18,10 @@ use crate::state::Tool;
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerMenu {
     pub pos: [f32; 2],
+    /// Ignore the opening press, including repeated layout passes in that frame. The Area
+    /// rounds its anchor to pixels, which can put that press just outside the menu.
+    #[serde(skip)]
+    pub first_frame: Option<u64>,
     /// (layer id, name).
     pub layers: Vec<(u64, String)>,
 }
@@ -48,7 +52,7 @@ pub fn open(app: &mut PhotocraftApp, at: [f32; 2], x: f64, y: f64) -> bool {
         return false;
     }
     app.ui.brush_picker = None;
-    app.ui.layer_menu = Some(LayerMenu { pos: at, layers });
+    app.ui.layer_menu = Some(LayerMenu { pos: at, layers, first_frame: None });
     true
 }
 
@@ -62,7 +66,10 @@ pub fn choose(app: &mut PhotocraftApp, layer: u64) {
 
 /// Show the open menu. Escape or a click outside closes it.
 pub fn show(app: &mut PhotocraftApp, ctx: &Context) {
-    let Some(menu) = app.ui.layer_menu.clone() else { return };
+    let Some(menu) = app.ui.layer_menu.as_mut() else { return };
+    let frame = ctx.cumulative_frame_nr();
+    let opening = *menu.first_frame.get_or_insert(frame) == frame;
+    let menu = menu.clone();
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         app.ui.layer_menu = None;
         return;
@@ -98,7 +105,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &Context) {
         return;
     }
     let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p)));
-    if outside {
+    if !opening && outside {
         app.ui.layer_menu = None;
     }
 }
@@ -190,6 +197,59 @@ mod tests {
         h.event(egui::Event::PointerButton { pos: p, button: PointerButton::Secondary, pressed: false, modifiers });
         h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
         h.run_steps(2);
+    }
+
+    fn full_harness(a: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
+        let mut h = Harness::builder().with_size(vec2(1200.0, 800.0)).with_max_steps(64).build_eframe(move |cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            a
+        });
+        h.run_steps(6);
+        h
+    }
+
+    #[test]
+    fn quick_fractional_right_click_survives_reopening_and_dismisses_normally() {
+        let (mut a, bg, _, _) = app();
+        a.ui.tool = Tool::Move;
+        let mut h = full_harness(a);
+        let center = h.state().last_canvas_rect.center();
+        let p = Pos2::new(center.x.floor() + 0.75, center.y.floor() + 0.75);
+        for attempt in 0..3 {
+            let revision = h.state().session.active().unwrap().revision;
+            h.event(egui::Event::PointerMoved(p));
+            h.run_steps(1);
+            for pressed in [true, false] {
+                h.input_mut().events.push(egui::Event::PointerButton { pos: p, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+            }
+            h.run_steps(1);
+            assert!(h.state().ui.layer_menu.is_some(), "opening press closed menu, attempt {attempt}");
+            h.run_steps(2);
+            assert_eq!(names(h.state()), ["Red", "Background"]);
+            assert_eq!(h.state().session.active().unwrap().revision, revision);
+            if attempt == 2 {
+                let r = h.ctx.memory(|m| m.area_rect(egui::Id::new("canvas-layer-menu"))).unwrap();
+                let at = r.center() + vec2(0.0, 11.0);
+                h.event(egui::Event::PointerMoved(at));
+                for pressed in [true, false] {
+                    h.event(egui::Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+                }
+                h.run_steps(2);
+                assert_eq!(h.state().session.active().unwrap().active_layer.unwrap().0, bg);
+            } else if attempt == 1 {
+                h.key_press(egui::Key::Escape);
+                h.run_steps(2);
+            } else {
+                let outside = Pos2::new(5.0, 5.0);
+                h.event(egui::Event::PointerMoved(outside));
+                h.event(egui::Event::PointerButton { pos: outside, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+                h.run_steps(1);
+                assert!(h.state().ui.layer_menu.is_none(), "a later outside press still closes it");
+                h.event(egui::Event::PointerButton { pos: outside, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+                h.run_steps(1);
+            }
+            assert!(h.state().ui.layer_menu.is_none());
+        }
     }
 
     #[test]

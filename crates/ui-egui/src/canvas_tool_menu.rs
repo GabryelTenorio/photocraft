@@ -12,6 +12,10 @@ use crate::{PhotocraftApp, state::Tool};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CanvasToolMenu {
     pub pos: [f32; 2],
+    /// Ignore the opening press, including repeated layout passes in that frame. The Area
+    /// rounds its anchor to pixels, which can put that press just outside the menu.
+    #[serde(skip)]
+    pub first_frame: Option<u64>,
     pub tool: Tool,
     pub has_selection: bool,
     #[serde(default)]
@@ -190,8 +194,16 @@ pub fn open_transform(app: &mut PhotocraftApp, pos: [f32; 2]) -> bool {
     }
     app.ui.brush_picker = None;
     app.ui.layer_menu = None;
-    app.ui.canvas_tool_menu =
-        Some(CanvasToolMenu { pos, tool: app.ui.tool, has_selection: false, has_path: false, path_name: None, transform: true, pasteboard: false });
+    app.ui.canvas_tool_menu = Some(CanvasToolMenu {
+        pos,
+        tool: app.ui.tool,
+        has_selection: false,
+        has_path: false,
+        path_name: None,
+        transform: true,
+        pasteboard: false,
+        first_frame: None,
+    });
     true
 }
 
@@ -228,7 +240,8 @@ pub fn open_pasteboard(app: &mut PhotocraftApp, tool: Tool, pos: [f32; 2]) -> bo
     }
     app.ui.brush_picker = None;
     app.ui.layer_menu = None;
-    app.ui.canvas_tool_menu = Some(CanvasToolMenu { pos, tool, has_selection: false, has_path: false, path_name: None, transform: false, pasteboard: true });
+    app.ui.canvas_tool_menu =
+        Some(CanvasToolMenu { pos, tool, has_selection: false, has_path: false, path_name: None, transform: false, pasteboard: true, first_frame: None });
     true
 }
 
@@ -298,7 +311,7 @@ pub fn open(app: &mut PhotocraftApp, tool: Tool, pos: [f32; 2]) -> bool {
     let has_selection = app.session.active().is_some_and(|s| s.doc.selection.is_some());
     let has_path = crate::vector_ui::active_path_name(app).is_some() || app.ui.pen.as_ref().is_some_and(|p| p.knots.len() >= 2);
     let path_name = crate::vector_ui::active_path_name(app);
-    app.ui.canvas_tool_menu = Some(CanvasToolMenu { pos, tool, has_selection, has_path, path_name, transform: false, pasteboard: false });
+    app.ui.canvas_tool_menu = Some(CanvasToolMenu { pos, tool, has_selection, has_path, path_name, transform: false, pasteboard: false, first_frame: None });
     true
 }
 
@@ -392,7 +405,10 @@ fn choose_pen(app: &mut PhotocraftApp, ctx: &Context, menu: &CanvasToolMenu, com
 }
 
 pub fn show(app: &mut PhotocraftApp, ctx: &Context) {
-    let Some(menu) = app.ui.canvas_tool_menu.clone() else { return };
+    let Some(menu) = app.ui.canvas_tool_menu.as_mut() else { return };
+    let frame = ctx.cumulative_frame_nr();
+    let opening = *menu.first_frame.get_or_insert(frame) == frame;
+    let menu = menu.clone();
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) || app.ui.tool != menu.tool || (menu.transform && app.ui.transform.is_none()) {
         app.ui.canvas_tool_menu = None;
         return;
@@ -431,7 +447,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &Context) {
     });
     if let Some(command) = selected {
         choose(app, ctx, command);
-    } else if ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p))) {
+    } else if !opening && ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p))) {
         app.ui.canvas_tool_menu = None;
     }
 }
@@ -491,6 +507,56 @@ mod tests {
         h.event(egui::Event::PointerButton { pos: p, button: PointerButton::Secondary, pressed: false, modifiers });
         h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
         h.run_steps(2);
+    }
+
+    fn full_harness(a: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
+        let mut h = Harness::builder().with_size(vec2(1200.0, 800.0)).with_max_steps(64).build_eframe(move |cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            a
+        });
+        h.run_steps(6);
+        h
+    }
+
+    #[test]
+    fn quick_fractional_selection_menus_survive_reopening() {
+        for tool in [Tool::RectMarquee, Tool::EllipseMarquee, Tool::Lasso, Tool::PolygonLasso, Tool::MagneticLasso, Tool::MagicWand, Tool::ObjectSelection] {
+            for selection in [false, true] {
+                let mut a = app();
+                a.ui.tool = tool;
+                if selection {
+                    a.run("select.rect", json!({"x": 1, "y": 1, "width": 8, "height": 8})).unwrap();
+                }
+                let mut h = full_harness(a);
+                let center = h.state().last_canvas_rect.center();
+                let p = Pos2::new(center.x.floor() + 0.75, center.y.floor() + 0.75);
+                for attempt in 0..3 {
+                    let revision = h.state().session.active().unwrap().revision;
+                    h.event(egui::Event::PointerMoved(p));
+                    h.run_steps(1);
+                    for pressed in [true, false] {
+                        h.input_mut().events.push(egui::Event::PointerButton { pos: p, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+                    }
+                    h.run_steps(1);
+                    assert!(h.state().ui.canvas_tool_menu.is_some(), "{tool:?}, selection {selection}, attempt {attempt}");
+                    h.run_steps(2);
+                    assert_eq!(h.state().session.active().unwrap().revision, revision);
+                    if attempt == 0 {
+                        let outside = Pos2::new(5.0, 5.0);
+                        h.event(egui::Event::PointerMoved(outside));
+                        h.event(egui::Event::PointerButton { pos: outside, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+                        h.run_steps(1);
+                        assert!(h.state().ui.canvas_tool_menu.is_none(), "a later outside press still closes it");
+                        h.event(egui::Event::PointerButton { pos: outside, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+                        h.run_steps(1);
+                    } else {
+                        h.key_press(egui::Key::Escape);
+                        h.run_steps(2);
+                    }
+                    assert!(h.state().ui.canvas_tool_menu.is_none());
+                }
+            }
+        }
     }
 
     #[test]
