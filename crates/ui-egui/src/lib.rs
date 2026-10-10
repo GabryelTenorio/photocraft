@@ -179,6 +179,7 @@ mod type_font_preview;
 pub mod type_panels_ui;
 pub mod type_tool;
 mod type_transform;
+pub mod update_check;
 mod variables_ui;
 pub mod vector_ui;
 pub mod view_cmds;
@@ -493,6 +494,7 @@ pub struct PhotocraftApp {
     /// The first digit of a two-digit opacity typed on the number keys (`opacity_keys`, #352).
     pub(crate) opacity_keys: opacity_keys::Pending,
     control_rx: Option<Receiver<ControlRequest>>,
+    pub(crate) update_rx: Option<Receiver<(bool, update_check::UpdateCheckOutcome)>>,
     pending_screenshots: Vec<(u64, Option<String>, Sender<ControlResponse>)>,
     /// Screenshots not yet requested from the viewport: (token, earliest time in ms, frames seen).
     queued_screenshots: Vec<(u64, f64, u32)>,
@@ -753,6 +755,7 @@ impl PhotocraftApp {
             hist_job: None,
             gpu: None,
             started: None,
+            update_rx: None,
             perf: Default::default(),
             prefs_rt: Default::default(),
             discard: None,
@@ -1472,6 +1475,7 @@ impl eframe::App for PhotocraftApp {
         self.issue_screenshots(ctx);
         prefs_ui::tick(self, ctx);
         monitor_status::poll(self, ctx);
+        update_check::poll(self, ctx);
         // Control requests and persisted preferences can change the language in this frame.
         i18n::sync_context(ctx, &self.session.prefs().interface.language);
         // A window bigger than its display (1440 × 900 on 1366 × 768) runs under the taskbar:
