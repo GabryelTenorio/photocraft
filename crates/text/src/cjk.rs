@@ -324,7 +324,7 @@ fn fontconfig_cjk_font(script: CjkScript) -> Option<FontFile> {
     scan.result.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref()?.get(index)?.clone()
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(not(target_os = "linux"), not(target_arch = "wasm32")))]
 fn fontconfig_cjk_font(_: CjkScript) -> Option<FontFile> {
     None
 }
