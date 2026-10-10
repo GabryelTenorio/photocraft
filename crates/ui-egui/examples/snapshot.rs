@@ -220,12 +220,15 @@ fn main() {
         "language: {}",
         serde_json::json!({"preference": harness.state().session.prefs().interface.language, "resolved": photocraft_ui_egui::i18n::current().code()})
     );
-    println!("state: {}", serde_json::json!({
-        "tool": format!("{:?}", harness.state().ui.tool),
-        "zoom": harness.state().current_zoom(),
-        "center": harness.state().ui.views.first().map(|v| v.center),
-        "activeLayer": harness.state().session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).map(|l| &l.name),
-    }));
+    println!(
+        "state: {}",
+        serde_json::json!({
+            "tool": format!("{:?}", harness.state().ui.tool),
+            "zoom": harness.state().current_zoom(),
+            "center": harness.state().ui.views.first().map(|v| v.center),
+            "activeLayer": harness.state().session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).map(|l| &l.name),
+        })
+    );
     let img = harness.render().expect("render");
     img.save(&out).expect("save png");
     println!("wrote {out} ({}×{})", img.width(), img.height());
