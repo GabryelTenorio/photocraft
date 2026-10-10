@@ -218,10 +218,10 @@ pub(crate) fn import(name: &str, bytes: &[u8]) -> Result<Document> {
     Ok(r.document)
 }
 
-/// What a headless save writes beyond the format: JPEG quality, TIFF layers and Targa bits.
+/// What a headless save writes beyond the format: JPEG/AVIF quality, TIFF layers and Targa bits.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct SaveOpts {
-    /// Photoshop's 0–12 JPEG scale.
+    /// Photoshop's 0–12 JPEG scale, also used for AVIF.
     pub quality: Option<f64>,
     /// TIFF: keep the layers. Off unless a command's params ask (`"tiffLayers": true`).
     pub tiff_layers: bool,
@@ -1420,7 +1420,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Save a Copy…",
             &["File"],
             Some("Cmd+Alt+S"),
-            r##"{"path":str (format from the extension),"quality":0..12? (JPEG),"layers":bool=true,"tiffLayers":bool=false (TIFF: keep the layers; flat by default),"tgaBits":24|32? (TGA: 32 writes the alpha channel, or else the transparency, as the alpha; unset, 32 with an alpha channel or transparency, else 24)}"##,
+            r##"{"path":str (format from the extension),"quality":0..12? (JPEG/AVIF),"layers":bool=true,"tiffLayers":bool=false (TIFF: keep the layers; flat by default),"tgaBits":24|32? (TGA: 32 writes the alpha channel, or else the transparency, as the alpha; unset, 32 with an alpha channel or transparency, else 24)}"##,
             native_doc,
             save_a_copy
         ),
