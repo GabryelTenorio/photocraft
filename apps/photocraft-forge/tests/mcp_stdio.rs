@@ -87,6 +87,7 @@ fn stdio_handshake_lists_and_calls_capabilities() {
     assert!(names.contains(&"job_status"), "{names:?}");
     assert!(names.contains(&"job_logs"), "{names:?}");
     assert!(names.contains(&"job_cancel"), "{names:?}");
+    assert!(names.contains(&"forge_events"), "{names:?}");
     assert!(names.contains(&"scenario_start"), "{names:?}");
 
     send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"forge_capabilities","arguments":{}}}));

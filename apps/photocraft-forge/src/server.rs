@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{checks, context, impact, jobs, probe, scenario};
+use crate::{checks, context, events, impact, jobs, probe, scenario};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -78,10 +78,21 @@ impl Forge {
         let root = probe::discover_repo_root().ok_or_else(|| {
             McpError::internal_error("no PhotoCraft checkout found — run forge from inside the repo (a directory containing crates/, apps/ and xtask/)", None)
         })?;
+        let log_root = root.clone();
         let result = tokio::task::spawn_blocking(move || impact::run(&root, query))
             .await
             .map_err(|e| McpError::internal_error(format!("impact task: {e}"), None))?
             .map_err(|e| McpError::internal_error(e, None))?;
+        events::append(
+            &log_root,
+            "change_impact",
+            serde_json::json!({
+                "inputs": result.get("inputs"),
+                "resolved": result.get("resolved_paths"),
+                "touch": result.pointer("/touch").and_then(serde_json::Value::as_array).map(|a| a.iter().map(|t| serde_json::json!({"path": t.get("path"), "confidence": t.get("confidence")})).collect::<Vec<_>>()),
+                "required": result.pointer("/gates/required").and_then(serde_json::Value::as_array).map(|a| a.iter().filter_map(|g| g.get("id").and_then(serde_json::Value::as_str)).collect::<Vec<_>>()),
+            }),
+        );
         let text = serde_json::to_string_pretty(&result).map_err(|e| McpError::internal_error(format!("serialize impact: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
@@ -94,10 +105,21 @@ impl Forge {
         let root = probe::discover_repo_root().ok_or_else(|| {
             McpError::internal_error("no PhotoCraft checkout found — run forge from inside the repo (a directory containing crates/, apps/ and xtask/)", None)
         })?;
+        let log_root = root.clone();
         let result = tokio::task::spawn_blocking(move || checks::run(&root, query))
             .await
             .map_err(|e| McpError::internal_error(format!("checks task: {e}"), None))?
             .map_err(|e| McpError::internal_error(e, None))?;
+        events::append(
+            &log_root,
+            "checks_for_changes",
+            serde_json::json!({
+                "base": result.base,
+                "changed": result.changed,
+                "required": result.required.iter().filter_map(|g| g.get("id").and_then(serde_json::Value::as_str)).collect::<Vec<_>>(),
+                "head": result.fingerprint.head,
+            }),
+        );
         let text = serde_json::to_string_pretty(&result).map_err(|e| McpError::internal_error(format!("serialize checks: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
@@ -200,6 +222,18 @@ impl Forge {
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 
+    /// Read Forge's own event log.
+    #[tool(
+        description = "Read Forge's append-only event log (`target/forge/events.jsonl`): recent `change_impact` / `checks_for_changes` calls (inputs, touch, gates), newest first, optionally filtered by `kind`. A local, rebuildable record of what was planned, so a later session sees it without re-running."
+    )]
+    async fn forge_events(&self, Parameters(query): Parameters<EventsQuery>) -> Result<CallToolResult, McpError> {
+        let root = probe::discover_repo_root().ok_or_else(checkout_error)?;
+        let list = events::read(&root, query.kind.as_deref(), query.limit.unwrap_or(50));
+        let out = serde_json::json!({ "events": list });
+        let text = serde_json::to_string_pretty(&out).map_err(|e| McpError::internal_error(format!("serialize events: {e}"), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
     /// Exercise a change headlessly.
     #[tool(
         description = "Exercise a change and assert the result. `backend:\"headless\"` (default) runs `steps` as app-MCP tool calls against `photocraft-cli mcp`; `backend:\"offscreen\"` runs them as control-protocol calls and snapshots the full UI to `ui.png`; `backend:\"cli\"` runs `steps` as engine commands via `photocraft-cli run` with `input`/`new`, `out` and `files`, for commands the app MCP blocks (those that use filesystem paths). Evaluates `assertions` over the last structured step result, files, or rendered images (a `file` image can target a `region` and assert its `color`/`uniform`), and returns the evidence tier, artifacts (with hashes) and whether every assertion passed."
@@ -244,6 +278,18 @@ struct LogsQuery {
 struct CancelQuery {
     /// Job id.
     job: u64,
+}
+
+/// An events query.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct EventsQuery {
+    /// Only events of this kind (e.g. `change_impact`, `checks_for_changes`).
+    #[serde(default)]
+    kind: Option<String>,
+    /// Maximum events to return, newest first (default 50, max 500).
+    #[serde(default)]
+    limit: Option<usize>,
 }
 
 fn checkout_error() -> McpError {

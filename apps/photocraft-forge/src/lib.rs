@@ -16,6 +16,7 @@ mod artifact;
 mod checks;
 mod context;
 mod diagnostics;
+mod events;
 mod git;
 mod graph;
 mod impact;

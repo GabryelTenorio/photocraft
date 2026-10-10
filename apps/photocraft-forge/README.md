@@ -66,6 +66,7 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the required gates for a diff as serialized background jobs. |
 | `job_status` / `job_logs` / `job_cancel` | Poll status, read cursor-based logs, cancel a job (and its process tree). |
+| `forge_events` | Read the append-only event log (`target/forge/events.jsonl`): recent `change_impact` / `checks_for_changes` calls, newest first, filterable by `kind`. |
 | `scenario_start` | Exercise a change and assert the result: headless app-MCP calls (JSON paths, files, rendered images) or offscreen full-UI snapshots. |
 
 ### Contracts
@@ -153,6 +154,7 @@ installs them.
 | `scenario.rs` | `scenario_start`: a minimal MCP client to the headless app MCP, plus the offscreen snapshot backend. |
 | `graph.rs` | Optional host-MCP graph enrichment (bounded, degrading). |
 | `git.rs` | Read-only git helper. |
+| `events.rs` | Append-only event log (`target/forge/events.jsonl`). |
 
 The **signal registry** in `impact.rs` encodes the couplings generic search cannot see: doc fields →
 format/io; `Adjustment` arms → PSD `grdm` + compose + gpu + params + editor + compile guards;

@@ -108,6 +108,7 @@ fn every_tool_survives_adversarial_params() {
         ("job_logs", json!({"job": 999999})),
         ("job_logs", json!({"job": 1, "cursor": -5})),
         ("job_cancel", json!({"job": 0})),
+        ("forge_events", json!({"kind": 1})),
         ("forge_capabilities", json!({"extra": true})),
         ("development_context", json!({"nope": 1})),
     ];
