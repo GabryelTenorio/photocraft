@@ -71,7 +71,7 @@ MCPs for `related` files (see below).
 → `{ base, changed:[..], required:[gate], recommended:[gate], fingerprint, notes }`. With no `paths`,
 it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 
-`validation_start { paths?: [..], base?: "…", include_recommended?: bool }`
+`validation_start { paths?: [..], base?: "…", include_recommended?: bool, idle_timeout_secs?: n, timeout_secs?: n }`
 → `{ jobs:[{job,gate,command}], skipped:[..], unavailable:[{gate,reason}], note }`. Jobs run **one at a time** (Cargo jobs sharing
 `target/` and the caches must not contend). A `cargo test` that matched **zero tests** ends as
 `notests`, never a pass. Each completed job persists an immutable manifest under `target/forge/jobs/`
@@ -79,10 +79,14 @@ it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 (Cargo/clippy — human or `--message-format=json` — mapped to `file:line:col`),
 matched/executed/filtered **test counts**, and **artifacts** (media type + `blake3` content hash) —
 research §8. A job persisted while still queued or running loads as **`interrupted`** — never a silent
-`failed` — and each manifest carries start, finish and duration.
+`failed` — and each manifest carries start, finish and duration. Every job is **time-bounded**: it is
+terminated after no output for `idle_timeout_secs` (default 900) — a suspected hang — or after
+`timeout_secs` overall (default 3600, a runaway). A timed-out job ends as `timedout` (distinct from
+`failed`) and records which limit fired and whether a hang was suspected, so a slow-but-printing build
+is not mistaken for a stuck test (research §8).
 
 `job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,blocking,unavailable?,command,zero_tests,tests,diagnostics,artifacts,head,dirty,evidence,finished_ms}], summary }`.
-`summary` names what **blocks** the change (`failed`/`notests`), what never ran (`queued`), and where
+`summary` names what **blocks** the change (`failed`/`notests`/`timedout`), what never ran (`queued`), and where
 evidence is **unavailable** (e.g. a gate needing another platform), so an agent never mistakes a
 partial run for a green one.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.

@@ -108,7 +108,8 @@ impl Forge {
     )]
     async fn validation_start(&self, Parameters(params): Parameters<jobs::ValidationParams>) -> Result<CallToolResult, McpError> {
         let root = probe::discover_repo_root().ok_or_else(checkout_error)?;
-        let jobs::ValidationParams { paths, base, include_recommended } = params;
+        let jobs::ValidationParams { paths, base, include_recommended, idle_timeout_secs, timeout_secs } = params;
+        let timeout = jobs::Timeout::from_secs(idle_timeout_secs, timeout_secs);
         let query = checks::Query { paths, base };
         let probe_root = root.clone();
         let report = tokio::task::spawn_blocking(move || checks::run(&probe_root, query))
@@ -133,8 +134,16 @@ impl Forge {
                 Some(program) if !program.starts_with('(') => {
                     let args: Vec<String> = parts.map(str::to_string).collect();
                     let tier = jobs::tier_for_gate(&id);
-                    let spec =
-                        jobs::JobSpec { name: id.clone(), kind: "validation".to_string(), reason, tier, program: program.to_string(), args, cwd: root.clone() };
+                    let spec = jobs::JobSpec {
+                        name: id.clone(),
+                        kind: "validation".to_string(),
+                        reason,
+                        tier,
+                        program: program.to_string(),
+                        args,
+                        cwd: root.clone(),
+                        timeout,
+                    };
                     let job = self.jobs.start(spec);
                     started.push(serde_json::json!({"job": job, "gate": id, "command": command}));
                 }

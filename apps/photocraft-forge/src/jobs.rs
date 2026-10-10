@@ -39,13 +39,53 @@ pub enum Status {
     /// Exited 0 but matched zero tests — not a pass.
     NoTests,
     Cancelled,
+    /// Exceeded its idle or total time limit — distinct from a plain failure (research §8).
+    TimedOut,
     /// Was still queued/running when Forge last exited — interrupted, not failed (research §8).
     Interrupted,
 }
 
 impl Status {
     fn done(self) -> bool {
-        matches!(self, Status::Succeeded | Status::Failed | Status::NoTests | Status::Cancelled | Status::Interrupted)
+        matches!(self, Status::Succeeded | Status::Failed | Status::NoTests | Status::Cancelled | Status::TimedOut | Status::Interrupted)
+    }
+
+    /// Whether this outcome blocks the change (it is neither a pass nor a non-verdict).
+    fn blocking(self) -> bool {
+        matches!(self, Status::Failed | Status::NoTests | Status::TimedOut)
+    }
+}
+
+/// Which time limit a job hit (research §8), and whether the log suggests a hang.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TimeoutHit {
+    /// `idle` (no output for the idle window) or `total` (the absolute cap).
+    pub kind: String,
+    /// True when the **idle** window fired — no recent output, so a hang is suspected. False when
+    /// the job was still printing and merely outran the absolute cap (build progress).
+    pub hang_suspected: bool,
+}
+
+/// Per-job time limits (research §8). The idle window is generous so a slow-but-printing build is
+/// not killed; a hung test prints nothing and is caught by the idle window; the absolute cap
+/// catches a runaway.
+#[derive(Clone, Copy, Debug)]
+pub struct Timeout {
+    pub idle_ms: u64,
+    pub total_ms: u64,
+}
+
+impl Default for Timeout {
+    fn default() -> Self {
+        Self { idle_ms: 15 * 60_000, total_ms: 60 * 60_000 }
+    }
+}
+
+impl Timeout {
+    /// Limits from optional seconds; each defaults to [`Timeout::default`].
+    pub fn from_secs(idle_secs: Option<u64>, total_secs: Option<u64>) -> Self {
+        let d = Self::default();
+        Self { idle_ms: idle_secs.map_or(d.idle_ms, |s| s.saturating_mul(1000)), total_ms: total_secs.map_or(d.total_ms, |s| s.saturating_mul(1000)) }
     }
 }
 
@@ -91,6 +131,12 @@ pub struct ValidationParams {
     /// Also run the recommended (advisory) gates.
     #[serde(default)]
     pub include_recommended: bool,
+    /// Kill a job that produces no output for this many seconds (default 900).
+    #[serde(default)]
+    pub idle_timeout_secs: Option<u64>,
+    /// Absolute per-job cap in seconds (default 3600).
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 /// A job to run.
@@ -102,6 +148,7 @@ pub struct JobSpec {
     pub program: String,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    pub timeout: Timeout,
 }
 
 /// A persisted, immutable manifest of a completed job (fields per research §8).
@@ -137,6 +184,9 @@ struct Manifest {
     /// Why the job could not produce evidence (e.g. a missing tool), when that happened.
     #[serde(default)]
     unavailable: Option<String>,
+    /// Which time limit the job hit, if any.
+    #[serde(default)]
+    timeout: Option<TimeoutHit>,
     /// Outputs of the job (its log, and any produced files) with media types + content hashes.
     #[serde(default)]
     artifacts: Vec<Artifact>,
@@ -165,6 +215,7 @@ struct Job {
     log_path: Option<PathBuf>,
     tier: Tier,
     unavailable: Option<String>,
+    timeout: Option<TimeoutHit>,
     artifacts: Vec<Artifact>,
     diagnostics: Diagnostics,
 }
@@ -196,6 +247,9 @@ pub struct JobView {
     /// Why the job could not produce evidence, when that happened.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unavailable: Option<String>,
+    /// Which time limit the job hit, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<TimeoutHit>,
     /// Outputs with media types + content hashes (research §8).
     pub artifacts: Vec<Artifact>,
     /// Source fingerprint (HEAD) the job ran against.
@@ -278,6 +332,7 @@ impl JobManager {
                     dirty: manifest.dirty,
                     log_path: Some(log_path),
                     unavailable: manifest.unavailable,
+                    timeout: manifest.timeout,
                     artifacts: manifest.artifacts,
                     diagnostics: manifest.diagnostics,
                 },
@@ -288,21 +343,20 @@ impl JobManager {
 
     /// Queue a job and return its id. It runs as soon as the serialization gate frees up.
     pub fn start(self: &Arc<Self>, spec: JobSpec) -> u64 {
-        let JobSpec { name, kind, reason, tier, program, args, cwd } = spec;
         let id = self.next.fetch_add(1, Ordering::Relaxed);
-        let fingerprint = crate::context::fingerprint(&cwd);
+        let fingerprint = crate::context::fingerprint(&spec.cwd);
         let log = Arc::new(Mutex::new(String::new()));
         let cancel = Arc::new(AtomicBool::new(false));
         lock(&self.inner).jobs.insert(
             id,
             Job {
                 id,
-                name,
-                kind,
-                reason,
-                tier,
-                program: program.clone(),
-                args: args.clone(),
+                name: spec.name.clone(),
+                kind: spec.kind.clone(),
+                reason: spec.reason.clone(),
+                tier: spec.tier,
+                program: spec.program.clone(),
+                args: spec.args.clone(),
                 status: Status::Queued,
                 log: Arc::clone(&log),
                 cancel: Arc::clone(&cancel),
@@ -316,6 +370,7 @@ impl JobManager {
                 dirty: fingerprint.dirty,
                 log_path: None,
                 unavailable: None,
+                timeout: None,
                 artifacts: Vec::new(),
                 diagnostics: Diagnostics::default(),
             },
@@ -324,17 +379,20 @@ impl JobManager {
         // `interrupted` rather than silently `failed` (research §8).
         self.persist(id);
         let me = Arc::clone(self);
-        std::thread::spawn(move || me.run(id, program, args, cwd, log, cancel));
+        std::thread::spawn(move || me.run(id, spec, log, cancel));
         id
     }
 
-    fn run(self: Arc<Self>, id: u64, program: String, args: Vec<String>, cwd: PathBuf, log: Arc<Mutex<String>>, cancel: Arc<AtomicBool>) {
+    fn run(self: Arc<Self>, id: u64, spec: JobSpec, log: Arc<Mutex<String>>, cancel: Arc<AtomicBool>) {
+        let JobSpec { program, args, cwd, timeout, .. } = spec;
         let _serial = lock(&self.gate);
         if cancel.load(Ordering::Relaxed) {
             self.finish(id, Status::Cancelled, None, false);
             return;
         }
         self.mark_running(id);
+        let last_output = Arc::new(AtomicU64::new(now_ms_u64()));
+        let done = Arc::new(AtomicBool::new(false));
         let mut command = Command::new(&program);
         command.args(&args).current_dir(&cwd).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
@@ -346,31 +404,63 @@ impl JobManager {
             Ok(child) => child,
             Err(e) => {
                 let reason = format!("failed to spawn `{program}`: {e}");
-                append(&log, &format!("forge: {reason}\n"));
+                append(&log, &last_output, &format!("forge: {reason}\n"));
                 self.mark_unavailable(id, reason);
                 self.finish(id, Status::Failed, None, false);
                 return;
             }
         };
-        self.set_pid(id, child.id());
-        let out = child.stdout.take().map(|s| spawn_reader(s, Arc::clone(&log)));
-        let err = child.stderr.take().map(|s| spawn_reader(s, Arc::clone(&log)));
-        let status = child.wait();
-        if let Some(handle) = out {
-            let _ = handle.join();
+        let pid = child.id();
+        self.set_pid(id, pid);
+        // A watchdog kills the process tree when output stalls (a hang) or the absolute cap is hit
+        // (a runaway), so a universal timeout never misfires on a slow build (research §8).
+        let timed_out = Arc::new(AtomicBool::new(false));
+        spawn_watchdog(id, pid, now_ms(), Arc::clone(&last_output), Arc::clone(&done), Arc::clone(&timed_out), timeout, Arc::clone(&log), Arc::clone(&self));
+        let out = child.stdout.take().map(|s| spawn_reader(s, Arc::clone(&log), Arc::clone(&last_output)));
+        let err = child.stderr.take().map(|s| spawn_reader(s, Arc::clone(&log), Arc::clone(&last_output)));
+        // Poll so a timeout is not held hostage by a `wait` the watchdog cannot interrupt.
+        let mut exit = None;
+        loop {
+            match child.try_wait() {
+                Ok(Some(code)) => {
+                    exit = Some(code);
+                    break;
+                }
+                Ok(None) => {
+                    if cancel.load(Ordering::Relaxed) || timed_out.load(Ordering::Relaxed) {
+                        kill_group(pid);
+                        let _ = child.kill();
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(_) => break,
+            }
         }
-        if let Some(handle) = err {
-            let _ = handle.join();
+        done.store(true, Ordering::Relaxed);
+        // The direct child is gone. Join the readers so the log tail (test counts, diagnostics) is
+        // captured; on a timeout/cancel a surviving grandchild may hold the pipe, so don't block on
+        // it — the direct child is already terminated.
+        if !(timed_out.load(Ordering::Relaxed) || cancel.load(Ordering::Relaxed)) {
+            if let Some(handle) = out {
+                let _ = handle.join();
+            }
+            if let Some(handle) = err {
+                let _ = handle.join();
+            }
         }
         if cancel.load(Ordering::Relaxed) {
             self.finish(id, Status::Cancelled, None, false);
             return;
         }
-        let code = status.as_ref().ok().and_then(std::process::ExitStatus::code);
+        if timed_out.load(Ordering::Relaxed) {
+            self.finish(id, Status::TimedOut, None, false);
+            return;
+        }
+        let code = exit.as_ref().and_then(std::process::ExitStatus::code);
         let zero = detect_zero_tests(lock(&log).as_str());
-        let status = match status {
-            Ok(s) if s.success() && zero => Status::NoTests,
-            Ok(s) if s.success() => Status::Succeeded,
+        let status = match exit {
+            Some(s) if s.success() && zero => Status::NoTests,
+            Some(s) if s.success() => Status::Succeeded,
             _ => Status::Failed,
         };
         self.finish(id, status, code, zero);
@@ -393,6 +483,13 @@ impl JobManager {
     fn mark_unavailable(&self, id: u64, reason: String) {
         if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
             job.unavailable = Some(reason);
+        }
+    }
+
+    /// Record which time limit a job hit (the watchdog calls this before terminating it).
+    fn mark_timeout(&self, id: u64, hit: TimeoutHit) {
+        if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
+            job.timeout = Some(hit);
         }
     }
 
@@ -443,8 +540,9 @@ impl JobManager {
                 finished_ms: job.finished_ms,
                 head: job.head.clone(),
                 dirty: job.dirty,
-                blocking: matches!(job.status, Status::Failed | Status::NoTests),
+                blocking: job.status.blocking(),
                 unavailable: job.unavailable.clone(),
+                timeout: job.timeout.clone(),
                 artifacts: Vec::new(),
                 diagnostics: job.diagnostics.clone(),
             };
@@ -477,8 +575,9 @@ impl JobManager {
             tests: job.diagnostics.tests.clone(),
             diagnostics: job.diagnostics.entries.len(),
             tier: job.tier,
-            blocking: matches!(job.status, Status::Failed | Status::NoTests),
+            blocking: job.status.blocking(),
             unavailable: job.unavailable.clone(),
+            timeout: job.timeout.clone(),
             artifacts: job.artifacts.clone(),
             head: job.head.clone(),
             dirty: job.dirty,
@@ -508,10 +607,10 @@ impl JobManager {
         for v in &views {
             *counts.entry(format!("{:?}", v.status).to_lowercase()).or_default() += 1;
             let entry = serde_json::json!({"job": v.id, "name": v.name, "status": v.status});
-            match v.status {
-                Status::Failed | Status::NoTests => blocking.push(entry),
-                Status::Queued => unrun.push(entry),
-                _ => {}
+            if v.status.blocking() {
+                blocking.push(entry);
+            } else if v.status == Status::Queued {
+                unrun.push(entry);
             }
             if let Some(reason) = &v.unavailable {
                 unavailable.push(serde_json::json!({"job": v.id, "name": v.name, "reason": reason}));
@@ -567,29 +666,85 @@ fn now_ms() -> u128 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
 
-fn append(log: &Arc<Mutex<String>>, text: &str) {
-    let mut g = lock(log);
-    if g.len() < LOG_CAP {
-        g.push_str(text);
-    }
+/// `now_ms` narrowed to `u64` for [`AtomicU64`] (milliseconds since the epoch fit for ~584M years).
+fn now_ms_u64() -> u64 {
+    u64::try_from(now_ms()).unwrap_or(u64::MAX)
 }
 
-fn spawn_reader(mut reader: impl Read + Send + 'static, log: Arc<Mutex<String>>) -> std::thread::JoinHandle<()> {
+fn append(log: &Arc<Mutex<String>>, last_output: &Arc<AtomicU64>, text: &str) {
+    {
+        let mut g = lock(log);
+        if g.len() < LOG_CAP {
+            g.push_str(text);
+        }
+    }
+    // Any output counts as progress, even past the log cap: the watchdog must not call it a hang.
+    last_output.store(now_ms_u64(), Ordering::Relaxed);
+}
+
+fn spawn_reader(mut reader: impl Read + Send + 'static, log: Arc<Mutex<String>>, last_output: Arc<AtomicU64>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
-                Ok(n) => append(&log, &String::from_utf8_lossy(&buf[..n])),
+                Ok(n) => append(&log, &last_output, &String::from_utf8_lossy(&buf[..n])),
             }
         }
     })
 }
 
+/// Watch a running job: terminate the process tree when output stalls (a hang) or the absolute cap
+/// is hit (a runaway). On the stall path it records `hang_suspected`; on the cap path it does not,
+/// because output was still arriving (build progress).
+#[allow(clippy::too_many_arguments, reason = "one watch per job; a small, explicit set of handles")]
+fn spawn_watchdog(
+    id: u64,
+    pid: u32,
+    started: u128,
+    last_output: Arc<AtomicU64>,
+    done: Arc<AtomicBool>,
+    timed_out: Arc<AtomicBool>,
+    timeout: Timeout,
+    log: Arc<Mutex<String>>,
+    manager: Arc<JobManager>,
+) {
+    std::thread::spawn(move || {
+        loop {
+            if done.load(Ordering::Relaxed) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            if done.load(Ordering::Relaxed) {
+                return;
+            }
+            let now = now_ms();
+            let idle = now.saturating_sub(u128::from(last_output.load(Ordering::Relaxed)));
+            let hit = if idle >= u128::from(timeout.idle_ms) {
+                Some(TimeoutHit { kind: "idle".to_string(), hang_suspected: true })
+            } else if now.saturating_sub(started) >= u128::from(timeout.total_ms) {
+                Some(TimeoutHit { kind: "total".to_string(), hang_suspected: false })
+            } else {
+                None
+            };
+            if let Some(hit) = hit {
+                append(&log, &last_output, &format!("forge: exceeded the {} time limit; terminating the job tree\n", hit.kind));
+                manager.mark_timeout(id, hit);
+                timed_out.store(true, Ordering::Relaxed);
+                kill_group(pid);
+                return;
+            }
+        }
+    });
+}
+
 #[cfg(unix)]
 fn kill_group(pid: u32) {
-    // The child leads its own process group (process_group(0)), so `-pid` signals the tree.
-    let _ = Command::new("kill").args(["-TERM", &format!("-{pid}")]).status();
+    // The child leads its own process group (process_group(0)), so `-- -pid` signals the tree.
+    // `--` stops option parsing so the negative pgid is read as a target, not a flag.
+    let pgid = format!("-{pid}");
+    let _ = Command::new("kill").args(["-s", "TERM", "--", &pgid]).status();
+    let _ = Command::new("kill").args(["-s", "KILL", "--", &pgid]).status();
 }
 
 #[cfg(windows)]
@@ -667,6 +822,7 @@ mod tests {
             program: "sh".into(),
             args: vec!["-c".into(), "echo forge-hello".into()],
             cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
@@ -687,6 +843,7 @@ mod tests {
             program: "sh".into(),
             args: vec!["-c".into(), "echo persisted-hello".into()],
             cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
@@ -721,6 +878,7 @@ mod tests {
             program: "sh".into(),
             args: vec!["-c".into(), "echo artifact-hello".into()],
             cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
         };
         let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
@@ -745,6 +903,7 @@ mod tests {
             program: "sh".into(),
             args: vec!["-c".into(), "exit 3".into()],
             cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
         });
         assert_eq!(wait_done(&mgr, fail), Status::Failed);
         let missing = mgr.start(JobSpec {
@@ -755,6 +914,7 @@ mod tests {
             program: "forge-no-such-tool-xyz".into(),
             args: Vec::new(),
             cwd: std::env::temp_dir(),
+            timeout: Timeout::default(),
         });
         assert_eq!(wait_done(&mgr, missing), Status::Failed);
         let s = mgr.summary();
@@ -763,6 +923,49 @@ mod tests {
         assert!(s["blocking"].as_array().is_some_and(|a| a.len() == 2), "{s}");
         assert!(s["unavailable"].as_array().is_some_and(|a| a.iter().any(|u| u["job"] == missing)), "{s}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stalled_job_times_out_and_is_flagged_as_a_hang() {
+        let mgr = Arc::new(JobManager::new(None));
+        let spec = JobSpec {
+            name: "hang".into(),
+            kind: "test".into(),
+            reason: "timeout".into(),
+            tier: Tier::Unit,
+            program: "sh".into(),
+            args: vec!["-c".into(), "echo starting; sleep 30".into()],
+            cwd: std::env::temp_dir(),
+            timeout: Timeout { idle_ms: 250, total_ms: 60_000 },
+        };
+        let id = mgr.start(spec);
+        assert_eq!(wait_done(&mgr, id), Status::TimedOut);
+        let view = &mgr.views(Some(id))[0];
+        let hit = view.timeout.as_ref().expect("timeout hit");
+        assert_eq!(hit.kind, "idle");
+        assert!(hit.hang_suspected, "{hit:?}");
+        assert!(view.blocking);
+    }
+
+    #[test]
+    fn a_progressing_job_hits_the_total_cap_not_a_hang() {
+        let mgr = Arc::new(JobManager::new(None));
+        let spec = JobSpec {
+            name: "long".into(),
+            kind: "test".into(),
+            reason: "timeout".into(),
+            tier: Tier::Unit,
+            program: "sh".into(),
+            args: vec!["-c".into(), "i=0; while [ $i -lt 60 ]; do echo tick; i=$((i+1)); sleep 0.1; done".into()],
+            cwd: std::env::temp_dir(),
+            timeout: Timeout { idle_ms: 60_000, total_ms: 350 },
+        };
+        let id = mgr.start(spec);
+        assert_eq!(wait_done(&mgr, id), Status::TimedOut);
+        let view = &mgr.views(Some(id))[0];
+        let hit = view.timeout.as_ref().expect("timeout hit");
+        assert_eq!(hit.kind, "total");
+        assert!(!hit.hang_suspected, "{hit:?}");
     }
 
     #[test]
