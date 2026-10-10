@@ -2093,9 +2093,19 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         // A click follows the selected thumbnail; name that action for screen readers even
         // though dropping a whole layer row onto the same button always deletes the layer.
         trash.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!(label)));
-        let new_layer = icons::button(ui, "square-plus", 26.0, false, &crate::shortcuts::tip_label(app, "Create a new layer", "layer.new.layer"));
+        // Like Photoshop a plain click adds above the selection; ⌘/Ctrl-click adds below.
+        let new_tip = {
+            let key = crate::shortcuts::pretty("Cmd");
+            match crate::shortcuts::shortcut_label(app, "layer.new.layer") {
+                Some(sc) => crate::i18n::fmt(tl!("Create a new layer  ({shortcut}; {key}-click below)"), &[("shortcut", &sc), ("key", &key)]),
+                None => crate::i18n::fmt(tl!("Create a new layer  ({key}-click below)"), &[("key", &key)]),
+            }
+        };
+        let new_layer = icons::button(ui, "square-plus", 26.0, false, &new_tip);
         if new_layer.clicked() {
-            actions.push(("layer.new.layer".into(), json!({})));
+            let below = ui.input(|i| i.modifiers.command);
+            let params = if below { json!({"position": "below"}) } else { json!({}) };
+            actions.push(("layer.new.layer".into(), params));
         }
         actions.extend(footer_drop(ui, &new_layer, footer_drag, "layer.duplicate"));
         let group = icons::button(ui, "folder", 26.0, false, tl!("Create a new group"));
