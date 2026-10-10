@@ -4575,6 +4575,7 @@ dependencies = [
  "egui_extras",
  "egui_kittest",
  "flate2",
+ "image",
  "log",
  "photocraft-algo",
  "photocraft-cms",
