@@ -16,7 +16,11 @@ no `unsafe`), but it is **not** part of the product build.
 
 ## Status
 
-**MVP complete.** The full tool set (decision D5) is implemented and tested. Design decisions are in
+**MVP complete, documented functionality done.** The full tool set (decision D5) is implemented and
+tested, including the documented evidence contract: durable job manifests (fingerprint, exact argv,
+reason, parsed diagnostics, test counts, artifacts with hashes + media types, evidence tier,
+blocking/unrun/unavailable, timeouts), Forge's own build identity, and headless + offscreen scenario
+backends. Design decisions are in
 `plan/photocraft-dev-mcp-decisions.md` (D1–D9) in the authoring repo; the research is in
 `plan/photocraft-dev-mcp-research.md` / `-plan.md` / `-core-spec.md`.
 
