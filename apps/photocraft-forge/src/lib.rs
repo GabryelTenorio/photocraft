@@ -8,6 +8,8 @@
 //!
 //! This crate is the M0/M1 scaffold. See `plan/photocraft-dev-mcp-plan.md` in the authoring repo.
 
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
 pub mod probe;
 
 mod artifact;
