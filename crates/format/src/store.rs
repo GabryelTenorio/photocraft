@@ -26,12 +26,28 @@ fn blob_path(h: &str) -> String {
     format!("blobs/{h}.zst")
 }
 
+#[cfg(not(feature = "native-zstd"))]
 type Compressor<'a> = ruzstd::encoding::FrameCompressor<std::io::Cursor<std::borrow::Cow<'a, [u8]>>, Vec<u8>, ruzstd::encoding::MatchGeneratorDriver>;
+#[cfg(feature = "native-zstd")]
+type Compressor<'a> = photocraft_codecs::ZstdEncoder<'a>;
+
+fn new_compressor<'a>() -> Result<Compressor<'a>> {
+    #[cfg(feature = "native-zstd")]
+    return Ok(Compressor::new()?);
+    #[cfg(not(feature = "native-zstd"))]
+    Ok(Compressor::new(ruzstd::encoding::CompressionLevel::Fastest))
+}
 
 fn decompress(data: &[u8], expected: usize, what: &str) -> Result<Vec<u8>> {
-    let mut dec = ruzstd::decoding::StreamingDecoder::new(data).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
-    let mut out = Vec::with_capacity(expected.min(64 << 20));
-    (&mut dec).take(expected as u64 + 1).read_to_end(&mut out).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
+    #[cfg(feature = "native-zstd")]
+    let out = photocraft_codecs::decode_zstd(data, expected).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
+    #[cfg(not(feature = "native-zstd"))]
+    let out = {
+        let mut dec = ruzstd::decoding::StreamingDecoder::new(data).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
+        let mut out = Vec::with_capacity(expected.min(64 << 20));
+        (&mut dec).take(expected as u64 + 1).read_to_end(&mut out).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
+        out
+    };
     if out.len() != expected {
         return Err(FormatError::corrupt(format!("{what}: expected {expected} bytes, got {}", out.len())));
     }
@@ -380,19 +396,24 @@ enum Object {
 }
 
 impl Object {
-    fn compressed<'a>(&'a self, compressor: &mut Compressor<'a>) -> Vec<u8> {
+    fn compressed<'a>(&'a self, compressor: &mut Compressor<'a>) -> Result<Vec<u8>> {
         let bytes = match self {
             Object::Tile(t, s) => tile_le(t, *s),
             Object::Blob(b) => std::borrow::Cow::Borrowed(b.as_slice()),
         };
-        // ruzstd's pooled suffix tables retain the first block's size.
-        if bytes.len() % (128 << 10) != 0 {
-            return ruzstd::encoding::compress_to_vec(bytes.as_ref(), ruzstd::encoding::CompressionLevel::Fastest);
+        #[cfg(feature = "native-zstd")]
+        return Ok(compressor.compress(&bytes)?);
+        #[cfg(not(feature = "native-zstd"))]
+        {
+            // ruzstd's pooled suffix tables retain the first block's size.
+            if bytes.len() % (128 << 10) != 0 {
+                return Ok(ruzstd::encoding::compress_to_vec(bytes.as_ref(), ruzstd::encoding::CompressionLevel::Fastest));
+            }
+            compressor.set_source(std::io::Cursor::new(bytes));
+            compressor.set_drain(Vec::new());
+            compressor.compress();
+            Ok(compressor.set_drain(Vec::new()).unwrap_or_default())
         }
-        compressor.set_source(std::io::Cursor::new(bytes));
-        compressor.set_drain(Vec::new());
-        compressor.compress();
-        compressor.set_drain(Vec::new()).unwrap_or_default()
     }
 
     fn matches_content_hash(&self, compressed: &[u8], what: &str) -> bool {
@@ -466,22 +487,22 @@ type Compressed<'a> = (&'a String, Arc<Vec<u8>>);
 fn par_compress<'a>(objects: &[(&'a String, &'a Object)]) -> Result<Vec<Compressed<'a>>> {
     let threads = if cfg!(target_arch = "wasm32") { 1 } else { std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 32) };
     if threads < 2 || objects.len() < 2 {
-        let mut compressor = Compressor::new(ruzstd::encoding::CompressionLevel::Fastest);
-        return Ok(objects.iter().map(|(p, o)| (*p, Arc::new(o.compressed(&mut compressor)))).collect());
+        let mut compressor = new_compressor()?;
+        return objects.iter().map(|(p, o)| Ok((*p, Arc::new(o.compressed(&mut compressor)?)))).collect();
     }
     let next = std::sync::atomic::AtomicUsize::new(0);
     std::thread::scope(|sc| {
         let hs: Vec<_> = (0..threads.min(objects.len()))
             .map(|_| {
-                sc.spawn(|| {
-                    let mut compressor = Compressor::new(ruzstd::encoding::CompressionLevel::Fastest);
+                sc.spawn(|| -> Result<_> {
+                    let mut compressor = new_compressor()?;
                     let mut out = Vec::new();
                     loop {
                         let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         let Some((p, o)) = objects.get(i) else { break };
-                        out.push((*p, Arc::new(o.compressed(&mut compressor))));
+                        out.push((*p, Arc::new(o.compressed(&mut compressor)?)));
                     }
-                    out
+                    Ok(out)
                 })
             })
             .collect();
@@ -490,7 +511,7 @@ fn par_compress<'a>(objects: &[(&'a String, &'a Object)]) -> Result<Vec<Compress
         let joined: Vec<_> = hs.into_iter().map(|h| h.join()).collect();
         let mut out = Vec::with_capacity(objects.len());
         for r in joined {
-            out.extend(r.map_err(|_| FormatError::Io(std::io::Error::other("compression worker panicked")))?);
+            out.extend(r.map_err(|_| FormatError::Io(std::io::Error::other("compression worker panicked")))??);
         }
         Ok(out)
     })
@@ -572,7 +593,10 @@ impl PcraftWriter {
                         Object::Tile(..) => stats.tiles_written += 1,
                         Object::Blob(_) => stats.blobs_written += 1,
                     }
-                    fresh.remove(path).unwrap_or_else(|| Arc::new(obj.compressed(&mut Compressor::new(ruzstd::encoding::CompressionLevel::Fastest))))
+                    match fresh.remove(path) {
+                        Some(data) => data,
+                        None => Arc::new(obj.compressed(&mut new_compressor()?)?),
+                    }
                 }
             };
             z.add(path, &data)?;
@@ -604,7 +628,7 @@ impl PcraftWriter {
             None => 0,
         };
         let recheck = self.rolling_recheck(&p.objects);
-        let mut compressor = Compressor::new(ruzstd::encoding::CompressionLevel::Fastest);
+        let mut compressor = new_compressor()?;
         for (path, obj) in &p.objects {
             let object_path = dir.join(path);
             let signature = path_signature(&object_path)?;
@@ -636,7 +660,7 @@ impl PcraftWriter {
                 Object::Tile(..) => stats.tiles_written += 1,
                 Object::Blob(_) => stats.blobs_written += 1,
             }
-            write_atomic(&object_path, &obj.compressed(&mut compressor))?;
+            write_atomic(&object_path, &obj.compressed(&mut compressor)?)?;
             let written = path_signature(&object_path)?;
             if let Some(cache) = &mut self.verified_directory {
                 match written {
@@ -737,9 +761,10 @@ mod tests {
         let data: Vec<Arc<Vec<u8>>> =
             [0, 1, 8, 131_072, 262_144, 262_147, 131_072, 1].into_iter().map(|n| Arc::new((0..n).map(|i| ((i * 37 + i / 97) % 251) as u8).collect())).collect();
         let objects: Vec<_> = data.iter().cloned().map(Object::Blob).collect();
-        let mut compressor = Compressor::new(ruzstd::encoding::CompressionLevel::Fastest);
+        let mut compressor = new_compressor().unwrap();
         for (object, bytes) in objects.iter().zip(&data) {
-            let encoded = object.compressed(&mut compressor);
+            let encoded = object.compressed(&mut compressor).unwrap();
+            #[cfg(not(feature = "native-zstd"))]
             assert_eq!(encoded, ruzstd::encoding::compress_to_vec(bytes.as_slice(), ruzstd::encoding::CompressionLevel::Fastest));
             assert_eq!(decompress(&encoded, bytes.len(), "test").unwrap(), **bytes);
         }
