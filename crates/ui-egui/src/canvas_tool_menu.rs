@@ -520,7 +520,17 @@ mod tests {
 
     #[test]
     fn quick_fractional_selection_menus_survive_reopening() {
-        for tool in [Tool::RectMarquee, Tool::EllipseMarquee, Tool::Lasso, Tool::PolygonLasso, Tool::MagneticLasso, Tool::MagicWand, Tool::ObjectSelection] {
+        for tool in [
+            Tool::RectMarquee,
+            Tool::EllipseMarquee,
+            Tool::SingleRowMarquee,
+            Tool::SingleColumnMarquee,
+            Tool::Lasso,
+            Tool::PolygonLasso,
+            Tool::MagneticLasso,
+            Tool::MagicWand,
+            Tool::ObjectSelection,
+        ] {
             for selection in [false, true] {
                 let mut a = app();
                 a.ui.tool = tool;
