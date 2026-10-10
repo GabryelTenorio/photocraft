@@ -320,6 +320,16 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 });
             }
         });
+    // Toolbar|canvas seam on the reading-start side: the toolbar is non-resizable so egui has
+    // no hover line here, but with `show_separator_line(false)` there is no idle line
+    // either. Paint 1px `t.separator` like the other side, inset into the toolbar so the
+    // later `CentralPanel` background (which starts exactly at the seam) never covers it.
+    // In a right-to-left UI the toolbar is on the right, so the seam is `max.x`.
+    // Top/bottom panels keep egui's default separator: non-resizable horizontals paint a
+    // permanent dim `t.separator` line, never the white hover `t.text` of resizable edges.
+    let avail = ui.available_rect_before_wrap();
+    let x = if crate::direction::is_rtl() { avail.max.x + 1.0 } else { avail.min.x - 1.0 };
+    ui.painter().vline(x, avail.y_range(), Stroke::new(1.0, t.separator));
 }
 
 /// Glyph size of a toolbar tool button. Pro fills two thirds of the button, close to Photoshop's
@@ -1637,6 +1647,12 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 /// hovered or dragged. Inset into the panel so the later `CentralPanel` background (which
 /// starts exactly at the seam) never covers the line. In a right-to-left UI the dock is on
 /// the left, so the inset mirrors onto the other side of the seam.
+///
+/// The `toolbar|canvas` seam is painted the same way at the end of `toolbar`, but
+/// always idle: the toolbar is non-resizable, so there is no hover language for it.
+/// Top/bottom panels (`title_bar`, `options_bar`, `status_bar`) intentionally keep egui's
+/// default separator: non-resizable horizontals paint a permanent dim `t.separator` line,
+/// never the white hover line reserved for resizable edges.
 fn paint_chrome_dividers(ui: &mut egui::Ui, t: &Tokens, dividers: &[(f32, bool)]) {
     if dividers.is_empty() {
         return;
@@ -1689,11 +1705,8 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
         return false;
     }
     let margin = if t.pro { 2 } else { 8 };
-    let mut panel = crate::direction::end_panel("dock")
-        .resizable(true)
-        .show_separator_line(false)
-        .default_size(if t.pro { 290.0 } else { 300.0 })
-        .size_range(DOCK_WIDTH);
+    let mut panel =
+        crate::direction::end_panel("dock").resizable(true).show_separator_line(false).default_size(if t.pro { 290.0 } else { 300.0 }).size_range(DOCK_WIDTH);
     if let Some(w) = ui.ctx().data_mut(|d| d.remove_temp::<f32>(dock_width_id())) {
         panel = panel.exact_size(w);
     }
@@ -5707,11 +5720,7 @@ mod chrome_divider_tests {
         h.state_mut().ui.theme = crate::theme::ThemeKind::Pro;
         h.run_steps(4);
         let central: Rect = h.ctx.data(|d| d.get_temp(egui::Id::new("divider-test-central"))).expect("right dock not drawn");
-        if crate::direction::is_rtl() {
-            (h, central.min.x - 36.0)
-        } else {
-            (h, central.max.x + 36.0)
-        }
+        if crate::direction::is_rtl() { (h, central.min.x - 36.0) } else { (h, central.max.x + 36.0) }
     }
 
     /// (near-white pixels, bluish accent pixels) in a ±3px strip around the seam, plus the
@@ -5740,6 +5749,33 @@ mod chrome_divider_tests {
             }
         }
         (white, blue, whites)
+    }
+
+    /// The toolbar|canvas seam: the toolbar is non-resizable, so it must stay a dark
+    /// divider idle and on hover — never white, never accent. In a right-to-left UI the
+    /// toolbar is on the right, so the seam mirrors onto the other side (callers must hold
+    /// a `direction_scope` guard for the whole harness lifetime, as in `direction_tests`).
+    fn toolbar_harness() -> (egui_kittest::Harness<'static, PhotocraftApp>, f32) {
+        let app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1200.0, 800.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    toolbar(app, ui);
+                    // The canvas-facing edge of the toolbar; the divider is inset 1px into it:
+                    // central min.x in a left-to-right UI, central max.x when the toolbar is
+                    // on the right in a right-to-left UI.
+                    let central = ui.available_rect_before_wrap();
+                    ui.data_mut(|d| d.insert_temp(egui::Id::new("toolbar-divider-test-central"), central));
+                    egui::CentralPanel::default().show(ui, |_| {});
+                }
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Pro);
+        h.state_mut().ui.theme = crate::theme::ThemeKind::Pro;
+        h.run_steps(4);
+        let central: Rect = h.ctx.data(|d| d.get_temp(egui::Id::new("toolbar-divider-test-central"))).expect("toolbar not drawn");
+        if crate::direction::is_rtl() { (h, central.max.x) } else { (h, central.min.x) }
     }
 
     #[test]
@@ -5787,5 +5823,68 @@ mod chrome_divider_tests {
         let (white_near_cursor, _, _) = strip_stats(&img, seam_x, 485, 530);
         assert_eq!(white - white_near_cursor, 0, "white resize line visible on hover at x={seam_x}: {whites:?}");
         assert!(blue >= 30, "no accent highlight on hover at x={seam_x} (blue={blue})");
+    }
+
+    #[test]
+    fn toolbar_seam_is_dark_and_never_accent() {
+        let _dir = crate::direction::direction_scope(crate::direction::Dir::Ltr);
+        let (mut h, seam_x) = toolbar_harness();
+        assert!(seam_x > 0.0 && seam_x < 200.0, "toolbar seam out of range: {seam_x}");
+        // Idle: dark divider, no white line, no accent (non-resizable: no hover language).
+        let img = h.render().expect("software render");
+        let (white, blue, whites) = strip_stats(&img, seam_x, 300, 700);
+        assert_eq!(white, 0, "white line visible without hover at x={seam_x}: {whites:?}");
+        assert_eq!(blue, 0, "accent highlight visible without hover at x={seam_x}");
+
+        // Hover the seam: still dark, still no accent. (Rows near the pointer are
+        // skipped: the software renderer draws the white cursor arrow there.)
+        h.hover_at(pos2(seam_x, 500.0));
+        h.run_steps(3);
+        let img = h.render().expect("software render");
+        let (white, blue, whites) = strip_stats(&img, seam_x, 300, 700);
+        let (white_near_cursor, _, _) = strip_stats(&img, seam_x, 485, 530);
+        assert_eq!(white.saturating_sub(white_near_cursor), 0, "white line visible on hover at x={seam_x}: {whites:?}");
+        assert_eq!(blue, 0, "accent highlight visible on hover at x={seam_x} (blue={blue})");
+    }
+    #[test]
+    fn toolbar_seam_mirrors_in_rtl() {
+        let _dir = crate::direction::direction_scope(crate::direction::Dir::Rtl);
+        let (mut h, seam_x) = toolbar_harness();
+        // The toolbar is on the right in a right-to-left UI: the seam sits near the right edge.
+        assert!(seam_x > 1000.0 && seam_x < 1200.0, "toolbar seam not mirrored: {seam_x}");
+        // Idle: the divider column carries the dark seam and there is no white line. The
+        // strip itself can hold accent pixels from toolbar content (the selected tool's
+        // border reaches the panel edge in a right-to-left UI), so unlike the
+        // left-to-right case the strip-wide accent assert does not apply here.
+        let img = h.render().expect("software render");
+        let (white, _, whites) = strip_stats(&img, seam_x, 300, 700);
+        assert_eq!(white, 0, "white line visible without hover at x={seam_x}: {whites:?}");
+        assert_divider_column_dark(&img, seam_x + 1.0);
+        let (_, idle_blue, _) = strip_stats(&img, seam_x, 300, 700);
+
+        // Hover the seam: still no white line and no new accent: the toolbar is
+        // non-resizable, so it has no hover language. (Rows near the pointer are
+        // skipped: the software renderer draws the white cursor arrow there.)
+        h.hover_at(pos2(seam_x, 500.0));
+        h.run_steps(3);
+        let hovered = h.render().expect("software render");
+        let (white, blue, whites) = strip_stats(&hovered, seam_x, 300, 700);
+        let (white_near_cursor, _, _) = strip_stats(&hovered, seam_x, 485, 530);
+        assert_eq!(white.saturating_sub(white_near_cursor), 0, "white line visible on hover at x={seam_x}: {whites:?}");
+        let (_, cursor_blue, _) = strip_stats(&hovered, seam_x, 485, 530);
+        assert_eq!(blue.saturating_sub(cursor_blue), idle_blue, "accent changed on hover at x={seam_x} (idle={idle_blue}, hover={blue})");
+        assert_divider_column_dark(&hovered, seam_x + 1.0);
+    }
+
+    /// The divider column must be dark along its height: the 1px `t.separator` seam the
+    /// toolbar paints, never the white hover line or an accent highlight.
+    fn assert_divider_column_dark(img: &image::RgbaImage, x: f32) {
+        let px = x as u32;
+        for py in 100..750.min(img.height()) {
+            let p = img.get_pixel(px, py);
+            let white = p[0] > 200 && p[1] > 200 && p[2] > 200;
+            let blue = p[2] > 120 && (p[2] as i16) > (p[0] as i16) + 30 && p[1] > p[0];
+            assert!(!white && !blue, "divider column not dark at ({px}, {py}): {p:?}");
+        }
     }
 }
