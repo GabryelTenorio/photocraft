@@ -12,6 +12,7 @@ pub mod probe;
 
 mod checks;
 mod context;
+mod diagnostics;
 mod git;
 mod graph;
 mod impact;

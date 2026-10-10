@@ -125,12 +125,13 @@ impl Forge {
         for gate in gates {
             let id = gate.get("id").and_then(serde_json::Value::as_str).unwrap_or("gate").to_string();
             let command = gate.get("command").and_then(serde_json::Value::as_str).unwrap_or("").to_string();
+            let reason = gate.get("reason").and_then(serde_json::Value::as_str).unwrap_or("").to_string();
             let mut parts = command.split_whitespace();
             match parts.next() {
                 // Remote-only gates like "(platform CI jobs)" are not runnable locally.
                 Some(program) if !program.starts_with('(') => {
                     let args: Vec<String> = parts.map(str::to_string).collect();
-                    let job = self.jobs.start(id.clone(), program.to_string(), args, root.clone());
+                    let job = self.jobs.start(id.clone(), "validation".to_string(), reason, program.to_string(), args, root.clone());
                     started.push(serde_json::json!({"job": job, "gate": id, "command": command}));
                 }
                 _ => skipped.push(id),

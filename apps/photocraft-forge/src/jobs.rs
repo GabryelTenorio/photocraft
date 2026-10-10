@@ -19,6 +19,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::diagnostics::{self, Diagnostics, TestCounts};
+
 const LOG_CAP: usize = 4 << 20;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -59,11 +61,17 @@ pub struct ValidationParams {
     pub include_recommended: bool,
 }
 
-/// A persisted, immutable manifest of a completed job.
+/// A persisted, immutable manifest of a completed job (fields per research §8).
 #[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
+    #[serde(default)]
+    schema_version: u32,
     id: u64,
     name: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    reason: String,
     command: String,
     status: Status,
     #[serde(default)]
@@ -76,11 +84,15 @@ struct Manifest {
     #[serde(default)]
     head: Option<String>,
     dirty: bool,
+    #[serde(default)]
+    diagnostics: Diagnostics,
 }
 
 struct Job {
     id: u64,
     name: String,
+    kind: String,
+    reason: String,
     program: String,
     args: Vec<String>,
     status: Status,
@@ -94,6 +106,7 @@ struct Job {
     head: Option<String>,
     dirty: bool,
     log_path: Option<PathBuf>,
+    diagnostics: Diagnostics,
 }
 
 /// A serializable view of a job.
@@ -112,6 +125,9 @@ pub struct JobView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit: Option<i32>,
     pub zero_tests: bool,
+    pub kind: String,
+    pub tests: TestCounts,
+    pub diagnostics: usize,
     /// Source fingerprint (HEAD) the job ran against.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
@@ -171,6 +187,8 @@ impl JobManager {
                 Job {
                     id: manifest.id,
                     name: manifest.name,
+                    kind: manifest.kind,
+                    reason: manifest.reason,
                     program: manifest.command,
                     args: Vec::new(),
                     status: manifest.status,
@@ -184,6 +202,7 @@ impl JobManager {
                     head: manifest.head,
                     dirty: manifest.dirty,
                     log_path: Some(log_path),
+                    diagnostics: manifest.diagnostics,
                 },
             );
         }
@@ -191,7 +210,7 @@ impl JobManager {
     }
 
     /// Queue a job and return its id. It runs as soon as the serialization gate frees up.
-    pub fn start(self: &Arc<Self>, name: String, program: String, args: Vec<String>, cwd: PathBuf) -> u64 {
+    pub fn start(self: &Arc<Self>, name: String, kind: String, reason: String, program: String, args: Vec<String>, cwd: PathBuf) -> u64 {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let fingerprint = crate::context::fingerprint(&cwd);
         let log = Arc::new(Mutex::new(String::new()));
@@ -201,6 +220,8 @@ impl JobManager {
             Job {
                 id,
                 name,
+                kind,
+                reason,
                 program: program.clone(),
                 args: args.clone(),
                 status: Status::Queued,
@@ -214,6 +235,7 @@ impl JobManager {
                 head: fingerprint.head,
                 dirty: fingerprint.dirty,
                 log_path: None,
+                diagnostics: Diagnostics::default(),
             },
         );
         let me = Arc::clone(self);
@@ -281,12 +303,17 @@ impl JobManager {
     }
 
     fn finish(&self, id: u64, status: Status, exit: Option<i32>, zero_tests: bool) {
+        let parsed = {
+            let inner = lock(&self.inner);
+            inner.jobs.get(&id).map(|job| diagnostics::parse(lock(&job.log).as_str())).unwrap_or_default()
+        };
         {
             let mut inner = lock(&self.inner);
             if let Some(job) = inner.jobs.get_mut(&id) {
                 job.status = status;
                 job.exit = exit;
                 job.zero_tests = zero_tests;
+                job.diagnostics = parsed;
                 if let Some(started) = job.started_ms {
                     job.duration_ms = Some(now_ms().saturating_sub(started));
                 }
@@ -306,8 +333,11 @@ impl JobManager {
                 return;
             };
             let manifest = Manifest {
+                schema_version: 1,
                 id: job.id,
                 name: job.name.clone(),
+                kind: job.kind.clone(),
+                reason: job.reason.clone(),
                 command: command_string(&job.program, &job.args),
                 status: job.status,
                 exit: job.exit,
@@ -316,6 +346,7 @@ impl JobManager {
                 duration_ms: job.duration_ms,
                 head: job.head.clone(),
                 dirty: job.dirty,
+                diagnostics: job.diagnostics.clone(),
             };
             (manifest, lock(&job.log).clone(), dir.join(format!("{id}.log")))
         };
@@ -339,6 +370,9 @@ impl JobManager {
             duration_ms: job.duration_ms,
             exit: job.exit,
             zero_tests: job.zero_tests,
+            kind: job.kind.clone(),
+            tests: job.diagnostics.tests.clone(),
+            diagnostics: job.diagnostics.entries.len(),
             head: job.head.clone(),
             dirty: job.dirty,
             evidence: job.log_path.as_ref().and_then(|p| p.parent()).map(|p| p.display().to_string()),
@@ -489,7 +523,7 @@ mod tests {
     #[test]
     fn manager_runs_a_job_and_captures_logs() {
         let mgr = Arc::new(JobManager::new(None));
-        let id = mgr.start("echo".into(), "sh".into(), vec!["-c".into(), "echo forge-hello".into()], std::env::temp_dir());
+        let id = mgr.start("echo".into(), "test".into(), "unit".into(), "sh".into(), vec!["-c".into(), "echo forge-hello".into()], std::env::temp_dir());
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
         let (_, log, _) = mgr.logs(id, 0).expect("logs");
         assert!(log.contains("forge-hello"), "{log}");
@@ -500,7 +534,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("forge-evidence-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mgr = Arc::new(JobManager::new(Some(dir.clone())));
-        let id = mgr.start("echo".into(), "sh".into(), vec!["-c".into(), "echo persisted-hello".into()], std::env::temp_dir());
+        let id =
+            mgr.start("echo".into(), "test".into(), "evidence".into(), "sh".into(), vec!["-c".into(), "echo persisted-hello".into()], std::env::temp_dir());
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
 
         // A fresh manager over the same directory must see the persisted job and its log.

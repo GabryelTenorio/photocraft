@@ -74,9 +74,12 @@ it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 `validation_start { paths?: [..], base?: "…", include_recommended?: bool }`
 → `{ jobs:[{job,gate,command}], skipped:[..], note }`. Jobs run **one at a time** (Cargo jobs sharing
 `target/` and the caches must not contend). A `cargo test` that matched **zero tests** ends as
-`notests`, never a pass.
+`notests`, never a pass. Each completed job persists an immutable manifest under `target/forge/jobs/`
+(`<id>.json` + `<id>.log`) carrying the source fingerprint, the gate's reason, **parsed diagnostics**
+(Cargo/clippy — human or `--message-format=json` — mapped to `file:line:col`) and
+matched/executed/filtered **test counts** (research §8).
 
-`job_status { job? }` → `{ jobs:[{id,name,status,command,pid?,duration_ms?,exit?,zero_tests}] }`.
+`job_status { job? }` → `{ jobs:[{id,name,kind,status,command,zero_tests,tests,diagnostics,head,dirty,evidence}] }`.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
