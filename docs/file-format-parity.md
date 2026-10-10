@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: every Photoshop 2026 format from its bundle against our readers and writers; Affinity notes moved here from `roadmap.md`) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Affinity RGB16 precision and complete source-backed raster recovery) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -86,6 +86,15 @@ supports many more, including CR3).
 | Krita `.kra`, GIMP `.xcf`, Procreate | no | no | Not in Photoshop either |
 
 ### Affinity import notes (moved from `roadmap.md`)
+
+2026-10-11: Affinity RGB16 pixel import retains 16-bit samples, including masks and
+premultiplied-alpha resampling. Complete source-backed RGB8/RGB16 pixel layers recover their
+embedded original instead of importing empty, and remain raster layers. An original RGB16 TIFF
+opened and saved in Affinity 3.3.0 imports all 65,536 RGBA samples exactly; twelve original
+synthetic regressions cover storage, edits, depth, alpha, invalid originals, profiles and saves.
+Mixed source/edited tiles, RGB32 pixels and document colour-profile mapping remain unsupported
+or approximated with warnings. No proprietary code or locally application-made files are committed.
+
 
 2026-10-08: Affinity `.af`, `.afdesign`, `.afphoto` and `.afpub` documents (container versions
 8–12) open **natively** ([format notes](../crates/affinity/README.md)): pages and artboards, layers
