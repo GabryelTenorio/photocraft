@@ -12,6 +12,8 @@ pub mod probe;
 
 mod context;
 mod git;
+mod impact;
 mod server;
+mod xtask;
 
 pub use server::{Forge, serve_stdio};

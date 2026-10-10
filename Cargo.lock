@@ -4166,6 +4166,7 @@ name = "photocraft-forge"
 version = "0.5.0"
 dependencies = [
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",

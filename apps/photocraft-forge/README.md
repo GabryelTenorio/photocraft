@@ -16,14 +16,15 @@ no `unsafe`), but it is **not** part of the product build.
 
 ## Status
 
-M1 scaffold. One tool:
+M3. Tools:
 
 | Tool | Purpose |
 |---|---|
-| `forge_capabilities` | Report the environment: required tools present, optional companion MCPs, checkout root, and install commands for anything missing. |
+| `forge_capabilities` | Report the environment; recommend installs for missing companions. |
+| `development_context` | Source fingerprint, workspace crate map, and the authoritative layering report. |
+| `change_impact` | Given paths / a command / a symbol / an intent: the must-change-together touch set, invariants, artifacts to regenerate, and the gate plan. |
 
-Planned (see `plan/photocraft-dev-mcp-plan.md` in the authoring repo): `development_context`,
-`change_impact`, `checks_for_changes`, `validation_start` + job tools, `scenario_start`.
+Planned: `checks_for_changes`, `validation_start` + job tools, `scenario_start`.
 
 ## Run
 

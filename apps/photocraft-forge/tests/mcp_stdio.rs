@@ -81,6 +81,7 @@ fn stdio_handshake_lists_and_calls_capabilities() {
     let names: Vec<&str> = tools["result"]["tools"].as_array().expect("tools array").iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(names.contains(&"forge_capabilities"), "{names:?}");
     assert!(names.contains(&"development_context"), "{names:?}");
+    assert!(names.contains(&"change_impact"), "{names:?}");
 
     send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"forge_capabilities","arguments":{}}}));
     let call = recv(3);
@@ -102,4 +103,14 @@ fn development_context_reports_fingerprint_crates_and_layers() {
     let crates = ctx["crates"].as_array().expect("crates array");
     assert!(crates.iter().any(|c| c["name"] == "photocraft-forge"), "{ctx}");
     assert!(ctx["layers"]["ok"].as_bool() == Some(true), "layers: {ctx}");
+}
+
+#[test]
+fn change_impact_returns_touch_set_and_gates() {
+    let r = forge_tool_call("change_impact", json!({"paths": ["crates/engine/src/retouch_cmds.rs"]}));
+    let touch = r["touch"].as_array().expect("touch array");
+    assert!(touch.iter().any(|t| t["path"] == "crates/engine/src/commands.rs"), "{r}");
+    let required = r["gates"]["required"].as_array().expect("required gates");
+    assert!(required.iter().any(|g| g["id"] == "parity"), "{r}");
+    assert!(required.iter().any(|g| g["id"] == "panic_hunt"), "{r}");
 }

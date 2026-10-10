@@ -4,11 +4,12 @@
 //! end-to-end and reports the environment (required tools, optional companions, install commands).
 
 use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::transport::io::stdio;
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 
-use crate::{context, probe};
+use crate::{context, impact, probe};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -61,6 +62,22 @@ impl Forge {
             .map_err(|e| McpError::internal_error(format!("context task: {e}"), None))?
             .map_err(|e| McpError::internal_error(e, None))?;
         let text = serde_json::to_string_pretty(&ctx).map_err(|e| McpError::internal_error(format!("serialize context: {e}"), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    /// The must-change-together touch set.
+    #[tool(
+        description = "Given changed `paths`, an engine `command` id, a `symbol`, or an `intent`, return the must-change-together touch set, the invariants that apply, the artifacts to regenerate, and the authoritative gate plan. Prefer explicit `paths` (most accurate); `command`/`symbol`/`intent` are best-effort lookups."
+    )]
+    async fn change_impact(&self, Parameters(query): Parameters<impact::Query>) -> Result<CallToolResult, McpError> {
+        let root = probe::discover_repo_root().ok_or_else(|| {
+            McpError::internal_error("no PhotoCraft checkout found — run forge from inside the repo (a directory containing crates/, apps/ and xtask/)", None)
+        })?;
+        let result = tokio::task::spawn_blocking(move || impact::run(&root, query))
+            .await
+            .map_err(|e| McpError::internal_error(format!("impact task: {e}"), None))?
+            .map_err(|e| McpError::internal_error(e, None))?;
+        let text = serde_json::to_string_pretty(&result).map_err(|e| McpError::internal_error(format!("serialize impact: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 }
