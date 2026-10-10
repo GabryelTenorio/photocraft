@@ -692,6 +692,10 @@
 	Classic Theme	经典主题
 	Solarized dark	Solarized 深色
 	Solarized Dark Theme	Solarized 深色主题
+	Breeze dark	Breeze 深色
+	Breeze Dark Theme	Breeze 深色主题
+	Breeze light	Breeze 浅色
+	Breeze Light Theme	Breeze 浅色主题
 	Next Theme	下一代主题
 	Actions	动作
 	Brush Settings	画笔设置
@@ -1913,6 +1917,7 @@
 	Show only crosshair while painting	绘画时仅显示十字线
 	Show slice numbers	显示切片编号
 	Show tooltips	显示工具提示
+	Show highlight on rollover	鼠标悬停时显示高亮
 	Show bounding box when dragging layer	拖动图层时显示边界框
 	System title bar	系统标题栏
 	Show transformation values	显示变换值
@@ -2437,3 +2442,5 @@ fontWeight	Italic	斜体
 	Previous Document	上一个文档
 	W x H x Resolution	宽 x 高 x 分辨率
 	Front Image	前面的图像
+	Search settings…	搜索设置…
+	No matching settings	没有匹配的设置

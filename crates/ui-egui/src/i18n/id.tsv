@@ -673,6 +673,10 @@
 	Classic Theme	Tema Klasik
 	Solarized dark	Solarized gelap
 	Solarized Dark Theme	Tema Solarized Gelap
+	Breeze dark	Breeze gelap
+	Breeze Dark Theme	Tema Breeze Gelap
+	Breeze light	Breeze terang
+	Breeze Light Theme	Tema Breeze Terang
 	Next Theme	Tema Berikutnya
 	Actions	Action
 	Brush Settings	Pengaturan Kuas
@@ -1870,6 +1874,7 @@
 	Show only crosshair while painting	Tampilkan crosshair saja saat melukis
 	Show slice numbers	Tampilkan nomor slice
 	Show tooltips	Tampilkan tooltip
+	Show highlight on rollover	Tampilkan sorotan saat kursor melintas
 	Show transformation values	Tampilkan nilai transformasi
 	Slice color	Warna slice
 	Smart guide color	Warna smart guide
@@ -2834,3 +2839,5 @@ fontWeight	Italic	Miring
 	Previous Document	Dokumen Sebelumnya
 	W x H x Resolution	L x T x Resolusi
 	Front Image	Gambar Depan
+	Search settings…	Cari pengaturan…
+	No matching settings	Tidak ada pengaturan yang cocok

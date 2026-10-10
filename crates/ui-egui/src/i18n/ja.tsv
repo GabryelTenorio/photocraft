@@ -692,6 +692,10 @@
 	Classic Theme	クラシックテーマ
 	Solarized dark	Solarized ダーク
 	Solarized Dark Theme	Solarized ダークテーマ
+	Breeze dark	Breeze ダーク
+	Breeze Dark Theme	Breeze ダークテーマ
+	Breeze light	Breeze ライト
+	Breeze Light Theme	Breeze ライトテーマ
 	Next Theme	次のテーマ
 	Actions	アクション
 	Brush Settings	ブラシ設定
@@ -1907,6 +1911,7 @@
 	Show only crosshair while painting	描画中は十字線のみ表示
 	Show slice numbers	スライス番号を表示
 	Show tooltips	ツールチップを表示
+	Show highlight on rollover	ロールオーバー時にハイライトを表示
 	Show bounding box when dragging layer	レイヤーのドラッグ中にバウンディングボックスを表示
 	System title bar	システムのタイトルバー
 	Show transformation values	変形値を表示
@@ -3448,3 +3453,5 @@ fontWeight	Italic	斜体
 	Previous Document	前のドキュメント
 	W x H x Resolution	幅 x 高さ x 解像度
 	Front Image	前面の画像
+	Search settings…	設定を検索…
+	No matching settings	一致する設定はありません

@@ -688,6 +688,10 @@
 	Classic Theme	Tema Clásico
 	Solarized dark	Solarized oscuro
 	Solarized Dark Theme	Tema Solarized oscuro
+	Breeze dark	Breeze oscuro
+	Breeze Dark Theme	Tema Breeze oscuro
+	Breeze light	Breeze claro
+	Breeze Light Theme	Tema Breeze claro
 	Next Theme	Tema siguiente
 	Actions	Acciones
 	Brush Settings	Ajustes del pincel
@@ -1903,6 +1907,7 @@
 	Show only crosshair while painting	Mostrar solo la retícula al pintar
 	Show slice numbers	Mostrar los números de sección
 	Show tooltips	Mostrar las descripciones emergentes
+	Show highlight on rollover	Mostrar resaltado al pasar el cursor
 	Show bounding box when dragging layer	Mostrar el cuadro delimitador al arrastrar la capa
 	System title bar	Barra de título del sistema
 	Show transformation values	Mostrar los valores de transformación
@@ -2508,3 +2513,5 @@ fontWeight	Italic	Cursiva
 	Previous Document	Documento anterior
 	W x H x Resolution	An. x Al. x Resolución
 	Front Image	Imagen frontal
+	Search settings…	Buscar ajustes…
+	No matching settings	No hay ajustes que coincidan

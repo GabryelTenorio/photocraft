@@ -682,6 +682,10 @@
 	Classic Theme	Klassisches Design
 	Solarized dark	Solarized dunkel
 	Solarized Dark Theme	Solarized-Design (Dunkel)
+	Breeze dark	Breeze dunkel
+	Breeze Dark Theme	Breeze-Design (Dunkel)
+	Breeze light	Breeze hell
+	Breeze Light Theme	Breeze-Design (Hell)
 	Next Theme	Nächstes Design
 	Actions	Aktionen
 	Brush Settings	Pinseleinstellungen
@@ -1891,6 +1895,7 @@
 	Show only crosshair while painting	Beim Malen nur Fadenkreuz zeigen
 	Show slice numbers	Slice-Nummern anzeigen
 	Show tooltips	Tooltips anzeigen
+	Show highlight on rollover	Hervorhebung bei Rollover anzeigen
 	Show bounding box when dragging layer	Begrenzungsrahmen beim Ziehen einer Ebene anzeigen
 	System title bar	System-Titelleiste
 	Show transformation values	Transformationswerte anzeigen
@@ -2467,3 +2472,5 @@ fontWeight	Italic	Kursiv
 	Previous Document	Vorheriges Dokument
 	W x H x Resolution	B x H x Auflösung
 	Front Image	Vorderes Bild
+	Search settings…	Einstellungen durchsuchen…
+	No matching settings	Keine passenden Einstellungen

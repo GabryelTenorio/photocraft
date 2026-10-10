@@ -690,6 +690,10 @@
 	Classic Theme	Motyw klasyczny
 	Solarized dark	Solarized ciemny
 	Solarized Dark Theme	Ciemny motyw Solarized
+	Breeze dark	Breeze ciemny
+	Breeze Dark Theme	Ciemny motyw Breeze
+	Breeze light	Breeze jasny
+	Breeze Light Theme	Jasny motyw Breeze
 	Next Theme	Następny motyw
 	Actions	Akcje
 	Brush Settings	Ustawienia pędzla
@@ -1899,6 +1903,7 @@
 	Show only crosshair while painting	Podczas malowania pokaż tylko celownik
 	Show slice numbers	Pokaż numery plasterków
 	Show tooltips	Pokaż podpowiedzi
+	Show highlight on rollover	Pokaż podświetlenie po najechaniu
 	Show bounding box when dragging layer	Pokaż ramkę ograniczającą podczas przeciągania warstwy
 	Show transformation values	Pokaż wartości przekształcenia
 	Slice color	Kolor plasterków
@@ -3448,3 +3453,5 @@ cameraRaw	Roughness	Chropowatość
 	Previous Document	Poprzedni dokument
 	W x H x Resolution	Szer. x Wys. x Rozdzielczość
 	Front Image	Obraz na wierzchu
+	Search settings…	Szukaj ustawień…
+	No matching settings	Brak pasujących ustawień

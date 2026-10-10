@@ -1393,6 +1393,10 @@
 	Classic Theme	Классическая тема
 	Solarized dark	Solarized тёмная
 	Solarized Dark Theme	Тёмная тема Solarized
+	Breeze dark	Breeze тёмная
+	Breeze Dark Theme	Тёмная тема Breeze
+	Breeze light	Breeze светлая
+	Breeze Light Theme	Светлая тема Breeze
 	Studio Theme	Тема Studio
 	Studio Light Theme	Светлая тема Studio
 	Adwaita Light Theme	Светлая тема Adwaita
@@ -2320,6 +2324,7 @@
 	Show only crosshair while painting	Только перекрестье при рисовании
 	Show slice numbers	Показывать номера фрагментов
 	Show tooltips	Показывать подсказки
+	Show highlight on rollover	Показывать подсветку при наведении
 	Show bounding box when dragging layer	Показывать рамку при перетаскивании слоя
 	System title bar	Системная строка заголовка
 	Show transformation values	Показывать значения трансформации
@@ -2713,3 +2718,5 @@ fontWeight	Italic	Курсив
 	W x H x Resolution	Ш x В x Разрешение
 	Front Image	Изображение переднего плана
 	Swaps height and width	Меняет местами высоту и ширину
+	Search settings…	Поиск настроек…
+	No matching settings	Нет подходящих настроек
