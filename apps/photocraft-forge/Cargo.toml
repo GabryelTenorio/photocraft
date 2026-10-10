@@ -24,3 +24,4 @@ rmcp = { version = "3.5", default-features = false, features = ["server", "macro
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 schemars = "1"
 base64 = "0.22"
+blake3 = { version = "1.8", default-features = false, features = ["pure"] }

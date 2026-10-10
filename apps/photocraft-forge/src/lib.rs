@@ -10,6 +10,7 @@
 
 pub mod probe;
 
+mod artifact;
 mod checks;
 mod context;
 mod diagnostics;

@@ -109,6 +109,10 @@ fn development_context_reports_fingerprint_crates_and_layers() {
     let crates = ctx["crates"].as_array().expect("crates array");
     assert!(crates.iter().any(|c| c["name"] == "photocraft-forge"), "{ctx}");
     assert!(ctx["layers"]["ok"].as_bool() == Some(true), "layers: {ctx}");
+    // Forge's own build identity (research §6/§14 Phase 0).
+    assert!(ctx["forge"]["version"].as_str().is_some(), "{ctx}");
+    assert!(ctx["forge"]["target"].as_str().is_some_and(|s| !s.is_empty()), "{ctx}");
+    assert!(ctx["forge"]["build"]["hash"].as_str().is_some_and(|s| s.starts_with("blake3:")), "{ctx}");
 }
 
 #[test]

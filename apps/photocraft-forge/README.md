@@ -53,7 +53,7 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 | Tool | Purpose |
 |---|---|
 | `forge_capabilities` | Report required tools (`git`, `cargo`), optional companions, the checkout root, and install commands for anything missing. |
-| `development_context` | Source fingerprint (HEAD, branch, dirty, diff/Cargo.lock hashes, behind origin/main), the workspace crate map, and the authoritative `cargo xtask layers` report. |
+| `development_context` | Source fingerprint (HEAD, branch, dirty, diff/Cargo.lock hashes, behind origin/main), Forge's own build identity (version, profile, target, hashed binary), the workspace crate map, and the authoritative `cargo xtask layers` report. |
 | `change_impact` | The must-change-together touch set, invariants, artifacts to regenerate, related files, and the gate plan, for `paths` / a `command` / a `symbol` / an `intent`. |
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the required gates for a diff as serialized background jobs. |

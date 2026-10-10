@@ -13,8 +13,27 @@ use crate::git;
 pub struct Context {
     pub repo_root: String,
     pub fingerprint: Fingerprint,
+    /// Forge's own build identity (research §6/§14 Phase 0): which binary produced this result.
+    pub forge: ForgeIdentity,
     pub crates: Vec<CrateInfo>,
     pub layers: LayersReport,
+}
+
+/// The coordinator's own build identity — so a result says *which* Forge produced it.
+#[derive(Debug, Serialize)]
+pub struct ForgeIdentity {
+    /// Forge's crate version.
+    pub version: String,
+    /// Cargo profile (`debug`, `release`, …).
+    pub profile: String,
+    /// Target triple this binary was built for.
+    pub target: String,
+    /// Absolute path to the running binary, when the OS reports one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<String>,
+    /// The running binary itself, hashed (the build-artifact identity).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<crate::artifact::Artifact>,
 }
 
 /// Source fingerprint — identifies *exactly* which code is on disk.
@@ -59,7 +78,23 @@ pub struct LayersReport {
 
 /// Build the context for a checkout.
 pub fn build(root: &Path) -> Result<Context, String> {
-    Ok(Context { repo_root: root.display().to_string(), fingerprint: fingerprint(root), crates: crates(root)?, layers: layers(root) })
+    Ok(Context { repo_root: root.display().to_string(), fingerprint: fingerprint(root), forge: forge_identity(), crates: crates(root)?, layers: layers(root) })
+}
+
+/// Forge's build identity. Never fails: a missing binary just leaves the artifact fields absent.
+fn forge_identity() -> ForgeIdentity {
+    let exe = std::env::current_exe().ok();
+    let build = exe.as_deref().and_then(|p| {
+        let name = p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned());
+        crate::artifact::Artifact::from_file(name, crate::artifact::media_type(p), p)
+    });
+    ForgeIdentity {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        profile: env!("FORGE_BUILD_PROFILE").to_string(),
+        target: env!("FORGE_BUILD_TARGET").to_string(),
+        artifact: exe.map(|p| p.display().to_string()),
+        build,
+    }
 }
 
 /// Never fails: missing pieces are simply absent.
