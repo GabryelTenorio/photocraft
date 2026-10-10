@@ -4,6 +4,10 @@
 //! so Cargo jobs sharing `target/`, the package cache and the registry cache do not contend. Logs are
 //! captured live and read cursor-wise. A `cargo test` that exits 0 after matching **zero tests** is
 //! reported as [`Status::NoTests`] — invalid evidence, not a pass.
+//!
+//! Completed jobs are **persisted** to an evidence directory (`<repo>/target/forge/jobs/<id>.json`
+//! plus `<id>.log`), stamped with the source fingerprint at start, so evidence survives a restart
+//! and another model can resume from it.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -22,7 +26,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 /// Job lifecycle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Queued,
@@ -55,6 +59,25 @@ pub struct ValidationParams {
     pub include_recommended: bool,
 }
 
+/// A persisted, immutable manifest of a completed job.
+#[derive(Debug, Serialize, Deserialize)]
+struct Manifest {
+    id: u64,
+    name: String,
+    command: String,
+    status: Status,
+    #[serde(default)]
+    exit: Option<i32>,
+    zero_tests: bool,
+    #[serde(default)]
+    started_ms: Option<u128>,
+    #[serde(default)]
+    duration_ms: Option<u128>,
+    #[serde(default)]
+    head: Option<String>,
+    dirty: bool,
+}
+
 struct Job {
     id: u64,
     name: String,
@@ -68,10 +91,13 @@ struct Job {
     duration_ms: Option<u128>,
     exit: Option<i32>,
     zero_tests: bool,
+    head: Option<String>,
+    dirty: bool,
+    log_path: Option<PathBuf>,
 }
 
 /// A serializable view of a job.
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct JobView {
     pub id: u64,
     pub name: String,
@@ -86,33 +112,88 @@ pub struct JobView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit: Option<i32>,
     pub zero_tests: bool,
+    /// Source fingerprint (HEAD) the job ran against.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+    pub dirty: bool,
+    /// Where the durable manifest/log live, if persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
 }
 
 struct Inner {
     jobs: BTreeMap<u64, Job>,
 }
 
-/// Serialized, in-memory job manager (process lifetime).
+/// Serialized, evidence-persisting job manager.
 pub struct JobManager {
     inner: Mutex<Inner>,
     gate: Mutex<()>,
     next: AtomicU64,
-}
-
-impl Default for JobManager {
-    fn default() -> Self {
-        Self::new()
-    }
+    evidence: Option<PathBuf>,
 }
 
 impl JobManager {
-    pub fn new() -> Self {
-        Self { inner: Mutex::new(Inner { jobs: BTreeMap::new() }), gate: Mutex::new(()), next: AtomicU64::new(1) }
+    /// Create a manager. When `evidence` is set, completed jobs are persisted there and any existing
+    /// manifests are loaded so evidence survives a restart.
+    pub fn new(evidence: Option<PathBuf>) -> Self {
+        if let Some(dir) = &evidence {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let manager = Self { inner: Mutex::new(Inner { jobs: BTreeMap::new() }), gate: Mutex::new(()), next: AtomicU64::new(1), evidence };
+        manager.load();
+        manager
+    }
+
+    fn load(&self) {
+        let Some(dir) = &self.evidence else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut max_id = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(manifest) = serde_json::from_str::<Manifest>(&text) else {
+                continue;
+            };
+            max_id = max_id.max(manifest.id);
+            let log_path = dir.join(format!("{}.log", manifest.id));
+            lock(&self.inner).jobs.insert(
+                manifest.id,
+                Job {
+                    id: manifest.id,
+                    name: manifest.name,
+                    program: manifest.command,
+                    args: Vec::new(),
+                    status: manifest.status,
+                    log: Arc::new(Mutex::new(String::new())),
+                    cancel: Arc::new(AtomicBool::new(false)),
+                    pid: None,
+                    started_ms: manifest.started_ms,
+                    duration_ms: manifest.duration_ms,
+                    exit: manifest.exit,
+                    zero_tests: manifest.zero_tests,
+                    head: manifest.head,
+                    dirty: manifest.dirty,
+                    log_path: Some(log_path),
+                },
+            );
+        }
+        self.next.store(max_id + 1, Ordering::Relaxed);
     }
 
     /// Queue a job and return its id. It runs as soon as the serialization gate frees up.
     pub fn start(self: &Arc<Self>, name: String, program: String, args: Vec<String>, cwd: PathBuf) -> u64 {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
+        let fingerprint = crate::context::fingerprint(&cwd);
         let log = Arc::new(Mutex::new(String::new()));
         let cancel = Arc::new(AtomicBool::new(false));
         lock(&self.inner).jobs.insert(
@@ -130,6 +211,9 @@ impl JobManager {
                 duration_ms: None,
                 exit: None,
                 zero_tests: false,
+                head: fingerprint.head,
+                dirty: fingerprint.dirty,
+                log_path: None,
             },
         );
         let me = Arc::clone(self);
@@ -197,13 +281,50 @@ impl JobManager {
     }
 
     fn finish(&self, id: u64, status: Status, exit: Option<i32>, zero_tests: bool) {
-        if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
-            job.status = status;
-            job.exit = exit;
-            job.zero_tests = zero_tests;
-            if let Some(started) = job.started_ms {
-                job.duration_ms = Some(now_ms().saturating_sub(started));
+        {
+            let mut inner = lock(&self.inner);
+            if let Some(job) = inner.jobs.get_mut(&id) {
+                job.status = status;
+                job.exit = exit;
+                job.zero_tests = zero_tests;
+                if let Some(started) = job.started_ms {
+                    job.duration_ms = Some(now_ms().saturating_sub(started));
+                }
             }
+        }
+        self.persist(id);
+    }
+
+    /// Write the durable manifest + log for a completed job.
+    fn persist(&self, id: u64) {
+        let Some(dir) = &self.evidence else {
+            return;
+        };
+        let (manifest, log_text, log_path) = {
+            let inner = lock(&self.inner);
+            let Some(job) = inner.jobs.get(&id) else {
+                return;
+            };
+            let manifest = Manifest {
+                id: job.id,
+                name: job.name.clone(),
+                command: command_string(&job.program, &job.args),
+                status: job.status,
+                exit: job.exit,
+                zero_tests: job.zero_tests,
+                started_ms: job.started_ms,
+                duration_ms: job.duration_ms,
+                head: job.head.clone(),
+                dirty: job.dirty,
+            };
+            (manifest, lock(&job.log).clone(), dir.join(format!("{id}.log")))
+        };
+        if let Ok(text) = serde_json::to_string_pretty(&manifest) {
+            let _ = std::fs::write(dir.join(format!("{id}.json")), text);
+        }
+        let _ = std::fs::write(&log_path, log_text);
+        if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
+            job.log_path = Some(log_path);
         }
     }
 
@@ -212,12 +333,15 @@ impl JobManager {
             id: job.id,
             name: job.name.clone(),
             status: job.status,
-            command: format!("{} {}", job.program, job.args.join(" ")).trim_end().to_string(),
+            command: command_string(&job.program, &job.args),
             pid: job.pid,
             started_ms: job.started_ms,
             duration_ms: job.duration_ms,
             exit: job.exit,
             zero_tests: job.zero_tests,
+            head: job.head.clone(),
+            dirty: job.dirty,
+            evidence: job.log_path.as_ref().and_then(|p| p.parent()).map(|p| p.display().to_string()),
         }
     }
 
@@ -236,11 +360,13 @@ impl JobManager {
     pub fn logs(&self, id: u64, cursor: usize) -> Option<(Status, String, usize)> {
         let inner = lock(&self.inner);
         let job = inner.jobs.get(&id)?;
-        let log = lock(&job.log);
-        let cursor = cursor.min(log.len());
-        // Slice on a char boundary to stay UTF-8 safe.
-        let start = (cursor..=log.len()).find(|i| log.is_char_boundary(*i)).unwrap_or(log.len());
-        Some((job.status, log[start..].to_string(), log.len()))
+        let text: String = {
+            let in_memory = lock(&job.log);
+            if in_memory.is_empty() { job.log_path.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default() } else { in_memory.clone() }
+        };
+        let cursor = cursor.min(text.len());
+        let start = (cursor..=text.len()).find(|i| text.is_char_boundary(*i)).unwrap_or(text.len());
+        Some((job.status, text[start..].to_string(), text.len()))
     }
 
     /// Request cancellation; returns whether the id existed.
@@ -261,6 +387,10 @@ impl JobManager {
         }
         true
     }
+}
+
+fn command_string(program: &str, args: &[String]) -> String {
+    format!("{program} {}", args.join(" ")).trim_end().to_string()
 }
 
 fn now_ms() -> u128 {
@@ -332,6 +462,18 @@ fn passed_count(line: &str) -> Option<u64> {
 mod tests {
     use super::*;
 
+    fn wait_done(mgr: &Arc<JobManager>, id: u64) -> Status {
+        let mut status = Status::Queued;
+        for _ in 0..300 {
+            status = mgr.views(Some(id))[0].status;
+            if status.done() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        status
+    }
+
     #[test]
     fn zero_matched_tests_is_not_a_pass() {
         assert!(detect_zero_tests("running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored\n"));
@@ -346,18 +488,27 @@ mod tests {
 
     #[test]
     fn manager_runs_a_job_and_captures_logs() {
-        let mgr = Arc::new(JobManager::new());
+        let mgr = Arc::new(JobManager::new(None));
         let id = mgr.start("echo".into(), "sh".into(), vec!["-c".into(), "echo forge-hello".into()], std::env::temp_dir());
-        let mut status = Status::Queued;
-        for _ in 0..200 {
-            status = mgr.views(Some(id))[0].status;
-            if status.done() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        assert_eq!(status, Status::Succeeded, "status: {status:?}");
+        assert_eq!(wait_done(&mgr, id), Status::Succeeded);
         let (_, log, _) = mgr.logs(id, 0).expect("logs");
         assert!(log.contains("forge-hello"), "{log}");
+    }
+
+    #[test]
+    fn evidence_persists_and_reloads() {
+        let dir = std::env::temp_dir().join(format!("forge-evidence-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mgr = Arc::new(JobManager::new(Some(dir.clone())));
+        let id = mgr.start("echo".into(), "sh".into(), vec!["-c".into(), "echo persisted-hello".into()], std::env::temp_dir());
+        assert_eq!(wait_done(&mgr, id), Status::Succeeded);
+
+        // A fresh manager over the same directory must see the persisted job and its log.
+        let reloaded = JobManager::new(Some(dir.clone()));
+        let views = reloaded.views(None);
+        assert!(views.iter().any(|v| v.id == id && v.status == Status::Succeeded), "{views:?}");
+        let (_, log, _) = reloaded.logs(id, 0).expect("reloaded logs");
+        assert!(log.contains("persisted-hello"), "{log}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

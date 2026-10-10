@@ -31,7 +31,8 @@ pub struct Forge {
 
 impl Forge {
     pub fn new() -> Self {
-        Self { tool_router: Self::tool_router(), jobs: Arc::new(jobs::JobManager::new()) }
+        let evidence = probe::discover_repo_root().map(|root| root.join("target/forge/jobs"));
+        Self { tool_router: Self::tool_router(), jobs: Arc::new(jobs::JobManager::new(evidence)) }
     }
 }
 
