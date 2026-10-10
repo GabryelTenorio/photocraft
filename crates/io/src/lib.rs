@@ -376,7 +376,9 @@ pub fn merged_composite(file: &PsdFile) -> Result<Vec<[f32; 4]>, IoError> {
             })
             .collect());
     }
-    let img = file.composite_rgba8().ok();
+    // The RGBA8 preview clips signed/HDR values. Decode float merged images at their
+    // original depth through the model path below; they are the rendering oracle.
+    let img = if h.depth == 32 { None } else { file.composite_rgba8().ok() };
     // CMYK goes through the colour-managed model conversion (the PSD crate's RGBA preview is a
     // naive, profile-free conversion).
     if let (Some(img), false) = (img, matches!(h.color_mode, photocraft_psd::ColorMode::Lab | photocraft_psd::ColorMode::Cmyk)) {
