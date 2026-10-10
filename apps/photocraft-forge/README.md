@@ -213,10 +213,13 @@ record one row per distinct failure with a `status`; review periodically; keep t
 table current when a tool is added, renamed, or removed; and put durable learnings in the right doc
 (`README.md`, `MAINTENANCE.md`, `docs/`), not in a comment.
 
-### Tool lifecycle: grow on demand → retire to the archive → resurrect
+### Tool lifecycle: a just-in-time tool surface
 
-Forge's tools are grown on demand — a task needs a capability, so the tool is built. Some tools are
-therefore one-shot. This pipeline keeps the live surface lean **without losing the work**:
+Forge's surface is **just-in-time**: the live tool set is a *hot working set*, not a fixed API. Tools
+are grown on demand, paged out to the archive when they go cold, and paged back in when the need
+returns — so the surface stays lean without losing the work. The `ledger` is the usage profiler,
+**dormancy** is the eviction signal, and [`archive/RETIRED.md`](archive/RETIRED.md) is the backing
+store the MCP still knows about: a retired tool is one lookup away, not gone.
 
 1. **Grow.** When a task repeats and no live tool covers it, build the tool — never route around the gap.
 2. **Watch.** `forge_capabilities.ledger` (durable at `target/forge/tool_calls.json`) shows calls,
