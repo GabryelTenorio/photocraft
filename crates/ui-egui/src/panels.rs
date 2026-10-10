@@ -141,11 +141,11 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                     paint_toolbar_flyout_indicator(ui, &t, &resp);
                                 }
                                 if resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) != Some(key) {
-                                    app.ui.tool = tool;
+                                    app.ui.set_tool(tool);
                                 }
                                 // Double-clicking the Hand tool fits the image on screen (Photoshop).
                                 if resp.double_clicked() && tool == Tool::Hand {
-                                    app.ui.tool = tool;
+                                    app.ui.set_tool(tool);
                                     // With no document open there is nothing to fit.
                                     let _ = app.run("view.fitOnScreen", json!({}));
                                 }

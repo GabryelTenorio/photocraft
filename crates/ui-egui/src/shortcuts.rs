@@ -412,18 +412,21 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     // Tool keys; pressing the key of the current group cycles within it. With Preferences ›
     // Tools › Use Shift Key for Tool Switch, only ⇧+key cycles and the plain key keeps the
-    // group's current tool.
+    // group's current tool. From outside the group, the plain key restores the last tool the user
+    // picked in that group (Lasso › Polygonal Lasso, then Brush, then L returns to Polygonal
+    // Lasso), the way Photoshop remembers it (#2608).
     let shift_switch = app.session.prefs().tools.use_shift_key_for_tool_switch;
     for t in Tool::ALL {
         let Some(k) = Key::from_name(&t.key().to_string()) else { continue };
         let cycle_shift = shift_switch && ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, k));
         if cycle_shift || pressed(k) {
             let group: Vec<Tool> = Tool::ALL.iter().copied().filter(|x| x.key() == t.key()).collect();
-            app.ui.tool = match group.iter().position(|x| *x == app.ui.tool) {
+            let next = match group.iter().position(|x| *x == app.ui.tool) {
                 Some(i) if shift_switch && !cycle_shift => group[i],
                 Some(i) => group[(i + 1) % group.len()],
-                None => group[0],
+                None => app.ui.last_in_group.get(&t.key()).copied().unwrap_or_else(|| group[0]),
             };
+            app.ui.set_tool(next);
             return;
         }
     }

@@ -1,6 +1,8 @@
 //! UI state as plain data, so the control channel (and later MCP) can read and drive every
 //! aspect of the interface: tools, zoom, panels, dialogs and windows.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Shared selection and capture for a point curve; document parameters remain with the host.
@@ -843,6 +845,12 @@ pub struct ColorPanelState {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UiState {
     pub tool: Tool,
+    /// Last tool selected within each single-key group (V, M, L, …). Pressing the group's key
+    /// from another tool restores that tool, the way Photoshop remembers the last Lasso (or
+    /// Brush, or …) you used; pressing the group's key while you're already in the group
+    /// keeps the existing cycle/keep-current behaviour. (#2608)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub last_in_group: HashMap<char, Tool>,
     /// Recently opened file paths, most-recent first (File › Open Recent). Capped; de-duplicated.
     #[serde(default)]
     pub recent_files: Vec<String>,
@@ -1019,6 +1027,7 @@ impl Default for UiState {
     fn default() -> Self {
         Self {
             tool: Tool::Brush,
+            last_in_group: HashMap::new(),
             recent_files: Vec::new(),
             text_edit: None,
             type_transform: None,
@@ -1091,6 +1100,14 @@ impl UiState {
         let id = self.next_id;
         self.next_id += 1;
         id
+    }
+
+    /// Set the active tool and remember it as the last-selected member of its single-key group,
+    /// so a future press of that group's key from outside the group restores it (#2608).
+    /// Tools whose key is `'\0'` (no shortcut, e.g. the Blur group) are still recorded.
+    pub fn set_tool(&mut self, t: Tool) {
+        self.last_in_group.insert(t.key(), t);
+        self.tool = t;
     }
 
     pub fn open_dialog(&mut self, kind: DialogKind, fields: serde_json::Map<String, serde_json::Value>) -> u64 {
