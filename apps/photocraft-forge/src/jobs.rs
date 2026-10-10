@@ -516,9 +516,17 @@ impl JobManager {
     }
 
     fn finish(&self, id: u64, status: Status, exit: Option<i32>, zero_tests: bool) {
-        let parsed = {
+        // Snapshot the log now: the terminal status and the artifacts derived from it are published
+        // together, so a `views` observer never sees a finished job without its evidence.
+        let (parsed, log_text) = {
             let inner = lock(&self.inner);
-            inner.jobs.get(&id).map(|job| diagnostics::parse(lock(&job.log).as_str())).unwrap_or_default()
+            match inner.jobs.get(&id) {
+                Some(job) => {
+                    let text = lock(&job.log).clone();
+                    (diagnostics::parse(&text), text)
+                }
+                None => (Diagnostics::default(), String::new()),
+            }
         };
         {
             let mut inner = lock(&self.inner);
@@ -527,6 +535,7 @@ impl JobManager {
                 job.exit = exit;
                 job.zero_tests = zero_tests;
                 job.diagnostics = parsed;
+                job.artifacts = vec![Artifact::from_bytes(format!("{id}.log"), "text/plain", log_text.as_bytes())];
                 if let Some(started) = job.started_ms {
                     job.duration_ms = Some(now_ms().saturating_sub(started));
                 }

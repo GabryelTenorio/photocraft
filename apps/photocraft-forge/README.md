@@ -60,7 +60,7 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 
 | Tool | Purpose |
 |---|---|
-| `forge_capabilities` | Report required tools (`git`, `cargo`), optional companions, the checkout root, and install commands for anything missing. |
+| `forge_capabilities` | Report required tools (`git`, `cargo`), required **toolchain targets** (`wasm32-unknown-unknown`, which the `wasm` gate needs and which rustup does not install automatically), optional companions, the checkout root, and install commands for anything missing. |
 | `development_context` | Source fingerprint (HEAD, branch, dirty, diff/Cargo.lock hashes, behind origin/main), Forge's own build identity (version, profile, target, hashed binary), the workspace crate map, and the authoritative `cargo xtask layers` report. |
 | `change_impact` | The must-change-together touch set, invariants, artifacts to regenerate, related files, and the gate plan, for `paths` / a `command` / a `symbol` / an `intent`. |
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
@@ -147,8 +147,9 @@ installs them.
 The **signal registry** in `impact.rs` encodes the couplings generic search cannot see: doc fields →
 format/io; `Adjustment` arms → PSD `grdm` + compose + gpu + params + editor + compile guards;
 `codecs::Format` variants → all enum touch points + dispatch + tests; engine commands → registry +
-`menu_catalog` + parity; UI → localization. Gate policy is **never re-encoded** — it is read from
-`cargo xtask plan --json`.
+`menu_catalog` + parity; preferences → the prefs dialog + i18n catalogs + scorecard; UI →
+localization. Gate policy is **never re-encoded** — it is read from `cargo xtask plan --json` (which
+scopes `parity`/`panic_hunt` to engine *command* files, not every engine module).
 
 ## Agent workflow
 

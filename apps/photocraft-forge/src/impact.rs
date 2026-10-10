@@ -129,6 +129,17 @@ const UI_I18N: Signal = Signal {
     regenerate: &[],
 };
 
+const PREFERENCE: Signal = Signal {
+    id: "preference",
+    why: "a preference is read by the shell and shown in the schema-driven Preferences dialog, so its UI, its label's localizations and the scorecard prefs audit all move together",
+    touch: &["crates/ui-egui/src/prefs_ui.rs", "crates/ui-egui/src/i18n/mod.rs", "docs/scorecard.md"],
+    invariants: &[
+        "the Preferences dialog renders the field from the struct; a field nothing reads must be wired or listed in HIDDEN_UNTIL_IMPLEMENTED",
+        "a new user-visible preference label must be translated in every locale that claims complete menus, or `preference_labels_are_translated` fails",
+    ],
+    regenerate: &[("docs/scorecard.md", "cargo xtask scorecard")],
+};
+
 /// Rules, in the order they are probed.
 const RULES: &[(&str, Signal)] = &[("crates/doc/", DOC), ("crates/doc/src/adjust", ADJUST), ("crates/codecs/src/format.rs", FORMAT)];
 
@@ -143,6 +154,9 @@ fn signals_for(path: &str) -> Vec<&'static Signal> {
     // The adjustment file is under `crates/doc/` too; de-duplicate by id.
     if path.starts_with("crates/engine/src/") && path.ends_with("_cmds.rs") {
         out.push(&COMMAND);
+    }
+    if path == "crates/engine/src/prefs.rs" {
+        out.push(&PREFERENCE);
     }
     if path.starts_with("crates/ui-egui/src/") && path.ends_with(".rs") && !path.contains("/tests") {
         out.push(&UI_I18N);
@@ -370,6 +384,15 @@ mod tests {
         assert!(has_touch(&impact, "crates/ui-egui/src/menu_catalog.rs"));
         assert!(impact.regenerate.iter().any(|r| r.artifact == "docs/parity.md"));
         assert!(impact.invariants.iter().any(|i| i.contains("never panic")));
+    }
+
+    #[test]
+    fn preference_change_touches_dialog_i18n_and_scorecard() {
+        let impact = analyze(&["crates/engine/src/prefs.rs".to_string()]);
+        assert!(has_touch(&impact, "crates/ui-egui/src/prefs_ui.rs"), "{:?}", impact.touch);
+        assert!(has_touch(&impact, "crates/ui-egui/src/i18n/mod.rs"));
+        assert!(has_touch(&impact, "docs/scorecard.md"));
+        assert!(impact.regenerate.iter().any(|r| r.artifact == "docs/scorecard.md"));
     }
 
     #[test]

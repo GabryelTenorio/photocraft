@@ -5,6 +5,7 @@
 //! and **recommends installing** what is missing, with the exact command (decision D1).
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use serde::Serialize;
 
@@ -39,10 +40,11 @@ pub struct Capabilities {
     pub recommendations: Vec<String>,
 }
 
-/// (binary, kind, summary, install command).
+/// (tool/target, kind, summary, install command).
 const TOOLS: &[(&str, Kind, &str, Option<&str>)] = &[
     ("git", Kind::Required, "local provenance: fingerprint, diff, change ancestry", None),
     ("cargo", Kind::Required, "builds and the xtask finish gates", None),
+    ("wasm32-unknown-unknown", Kind::Required, "the `cargo xtask wasm` gate: L0-L6 must build for the web", Some("rustup target add wasm32-unknown-unknown")),
     ("jcodemunch-mcp", Kind::Optional, "symbol/impact graph accelerator (blast radius, importers)", Some("uv tool install jcodemunch-mcp")),
     ("rust-analyzer", Kind::Optional, "Rust semantic authority (via the rust-lsp MCP): references, types, macros", Some("rustup component add rust-analyzer")),
     (
@@ -55,7 +57,22 @@ const TOOLS: &[(&str, Kind, &str, Option<&str>)] = &[
 
 /// Probe the live environment.
 pub fn capabilities() -> Capabilities {
-    assemble(discover_repo_root(), on_path)
+    assemble(discover_repo_root(), present)
+}
+
+/// Is a capability present? Most are binaries on `PATH`; the wasm target is a rustup target.
+fn present(name: &str) -> bool {
+    if name == "wasm32-unknown-unknown" { wasm_target_installed() } else { on_path(name) }
+}
+
+/// Whether the `wasm32-unknown-unknown` rustup target is installed. A `cargo xtask wasm` gate fails
+/// without it, and it is not a binary on `PATH` (no `rust-toolchain.toml` pins it, so rustup does
+/// not install it automatically).
+fn wasm_target_installed() -> bool {
+    let Ok(out) = Command::new("rustup").args(["target", "list", "--installed"]).output() else {
+        return false;
+    };
+    out.status.success() && String::from_utf8_lossy(&out.stdout).lines().any(|l| l.trim() == "wasm32-unknown-unknown")
 }
 
 /// Pure assembly, so it can be tested without touching the real environment.
@@ -76,7 +93,10 @@ pub fn assemble(repo_root: Option<PathBuf>, found: impl Fn(&str) -> bool) -> Cap
                     (Kind::Optional, None) => {
                         recommendations.push(format!("`{name}` not found — {summary}"));
                     }
-                    (Kind::Required, _) => {
+                    (Kind::Required, Some(cmd)) => {
+                        recommendations.push(format!("required `{name}` not installed — {summary}: install with `{cmd}`"));
+                    }
+                    (Kind::Required, None) => {
                         recommendations.push(format!("required `{name}` not found on PATH — {summary} will not work"));
                     }
                 }
@@ -147,6 +167,13 @@ mod tests {
     fn missing_required_tool_is_flagged() {
         let caps = assemble(Some(PathBuf::from("/repo")), |name| name != "git");
         assert!(caps.recommendations.iter().any(|r| r.contains("required `git`")));
+    }
+
+    #[test]
+    fn missing_wasm_target_is_recommended_with_install_command() {
+        let caps = assemble(Some(PathBuf::from("/repo")), |name| name != "wasm32-unknown-unknown");
+        assert!(caps.recommendations.iter().any(|r| r.contains("rustup target add wasm32-unknown-unknown")), "{:?}", caps.recommendations);
+        assert!(caps.tools.iter().any(|t| t.name == "wasm32-unknown-unknown" && !t.present));
     }
 
     #[test]
