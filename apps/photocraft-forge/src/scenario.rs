@@ -9,6 +9,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
+use base64::Engine as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -40,7 +41,7 @@ pub struct Step {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Assertion {
-    /// Dot-path into the last step's JSON result, e.g. `width` or `layers.0.name`.
+    /// Dot-path into the last **structured** (object/array) step result, e.g. `width` or `layers.0.name`.
     #[serde(default)]
     pub json: Option<String>,
     /// The path must equal this value.
@@ -55,6 +56,18 @@ pub struct Assertion {
     /// A file, relative to the scenario work root.
     #[serde(default)]
     pub file: Option<String>,
+    /// A step index whose rendered image should be checked.
+    #[serde(default)]
+    pub image: Option<usize>,
+    /// The image width in pixels.
+    #[serde(default)]
+    pub width: Option<u32>,
+    /// The image height in pixels.
+    #[serde(default)]
+    pub height: Option<u32>,
+    /// The image payload must be at least this many bytes.
+    #[serde(default)]
+    pub min_bytes: Option<usize>,
 }
 
 /// A scenario run: whether every assertion passed, plus the evidence.
@@ -72,6 +85,19 @@ pub struct StepResult {
     pub is_error: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<ImageInfo>,
+}
+
+/// Metadata about an image content block returned by a step.
+#[derive(Debug, Serialize)]
+pub struct ImageInfo {
+    pub media_type: String,
+    pub bytes: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
 }
 
 /// The outcome of one assertion.
@@ -99,22 +125,29 @@ fn run_inner(app: &mut AppMcp, work: &Path, params: &Params) -> Result<Report, S
         let result = app.call(&step.tool, step.arguments.clone())?;
         let is_error = result.get("isError").and_then(Value::as_bool).unwrap_or(false);
         let value = parse_content(&result);
-        if let Some(v) = &value {
+        let image = parse_image(&result);
+        // The subject for `json` assertions is the last *structured* (object/array) step result.
+        if let Some(v) = &value
+            && (v.is_object() || v.is_array())
+        {
             subject = v.clone();
         }
-        steps.push(StepResult { tool: step.tool.clone(), is_error, value });
+        steps.push(StepResult { tool: step.tool.clone(), is_error, value, image });
     }
 
     let mut assertions = Vec::new();
     for a in &params.assertions {
-        assertions.push(evaluate(a, &subject, work));
+        assertions.push(evaluate(a, &subject, &steps, work));
     }
     let passed = assertions.iter().all(|a| a.passed) && steps.iter().all(|s| !s.is_error);
     Ok(Report { passed, steps, assertions })
 }
 
 /// Evaluate one assertion against the subject (last step's JSON) and the work root.
-pub fn evaluate(a: &Assertion, subject: &Value, work: &Path) -> AssertionResult {
+pub fn evaluate(a: &Assertion, subject: &Value, steps: &[StepResult], work: &Path) -> AssertionResult {
+    if let Some(index) = a.image {
+        return evaluate_image(a, steps.get(index), index);
+    }
     if let Some(file) = &a.file {
         let want = a.exists.unwrap_or(true);
         let exists = work.join(file).exists();
@@ -155,6 +188,31 @@ pub fn evaluate(a: &Assertion, subject: &Value, work: &Path) -> AssertionResult 
     AssertionResult { description: format!("json `{path}` has no check (equals/contains/exists)"), passed: false, detail: String::new() }
 }
 
+/// Evaluate an image assertion against a step's rendered image.
+fn evaluate_image(a: &Assertion, step: Option<&StepResult>, index: usize) -> AssertionResult {
+    let Some(image) = step.and_then(|s| s.image.as_ref()) else {
+        return AssertionResult { description: format!("image[{index}]"), passed: false, detail: "step has no image".to_string() };
+    };
+    let show = |v: Option<u32>| v.map_or_else(|| "?".to_string(), |v| v.to_string());
+    let mut checks: Vec<(bool, String)> = Vec::new();
+    if let Some(w) = a.width {
+        checks.push((image.width == Some(w), format!("width {} == {w}", show(image.width))));
+    }
+    if let Some(h) = a.height {
+        checks.push((image.height == Some(h), format!("height {} == {h}", show(image.height))));
+    }
+    if let Some(min) = a.min_bytes {
+        checks.push((image.bytes >= min, format!("bytes {} >= {min}", image.bytes)));
+    }
+    let passed = !checks.is_empty() && checks.iter().all(|(ok, _)| *ok);
+    let detail = if checks.is_empty() {
+        "no image check (width/height/min_bytes)".to_string()
+    } else {
+        checks.into_iter().map(|(_, d)| d).collect::<Vec<_>>().join("; ")
+    };
+    AssertionResult { description: format!("image[{index}] {}", image.media_type), passed, detail }
+}
+
 /// Dot-path lookup: `.` separates keys; a numeric segment indexes an array.
 pub fn dot_get<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     let mut cur = value;
@@ -172,6 +230,27 @@ pub fn dot_get<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 fn parse_content(result: &Value) -> Option<Value> {
     let text = result.get("content")?.as_array()?.iter().find(|c| c.get("type").and_then(Value::as_str) == Some("text"))?.get("text")?.as_str()?;
     Some(serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string())))
+}
+
+/// The first image content block, with its PNG dimensions when decodable.
+fn parse_image(result: &Value) -> Option<ImageInfo> {
+    let block = result.get("content")?.as_array()?.iter().find(|c| c.get("type").and_then(Value::as_str) == Some("image"))?;
+    let media_type = block.get("mimeType").and_then(Value::as_str).unwrap_or("image/png").to_string();
+    let data = block.get("data").and_then(Value::as_str)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+    let (width, height) = if media_type.contains("png") { png_dims(&bytes) } else { (None, None) };
+    Some(ImageInfo { media_type, bytes: bytes.len(), width, height })
+}
+
+/// PNG width/height from the IHDR header (no decoder needed).
+pub fn png_dims(bytes: &[u8]) -> (Option<u32>, Option<u32>) {
+    let signature = b"\x89PNG\r\n\x1a\n";
+    if bytes.len() < 24 || bytes.get(..8) != Some(&signature[..]) || bytes.get(12..16) != Some(&b"IHDR"[..]) {
+        return (None, None);
+    }
+    let width = bytes.get(16..20).and_then(|s| s.try_into().ok()).map(u32::from_be_bytes);
+    let height = bytes.get(20..24).and_then(|s| s.try_into().ok()).map(u32::from_be_bytes);
+    (width, height)
 }
 
 // ---------------------------------------------------------------------------
@@ -262,18 +341,30 @@ mod tests {
     #[test]
     fn equals_and_contains_assertions() {
         let subject = json!({"width": 8, "name": "Untitled"});
-        let ok = evaluate(&Assertion { json: Some("width".into()), equals: Some(json!(8)), ..Default::default() }, &subject, Path::new("."));
+        let ok = evaluate(&Assertion { json: Some("width".into()), equals: Some(json!(8)), ..Default::default() }, &subject, &[], Path::new("."));
         assert!(ok.passed, "{ok:?}");
-        let bad = evaluate(&Assertion { json: Some("width".into()), equals: Some(json!(9)), ..Default::default() }, &subject, Path::new("."));
+        let bad = evaluate(&Assertion { json: Some("width".into()), equals: Some(json!(9)), ..Default::default() }, &subject, &[], Path::new("."));
         assert!(!bad.passed);
-        let contains = evaluate(&Assertion { json: Some("name".into()), contains: Some("title".into()), ..Default::default() }, &subject, Path::new("."));
+        let contains = evaluate(&Assertion { json: Some("name".into()), contains: Some("title".into()), ..Default::default() }, &subject, &[], Path::new("."));
         assert!(contains.passed, "{contains:?}");
+    }
+
+    #[test]
+    fn png_dims_parses_ihdr() {
+        let mut png = Vec::new();
+        png.extend_from_slice(b"\x89PNG\r\n\x1a\n");
+        png.extend_from_slice(&[0, 0, 0, 13]); // IHDR length
+        png.extend_from_slice(b"IHDR");
+        png.extend_from_slice(&[0, 0, 0, 64]); // width 64
+        png.extend_from_slice(&[0, 0, 0, 48]); // height 48
+        assert_eq!(png_dims(&png), (Some(64), Some(48)));
+        assert_eq!(png_dims(b"not a png"), (None, None));
     }
 
     #[test]
     fn exists_assertion() {
         let subject = json!({"a": 1});
-        assert!(evaluate(&Assertion { json: Some("a".into()), exists: Some(true), ..Default::default() }, &subject, Path::new(".")).passed);
-        assert!(evaluate(&Assertion { json: Some("b".into()), exists: Some(false), ..Default::default() }, &subject, Path::new(".")).passed);
+        assert!(evaluate(&Assertion { json: Some("a".into()), exists: Some(true), ..Default::default() }, &subject, &[], Path::new(".")).passed);
+        assert!(evaluate(&Assertion { json: Some("b".into()), exists: Some(false), ..Default::default() }, &subject, &[], Path::new(".")).passed);
     }
 }

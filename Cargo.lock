@@ -4165,6 +4165,7 @@ dependencies = [
 name = "photocraft-forge"
 version = "0.5.0"
 dependencies = [
+ "base64",
  "rmcp",
  "schemars",
  "serde",

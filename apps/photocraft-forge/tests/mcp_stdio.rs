@@ -152,9 +152,14 @@ fn scenario_start_exercises_doc_new_and_asserts() {
         json!({
             "steps": [
                 {"tool": "doc_new", "arguments": {"width": 8, "height": 8}},
-                {"tool": "doc_inspect", "arguments": {}}
+                {"tool": "doc_inspect", "arguments": {}},
+                {"tool": "doc_render_preview", "arguments": {}}
             ],
-            "assertions": [{"json": "width", "equals": 8}, {"json": "height", "equals": 8}]
+            "assertions": [
+                {"json": "width", "equals": 8},
+                {"json": "height", "equals": 8},
+                {"image": 2, "width": 8, "height": 8, "min_bytes": 1}
+            ]
         }),
     );
     assert_eq!(r["passed"], true, "{r}");

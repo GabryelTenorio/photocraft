@@ -45,7 +45,7 @@ repo root). First action for an agent: **`forge_capabilities`**.
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
 | `validation_start` | Run the required gates for a diff as serialized background jobs. |
 | `job_status` / `job_logs` / `job_cancel` | Poll status, read cursor-based logs, cancel a job (and its process tree). |
-| `scenario_start` | Exercise a change against the headless app MCP and assert the result. |
+| `scenario_start` | Exercise a change against the headless app MCP and assert the result (JSON paths, files, rendered images). |
 
 ### Contracts
 
@@ -68,10 +68,11 @@ it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 `job_cancel { job }` → `{ job, requested }`.
 
 `scenario_start { steps:[{tool,arguments}], assertions:[..] }`
-→ `{ passed, steps:[{tool,is_error,value}], assertions:[{description,passed,detail}] }`. It spawns the
-headless app MCP (`photocraft-cli mcp`, roots under `target/forge-scenarios/work`), runs the steps,
-then checks assertions over the **last step's JSON** (`equals` / `contains` / `exists`) or files in the
-work root.
+→ `{ passed, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. It spawns
+the headless app MCP (`photocraft-cli mcp`, roots under `target/forge-scenarios/work`), runs the steps,
+then checks assertions over the last **structured** (object/array) step result (`json` + `equals` /
+`contains` / `exists`), files in the work root (`file`), or a step's rendered **image** (`image` step
+index + `width` / `height` / `min_bytes`; PNG dimensions are read from the IHDR header).
 
 ## Optional companions
 
