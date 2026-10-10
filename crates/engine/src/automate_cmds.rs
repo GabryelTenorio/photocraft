@@ -292,6 +292,8 @@ fn create_droplet(s: &mut Session, p: &Value) -> Result<Value> {
     let path = p.get("path").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or_else(|| bad(cmd, "missing \"path\" (where to save the droplet)"))?;
     let steps_v = p.get("steps").or_else(|| p.get("action")).ok_or_else(|| bad(cmd, "missing \"steps\" (the action to run)"))?;
     let mut steps = parse_steps(steps_v, cmd)?;
+    // The droplet's output folder replaces recorded saves, and view steps don't apply, as in batch.
+    steps.retain(|(id, _)| !crate::actions_cmds::shell_save_command(id) && !crate::actions_cmds::shell_view_command(id));
     check_known(&steps, cmd)?;
     // Play Action steps need their actions when the droplet runs on its own (#2794). Not under
     // `actions`: the CLI reads that key as an action set.
@@ -394,9 +396,8 @@ fn statistics(s: &mut Session, p: &Value) -> Result<Value> {
         s.execute("edit.autoAlignLayers", json!({"projection": "auto"}))?;
         let name = s.active().map(|d| d.doc.name.clone()).unwrap_or_default();
         s.edit("Convert to Smart Object", |doc, active| {
-            let children = std::mem::take(&mut doc.layers);
-            let group = Layer::new(name.clone(), LayerContent::Group(photocraft_doc::Group { children, expanded: true, artboard: None }));
-            let smart = crate::smart_cmds::layer_to_smart(doc, &group)?;
+            let layers = std::mem::take(&mut doc.layers);
+            let smart = crate::smart_cmds::layers_to_smart(doc, &name, layers)?;
             *active = Some(smart.id);
             doc.layers = vec![smart];
             Ok(())
