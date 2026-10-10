@@ -18,7 +18,7 @@ pub fn is_gesture(mods: egui::Modifiers) -> bool {
     mods.mac_cmd && mods.alt && mods.ctrl
 }
 
-/// Keyboard/palette counterpart of Auto-Select. Resolve the latest canvas mapping so zoom,
+/// Keyboard counterpart of Auto-Select. Resolve the latest canvas mapping so zoom,
 /// rotation, mirroring and display scale behave exactly like a pointer pick. An idle pointer
 /// outside the image leaves the current layer selected; an in-progress edit keeps its target.
 pub fn under_cursor(app: &mut PhotocraftApp, ctx: &egui::Context, params: serde_json::Value) -> Result<serde_json::Value, String> {

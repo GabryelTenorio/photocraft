@@ -43,6 +43,10 @@ pub fn press(app: &mut PhotocraftApp, ctx: &Context) {
     if ctx.data(|d| d.get_temp::<Hold>(id())).is_some() {
         return; // Key repeat must not replace the original tool or start time.
     }
+    // Explicit temporary-tool bindings retain priority over the letter shortcut.
+    if crate::hold_keys::held_tool(app, ctx).is_some() {
+        return;
+    }
     if app.drag.is_some() {
         return; // A running stroke keeps its tool and its release.
     }

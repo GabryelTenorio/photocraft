@@ -167,3 +167,23 @@ fn alt_can_be_held_before_z_to_temporarily_zoom_out() {
     h.run_steps(2);
     assert_eq!(h.state().ui.tool, Tool::Brush);
 }
+
+#[test]
+fn a_rebound_alt_z_zoom_in_keeps_its_direction_and_never_selects_zoom_on_release() {
+    let mut h = harness(Tool::Brush);
+    h.state_mut().run("edit.keyboardShortcuts", json!({"set": {"tools.temporary.zoomIn": "Alt+Z"}})).unwrap();
+    h.input_mut().events.extend([
+        Event::ModifiersChanged(Modifiers::ALT),
+        Event::Key { key: Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::ALT },
+    ]);
+    h.step();
+    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::ZoomIn);
+    let p = h.state().last_canvas_rect.center();
+    let before = h.state().current_zoom();
+    button(&mut h, p, true, Modifiers::ALT);
+    button(&mut h, p, false, Modifiers::ALT);
+    assert!(h.state().current_zoom() > before);
+    h.input_mut().events.push(Event::Key { key: Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::ALT });
+    h.step();
+    assert_eq!(h.state().ui.tool, Tool::Brush);
+}
