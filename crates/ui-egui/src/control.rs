@@ -845,7 +845,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                         }
                         continue;
                     }
-                    if !crate::paint_mouse::pointer_secondary(app, down, mods, screen_point(app, x, y)) {
+                    if !crate::paint_mouse::pointer_secondary(app, ctx, down, mods, screen_point(app, x, y)) {
                         continue;
                     }
                 }

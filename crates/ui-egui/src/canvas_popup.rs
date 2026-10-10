@@ -1,4 +1,4 @@
-//! Outside-click dismissal shared by the canvas tool and layer menus.
+//! Outside-click dismissal shared by canvas menus and the Brush Preset picker.
 
 use egui::{Context, Id, Rect};
 
