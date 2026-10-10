@@ -76,21 +76,23 @@ it diffs against `base` (default: merge-base with `origin/main`, else `HEAD`).
 `target/` and the caches must not contend). A `cargo test` that matched **zero tests** ends as
 `notests`, never a pass. Each completed job persists an immutable manifest under `target/forge/jobs/`
 (`<id>.json` + `<id>.log`) carrying the source fingerprint, the gate's reason, **parsed diagnostics**
-(Cargo/clippy — human or `--message-format=json` — mapped to `file:line:col`) and
-matched/executed/filtered **test counts** (research §8). A job persisted while still queued or running
-loads as **`interrupted`** — never a silent `failed` — and each manifest carries start, finish and
-duration.
+(Cargo/clippy — human or `--message-format=json` — mapped to `file:line:col`),
+matched/executed/filtered **test counts**, and **artifacts** (media type + `blake3` content hash) —
+research §8. A job persisted while still queued or running loads as **`interrupted`** — never a silent
+`failed` — and each manifest carries start, finish and duration.
 
-`job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,command,zero_tests,tests,diagnostics,head,dirty,evidence,finished_ms}] }`.
+`job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,command,zero_tests,tests,diagnostics,artifacts,head,dirty,evidence,finished_ms}] }`.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
 `scenario_start { steps:[{tool,arguments}], assertions:[..] }`
-→ `{ passed, evidence_tier, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. It spawns
+→ `{ passed, evidence_tier, artifacts, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. It spawns
 the headless app MCP (`photocraft-cli mcp`, roots under `target/forge-scenarios/work`), runs the steps,
 then checks assertions over the last **structured** (object/array) step result (`json` + `equals` /
-`contains` / `exists`), files in the work root (`file`), or a step's rendered **image** (`image` step
-index + `width` / `height` / `min_bytes`; PNG dimensions are read from the IHDR header).
+`contains` / `exists`), files in the work root (`file`, with `width` / `height` / `min_bytes` / `hash`),
+or a step's rendered **image** (`image` step index + `width` / `height` / `min_bytes` / `hash`; PNG
+dimensions are read from the IHDR header). Every rendered image and asserted file is reported as an
+**artifact** with its media type and `blake3` hash.
 
 ## Optional companions
 

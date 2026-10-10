@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::artifact::Artifact;
 use crate::diagnostics::{self, Diagnostics, TestCounts};
 
 const LOG_CAP: usize = 4 << 20;
@@ -130,6 +131,9 @@ struct Manifest {
     dirty: bool,
     #[serde(default)]
     tier: Tier,
+    /// Outputs of the job (its log, and any produced files) with media types + content hashes.
+    #[serde(default)]
+    artifacts: Vec<Artifact>,
     #[serde(default)]
     diagnostics: Diagnostics,
 }
@@ -154,6 +158,7 @@ struct Job {
     dirty: bool,
     log_path: Option<PathBuf>,
     tier: Tier,
+    artifacts: Vec<Artifact>,
     diagnostics: Diagnostics,
 }
 
@@ -179,6 +184,8 @@ pub struct JobView {
     pub tests: TestCounts,
     pub diagnostics: usize,
     pub tier: Tier,
+    /// Outputs with media types + content hashes (research §8).
+    pub artifacts: Vec<Artifact>,
     /// Source fingerprint (HEAD) the job ran against.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
@@ -258,6 +265,7 @@ impl JobManager {
                     head: manifest.head,
                     dirty: manifest.dirty,
                     log_path: Some(log_path),
+                    artifacts: manifest.artifacts,
                     diagnostics: manifest.diagnostics,
                 },
             );
@@ -294,6 +302,7 @@ impl JobManager {
                 head: fingerprint.head,
                 dirty: fingerprint.dirty,
                 log_path: None,
+                artifacts: Vec::new(),
                 diagnostics: Diagnostics::default(),
             },
         );
@@ -390,7 +399,7 @@ impl JobManager {
         let Some(dir) = &self.evidence else {
             return;
         };
-        let (manifest, log_text, log_path) = {
+        let (mut manifest, log_text, log_path) = {
             let inner = lock(&self.inner);
             let Some(job) = inner.jobs.get(&id) else {
                 return;
@@ -411,16 +420,19 @@ impl JobManager {
                 finished_ms: job.finished_ms,
                 head: job.head.clone(),
                 dirty: job.dirty,
+                artifacts: Vec::new(),
                 diagnostics: job.diagnostics.clone(),
             };
             (manifest, lock(&job.log).clone(), dir.join(format!("{id}.log")))
         };
+        manifest.artifacts = vec![Artifact::from_bytes(format!("{id}.log"), "text/plain", log_text.as_bytes())];
         if let Ok(text) = serde_json::to_string_pretty(&manifest) {
             let _ = std::fs::write(dir.join(format!("{id}.json")), text);
         }
         let _ = std::fs::write(&log_path, log_text);
         if let Some(job) = lock(&self.inner).jobs.get_mut(&id) {
             job.log_path = Some(log_path);
+            job.artifacts = manifest.artifacts.clone();
         }
     }
 
@@ -440,6 +452,7 @@ impl JobManager {
             tests: job.diagnostics.tests.clone(),
             diagnostics: job.diagnostics.entries.len(),
             tier: job.tier,
+            artifacts: job.artifacts.clone(),
             head: job.head.clone(),
             dirty: job.dirty,
             evidence: job.log_path.as_ref().and_then(|p| p.parent()).map(|p| p.display().to_string()),
@@ -637,6 +650,30 @@ mod tests {
         assert_eq!(tier_for_gate("test-corpus"), Tier::Unit);
         assert_eq!(tier_for_gate("layers"), Tier::Static);
         assert_eq!(tier_for_gate("wasm"), Tier::Static);
+    }
+
+    #[test]
+    fn a_persisted_job_records_its_log_artifact_with_a_hash() {
+        let dir = std::env::temp_dir().join(format!("forge-artifact-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mgr = Arc::new(JobManager::new(Some(dir.clone())));
+        let spec = JobSpec {
+            name: "echo".into(),
+            kind: "test".into(),
+            reason: "artifact".into(),
+            tier: Tier::Unit,
+            program: "sh".into(),
+            args: vec!["-c".into(), "echo artifact-hello".into()],
+            cwd: std::env::temp_dir(),
+        };
+        let id = mgr.start(spec);
+        assert_eq!(wait_done(&mgr, id), Status::Succeeded);
+        let view = mgr.views(Some(id));
+        let art = view[0].artifacts.iter().find(|a| a.name.ends_with(".log")).expect("log artifact");
+        assert_eq!(art.media_type, "text/plain");
+        assert!(art.hash.starts_with("blake3:"), "{art:?}");
+        assert!(art.bytes > 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

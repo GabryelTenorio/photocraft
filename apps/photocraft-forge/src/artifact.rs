@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The content-hash algorithm used for artifacts. Recorded in every digest so the value is
 /// self-describing.
@@ -16,7 +16,7 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
 }
 
 /// An artifact: a name or path, a media type, its size and its content hash.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Artifact {
     /// Path relative to the workspace when known, else a synthetic name.
     pub name: String,

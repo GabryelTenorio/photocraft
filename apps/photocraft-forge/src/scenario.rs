@@ -14,6 +14,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::artifact::{self, Artifact};
+
 /// A scenario to run.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -59,23 +61,29 @@ pub struct Assertion {
     /// A step index whose rendered image should be checked.
     #[serde(default)]
     pub image: Option<usize>,
-    /// The image width in pixels.
+    /// The image width in pixels (for an `image`, or a `file` that is a PNG).
     #[serde(default)]
     pub width: Option<u32>,
-    /// The image height in pixels.
+    /// The image height in pixels (for an `image`, or a `file` that is a PNG).
     #[serde(default)]
     pub height: Option<u32>,
-    /// The image payload must be at least this many bytes.
+    /// The payload must be at least this many bytes (for an `image` or a `file`).
     #[serde(default)]
     pub min_bytes: Option<usize>,
+    /// The content hash must equal this `blake3:<hex>` digest (for an `image` or a `file`).
+    #[serde(default)]
+    pub hash: Option<String>,
 }
 
 /// A scenario run: whether every assertion passed, plus the evidence.
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub passed: bool,
-    /// The evidence tier this scenario reached (research §4). Headless in v1.
+    /// The evidence tier this scenario reached (research §4).
     pub evidence_tier: &'static str,
+    /// Outputs produced by the scenario (rendered images, asserted files) with their media types
+    /// and content hashes (research §8).
+    pub artifacts: Vec<Artifact>,
     pub steps: Vec<StepResult>,
     pub assertions: Vec<AssertionResult>,
 }
@@ -96,6 +104,8 @@ pub struct StepResult {
 pub struct ImageInfo {
     pub media_type: String,
     pub bytes: usize,
+    /// `blake3:<hex>` content hash of the decoded image bytes.
+    pub hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,12 +132,16 @@ pub fn run(root: &Path, params: Params) -> Result<Report, String> {
 
 fn run_inner(app: &mut AppMcp, work: &Path, params: &Params) -> Result<Report, String> {
     let mut steps = Vec::new();
+    let mut artifacts = Vec::new();
     let mut subject = Value::Null;
-    for step in &params.steps {
+    for (i, step) in params.steps.iter().enumerate() {
         let result = app.call(&step.tool, step.arguments.clone())?;
         let is_error = result.get("isError").and_then(Value::as_bool).unwrap_or(false);
         let value = parse_content(&result);
         let image = parse_image(&result);
+        if let Some(img) = &image {
+            artifacts.push(Artifact { name: format!("step[{i}]"), media_type: img.media_type.clone(), bytes: img.bytes, hash: img.hash.clone() });
+        }
         // The subject for `json` assertions is the last *structured* (object/array) step result.
         if let Some(v) = &value
             && (v.is_object() || v.is_array())
@@ -141,8 +155,20 @@ fn run_inner(app: &mut AppMcp, work: &Path, params: &Params) -> Result<Report, S
     for a in &params.assertions {
         assertions.push(evaluate(a, &subject, &steps, work));
     }
+    collect_file_artifacts(work, &params.assertions, &mut artifacts);
     let passed = assertions.iter().all(|a| a.passed) && steps.iter().all(|s| !s.is_error);
-    Ok(Report { passed, evidence_tier: "headless", steps, assertions })
+    Ok(Report { passed, evidence_tier: "headless", artifacts, steps, assertions })
+}
+
+/// Add an artifact for every `file` assertion that exists in the work root.
+fn collect_file_artifacts(work: &Path, assertions: &[Assertion], out: &mut Vec<Artifact>) {
+    for a in assertions {
+        let Some(file) = &a.file else { continue };
+        let path = work.join(file);
+        if let Some(art) = Artifact::from_file(file.clone(), artifact::media_type(&path), &path) {
+            out.push(art);
+        }
+    }
 }
 
 /// Evaluate one assertion against the subject (last step's JSON) and the work root.
@@ -151,13 +177,7 @@ pub fn evaluate(a: &Assertion, subject: &Value, steps: &[StepResult], work: &Pat
         return evaluate_image(a, steps.get(index), index);
     }
     if let Some(file) = &a.file {
-        let want = a.exists.unwrap_or(true);
-        let exists = work.join(file).exists();
-        return AssertionResult {
-            description: format!("file `{file}` exists={want}"),
-            passed: exists == want,
-            detail: if exists { "exists" } else { "missing" }.to_string(),
-        };
+        return evaluate_file(a, work, file);
     }
     let Some(path) = &a.json else {
         return AssertionResult { description: "assertion has neither `json` nor `file`".to_string(), passed: false, detail: String::new() };
@@ -190,12 +210,48 @@ pub fn evaluate(a: &Assertion, subject: &Value, steps: &[StepResult], work: &Pat
     AssertionResult { description: format!("json `{path}` has no check (equals/contains/exists)"), passed: false, detail: String::new() }
 }
 
+/// Evaluate a `file` assertion: existence, and (when given) size, hash and PNG dimensions. An
+/// existing file is also recorded as an artifact by [`collect_file_artifacts`].
+fn evaluate_file(a: &Assertion, work: &Path, file: &str) -> AssertionResult {
+    let path = work.join(file);
+    let want_exists = a.exists.unwrap_or(true);
+    let Some(artifact) = Artifact::from_file(file, artifact::media_type(&path), &path) else {
+        let passed = !want_exists;
+        return AssertionResult {
+            description: format!("file `{file}` exists={want_exists}"),
+            passed,
+            detail: if passed { "absent (as required)".to_string() } else { "missing".to_string() },
+        };
+    };
+    if a.exists == Some(false) {
+        return AssertionResult { description: format!("file `{file}` exists=false"), passed: false, detail: "exists (expected absent)".to_string() };
+    }
+    let mut checks: Vec<(bool, String)> = vec![(true, "exists".to_string())];
+    if let Some(min) = a.min_bytes {
+        checks.push((artifact.bytes >= min, format!("bytes {} >= {min}", artifact.bytes)));
+    }
+    if let Some(expect) = &a.hash {
+        checks.push((artifact.hash == *expect, format!("hash {} == {expect}", artifact.hash)));
+    }
+    if a.width.is_some() || a.height.is_some() {
+        let bytes = std::fs::read(&path).unwrap_or_default();
+        let (w, h) = png_dims(&bytes);
+        if let Some(want) = a.width {
+            checks.push((w == Some(want), format!("width {} == {want}", show(w))));
+        }
+        if let Some(want) = a.height {
+            checks.push((h == Some(want), format!("height {} == {want}", show(h))));
+        }
+    }
+    let passed = checks.iter().all(|(ok, _)| *ok);
+    AssertionResult { description: format!("file `{file}`"), passed, detail: join_checks(&checks) }
+}
+
 /// Evaluate an image assertion against a step's rendered image.
 fn evaluate_image(a: &Assertion, step: Option<&StepResult>, index: usize) -> AssertionResult {
     let Some(image) = step.and_then(|s| s.image.as_ref()) else {
         return AssertionResult { description: format!("image[{index}]"), passed: false, detail: "step has no image".to_string() };
     };
-    let show = |v: Option<u32>| v.map_or_else(|| "?".to_string(), |v| v.to_string());
     let mut checks: Vec<(bool, String)> = Vec::new();
     if let Some(w) = a.width {
         checks.push((image.width == Some(w), format!("width {} == {w}", show(image.width))));
@@ -206,13 +262,20 @@ fn evaluate_image(a: &Assertion, step: Option<&StepResult>, index: usize) -> Ass
     if let Some(min) = a.min_bytes {
         checks.push((image.bytes >= min, format!("bytes {} >= {min}", image.bytes)));
     }
+    if let Some(expect) = &a.hash {
+        checks.push((image.hash == *expect, format!("hash {} == {expect}", image.hash)));
+    }
     let passed = !checks.is_empty() && checks.iter().all(|(ok, _)| *ok);
-    let detail = if checks.is_empty() {
-        "no image check (width/height/min_bytes)".to_string()
-    } else {
-        checks.into_iter().map(|(_, d)| d).collect::<Vec<_>>().join("; ")
-    };
+    let detail = if checks.is_empty() { "no image check (width/height/min_bytes/hash)".to_string() } else { join_checks(&checks) };
     AssertionResult { description: format!("image[{index}] {}", image.media_type), passed, detail }
+}
+
+fn show(v: Option<u32>) -> String {
+    v.map_or_else(|| "?".to_string(), |v| v.to_string())
+}
+
+fn join_checks(checks: &[(bool, String)]) -> String {
+    checks.iter().map(|(_, d)| d.as_str()).collect::<Vec<_>>().join("; ")
 }
 
 /// Dot-path lookup: `.` separates keys; a numeric segment indexes an array.
@@ -241,7 +304,7 @@ fn parse_image(result: &Value) -> Option<ImageInfo> {
     let data = block.get("data").and_then(Value::as_str)?;
     let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
     let (width, height) = if media_type.contains("png") { png_dims(&bytes) } else { (None, None) };
-    Some(ImageInfo { media_type, bytes: bytes.len(), width, height })
+    Some(ImageInfo { media_type, bytes: bytes.len(), hash: artifact::hash_bytes(&bytes), width, height })
 }
 
 /// PNG width/height from the IHDR header (no decoder needed).
@@ -361,6 +424,39 @@ mod tests {
         png.extend_from_slice(&[0, 0, 0, 48]); // height 48
         assert_eq!(png_dims(&png), (Some(64), Some(48)));
         assert_eq!(png_dims(b"not a png"), (None, None));
+    }
+
+    #[test]
+    fn file_hash_and_size_assertions() {
+        let dir = std::env::temp_dir().join(format!("forge-scenario-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create");
+        std::fs::write(dir.join("out.txt"), b"hello").expect("write");
+        let hash = artifact::hash_bytes(b"hello");
+        let ok =
+            evaluate(&Assertion { file: Some("out.txt".into()), min_bytes: Some(5), hash: Some(hash.clone()), ..Default::default() }, &Value::Null, &[], &dir);
+        assert!(ok.passed, "{ok:?}");
+        let bad = evaluate(&Assertion { file: Some("out.txt".into()), hash: Some("blake3:deadbeef".into()), ..Default::default() }, &Value::Null, &[], &dir);
+        assert!(!bad.passed, "{bad:?}");
+        let missing = evaluate(&Assertion { file: Some("nope.txt".into()), ..Default::default() }, &Value::Null, &[], &dir);
+        assert!(!missing.passed);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn image_block_records_a_hash_and_dimensions() {
+        let mut png = Vec::new();
+        png.extend_from_slice(b"\x89PNG\r\n\x1a\n");
+        png.extend_from_slice(&[0, 0, 0, 13]);
+        png.extend_from_slice(b"IHDR");
+        png.extend_from_slice(&[0, 0, 0, 32]); // width 32
+        png.extend_from_slice(&[0, 0, 0, 16]); // height 16
+        let data = base64::engine::general_purpose::STANDARD.encode(&png);
+        let result = json!({"content":[{"type":"image","mimeType":"image/png","data":data}]});
+        let info = parse_image(&result).expect("image");
+        assert_eq!(info.width, Some(32));
+        assert_eq!(info.height, Some(16));
+        assert_eq!(info.hash, artifact::hash_bytes(&png));
     }
 
     #[test]
