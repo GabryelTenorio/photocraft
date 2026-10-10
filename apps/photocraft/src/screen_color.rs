@@ -419,6 +419,18 @@ mod tests {
     }
     #[cfg(target_os = "linux")]
     #[test]
+    fn x11_screen_capture_accepts_only_bounded_rgb_icc_profiles() {
+        let rgb = photocraft_cms::Builtin::Srgb.profile().to_bytes();
+        let bytes = rgb.as_ref().clone();
+        assert_eq!(icc_profile(bytes.clone()), Some(bytes));
+
+        assert!(icc_profile(Vec::new()).is_none());
+        assert!(icc_profile(vec![0; MAX_ICC_PROFILE_BYTES + 1]).is_none());
+        let cmyk = photocraft_cms::Builtin::CoatedCmyk.profile().to_bytes();
+        assert!(icc_profile(cmyk.as_ref().clone()).is_none());
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
     #[ignore = "requires a live X11 display; draws only a tiny synthetic fixture"]
     fn screen_capture_reads_a_known_x11_fixture_pixel() {
         use x11rb::{
