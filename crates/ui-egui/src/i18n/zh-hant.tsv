@@ -696,6 +696,10 @@
 	Classic Theme	經典主題
 	Solarized dark	Solarized 深色
 	Solarized Dark Theme	Solarized 深色主題
+	Breeze dark	Breeze 深色
+	Breeze Dark Theme	Breeze 深色主題
+	Breeze light	Breeze 淺色
+	Breeze Light Theme	Breeze 淺色主題
 	Next Theme	下一個主題
 	Actions	動作
 	Brush Settings	筆刷設定
@@ -1539,6 +1543,7 @@
 	Bold	粗體
 	Brush	筆刷
 	Pencil	鉛筆
+	Block	區塊
 	Brush Pose	筆刷姿勢
 	Brush Tip Shape	筆尖形狀
 	Brush Tool	筆刷工具
@@ -1754,6 +1759,7 @@
 	Invalid {mode} profile	無效的 {mode} 描述檔
 	Unnamed {mode} profile	未命名的 {mode} 描述檔
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	解析度：{dpi} 像素/英吋
 	Doc: {w} × {h} px	文件：{w} × {h} px
 	Frame {current} / {total}	影格 {current} / {total}
@@ -1904,6 +1910,7 @@
 	Show only crosshair while painting	繪圖時僅顯示十字線
 	Show slice numbers	顯示切片編號
 	Show tooltips	顯示工具提示
+	Show highlight on rollover	滑鼠懸停時顯示醒目提示
 	Show bounding box when dragging layer	拖曳圖層時顯示邊界框
 	System title bar	系統標題列
 	Show transformation values	顯示變形數值
@@ -2404,3 +2411,5 @@ fontWeight	Italic	斜體
 	Previous Document	上一個文件
 	W x H x Resolution	寬 x 高 x 解析度
 	Front Image	前面的影像
+	Search settings…	搜尋設定…
+	No matching settings	沒有符合的設定

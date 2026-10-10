@@ -595,6 +595,8 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
                     }
                     Key::Enter if m.command => commit(app),
                     Key::Enter => insert(app, "\n"),
+                    // Photoshop types a tab character; layout advances it to the next tab stop.
+                    Key::Tab if !m.command && !m.alt && !m.shift => insert(app, "\t"),
                     Key::Escape if crate::type_transform::active(app) => crate::type_transform::cancel_drag(app),
                     // Preferences ▸ Type: with "Use Escape to Commit" off, Escape cancels the
                     // session (undoes it, removing a just-created layer) like the Cancel button.
@@ -920,7 +922,9 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
         for f in filtered {
             let response = ui.add_sized(
                 [330.0, 28.0],
-                egui::Button::selectable(f == current, f).truncate().right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(100.0, 24.0))),
+                egui::Button::selectable(f == current, f)
+                    .truncate()
+                    .right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(crate::font_preview::slot_width(ui.ctx(), f), 24.0))),
             );
             if (down || up) && f == current {
                 response.scroll_to_me(Some(egui::Align::Center));

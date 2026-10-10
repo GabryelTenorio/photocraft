@@ -680,6 +680,10 @@
 	Classic Theme	Thème Classique
 	Solarized dark	Solarized sombre
 	Solarized Dark Theme	Thème Solarized sombre
+	Breeze dark	Breeze sombre
+	Breeze Dark Theme	Thème Breeze sombre
+	Breeze light	Breeze clair
+	Breeze Light Theme	Thème Breeze clair
 	Next Theme	Thème suivant
 	Actions	Actions
 	Brush Settings	Paramètres du pinceau
@@ -1512,6 +1516,7 @@
 	Blur Tool	Outil Flou
 	Bold	Gras
 	Brush	Pinceau
+	Block	Carré
 	Brush Pose	Position du pinceau
 	Brush Tip Shape	Forme de la pointe
 	Brush Tool	Outil Pinceau
@@ -1724,6 +1729,7 @@
 	Scratch: {size}	Travail : {size}
 	Untagged {mode}	{mode} sans profil
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppp)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppp)
 	Resolution: {dpi} pixels/inch	Résolution : {dpi} pixels/pouce
 	Doc: {w} × {h} px	Doc : {w} × {h} px
 	Frame {current} / {total}	Image {current} / {total}
@@ -1874,6 +1880,7 @@
 	Show only crosshair while painting	N'afficher que le réticule pendant la peinture
 	Show slice numbers	Afficher les numéros de tranche
 	Show tooltips	Afficher les info-bulles
+	Show highlight on rollover	Afficher la mise en surbrillance au survol
 	Show transformation values	Afficher les valeurs de transformation
 	Slice color	Couleur des tranches
 	Smart guide color	Couleur des repères intelligents
@@ -2845,3 +2852,5 @@ fontWeight	Italic	Italique
 	Previous Document	Document précédent
 	W x H x Resolution	L x H x Résolution
 	Front Image	Image de premier plan
+	Search settings…	Rechercher des réglages…
+	No matching settings	Aucun réglage correspondant
