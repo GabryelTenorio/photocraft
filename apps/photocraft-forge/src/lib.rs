@@ -14,6 +14,7 @@ mod checks;
 mod context;
 mod git;
 mod impact;
+mod jobs;
 mod server;
 mod xtask;
 

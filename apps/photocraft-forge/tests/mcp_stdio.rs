@@ -83,6 +83,10 @@ fn stdio_handshake_lists_and_calls_capabilities() {
     assert!(names.contains(&"development_context"), "{names:?}");
     assert!(names.contains(&"change_impact"), "{names:?}");
     assert!(names.contains(&"checks_for_changes"), "{names:?}");
+    assert!(names.contains(&"validation_start"), "{names:?}");
+    assert!(names.contains(&"job_status"), "{names:?}");
+    assert!(names.contains(&"job_logs"), "{names:?}");
+    assert!(names.contains(&"job_cancel"), "{names:?}");
 
     send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"forge_capabilities","arguments":{}}}));
     let call = recv(3);
@@ -123,4 +127,19 @@ fn checks_for_changes_selects_gates_for_a_path() {
     assert!(required.iter().any(|g| g["id"] == "parity"), "{r}");
     assert!(required.iter().any(|g| g["id"] == "panic_hunt"), "{r}");
     assert!(r["fingerprint"]["head"].as_str().is_some(), "{r}");
+}
+
+#[test]
+fn job_tools_are_queryable() {
+    let status = forge_tool_call("job_status", json!({}));
+    assert!(status["jobs"].as_array().is_some_and(|a| a.is_empty()), "{status}");
+    let cancel = forge_tool_call("job_cancel", json!({"job": 999}));
+    assert_eq!(cancel["requested"], false, "{cancel}");
+}
+
+#[test]
+fn validation_start_with_only_recommended_gates_starts_nothing() {
+    // A docs-only change has no required gate (mdbook is recommended), so no job is launched.
+    let r = forge_tool_call("validation_start", json!({"paths": ["docs/development.md"]}));
+    assert_eq!(r["jobs"].as_array().map(Vec::len), Some(0), "{r}");
 }
