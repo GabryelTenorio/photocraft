@@ -161,20 +161,19 @@ fn main() {
     }
     if let Some((x, y)) =
         arg(&args, "--pick-under-cursor-at").and_then(|s| s.split_once(',').and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?))))
+        && let Some(xform) = photocraft_ui_egui::canvas::ViewXform::active(harness.state())
     {
-        if let Some(xform) = photocraft_ui_egui::canvas::ViewXform::active(harness.state()) {
-            harness.event(egui::Event::PointerMoved(xform.to_screen(x, y)));
-            harness.run_steps(2);
-            let command = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL | egui::Modifiers::COMMAND };
-            let modifiers = command | egui::Modifiers::ALT | egui::Modifiers::SHIFT;
-            harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
-            for pressed in [true, false] {
-                harness.input_mut().events.push(egui::Event::Key { key: egui::Key::U, physical_key: None, pressed, repeat: false, modifiers });
-            }
-            harness.step();
-            harness.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
-            harness.run_steps(2);
+        harness.event(egui::Event::PointerMoved(xform.to_screen(x, y)));
+        harness.run_steps(2);
+        let command = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL | egui::Modifiers::COMMAND };
+        let modifiers = command | egui::Modifiers::ALT | egui::Modifiers::SHIFT;
+        harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
+        for pressed in [true, false] {
+            harness.input_mut().events.push(egui::Event::Key { key: egui::Key::U, physical_key: None, pressed, repeat: false, modifiers });
         }
+        harness.step();
+        harness.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        harness.run_steps(2);
     }
     if let Some((x, y)) = arg(&args, "--scroll-by").and_then(|s| s.split_once(',').and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
         harness.event(egui::Event::PointerMoved(harness.state().last_canvas_rect.center()));
