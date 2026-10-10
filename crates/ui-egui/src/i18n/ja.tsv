@@ -269,6 +269,7 @@
 	Layer via Cut	切り取ったレイヤー
 	Layer From Background…	背景からレイヤーへ…
 	Layer from Background…	背景からレイヤーへ…
+	Background From Layer	レイヤーから背景
 	New Shape Layer	新規シェイプレイヤー
 	New Type Layer	新規文字レイヤー
 	New Fill Layer	新規塗りつぶしレイヤー
@@ -692,6 +693,10 @@
 	Classic Theme	クラシックテーマ
 	Solarized dark	Solarized ダーク
 	Solarized Dark Theme	Solarized ダークテーマ
+	Breeze dark	Breeze ダーク
+	Breeze Dark Theme	Breeze ダークテーマ
+	Breeze light	Breeze ライト
+	Breeze Light Theme	Breeze ライトテーマ
 	Next Theme	次のテーマ
 	Actions	アクション
 	Brush Settings	ブラシ設定
@@ -1586,6 +1591,8 @@
 	Efficiency: 100%	効率: 100%
 	Ellipse Tool	楕円形ツール
 	Elliptical Marquee Tool	楕円形選択ツール
+	Single Row Marquee Tool	一行選択ツール
+	Single Column Marquee Tool	一列選択ツール
 	Emboss	エンボス
 	Eraser	消しゴム
 	Eraser Tool	消しゴムツール
@@ -1907,6 +1914,7 @@
 	Show only crosshair while painting	描画中は十字線のみ表示
 	Show slice numbers	スライス番号を表示
 	Show tooltips	ツールチップを表示
+	Show highlight on rollover	ロールオーバー時にハイライトを表示
 	Show bounding box when dragging layer	レイヤーのドラッグ中にバウンディングボックスを表示
 	System title bar	システムのタイトルバー
 	Show transformation values	変形値を表示
@@ -2014,6 +2022,7 @@
 	Create Warped Text	ワープテキストを作成
 	Rasterize Smart Object	スマートオブジェクトをラスタライズ
 	Rasterize Fill Content	塗りの内容をラスタライズ
+	Rasterize Layer Style	レイヤースタイルをラスタライズ
 	Unlock: picking a preset replaces these settings	ロック解除: プリセットを選ぶとこの設定は置き換わります
 	Lock: keep these settings when picking another preset	ロック: 別のプリセットを選んでもこの設定を保持します
 	Diameter:	直径:
