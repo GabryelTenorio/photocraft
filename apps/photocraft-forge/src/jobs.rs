@@ -48,6 +48,35 @@ impl Status {
     }
 }
 
+/// The highest evidence tier a job reached (research §4). Ordered weakest → strongest.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tier {
+    /// Source/history/capability inspection, or a compile-only check.
+    #[default]
+    Static,
+    /// Focused tests or benchmarks.
+    Unit,
+    /// A headless engine session.
+    Headless,
+    /// Offscreen rendering / snapshot.
+    Offscreen,
+    /// The native desktop runtime / application MCP.
+    Native,
+    /// A platform or hardware environment (macOS, Windows, FreeBSD, a device).
+    Platform,
+    /// An external oracle (Photoshop, another tool).
+    Oracle,
+}
+
+/// Which evidence tier a gate exercises. Unknown gates default to `static`.
+pub fn tier_for_gate(id: &str) -> Tier {
+    match id {
+        "ci" | "panic_hunt" | "test-corpus" | "perf" => Tier::Unit,
+        _ => Tier::Static,
+    }
+}
+
 /// Parameters for `validation_start`.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -61,6 +90,17 @@ pub struct ValidationParams {
     /// Also run the recommended (advisory) gates.
     #[serde(default)]
     pub include_recommended: bool,
+}
+
+/// A job to run.
+pub struct JobSpec {
+    pub name: String,
+    pub kind: String,
+    pub reason: String,
+    pub tier: Tier,
+    pub program: String,
+    pub args: Vec<String>,
+    pub cwd: PathBuf,
 }
 
 /// A persisted, immutable manifest of a completed job (fields per research §8).
@@ -89,6 +129,8 @@ struct Manifest {
     head: Option<String>,
     dirty: bool,
     #[serde(default)]
+    tier: Tier,
+    #[serde(default)]
     diagnostics: Diagnostics,
 }
 
@@ -111,6 +153,7 @@ struct Job {
     head: Option<String>,
     dirty: bool,
     log_path: Option<PathBuf>,
+    tier: Tier,
     diagnostics: Diagnostics,
 }
 
@@ -135,6 +178,7 @@ pub struct JobView {
     pub kind: String,
     pub tests: TestCounts,
     pub diagnostics: usize,
+    pub tier: Tier,
     /// Source fingerprint (HEAD) the job ran against.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
@@ -196,6 +240,7 @@ impl JobManager {
                     name: manifest.name,
                     kind: manifest.kind,
                     reason: manifest.reason,
+                    tier: manifest.tier,
                     program: manifest.command,
                     args: Vec::new(),
                     status: match manifest.status {
@@ -221,7 +266,8 @@ impl JobManager {
     }
 
     /// Queue a job and return its id. It runs as soon as the serialization gate frees up.
-    pub fn start(self: &Arc<Self>, name: String, kind: String, reason: String, program: String, args: Vec<String>, cwd: PathBuf) -> u64 {
+    pub fn start(self: &Arc<Self>, spec: JobSpec) -> u64 {
+        let JobSpec { name, kind, reason, tier, program, args, cwd } = spec;
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let fingerprint = crate::context::fingerprint(&cwd);
         let log = Arc::new(Mutex::new(String::new()));
@@ -233,6 +279,7 @@ impl JobManager {
                 name,
                 kind,
                 reason,
+                tier,
                 program: program.clone(),
                 args: args.clone(),
                 status: Status::Queued,
@@ -354,6 +401,7 @@ impl JobManager {
                 name: job.name.clone(),
                 kind: job.kind.clone(),
                 reason: job.reason.clone(),
+                tier: job.tier,
                 command: command_string(&job.program, &job.args),
                 status: job.status,
                 exit: job.exit,
@@ -391,6 +439,7 @@ impl JobManager {
             kind: job.kind.clone(),
             tests: job.diagnostics.tests.clone(),
             diagnostics: job.diagnostics.entries.len(),
+            tier: job.tier,
             head: job.head.clone(),
             dirty: job.dirty,
             evidence: job.log_path.as_ref().and_then(|p| p.parent()).map(|p| p.display().to_string()),
@@ -541,7 +590,16 @@ mod tests {
     #[test]
     fn manager_runs_a_job_and_captures_logs() {
         let mgr = Arc::new(JobManager::new(None));
-        let id = mgr.start("echo".into(), "test".into(), "unit".into(), "sh".into(), vec!["-c".into(), "echo forge-hello".into()], std::env::temp_dir());
+        let spec = JobSpec {
+            name: "echo".into(),
+            kind: "test".into(),
+            reason: "unit".into(),
+            tier: Tier::Unit,
+            program: "sh".into(),
+            args: vec!["-c".into(), "echo forge-hello".into()],
+            cwd: std::env::temp_dir(),
+        };
+        let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
         let (_, log, _) = mgr.logs(id, 0).expect("logs");
         assert!(log.contains("forge-hello"), "{log}");
@@ -552,8 +610,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("forge-evidence-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mgr = Arc::new(JobManager::new(Some(dir.clone())));
-        let id =
-            mgr.start("echo".into(), "test".into(), "evidence".into(), "sh".into(), vec!["-c".into(), "echo persisted-hello".into()], std::env::temp_dir());
+        let spec = JobSpec {
+            name: "echo".into(),
+            kind: "test".into(),
+            reason: "evidence".into(),
+            tier: Tier::Unit,
+            program: "sh".into(),
+            args: vec!["-c".into(), "echo persisted-hello".into()],
+            cwd: std::env::temp_dir(),
+        };
+        let id = mgr.start(spec);
         assert_eq!(wait_done(&mgr, id), Status::Succeeded);
 
         // A fresh manager over the same directory must see the persisted job and its log.
@@ -563,6 +629,14 @@ mod tests {
         let (_, log, _) = reloaded.logs(id, 0).expect("reloaded logs");
         assert!(log.contains("persisted-hello"), "{log}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn gates_map_to_evidence_tiers() {
+        assert_eq!(tier_for_gate("ci"), Tier::Unit);
+        assert_eq!(tier_for_gate("test-corpus"), Tier::Unit);
+        assert_eq!(tier_for_gate("layers"), Tier::Static);
+        assert_eq!(tier_for_gate("wasm"), Tier::Static);
     }
 
     #[test]

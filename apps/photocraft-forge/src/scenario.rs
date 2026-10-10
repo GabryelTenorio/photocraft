@@ -74,6 +74,8 @@ pub struct Assertion {
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub passed: bool,
+    /// The evidence tier this scenario reached (research §4). Headless in v1.
+    pub evidence_tier: &'static str,
     pub steps: Vec<StepResult>,
     pub assertions: Vec<AssertionResult>,
 }
@@ -140,7 +142,7 @@ fn run_inner(app: &mut AppMcp, work: &Path, params: &Params) -> Result<Report, S
         assertions.push(evaluate(a, &subject, &steps, work));
     }
     let passed = assertions.iter().all(|a| a.passed) && steps.iter().all(|s| !s.is_error);
-    Ok(Report { passed, steps, assertions })
+    Ok(Report { passed, evidence_tier: "headless", steps, assertions })
 }
 
 /// Evaluate one assertion against the subject (last step's JSON) and the work root.

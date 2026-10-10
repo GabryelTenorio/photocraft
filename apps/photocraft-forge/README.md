@@ -81,12 +81,12 @@ matched/executed/filtered **test counts** (research §8). A job persisted while 
 loads as **`interrupted`** — never a silent `failed` — and each manifest carries start, finish and
 duration.
 
-`job_status { job? }` → `{ jobs:[{id,name,kind,status,command,zero_tests,tests,diagnostics,head,dirty,evidence,finished_ms}] }`.
+`job_status { job? }` → `{ jobs:[{id,name,kind,status,tier,command,zero_tests,tests,diagnostics,head,dirty,evidence,finished_ms}] }`.
 `job_logs { job, cursor? }` → `{ job, status, log, next_cursor }`.
 `job_cancel { job }` → `{ job, requested }`.
 
 `scenario_start { steps:[{tool,arguments}], assertions:[..] }`
-→ `{ passed, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. It spawns
+→ `{ passed, evidence_tier, steps:[{tool,is_error,value,image?}], assertions:[{description,passed,detail}] }`. It spawns
 the headless app MCP (`photocraft-cli mcp`, roots under `target/forge-scenarios/work`), runs the steps,
 then checks assertions over the last **structured** (object/array) step result (`json` + `equals` /
 `contains` / `exists`), files in the work root (`file`), or a step's rendered **image** (`image` step

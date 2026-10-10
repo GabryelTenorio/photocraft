@@ -131,7 +131,10 @@ impl Forge {
                 // Remote-only gates like "(platform CI jobs)" are not runnable locally.
                 Some(program) if !program.starts_with('(') => {
                     let args: Vec<String> = parts.map(str::to_string).collect();
-                    let job = self.jobs.start(id.clone(), "validation".to_string(), reason, program.to_string(), args, root.clone());
+                    let tier = jobs::tier_for_gate(&id);
+                    let spec =
+                        jobs::JobSpec { name: id.clone(), kind: "validation".to_string(), reason, tier, program: program.to_string(), args, cwd: root.clone() };
+                    let job = self.jobs.start(spec);
                     started.push(serde_json::json!({"job": job, "gate": id, "command": command}));
                 }
                 _ => skipped.push(id),
