@@ -101,6 +101,7 @@ pub mod menu_catalog;
 pub mod menu_nav;
 pub mod menus;
 pub mod monitor_status;
+pub mod move_hover;
 pub mod move_lock;
 pub mod move_mods;
 pub mod move_ui;
@@ -423,6 +424,8 @@ pub struct PhotocraftApp {
     pub(crate) menu_cache: Option<menus::ItemCache>,
     /// Move tool drag shown live (`move_ui`).
     pub(crate) move_preview: Option<move_ui::MovePreview>,
+    /// Move tool › Show Highlight on Rollover: the last hover answer (`move_hover`).
+    pub(crate) move_hover: Option<move_hover::Hover>,
     /// A blend mode hovered in the Layers panel, shown live (`blend_preview`).
     pub(crate) blend_preview: Option<blend_preview::BlendPreview>,
     /// Patch Tool drag: the healed document at the pointer (`patch_preview`).
@@ -625,6 +628,7 @@ impl PhotocraftApp {
             trail: None,
             menu_cache: None,
             move_preview: None,
+            move_hover: None,
             blend_preview: None,
             patch_preview: None,
             shape_stroke_preview: None,
@@ -1252,7 +1256,7 @@ impl PhotocraftApp {
         while let Ok(req) = rx.try_recv() {
             let reply = req.reply.clone();
             if req.deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-                let _ = reply.send(serde_json::json!({"ok": false, "error": "timeout"}));
+                let _ = reply.send(serde_json::json!({"ok": false, "error": control::timeout_error()}));
                 continue;
             }
             match control::handle(self, ctx, &req) {
@@ -1919,7 +1923,12 @@ impl PhotocraftApp {
             return;
         }
         let (Some(set), Some(clip)) = (self.services.clipboard_set_image.as_mut(), self.session.clipboard.as_ref()) else { return };
-        let b = clip.bounds;
+        // Keep the engine's tight bounds for Photoshop-compatible internal paste,
+        // but preserve the selection frame when exporting pixels to other apps (#2598).
+        let b = self.session.active()
+            .and_then(|d| d.doc.selection.as_ref().map(|selection| selection.content_bounds().intersect(&d.doc.bounds())))
+            .filter(|frame| !frame.is_empty())
+            .unwrap_or(clip.bounds);
         if b.is_empty() {
             return;
         }
@@ -1973,7 +1982,7 @@ impl PhotocraftApp {
         let r = photocraft_geom::Rect::new(0, 0, w as i32, h as i32);
         let mut surface = photocraft_raster::Surface::from_interleaved(photocraft_color::PixelFormat::RGBA8, r, &bytes);
         surface.prune();
-        self.session.clipboard = Some(photocraft_engine::edit_cmds::Clip { surface, bounds: r });
+        self.session.clipboard = Some(photocraft_engine::edit_cmds::Clip { surface, bounds: r, layers: None });
         self.os_clip_sig = Some(sig);
         self.clip_external = true;
         true
@@ -1988,6 +1997,9 @@ mod input_tests;
 
 #[cfg(test)]
 mod pencil_tests;
+
+#[cfg(test)]
+mod pixel_aspect_tests;
 
 #[cfg(test)]
 mod transform_undo_tests;
