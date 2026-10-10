@@ -1,0 +1,24 @@
+[package]
+name = "photocraft-forge"
+description = "Forge: the PhotoCraft development MCP — an AI-first control plane for building PhotoCraft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "photocraft_forge"
+path = "src/lib.rs"
+
+[[bin]]
+name = "photocraft-forge"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmcp = { version = "3.5", default-features = false, features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
