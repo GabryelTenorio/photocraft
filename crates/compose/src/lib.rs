@@ -232,9 +232,14 @@ pub fn band_rows_for(width: u32, requested: i32) -> i32 {
 /// The document's composite as a pixel surface in `fmt` (straight RGBA converted to its model
 /// and depth), optionally flattened over an opaque `background`; rendered and written in bands,
 /// so no full-size float composite is held. Tiles equal to the default pixel are pruned.
+///
+/// Fully transparent pixels are written as the default pixel. Converting transparent black
+/// leaves colour behind in CMYK (K = 100%) and Lab (neutral a/b = 0.5), and those pixels would
+/// otherwise count as content: the result would span the whole canvas.
 pub fn flatten_to_surface(doc: &Document, fmt: photocraft_color::PixelFormat, background: Option<[f32; 3]>) -> Surface {
     let mut s = Surface::new(fmt);
     let n = fmt.channels();
+    let empty = s.default_pixel();
     let mut data = Vec::new();
     let _ = render_bands(doc, doc.bounds(), 0, |band| -> Result<(), ()> {
         let band = match background {
@@ -244,7 +249,11 @@ pub fn flatten_to_surface(doc: &Document, fmt: photocraft_color::PixelFormat, ba
         data.clear();
         data.resize(band.px.len() * n, 0.0);
         for (p, out) in band.px.iter().zip(data.chunks_exact_mut(n)) {
-            photocraft_raster::from_rgba_into(&fmt, *p, out);
+            if fmt.alpha && (p[3] <= 0.0 || p[3].is_nan()) && empty.len() == n {
+                out.copy_from_slice(&empty);
+            } else {
+                photocraft_raster::from_rgba_into(&fmt, *p, out);
+            }
         }
         s.write_region(band.rect, &data);
         Ok(())

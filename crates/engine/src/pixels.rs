@@ -27,6 +27,10 @@ pub fn composite_layers(solo: &Document, format: photocraft_color::PixelFormat, 
     }
 
     let channels = format.channels();
+    // Fully transparent pixels are written as the default pixel: converting transparent black
+    // leaves colour behind in CMYK (K = 100%) and Lab (neutral a/b), and those pixels would
+    // otherwise count as content, so the merged layer would span every input's bounds.
+    let empty = surface.default_pixel();
     let mut data = Vec::new();
     let _ = photocraft_compose::render_bands(solo, area, 0, |mut band| -> Result<(), ()> {
         if let Some(color) = background {
@@ -40,7 +44,11 @@ pub fn composite_layers(solo: &Document, format: photocraft_color::PixelFormat, 
         }
         data.resize(band.px.len() * channels, 0.0);
         for (pixel, encoded) in band.px.iter().zip(data.chunks_exact_mut(channels)) {
-            photocraft_raster::from_rgba_into(&format, *pixel, encoded);
+            if format.alpha && (pixel[3] <= 0.0 || pixel[3].is_nan()) && empty.len() == channels {
+                encoded.copy_from_slice(&empty);
+            } else {
+                photocraft_raster::from_rgba_into(&format, *pixel, encoded);
+            }
         }
         surface.write_region(band.rect, &data);
         Ok(())
