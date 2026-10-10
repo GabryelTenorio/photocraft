@@ -65,7 +65,9 @@ fn press(h: &mut Harness<'_, PhotocraftApp>, sc: &str) {
     h.event(egui::Event::Key { key: sc.logical_key, physical_key: None, pressed: true, repeat: false, modifiers: m });
     h.event(egui::Event::Key { key: sc.logical_key, physical_key: None, pressed: false, repeat: false, modifiers: m });
     h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
-    h.run_steps(2);
+    // Harness::event delivers one queued event per frame. Finish the whole tap, including
+    // release, before auditing its result (held Z is deliberately temporary).
+    h.run_steps(4);
 }
 
 fn click(h: &mut Harness<'_, PhotocraftApp>, at: Pos2) {
