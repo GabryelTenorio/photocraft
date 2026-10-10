@@ -247,6 +247,13 @@ pub fn encode_planes(compression: Compression, decoded: &[u8], layout: &PlaneLay
 /// (validating structure). For RLE this is the count table plus the counted
 /// bytes; for Raw it is the decoded size; for ZIP the zlib stream is
 /// decompressed (without keeping output) and the whole input is consumed.
+///
+/// A ZIP stream whose declared size is over [`MAX_DECODED_BYTES`] is not
+/// decompressed at all (#2926): [`decode_planes`] refuses that layout with
+/// `LimitExceeded` anyway, so inflating it here would only be work on an
+/// untrusted file before the same error. The bytes are kept verbatim, like an
+/// unknown compression method, so a layered file whose merged composite is
+/// too large still opens.
 pub(crate) fn validate_planes(compression: Compression, data: &[u8], layout: &PlaneLayout) -> Result<()> {
     let total = layout.total_bytes()?;
     match compression {
@@ -269,6 +276,7 @@ pub(crate) fn validate_planes(compression: Compression, data: &[u8], layout: &Pl
             }
             Ok(())
         }
+        Compression::Zip | Compression::ZipPrediction if total > MAX_DECODED_BYTES => Ok(()),
         Compression::Zip | Compression::ZipPrediction => {
             // Decompress without keeping the output, through the end of the
             // stream so the Adler-32 checksum is verified too.
@@ -674,6 +682,23 @@ mod tests {
             assert!(decode_planes(Compression::Zip, &enc[..cut], &l).is_err(), "cut {cut}");
             assert!(validate_planes(Compression::Zip, &enc[..cut], &l).is_err(), "cut {cut}");
         }
+    }
+
+    /// #2926: a ZIP stream declaring more than `MAX_DECODED_BYTES` is not inflated at parse
+    /// time. Garbage zlib data proves it: decompressing it would fail, skipping it passes, and
+    /// decoding the layout still reports the size limit.
+    #[test]
+    fn zip_over_budget_is_not_decompressed_at_parse() {
+        let l = layout(4, 300_000, 300_000, 8, Version::Psb);
+        assert!(l.total_bytes().unwrap() > MAX_DECODED_BYTES);
+        let garbage = [0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03];
+        for c in [Compression::Zip, Compression::ZipPrediction] {
+            validate_planes(c, &garbage, &l).unwrap();
+            assert!(matches!(decode_planes(c, &garbage, &l), Err(PsdError::LimitExceeded(_))), "{c:?}");
+        }
+        // Within the budget the stream is still checked.
+        let small = layout(1, 4, 4, 8, Version::Psd);
+        assert!(validate_planes(Compression::Zip, &garbage, &small).is_err());
     }
 
     #[test]
