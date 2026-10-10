@@ -392,9 +392,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
             Ok(Value::Null)
         }
-        // Solid Color uses the Color Picker; other adjustment / fill controls use Properties.
+        // Solid Color uses the Color Picker and Pattern the Pattern Fill dialog; other adjustment
+        // and fill controls use Properties.
         "layer.layerContentOptions" => {
             if let Some(dialog) = crate::solid_fill_ui::open(app) {
+                return Ok(json!({"dialog": dialog}));
+            }
+            if let Some(dialog) = crate::pattern_fill_ui::open(app) {
                 return Ok(json!({"dialog": dialog}));
             }
             let r = app.run(id, params)?;
@@ -413,6 +417,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         // Photoshop's "Select and Mask…" is the engine's select.refineEdge.
         // Select › Color Range… from the menu: the dialog (with params: the engine directly).
         "select.colorRange" if params.as_object().is_none_or(|o| o.is_empty()) => Ok(json!({"dialog": crate::color_range_ui::open(app)})),
+        // Layer › New Fill Layer › Pattern… from the menu: the Pattern Fill dialog (with params:
+        // the engine directly).
+        photocraft_engine::pattern_fill_cmds::CREATE if params.as_object().is_none_or(|o| o.is_empty()) => {
+            Ok(json!({"dialog": crate::pattern_fill_ui::open_new(app)?}))
+        }
         // Edit › Fill… from the menu or its shortcuts: the Fill dialog (with params: the engine).
         crate::fill_ui::COMMAND if params.as_object().is_none_or(|o| o.is_empty()) => {
             if let Some(Err(why)) = photocraft_engine::commands::find(id).map(|c| (c.enabled)(&app.session)) {

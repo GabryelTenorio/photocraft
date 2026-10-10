@@ -2713,3 +2713,6 @@ fontWeight	Italic	Курсив
 	W x H x Resolution	Ш x В x Разрешение
 	Front Image	Изображение переднего плана
 	Swaps height and width	Меняет местами высоту и ширину
+	Scale:	Масштаб:
+	Snap to Origin	Привязать к началу координат
+	Link with Layer	Связать со слоем

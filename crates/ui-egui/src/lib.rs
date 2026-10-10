@@ -115,6 +115,7 @@ pub mod palette;
 pub mod panels;
 pub mod parity;
 pub mod patch_preview;
+pub(crate) mod pattern_fill_ui;
 pub mod perspective_ui;
 pub mod pixel_grid;
 pub mod plugin_ui;
@@ -537,6 +538,8 @@ pub struct PhotocraftApp {
     /// Live Layer Style dialog preview: (key over revision + style fields, preview or validation error).
     pub(crate) style_preview: Option<(u64, Result<std::sync::Arc<Document>, String>)>,
     pub(crate) solid_fill_preview: Option<solid_fill_ui::Preview>,
+    /// Live Pattern Fill dialog preview (pattern_fill_ui).
+    pub(crate) pattern_fill_preview: Option<pattern_fill_ui::Preview>,
     /// Liquify dialog, Puppet Warp and Perspective Warp sessions (distort_ui).
     pub(crate) distort: distort_ui::Distort,
     /// Gradient tool live-mode drags and previews (gradient_ui).
@@ -689,6 +692,7 @@ impl PhotocraftApp {
             style_preview: None,
             text_style_preview: None,
             solid_fill_preview: None,
+            pattern_fill_preview: None,
             distort: Default::default(),
             gradient: Default::default(),
             camera_raw: None,
