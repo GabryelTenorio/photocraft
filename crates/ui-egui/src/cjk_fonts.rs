@@ -54,6 +54,7 @@ pub fn no_embedded(_: CjkScript) -> Vec<&'static CraftFont> {
 impl Sources {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn system() -> Self {
+        cjk::start_fontconfig_cjk_scan();
         Self {
             locale: || match crate::i18n::current().code() {
                 code @ ("ja" | "ko" | "zh-hans" | "zh-hant") => Some(code.to_string()),
@@ -119,14 +120,20 @@ impl CjkFallback {
             if self.tried.contains(&s) {
                 continue;
             }
-            self.tried.push(s);
             if let Some(f) = self.load_embedded(s) {
+                self.tried.push(s);
                 return Some(f);
             }
+            let fontconfig_pending = cjk::fontconfig_cjk_scan_pending();
             let files = (self.sources.files)(s);
             if let Some(f) = self.load_first(&files) {
+                self.tried.push(s);
                 return Some(f);
             }
+            if fontconfig_pending {
+                return None;
+            }
+            self.tried.push(s);
         }
         if !self.last_resort_tried {
             self.last_resort_tried = true;
@@ -167,7 +174,7 @@ impl CjkFallback {
                 continue;
             }
             let Ok(bytes) = std::fs::read(&f.path) else { continue };
-            let index = cjk::face_index_for_family(&bytes, f.family);
+            let index = cjk::face_index_for_family(&bytes, &f.family);
             self.loaded.push(f.path.clone());
             let name = format!("{FONT_PREFIX}-{}", self.registered.len());
             log::info!("UI font fallback: registered {} (face {index}) as {name}", f.path.display());
@@ -295,6 +302,8 @@ impl egui::Plugin for CjkFontPlugin {
         if let Some((name, data)) = font {
             add_to_all_families(ctx, name, data);
             ctx.request_repaint();
+        } else if cjk::classify(c).is_some() && cjk::fontconfig_cjk_scan_pending() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
         } else if !self.0.exhausted() || !self.0.thai_tried {
             // Nothing readable for this script; try the next one on the next frame.
             ctx.request_repaint();
@@ -327,14 +336,14 @@ pub fn install_with(ctx: &egui::Context, sources: Sources) {
 /// system font scan on the UI thread and no extra font files embedded in the web build.
 #[cfg(not(target_arch = "wasm32"))]
 fn thai_font_files() -> Vec<FontFile> {
-    let f = |path: &str, family| FontFile { path: path.into(), family };
+    let f = |path: &str, family: &str| FontFile { path: path.into(), family: family.to_string() };
     if cfg!(target_os = "macos") {
         vec![f("/System/Library/Fonts/Supplemental/Thonburi.ttc", "Thonburi"), f("/System/Library/Fonts/Supplemental/SukhumvitSet.ttc", "Sukhumvit Set")]
     } else if cfg!(target_os = "windows") {
         let dir = std::env::var_os("WINDIR").map_or_else(|| PathBuf::from("C:\\Windows"), PathBuf::from).join("Fonts");
         [("Leelawui.ttf", "Leelawadee UI"), ("leelawad.ttf", "Leelawadee"), ("tahoma.ttf", "Tahoma")]
             .into_iter()
-            .map(|(file, family)| FontFile { path: dir.join(file), family })
+            .map(|(file, family)| FontFile { path: dir.join(file), family: family.to_string() })
             .collect()
     } else {
         thai_unix_font_files()
@@ -350,7 +359,7 @@ fn thai_unix_font_files() -> Vec<FontFile> {
         .flat_map(|file| {
             ["/usr/share/fonts", "/run/host/fonts", "/usr/local/share/fonts"]
                 .into_iter()
-                .map(move |root| FontFile { path: std::path::Path::new(root).join(file), family: "Noto Sans Thai" })
+                .map(move |root| FontFile { path: std::path::Path::new(root).join(file), family: "Noto Sans Thai".to_string() })
         })
         .collect()
 }
@@ -423,7 +432,7 @@ mod tests {
     }
 
     fn fake(name: &str) -> FontFile {
-        FontFile { path: fake_dir().join(name), family: "" }
+        FontFile { path: fake_dir().join(name), family: String::new() }
     }
 
     fn fake_sources(locale: fn() -> Option<String>) -> Sources {
