@@ -12,6 +12,7 @@
 
 pub mod probe;
 
+mod archive;
 mod artifact;
 mod checks;
 mod context;
@@ -21,6 +22,7 @@ mod git;
 mod graph;
 mod impact;
 mod jobs;
+mod ledger;
 mod maintenance;
 mod scenario;
 mod server;

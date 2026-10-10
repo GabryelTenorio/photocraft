@@ -60,7 +60,7 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 
 | Tool | Purpose |
 |---|---|
-| `forge_capabilities` | Report required tools (`git`, `cargo`), required **prerequisites** (`wasm32-unknown-unknown`, which the `wasm` gate needs and rustup does not auto-install; the `corpus/` checkout, which `test-corpus` needs), optional build inputs (`craft-fonts`, `mdbook`) and companions, the checkout root, install/fetch commands for anything missing, and Forge's own **open maintenance rows** (`MAINTENANCE.md`). |
+| `forge_capabilities` | Report required tools (`git`, `cargo`), required **prerequisites** (`wasm32-unknown-unknown`, which the `wasm` gate needs and rustup does not auto-install; the `corpus/` checkout, which `test-corpus` needs), optional build inputs (`craft-fonts`, `mdbook`) and companions, the checkout root, install/fetch commands for anything missing, Forge's own **open maintenance rows** (`MAINTENANCE.md`), the **call ledger** (per-tool calls/errors/last-used), and the **retired-tool catalog** (`archive/RETIRED.md`). |
 | `development_context` | Source fingerprint (HEAD, branch, dirty, diff/Cargo.lock hashes, behind origin/main), Forge's own build identity (version, profile, target, hashed binary), the workspace crate map, and the authoritative `cargo xtask layers` report. |
 | `change_impact` | The must-change-together touch set, invariants, artifacts to regenerate, related files, and the gate plan, for `paths` / a `command` / a `symbol` / an `intent`. |
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
@@ -212,6 +212,24 @@ At a high level: **prefer fixing to routing around**; tell the human when a fail
 record one row per distinct failure with a `status`; review periodically; keep the `README.md` tool
 table current when a tool is added, renamed, or removed; and put durable learnings in the right doc
 (`README.md`, `MAINTENANCE.md`, `docs/`), not in a comment.
+
+### Tool lifecycle: grow on demand → retire to the archive → resurrect
+
+Forge's tools are grown on demand — a task needs a capability, so the tool is built. Some tools are
+therefore one-shot. This pipeline keeps the live surface lean **without losing the work**:
+
+1. **Grow.** When a task repeats and no live tool covers it, build the tool — never route around the gap.
+2. **Watch.** `forge_capabilities.ledger` (durable at `target/forge/tool_calls.json`) shows calls,
+   errors and last-used per tool, and flags a tool `dormant` when it has not been called in
+   `RETIRE_AFTER_DAYS` (30).
+3. **Retire (archive).** A tool that has stopped earning its place — typically `dormant` — is moved
+   out of the build, not deleted: its code goes to [`archive/`](archive/RETIRED.md), a row is added to
+   [`archive/RETIRED.md`](archive/RETIRED.md) (why it existed, when, where the code is, how to
+   restore), and it is removed from `src/server.rs` and the tool table above.
+4. **Resurrect.** The MCP advertises only live tools, but `forge_capabilities.retired` lists the
+   archived ones. When a task needs a capability no live tool provides, **check `retired` first** and
+   bring a match back (move the code out of `archive/`, re-add the `#[tool]` handler and the table
+   row) before building anything new.
 
 ## Not in scope (deferred, D5)
 

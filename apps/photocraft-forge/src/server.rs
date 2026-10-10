@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{checks, context, events, impact, jobs, maintenance, probe, scenario};
+use crate::{archive, checks, context, events, impact, jobs, ledger, maintenance, probe, scenario};
 
 /// What an agent should know before using Forge.
 const INSTRUCTIONS: &str = "Forge is the PhotoCraft development MCP: an AI-first control plane for \
@@ -20,20 +20,23 @@ building PhotoCraft. It reports the must-change-together touch set, the finish g
 evidence for a change. It never edits source — you (the agent) edit with your own tools, then ask \
 Forge what to run and whether the result is right. Call `forge_capabilities` first to see what is \
 available in this environment. If a Forge tool or companion fails or looks stale, tell the human and \
-record it in apps/photocraft-forge/MAINTENANCE.md — don't route around it quietly.";
+record it in apps/photocraft-forge/MAINTENANCE.md — don't route around it quietly. Before building a \
+new tool, check the retired-tool catalog (`forge_capabilities` → `retired`) and resurrect a match \
+instead; retire an unused tool to archive/ (the `ledger` shows usage).";
 
 /// The Forge MCP server.
 #[derive(Clone)]
 pub struct Forge {
-    #[expect(dead_code, reason = "the #[tool_handler] macro reads this router field")]
     tool_router: ToolRouter<Self>,
     jobs: Arc<jobs::JobManager>,
+    root: Option<std::path::PathBuf>,
 }
 
 impl Forge {
     pub fn new() -> Self {
-        let evidence = probe::discover_repo_root().map(|root| root.join("target/forge/jobs"));
-        Self { tool_router: Self::tool_router(), jobs: Arc::new(jobs::JobManager::new(evidence)) }
+        let root = probe::discover_repo_root();
+        let evidence = root.as_ref().map(|root| root.join("target/forge/jobs"));
+        Self { tool_router: Self::tool_router(), jobs: Arc::new(jobs::JobManager::new(evidence)), root }
     }
 }
 
@@ -55,6 +58,17 @@ impl Forge {
         // Surface Forge's own open maintenance rows, so the maintainer sees them every session.
         if let Some(obj) = value.as_object_mut() {
             obj.insert("maintenance".to_string(), serde_json::json!({ "file": "apps/photocraft-forge/MAINTENANCE.md", "open": maintenance::open_items() }));
+            // The call ledger: which tools earn their place, so the rest can be retired (archived).
+            obj.insert("ledger".to_string(), serde_json::to_value(ledger::rows(self.root.as_deref())).unwrap_or(serde_json::Value::Null));
+            // The retired-tool catalog: tools the MCP no longer serves, to resurrect instead of rebuild.
+            obj.insert(
+                "retired".to_string(),
+                serde_json::json!({
+                    "file": "apps/photocraft-forge/archive/RETIRED.md",
+                    "tools": archive::retired(),
+                    "note": "the MCP advertises only live tools; if you need a capability none provides, check these retired tools first and resurrect a match before building a new one",
+                }),
+            );
         }
         let text = serde_json::to_string_pretty(&value).map_err(|e| McpError::internal_error(format!("serialize capabilities: {e}"), None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
@@ -323,6 +337,15 @@ impl ServerHandler for Forge {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("photocraft-forge", env!("CARGO_PKG_VERSION")))
             .with_instructions(INSTRUCTIONS)
+    }
+
+    /// Every tool call goes through here: record it in the ledger, then dispatch.
+    async fn call_tool(&self, request: CallToolRequestParams, context: rmcp::service::RequestContext<rmcp::RoleServer>) -> Result<CallToolResponse, McpError> {
+        let tool = request.name.to_string();
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        let result = self.tool_router.call(tcc).await;
+        ledger::record(self.root.as_deref(), &tool, result.is_err());
+        result
     }
 }
 

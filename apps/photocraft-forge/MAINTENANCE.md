@@ -22,6 +22,14 @@ across sessions, not merely to prune it.
   table in the same change.
 - **Durable learnings** go into the right durable doc (`README.md`, this file, `docs/`), not into a
   code comment. Prefer correcting an existing instruction over adding a new one.
+- **Grow on demand.** When a task repeats and no live tool covers it, build the tool — don't keep
+  working around the gap. (That is why Forge has the tools it has.)
+- **Retire, don't delete.** A tool that stops being used is *archived*, not removed: move its code to
+  `archive/` and add a row to `archive/RETIRED.md`. `forge_capabilities.ledger` is the usage signal —
+  a tool flagged `dormant` (no call in `RETIRE_AFTER_DAYS`, 30) is a retirement candidate; retire it
+  unless you know of a live need. Before building a new tool, check the catalog
+  (`forge_capabilities.retired`) and **resurrect a match first** — the MCP advertises only live tools,
+  so the catalog is how a retired tool is still found.
 
 ## Known-bad tools and limitations (with fallbacks)
 
@@ -39,6 +47,7 @@ One row per distinct item. `status`: `open` or `resolved`. Newest first.
 
 | Date | Area | Symptom / gap | Diagnosis / fix | Status |
 |---|---|---|---|---|
+| 2026-10-10 | `validation_start` / `test-corpus` | A cold release build ended `timedout` (hang suspected) while still compiling | The idle timeout (default 900s) counts silence, but a first release build of a heavy crate can be quiet for far longer than 15 min — not a hang. Re-run with a larger `idle_timeout_secs`. | open — raise the default for release builds, or treat a live child process as progress |
 | 2026-10-10 | jCodeMunch companion | The index held no Rust symbols repo-wide | `~/.code-index/config.jsonc` `languages` omitted `rust`, so every `.rs` file was indexed for text search only (no error). Added `rust`; full reindex → 20.6k Rust symbols. | resolved |
 | 2026-10-10 | touch registry (`compose`) | `change_impact` on `crates/compose/src/adjust.rs` returned an empty touch set and missed `crates/gpu/src/compose.wgsl` + `crates/gpu/tests/parity.rs` | No signal for "adjustment maths changed → the GPU shader/plan that mirrors it". | open — add an adjustment→GPU-shader/parity coupling (or derive it from a local graph) |
 | 2026-10-10 | `change_impact intent` | A Hue/Saturation intent matched no known area → empty touch set | The intent matcher has no adjustment vocabulary. | open — add adjustment terms (`hue`/`saturation`/`colorize`/`levels`/`curves`…) |
