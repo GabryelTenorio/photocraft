@@ -1,15 +1,9 @@
 name: PhotoCraft Android ARM64
 
+# Manually build an Android APK only when explicitly requested.
+# Commits to android-native must not start a new build automatically.
 on:
   workflow_dispatch:
-  push:
-    branches: [android-native]
-    paths:
-      - 'apps/photocraft-android/**'
-      - 'crates/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/android-native.yml'
 
 permissions:
   contents: read
