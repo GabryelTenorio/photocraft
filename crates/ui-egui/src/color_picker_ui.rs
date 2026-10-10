@@ -427,8 +427,9 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) -> Option<bool> {
         ui.vertical(|ui| {
             ui.horizontal_top(|ui| {
                 swatches(ui, f);
-                let button_width = ui.available_width().max(96.0);
-                ui.vertical(|ui| {
+                // As wide as the longest label, at the right edge like Photoshop's.
+                let button_width = widgets::button_width(ui, &["OK", "Cancel", "Add to Swatches"]).max(96.0);
+                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
                     if widgets::primary_button(ui, tl!("OK"), button_width).clicked() {
                         outcome = Some(true);
                     }
@@ -857,6 +858,11 @@ mod tests {
             assert!(rect.contains_rect(h.get_by_label(label).rect()), "{label} inside the window");
         }
         assert_eq!(h.query_all_by_role(Role::SpinButton).filter(|n| rect.contains_rect(n.rect())).count(), 13);
+        // The actions are as wide as the longest label ("Add to Swatches" is about 133 points in
+        // the button font), not stretched across the column (160). Photoshop's are about 116.
+        let widths: Vec<f32> = ["OK", "Cancel", "Add to Swatches"].iter().map(|l| h.get_by_label(l).rect().width()).collect();
+        assert!(widths.iter().all(|w| (w - widths[0]).abs() < 0.5), "one width for all three actions: {widths:?}");
+        assert!(widths[0] <= 136.0, "actions {} points wide, Photoshop's about 116", widths[0]);
     }
 
     #[test]
