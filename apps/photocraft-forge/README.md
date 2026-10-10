@@ -35,6 +35,19 @@ Point any MCP client at the `photocraft-forge` binary. It takes **no arguments**
 Run it from inside the PhotoCraft checkout (it also walks up from the current directory to find the
 repo root). First action for an agent: **`forge_capabilities`**.
 
+**PATH note.** Forge finds `git`/`cargo` on `PATH` (it does not hardcode paths — see the
+environment-independence principle). Some hosts spawn MCP servers with a minimal `PATH`; if `cargo`
+lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
+
+```jsonc
+"forge": {
+  "type": "local",
+  "command": ["/path/to/photocraft-forge"],
+  "cwd": "/path/to/photocraft",
+  "environment": { "PATH": "/home/you/.cargo/bin:/usr/local/bin:/usr/bin:/bin" }
+}
+```
+
 ## Tools
 
 | Tool | Purpose |
