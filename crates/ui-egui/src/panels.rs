@@ -1785,7 +1785,9 @@ mod navigator_wheel_tests {
         assert_eq!(app.ui.views[0].center, center, "Navigator wheel must not pan");
         frame(&mut app, &ctx, pos2(50.0, 55.0), -1.0);
         assert!((app.ui.views[0].zoom - 1.0).abs() < 1e-4);
-        frame(&mut app, &ctx, pos2(50.0, 400.0), 1.0);
+        // Below the preview (it now fills the group, #2726): over the zoom controls.
+        let below = last_navigator_controls(&ctx).map_or(pos2(50.0, 455.0), |r| pos2(r.left() + 4.0, r.bottom() - 2.0));
+        frame(&mut app, &ctx, below, 1.0);
         assert!((app.ui.views[0].zoom - 1.0).abs() < 1e-4, "wheel outside preview leaves zoom unchanged");
     }
 }
