@@ -17,8 +17,9 @@
 //! caret to the pointer on any press), so Copy and Cut act on it.
 //!
 //! The right-click belongs to the field: the canvas and its tool menus only see pointer presses
-//! on the canvas, which a field drawn above it takes. Spelling suggestions are not offered:
-//! PhotoCraft has no spell checker.
+//! on the canvas, which a field drawn above it takes. Spelling suggestions are not in this menu
+//! yet: the spell checker (`edit.checkSpelling`, whose `suggest` action lists them) is not wired
+//! into text fields.
 
 use egui::text::CCursorRange;
 use egui::{Context, Event, Id, Key, Modifiers, PointerButton, Pos2, RawInput, SurrenderFocusOn, Ui};
