@@ -159,7 +159,9 @@ fn main() {
         }
         harness.run_steps(4);
     }
-    if let Some((x, y)) = arg(&args, "--pick-under-cursor-at").and_then(|s| s.split_once(,).and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
+    if let Some((x, y)) =
+        arg(&args, "--pick-under-cursor-at").and_then(|s| s.split_once(',').and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?))))
+    {
         if let Some(xform) = photocraft_ui_egui::canvas::ViewXform::active(harness.state()) {
             harness.event(egui::Event::PointerMoved(xform.to_screen(x, y)));
             harness.run_steps(2);
@@ -174,7 +176,7 @@ fn main() {
             harness.run_steps(2);
         }
     }
-    if let Some((x, y)) = arg(&args, "--scroll-by").and_then(|s| s.split_once(,).and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
+    if let Some((x, y)) = arg(&args, "--scroll-by").and_then(|s| s.split_once(',').and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
         harness.event(egui::Event::PointerMoved(harness.state().last_canvas_rect.center()));
         harness.run_steps(2);
         for (delta, phase) in [(egui::vec2(x, y), egui::TouchPhase::Move), (egui::Vec2::ZERO, egui::TouchPhase::End)] {
@@ -185,9 +187,21 @@ fn main() {
     if args.iter().any(|a| a == "--hold-zoom") {
         harness.event(egui::Event::PointerMoved(harness.state().last_canvas_rect.center()));
         harness.run_steps(2);
-        harness.input_mut().events.push(egui::Event::Key { key: egui::Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
+        harness.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::Z,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
         harness.run_steps(16);
-        harness.input_mut().events.push(egui::Event::Key { key: egui::Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::NONE });
+        harness.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::Z,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
         harness.run_steps(2);
     }
     let t_settle = std::time::Instant::now();
@@ -206,6 +220,12 @@ fn main() {
         "language: {}",
         serde_json::json!({"preference": harness.state().session.prefs().interface.language, "resolved": photocraft_ui_egui::i18n::current().code()})
     );
+    println!("state: {}", serde_json::json!({
+        "tool": format!("{:?}", harness.state().ui.tool),
+        "zoom": harness.state().current_zoom(),
+        "center": harness.state().ui.views.first().map(|v| v.center),
+        "activeLayer": harness.state().session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).map(|l| &l.name),
+    }));
     let img = harness.render().expect("render");
     img.save(&out).expect("save png");
     println!("wrote {out} ({}×{})", img.width(), img.height());

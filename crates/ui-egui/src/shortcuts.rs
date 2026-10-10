@@ -481,6 +481,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // Tool keys; pressing the key of the current group cycles within it. With Preferences ›
     // Tools › Use Shift Key for Tool Switch, only ⇧+key cycles and the plain key keeps the
     // group's current tool. From another group, the key picks the group's last-used tool.
+    // Alt may already be held when Z is pressed to temporarily zoom out.
+    if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, Key::Z)) {
+        crate::spring_zoom::press(app, ctx);
+        return;
+    }
     let shift_switch = app.session.prefs().tools.use_shift_key_for_tool_switch;
     for t in Tool::ALL {
         let Some(k) = Key::from_name(&t.key().to_string()) else { continue };

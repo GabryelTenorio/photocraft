@@ -146,3 +146,24 @@ fn focus_loss_and_explicit_tool_changes_cancel_a_held_zoom() {
     key(&mut h, false, false);
     assert_eq!(h.state().ui.tool, Tool::Move);
 }
+
+#[test]
+fn alt_can_be_held_before_z_to_temporarily_zoom_out() {
+    let mut h = harness(Tool::Brush);
+    h.input_mut().events.extend([
+        Event::ModifiersChanged(Modifiers::ALT),
+        Event::Key { key: Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::ALT },
+    ]);
+    h.step();
+    h.run_steps(15);
+    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::ZoomOut);
+    let p = h.state().last_canvas_rect.center();
+    let before = h.state().current_zoom();
+    button(&mut h, p, true, Modifiers::ALT);
+    button(&mut h, p, false, Modifiers::ALT);
+    assert!(h.state().current_zoom() < before);
+    h.input_mut().events.push(Event::Key { key: Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::ALT });
+    h.step();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.tool, Tool::Brush);
+}

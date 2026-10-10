@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (canvas context-menu correctness evidence) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (five canvas interaction fixes verified) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -142,7 +142,7 @@ what an agent can't finish alone.
   previous layer (#2666); ⌘-arrow layer nudge (#2474); path-point nudge; polygonal lasso Shift
   angles (#2352); autoscroll at the edge while selecting (#2231); hold-a-key spring-loaded tools
   (Z Zoom verified 2026-10-11, #2672; other tool letters remain); double-click Zoom tool to 100% (#2508); wheel and pinch behaviour (#2485, #2463,
-  #1989); toolbar press-and-hold flyouts (#2301); tool-key memory in a group (#2608).
+  #1989 verified 2026-10-11: immediate canvas pan without added smoothing); toolbar press-and-hold flyouts (#2301); tool-key memory in a group (#2608).
 - **Detail:** [`ui-parity.md`](ui-parity.md).
 - **Estimate:** 60–110 h.
 
