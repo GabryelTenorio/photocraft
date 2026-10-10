@@ -45,6 +45,19 @@ const TOOLS: &[(&str, Kind, &str, Option<&str>)] = &[
     ("git", Kind::Required, "local provenance: fingerprint, diff, change ancestry", None),
     ("cargo", Kind::Required, "builds and the xtask finish gates", None),
     ("wasm32-unknown-unknown", Kind::Required, "the `cargo xtask wasm` gate: L0-L6 must build for the web", Some("rustup target add wasm32-unknown-unknown")),
+    (
+        "corpus",
+        Kind::Required,
+        "the `cargo xtask test-corpus` gate for psd/io/codecs/compose/gpu/text/format changes (gitignored; not fetched by default)",
+        Some("cargo xtask corpus --all"),
+    ),
+    ("mdbook", Kind::Optional, "the `mdbook build book` docs gate (recommended for docs changes)", Some("cargo install mdbook --version 0.4.52 --locked")),
+    (
+        "craft-fonts",
+        Kind::Optional,
+        "the optional fonts build input (Japanese font tests; release builds embed it)",
+        Some("git clone https://github.com/storytold/craft-fonts ../craft-fonts"),
+    ),
     ("jcodemunch-mcp", Kind::Optional, "symbol/impact graph accelerator (blast radius, importers)", Some("uv tool install jcodemunch-mcp")),
     ("rust-analyzer", Kind::Optional, "Rust semantic authority (via the rust-lsp MCP): references, types, macros", Some("rustup component add rust-analyzer")),
     (
@@ -57,12 +70,20 @@ const TOOLS: &[(&str, Kind, &str, Option<&str>)] = &[
 
 /// Probe the live environment.
 pub fn capabilities() -> Capabilities {
-    assemble(discover_repo_root(), present)
+    let root = discover_repo_root();
+    let probe_root = root.clone();
+    assemble(root, move |name| present(name, probe_root.as_deref()))
 }
 
-/// Is a capability present? Most are binaries on `PATH`; the wasm target is a rustup target.
-fn present(name: &str) -> bool {
-    if name == "wasm32-unknown-unknown" { wasm_target_installed() } else { on_path(name) }
+/// Is a capability present? Most are binaries on `PATH`; the wasm target is a rustup target, and
+/// the corpus / craft-fonts are data directories relative to the checkout.
+fn present(name: &str, root: Option<&Path>) -> bool {
+    match name {
+        "wasm32-unknown-unknown" => wasm_target_installed(),
+        "corpus" => root.is_some_and(|r| r.join("corpus").is_dir()),
+        "craft-fonts" => root.and_then(Path::parent).is_some_and(|p| p.join("craft-fonts").is_dir()),
+        _ => on_path(name),
+    }
 }
 
 /// Whether the `wasm32-unknown-unknown` rustup target is installed. A `cargo xtask wasm` gate fails
@@ -174,6 +195,12 @@ mod tests {
         let caps = assemble(Some(PathBuf::from("/repo")), |name| name != "wasm32-unknown-unknown");
         assert!(caps.recommendations.iter().any(|r| r.contains("rustup target add wasm32-unknown-unknown")), "{:?}", caps.recommendations);
         assert!(caps.tools.iter().any(|t| t.name == "wasm32-unknown-unknown" && !t.present));
+    }
+
+    #[test]
+    fn missing_corpus_is_flagged_with_the_fetch_command() {
+        let caps = assemble(Some(PathBuf::from("/repo")), |name| name != "corpus");
+        assert!(caps.recommendations.iter().any(|r| r.contains("cargo xtask corpus --all")), "{:?}", caps.recommendations);
     }
 
     #[test]

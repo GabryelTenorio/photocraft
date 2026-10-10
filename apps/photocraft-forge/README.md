@@ -60,7 +60,7 @@ lives in `~/.cargo/bin`, set an explicit environment, e.g. for OpenCode:
 
 | Tool | Purpose |
 |---|---|
-| `forge_capabilities` | Report required tools (`git`, `cargo`), required **toolchain targets** (`wasm32-unknown-unknown`, which the `wasm` gate needs and which rustup does not install automatically), optional companions, the checkout root, and install commands for anything missing. |
+| `forge_capabilities` | Report required tools (`git`, `cargo`), required **prerequisites** (`wasm32-unknown-unknown`, which the `wasm` gate needs and rustup does not auto-install; the `corpus/` checkout, which `test-corpus` needs), optional build inputs (`craft-fonts`, `mdbook`) and companions, the checkout root, and the install/fetch command for anything missing. |
 | `development_context` | Source fingerprint (HEAD, branch, dirty, diff/Cargo.lock hashes, behind origin/main), Forge's own build identity (version, profile, target, hashed binary), the workspace crate map, and the authoritative `cargo xtask layers` report. |
 | `change_impact` | The must-change-together touch set, invariants, artifacts to regenerate, related files, and the gate plan, for `paths` / a `command` / a `symbol` / an `intent`. |
 | `checks_for_changes` | Which finish gates a working diff requires, and why. |
