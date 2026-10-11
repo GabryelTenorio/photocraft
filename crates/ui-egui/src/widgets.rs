@@ -1670,7 +1670,9 @@ pub(crate) fn color_swatch(ui: &mut Ui, color: Color32) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(ui.spacing().interact_size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::new(egui::WidgetType::ColorButton));
-    checker(ui.painter(), rect, 4.0);
+    if color.a() < 255 {
+        checker(ui.painter(), rect, 4.0);
+    }
     ui.painter().rect_filled(rect.shrink(1.0), t.radius_sm, color);
     ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
     response
@@ -1681,7 +1683,9 @@ pub fn color_swatch_button(ui: &mut Ui, color: Color32, label: &str) -> Response
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(ui.spacing().interact_size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ColorButton, true, label));
-    checker(ui.painter(), rect, 4.0);
+    if color.a() < 255 {
+        checker(ui.painter(), rect, 4.0);
+    }
     ui.painter().rect_filled(rect.shrink(1.0), t.radius_sm, color);
     ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
     response.on_hover_text(label)
@@ -1831,5 +1835,37 @@ mod screen_color_tests {
             h.run_steps(1);
             assert!(!h.state().2, "the pick commits once");
         }
+    }
+}
+
+#[cfg(test)]
+mod color_swatch_tests {
+    use super::*;
+
+    #[test]
+    fn opaque_swatch_has_no_checker_tiles_but_translucent_swatch_keeps_them() {
+        let draw = |color| {
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                color_swatch(ui, color);
+            });
+            let count = output.shapes.len();
+            output.textures_delta.clear();
+            count
+        };
+        let draw_button = |color| {
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                color_swatch_button(ui, color, "swatch");
+            });
+            let count = output.shapes.len();
+            output.textures_delta.clear();
+            count
+        };
+
+        assert_eq!(draw(Color32::from_rgb(20, 40, 60)), 2, "opaque swatches need only fill and border");
+        assert!(draw(Color32::from_rgba_unmultiplied(20, 40, 60, 128)) > 2, "alpha swatches keep the transparency checker");
+        assert_eq!(draw_button(Color32::from_rgb(20, 40, 60)), 2);
+        assert!(draw_button(Color32::from_rgba_unmultiplied(20, 40, 60, 128)) > 2);
     }
 }
