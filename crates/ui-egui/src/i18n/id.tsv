@@ -2963,3 +2963,13 @@ cameraData	Lens	Lensa
 curves	Smooth	Haluskan
 	Smooth the curve values	Haluskan nilai kurva
 	Drag to draw the curve · {key}-click draws a straight line	Seret untuk menggambar kurva · {key}-klik menggambar garis lurus
+# Select and Mask view modes (#1754)
+	Onion Skin	Kulit Bawang
+	Marching Ants	Semut Berbaris
+	On Black	Di Atas Hitam
+	On White	Di Atas Putih
+	On Layers	Di Atas Lapisan
+	Show Edge	Tampilkan Tepi
+	Show Original	Tampilkan Asli
+	F cycles the views; hold X to see the image	F berganti tampilan; tahan X untuk melihat gambar
+	Show rulers	Tampilkan Penggaris

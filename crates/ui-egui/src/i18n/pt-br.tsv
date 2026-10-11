@@ -2983,3 +2983,13 @@ cameraData	Lens	Lente
 curves	Smooth	Suavizar
 	Smooth the curve values	Suavizar os valores da curva
 	Drag to draw the curve · {key}-click draws a straight line	Arraste para desenhar a curva · {key}-clique traça uma linha reta
+# Select and Mask view modes (#1754)
+	Onion Skin	Papel vegetal
+	Marching Ants	Formigas marchando
+	On Black	Sobre preto
+	On White	Sobre branco
+	On Layers	Sobre camadas
+	Show Edge	Mostrar borda
+	Show Original	Mostrar original
+	F cycles the views; hold X to see the image	F alterna as visualizações; segure X para ver a imagem
+	Show rulers	Mostrar réguas

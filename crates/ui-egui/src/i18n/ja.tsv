@@ -3573,3 +3573,13 @@ cameraData	Lens	レンズ
 curves	Smooth	スムーズ
 	Smooth the curve values	カーブの値を滑らかにする
 	Drag to draw the curve · {key}-click draws a straight line	ドラッグしてカーブを描画 · {key}+クリックで直線を描画
+# Select and Mask view modes (#1754)
+	Onion Skin	オニオンスキン
+	Marching Ants	点線の境界
+	On Black	黒地
+	On White	白地
+	On Layers	レイヤー上
+	Show Edge	エッジを表示
+	Show Original	元の状態を表示
+	F cycles the views; hold X to see the image	F で表示を切り替え、X を押している間は画像を表示
+	Show rulers	定規を表示

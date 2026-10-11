@@ -3659,3 +3659,13 @@ cameraData	Lens	Φακός
 curves	Smooth	Εξομάλυνση
 	Smooth the curve values	Εξομάλυνση των τιμών της καμπύλης
 	Drag to draw the curve · {key}-click draws a straight line	Σύρετε για να σχεδιάσετε την καμπύλη · {key}-κλικ σχεδιάζει ευθεία γραμμή
+# Select and Mask view modes (#1754)
+	Onion Skin	Φλούδα κρεμμυδιού
+	Marching Ants	Κινούμενο περίγραμμα
+	On Black	Σε μαύρο
+	On White	Σε λευκό
+	On Layers	Σε επίπεδα
+	Show Edge	Εμφάνιση άκρης
+	Show Original	Εμφάνιση αρχικού
+	F cycles the views; hold X to see the image	Το F εναλλάσσει τις προβολές· κρατήστε το X για να δείτε την εικόνα
+	Show rulers	Εμφάνιση χαράκων

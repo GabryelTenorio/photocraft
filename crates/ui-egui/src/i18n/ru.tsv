@@ -2899,6 +2899,16 @@ cameraData	Lens	Объектив
 curves	Smooth	Сгладить
 	Smooth the curve values	Сгладить значения кривой
 	Drag to draw the curve · {key}-click draws a straight line	Перетащите, чтобы нарисовать кривую · {key}-щелчок рисует прямую линию
+# Select and Mask view modes (#1754)
+	Onion Skin	Калька
+	Marching Ants	Бегущие муравьи
+	On Black	На черном
+	On White	На белом
+	On Layers	На слоях
+	Show Edge	Показать край
+	Show Original	Показать исходное
+	F cycles the views; hold X to see the image	F переключает виды; удерживайте X, чтобы увидеть изображение
+	Show rulers	Показать линейки
 	New Crop Preset…	Новый набор параметров кадрирования…
 	Delete Crop Preset…	Удалить набор параметров кадрирования…
 	Select the crop presets to delete:	Выберите наборы параметров кадрирования для удаления:
