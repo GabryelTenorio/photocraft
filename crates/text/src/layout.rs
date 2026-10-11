@@ -320,11 +320,7 @@ pub fn char_index(text: &str, byte: usize) -> usize {
 /// Line containing a byte offset. At a shared wrap boundary the caret belongs to
 /// the following line, while an offset at the end of the text stays on the last.
 pub fn line_index(layout: &TextLayout, byte: usize) -> usize {
-    layout
-        .lines
-        .iter()
-        .rposition(|ln| byte >= ln.range.start && byte <= ln.range.end)
-        .unwrap_or_else(|| layout.lines.len().saturating_sub(1))
+    layout.lines.iter().rposition(|ln| byte >= ln.range.start && byte <= ln.range.end).unwrap_or_else(|| layout.lines.len().saturating_sub(1))
 }
 
 /// Nearest caret to a text-space point: character index and the line it sits on.

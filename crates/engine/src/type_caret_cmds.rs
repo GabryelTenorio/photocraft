@@ -266,7 +266,8 @@ mod tests {
             assert_eq!(u(&h, "index"), i as u64, "{text:?} index {i} at ({x}, {y}) -> {h}");
             assert_eq!(h["line"], c["line"], "{text:?} index {i}");
             assert_eq!(u(&h, "layer"), id);
-            let on_line = lines.iter().position(|ln| {
+            // A shared soft-wrap boundary belongs to the following line, where the caret is drawn (#3068).
+            let on_line = lines.iter().rposition(|ln| {
                 let a = ln["start"].as_u64().unwrap();
                 let b = ln["end"].as_u64().unwrap();
                 (i as u64) >= a && (i as u64) <= b
