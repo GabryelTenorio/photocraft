@@ -232,7 +232,7 @@ mod tests {
 
         let (mut s, _) = disc(8);
         let before = s.active().unwrap().revision;
-        assert!(s.execute(CMD, json!({"layer": 999_999})).is_err());
+        assert!(s.execute(CMD, json!({"layer": u64::MAX})).is_err());
         // Wrong types fall back to the defaults (the active layer, layer-only sampling, refined).
         assert!(s.execute(CMD, json!({"layer": "x", "sampleAllLayers": 3, "refine": "no"})).is_ok());
         assert!(s.active().unwrap().revision > before);
