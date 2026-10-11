@@ -247,4 +247,3 @@ mod lookup_picker_tests {
         assert!(!app.ui.status_error);
     }
 }
-

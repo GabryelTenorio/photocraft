@@ -172,7 +172,6 @@ fn color_lookup_picker_cycles_luts_with_the_mouse_wheel() {
     h.hover_at(at);
     h.run_steps(1);
     h.query_all_by_role(egui::accesskit::Role::ComboBox)
-        .into_iter()
         .min_by(|a, b| a.rect().center().distance(label.center()).total_cmp(&b.rect().center().distance(label.center())))
         .expect("Color Lookup picker")
         .click();
@@ -477,4 +476,3 @@ fn gradient_map_picker_offers_the_gradient_library() {
         assert_eq!(steps(&h), before + 1, "{name}: one history step");
     }
 }
-
