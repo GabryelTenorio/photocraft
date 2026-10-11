@@ -166,7 +166,8 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => {
             reset!(vector_mode, shape_fill, stroke_width, shape_stroke, corner_radius, polygon_sides, line_weight)
         }
-        Tool::Ruler
+        Tool::ColorSampler
+        | Tool::Ruler
         | Tool::Note
         | Tool::Count
         | Tool::Brush
@@ -182,6 +183,7 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         | Tool::SliceSelect
         | Tool::AddAnchorPoint
         | Tool::DeleteAnchorPoint
+        | Tool::ConvertPoint
         | Tool::Artboard
         | Tool::Frame => {}
     }
