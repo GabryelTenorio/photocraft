@@ -1,12 +1,14 @@
-//! Lazy CJK and Thai fallback fonts for the UI.
+//! Lazy CJK, Thai, Khmer, Lao and Burmese fallback fonts for the UI.
 //!
 //! The bundled Inter / JetBrains Mono have no Japanese, Chinese or Korean glyphs, and the OS
 //! fonts that do are large (Hiragino ~10 MB, Apple SD Gothic Neo 28 MB, PingFang 78 MB, Noto
 //! Sans CJK ~20 MB). Instead of reading them at startup, an egui plugin scans each frame's text
 //! for CJK characters no registered font covers, and registers the next system font for that
 //! character's script (`ctx.add_font`, active from the next frame, which it requests). Fonts are
-//! appended at the lowest priority to every family, so Latin text keeps Inter. Thai has its own
-//! candidate list and attempt state, independent of the locale-dependent CJK order.
+//! appended at the lowest priority to every family, so Latin text keeps Inter. Scripts that are
+//! not part of the locale-dependent CJK order get a [`LazyScript`] slot: their own candidate list
+//! and one-shot attempt state. Adding one (Lao, Myanmar, Indic) is an enum variant, a character
+//! range and a file list.
 //!
 //! Script order follows the UI locale ([`photocraft_text::cjk::script_order`]): Kana prefers a
 //! Japanese font, Hangul a Korean one, Bopomofo a Traditional Chinese one, and Han the
@@ -29,14 +31,37 @@ pub const MAX_FONT_BYTES: u64 = 128 << 20;
 /// Name prefix of the registered fallback fonts.
 pub const FONT_PREFIX: &str = "system-cjk";
 
+/// A script with its own lazy candidate list and attempt state, outside the CJK locale order.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LazyScript {
+    Thai,
+    Khmer,
+    Lao,
+    Myanmar,
+}
+
+/// Every [`LazyScript`] slot.
+pub const LAZY_SCRIPTS: [LazyScript; 4] = [LazyScript::Thai, LazyScript::Khmer, LazyScript::Lao, LazyScript::Myanmar];
+
+/// The [`LazyScript`] `c` needs a fallback for, if any.
+fn lazy_script(c: char) -> Option<LazyScript> {
+    match c {
+        '\u{0e00}'..='\u{0e7f}' => Some(LazyScript::Thai),
+        '\u{1780}'..='\u{17ff}' | '\u{19e0}'..='\u{19ff}' => Some(LazyScript::Khmer),
+        '\u{0e80}'..='\u{0eff}' => Some(LazyScript::Lao),
+        '\u{1000}'..='\u{109f}' | '\u{a9e0}'..='\u{a9ff}' | '\u{aa60}'..='\u{aa7f}' => Some(LazyScript::Myanmar),
+        _ => None,
+    }
+}
+
 /// Where fonts come from; swapped out in tests.
 #[derive(Clone)]
 pub struct Sources {
     pub locale: fn() -> Option<String>,
     pub files: fn(CjkScript) -> Vec<FontFile>,
     pub last_resort: fn() -> Vec<FontFile>,
-    /// Thai fonts, loaded only when a visible Thai character is missing.
-    pub thai: fn() -> Vec<FontFile>,
+    /// Fonts for a [`LazyScript`] slot, loaded only when a visible character of that script is missing.
+    pub scripts: fn(LazyScript) -> Vec<FontFile>,
     /// Embedded fonts tried before `files` for a script (craft-fonts' Japanese fonts).
     pub embedded: fn(CjkScript) -> Vec<&'static CraftFont>,
 }
@@ -61,13 +86,13 @@ impl Sources {
             },
             files: cjk::font_files,
             last_resort: cjk::last_resort_files,
-            thai: thai_font_files,
+            scripts: lazy_font_files,
             embedded: craft_embedded,
         }
     }
     #[cfg(target_arch = "wasm32")]
     pub fn system() -> Self {
-        Self { locale: || None, files: |_| Vec::new(), last_resort: Vec::new, thai: Vec::new, embedded: craft_embedded }
+        Self { locale: || None, files: |_| Vec::new(), last_resort: Vec::new, scripts: |_| Vec::new(), embedded: craft_embedded }
     }
 }
 
@@ -79,7 +104,7 @@ pub struct CjkFallback {
     order: Option<[CjkScript; 4]>,
     tried: Vec<CjkScript>,
     last_resort_tried: bool,
-    thai_tried: bool,
+    scripts_tried: Vec<LazyScript>,
     loaded: Vec<PathBuf>,
     /// Fonts registered so far: (name, path, face index).
     pub registered: Vec<(String, PathBuf, u32)>,
@@ -93,7 +118,7 @@ impl CjkFallback {
             order: None,
             tried: Vec::new(),
             last_resort_tried: false,
-            thai_tried: false,
+            scripts_tried: Vec::new(),
             loaded: Vec::new(),
             registered: Vec::new(),
         }
@@ -136,11 +161,23 @@ impl CjkFallback {
         None
     }
 
-    fn next_thai_font(&mut self) -> Option<(String, FontData)> {
-        if std::mem::replace(&mut self.thai_tried, true) {
+    /// Whether `s` was already attempted, whether or not a readable font came of it.
+    fn script_tried(&self, s: LazyScript) -> bool {
+        self.scripts_tried.contains(&s)
+    }
+
+    /// Every [`LazyScript`] slot has been attempted: no script font is left to load.
+    fn scripts_exhausted(&self) -> bool {
+        self.scripts_tried.len() >= LAZY_SCRIPTS.len()
+    }
+
+    /// The next font for script `s`: the first readable candidate, at most once per slot.
+    fn next_script_font(&mut self, s: LazyScript) -> Option<(String, FontData)> {
+        if self.script_tried(s) {
             return None;
         }
-        self.load_first(&(self.sources.thai)())
+        self.scripts_tried.push(s);
+        self.load_first(&(self.sources.scripts)(s))
     }
 
     /// The first embedded (craft-fonts) font for `s`, registered from its static bytes.
@@ -180,18 +217,15 @@ impl CjkFallback {
     }
 }
 
-fn is_thai(c: char) -> bool {
-    matches!(c, '\u{0e00}'..='\u{0e7f}')
-}
-
 /// First supported missing character for which a fallback has not yet been exhausted.
 fn missing_char(ctx: &egui::Context, shapes: &[egui::epaint::ClippedShape], fallback: &CjkFallback) -> Option<char> {
-    fn collect(shape: &Shape, out: &mut Vec<char>, cjk_pending: bool, thai_pending: bool) {
+    fn collect(shape: &Shape, out: &mut Vec<char>, cjk_pending: bool, fallback: &CjkFallback) {
         match shape {
             Shape::Text(t) => {
                 let text = &t.galley.job.text;
                 if !text.is_ascii() {
-                    for c in text.chars().filter(|c| (cjk_pending && cjk::classify(*c).is_some()) || (thai_pending && is_thai(*c))) {
+                    for c in text.chars().filter(|c| (cjk_pending && cjk::classify(*c).is_some()) || lazy_script(*c).is_some_and(|s| !fallback.script_tried(s)))
+                    {
                         if out.len() >= 256 {
                             return;
                         }
@@ -201,13 +235,13 @@ fn missing_char(ctx: &egui::Context, shapes: &[egui::epaint::ClippedShape], fall
                     }
                 }
             }
-            Shape::Vec(v) => v.iter().for_each(|s| collect(s, out, cjk_pending, thai_pending)),
+            Shape::Vec(v) => v.iter().for_each(|s| collect(s, out, cjk_pending, fallback)),
             _ => {}
         }
     }
     let mut chars = Vec::new();
     for s in shapes {
-        collect(&s.shape, &mut chars, !fallback.exhausted(), !fallback.thai_tried);
+        collect(&s.shape, &mut chars, !fallback.exhausted(), fallback);
     }
     if chars.is_empty() {
         return None;
@@ -287,22 +321,25 @@ impl egui::Plugin for CjkFontPlugin {
             ctx.request_repaint();
             return;
         }
-        if self.0.exhausted() && self.0.thai_tried {
+        if self.0.exhausted() && self.0.scripts_exhausted() {
             return;
         }
         let Some(c) = missing_char(ctx, &output.shapes, &self.0) else { return };
-        let font = if is_thai(c) { self.0.next_thai_font() } else { cjk::classify(c).and_then(|kind| self.0.next_font(kind)) };
+        let font = match lazy_script(c) {
+            Some(s) => self.0.next_script_font(s),
+            None => cjk::classify(c).and_then(|kind| self.0.next_font(kind)),
+        };
         if let Some((name, data)) = font {
             add_to_all_families(ctx, name, data);
             ctx.request_repaint();
-        } else if !self.0.exhausted() || !self.0.thai_tried {
+        } else if !self.0.exhausted() || !self.0.scripts_exhausted() {
             // Nothing readable for this script; try the next one on the next frame.
             ctx.request_repaint();
         }
     }
 }
 
-/// Installs the lazy CJK and Thai fallback (system fonts; nothing on the web).
+/// Installs the lazy CJK and [`LazyScript`] fallback (system fonts; nothing on the web).
 pub fn install(ctx: &egui::Context) {
     install_with(ctx, Sources::system());
 }
@@ -323,36 +360,90 @@ pub fn install_with(ctx: &egui::Context, sources: Sources) {
     }
 }
 
-/// Common native Thai fonts. Keep discovery lazy, as with the CJK candidates: no full
-/// system font scan on the UI thread and no extra font files embedded in the web build.
+/// The candidate fonts of a [`LazyScript`] slot.
 #[cfg(not(target_arch = "wasm32"))]
-fn thai_font_files() -> Vec<FontFile> {
-    let f = |path: &str, family| FontFile { path: path.into(), family };
-    if cfg!(target_os = "macos") {
-        vec![f("/System/Library/Fonts/Supplemental/Thonburi.ttc", "Thonburi"), f("/System/Library/Fonts/Supplemental/SukhumvitSet.ttc", "Sukhumvit Set")]
-    } else if cfg!(target_os = "windows") {
-        let dir = std::env::var_os("WINDIR").map_or_else(|| PathBuf::from("C:\\Windows"), PathBuf::from).join("Fonts");
-        [("Leelawui.ttf", "Leelawadee UI"), ("leelawad.ttf", "Leelawadee"), ("tahoma.ttf", "Tahoma")]
-            .into_iter()
-            .map(|(file, family)| FontFile { path: dir.join(file), family })
-            .collect()
-    } else {
-        thai_unix_font_files()
+fn lazy_font_files(s: LazyScript) -> Vec<FontFile> {
+    match s {
+        LazyScript::Thai => thai_font_files(),
+        LazyScript::Khmer => khmer_font_files(),
+        LazyScript::Lao => lao_font_files(),
+        LazyScript::Myanmar => myanmar_font_files(),
     }
 }
 
+/// The system fonts of one script slot, best candidate first. Keep discovery lazy, as with the CJK
+/// candidates: no full system font scan on the UI thread and no extra font files in the web build.
+/// `mac` paths are relative to `/System/Library/Fonts`; `win` files to `%WINDIR%\Fonts`.
 #[cfg(not(target_arch = "wasm32"))]
-fn thai_unix_font_files() -> Vec<FontFile> {
-    // Fedora's static and variable packages, Debian/Ubuntu, then Arch/Noto installations.
-    // Flatpak exposes the host's /usr/share/fonts as /run/host/fonts.
-    ["google-noto/NotoSansThai-Regular.ttf", "google-noto-vf/NotoSansThai[wght].ttf", "truetype/noto/NotoSansThai-Regular.ttf", "noto/NotoSansThai-Regular.ttf"]
-        .into_iter()
-        .flat_map(|file| {
-            ["/usr/share/fonts", "/run/host/fonts", "/usr/local/share/fonts"]
-                .into_iter()
-                .map(move |root| FontFile { path: std::path::Path::new(root).join(file), family: "Noto Sans Thai" })
-        })
-        .collect()
+fn script_font_files(mac: &[(&'static str, &'static str)], win: &[(&'static str, &'static str)], noto_stem: &str, noto_family: &'static str) -> Vec<FontFile> {
+    if cfg!(target_os = "macos") {
+        return mac.iter().map(|(file, family)| FontFile { path: format!("/System/Library/Fonts/{file}").into(), family }).collect();
+    }
+    if cfg!(target_os = "windows") {
+        let dir = std::env::var_os("WINDIR").map_or_else(|| PathBuf::from("C:\\Windows"), PathBuf::from).join("Fonts");
+        return win.iter().map(|(file, family)| FontFile { path: dir.join(file), family }).collect();
+    }
+    noto_unix_files(noto_stem, noto_family)
+}
+
+/// Noto Sans `<stem>` in Fedora's static and variable packages, Debian/Ubuntu's and Arch's
+/// installations, and under Flatpak, which exposes the host's `/usr/share/fonts` as `/run/host/fonts`.
+#[cfg(not(target_arch = "wasm32"))]
+fn noto_unix_files(stem: &str, family: &'static str) -> Vec<FontFile> {
+    let files = [
+        format!("google-noto/NotoSans{stem}-Regular.ttf"),
+        format!("google-noto-vf/NotoSans{stem}[wght].ttf"),
+        format!("truetype/noto/NotoSans{stem}-Regular.ttf"),
+        format!("noto/NotoSans{stem}-Regular.ttf"),
+    ];
+    let mut out = Vec::new();
+    for file in &files {
+        for root in ["/usr/share/fonts", "/run/host/fonts", "/usr/local/share/fonts"] {
+            out.push(FontFile { path: std::path::Path::new(root).join(file), family });
+        }
+    }
+    out
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn thai_font_files() -> Vec<FontFile> {
+    script_font_files(
+        &[("Supplemental/Thonburi.ttc", "Thonburi"), ("Supplemental/SukhumvitSet.ttc", "Sukhumvit Set")],
+        &[("Leelawui.ttf", "Leelawadee UI"), ("leelawad.ttf", "Leelawadee"), ("tahoma.ttf", "Tahoma")],
+        "Thai",
+        "Noto Sans Thai",
+    )
+}
+
+/// #218: `Leelawadee UI` is Windows' Khmer UI font from 8.1 (`Khmer UI` on 8), so it is listed too.
+#[cfg(not(target_arch = "wasm32"))]
+fn khmer_font_files() -> Vec<FontFile> {
+    script_font_files(
+        &[("Supplemental/Khmer Sangam MN.ttf", "Khmer Sangam MN"), ("Supplemental/Khmer MN.ttc", "Khmer MN")],
+        &[("KhmerUI.ttf", "Khmer UI"), ("Leelawui.ttf", "Leelawadee UI")],
+        "Khmer",
+        "Noto Sans Khmer",
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn lao_font_files() -> Vec<FontFile> {
+    script_font_files(
+        &[("Supplemental/Lao Sangam MN.ttf", "Lao Sangam MN"), ("Supplemental/Lao MN.ttc", "Lao MN")],
+        &[("LaoUI.ttf", "Lao UI"), ("Leelawui.ttf", "Leelawadee UI")],
+        "Lao",
+        "Noto Sans Lao",
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn myanmar_font_files() -> Vec<FontFile> {
+    script_font_files(
+        &[("Supplemental/Myanmar Sangam MN.ttc", "Myanmar Sangam MN"), ("Supplemental/Myanmar MN.ttc", "Myanmar MN")],
+        &[("mmrtext.ttf", "Myanmar Text"), ("mmrtextb.ttf", "Myanmar Text")],
+        "Myanmar",
+        "Noto Sans Myanmar",
+    )
 }
 
 #[cfg(test)]
@@ -436,7 +527,7 @@ mod tests {
                 _ => vec![],
             },
             last_resort: || vec![fake("font.ttf")],
-            thai: Vec::new,
+            scripts: |_| Vec::new(),
             embedded: no_embedded,
         }
     }
@@ -467,7 +558,7 @@ mod tests {
             ("zh-Hant-TW", CjkScript::TraditionalChinese),
             ("ko_KR", CjkScript::Korean),
         ] {
-            let mut fb = CjkFallback::new(Sources { locale: || None, files: |_| vec![], last_resort: Vec::new, thai: Vec::new, embedded: no_embedded });
+            let mut fb = CjkFallback::new(Sources { locale: || None, files: |_| vec![], last_resort: Vec::new, scripts: |_| vec![], embedded: no_embedded });
             fb.order = Some(cjk::script_order(Some(loc)));
             assert!(fb.next_font(CjkChar::Han).is_none());
             assert_eq!(fb.tried[0], first, "{loc}");
@@ -485,23 +576,48 @@ mod tests {
         ctx.fonts_mut(|f| f.has_glyphs(&FontId::proportional(12.0), &text.replace(' ', "")))
     }
 
+    /// Every slot's Linux candidates cover the distro layouts, not just one script's font.
     #[test]
-    fn thai_candidates_include_fedora_static_variable_and_flatpak_fonts() {
-        let files = thai_unix_font_files();
-        for root in ["/usr/share/fonts", "/run/host/fonts"] {
-            for file in ["google-noto/NotoSansThai-Regular.ttf", "google-noto-vf/NotoSansThai[wght].ttf"] {
-                assert!(files.iter().any(|f| f.path == std::path::Path::new(root).join(file) && f.family == "Noto Sans Thai"));
+    fn noto_candidates_cover_fedora_static_variable_and_flatpak_fonts() {
+        for (stem, family) in [("Thai", "Noto Sans Thai"), ("Khmer", "Noto Sans Khmer"), ("Lao", "Noto Sans Lao"), ("Myanmar", "Noto Sans Myanmar")] {
+            let files = noto_unix_files(stem, family);
+            for root in ["/usr/share/fonts", "/run/host/fonts"] {
+                for file in [format!("google-noto/NotoSans{stem}-Regular.ttf"), format!("google-noto-vf/NotoSans{stem}[wght].ttf")] {
+                    assert!(files.iter().any(|f| f.path == std::path::Path::new(root).join(&file) && f.family == family), "{stem}: {file}");
+                }
             }
         }
     }
 
     #[test]
-    fn thai_loading_is_lazy_once_per_install_and_independent_of_cjk() {
+    fn lazy_script_slots_split_the_southeast_asian_scripts_from_cjk_and_latin() {
+        for (c, want) in [
+            ('ก', Some(LazyScript::Thai)),
+            ('\u{0e7f}', Some(LazyScript::Thai)),
+            ('ខ', Some(LazyScript::Khmer)),
+            ('ៗ', Some(LazyScript::Khmer)),
+            ('\u{19e0}', Some(LazyScript::Khmer)),
+            ('ລ', Some(LazyScript::Lao)),
+            ('\u{0eff}', Some(LazyScript::Lao)),
+            ('မ', Some(LazyScript::Myanmar)),
+            ('\u{a9e0}', Some(LazyScript::Myanmar)),
+            ('\u{aa60}', Some(LazyScript::Myanmar)),
+            ('a', None),
+            ('日', None),
+            ('\u{0f00}', None), // Tibetan is not a slot yet
+        ] {
+            assert_eq!(lazy_script(c), want, "{c}");
+        }
+        assert_eq!(LAZY_SCRIPTS.len(), 4, "a new slot needs a candidate list and a test");
+    }
+
+    #[test]
+    fn script_loading_is_lazy_once_per_install_and_independent_of_cjk() {
         let sources = Sources {
             locale: || Some("en".into()),
             files: |_| vec![],
             last_resort: Vec::new,
-            thai: || vec![fake("missing.ttf"), fake("empty.ttf"), fake("font.ttf")],
+            scripts: |s| if s == LazyScript::Thai { vec![fake("missing.ttf"), fake("empty.ttf"), fake("font.ttf")] } else { vec![] },
             embedded: no_embedded,
         };
         let ctx = egui::Context::default();
@@ -509,7 +625,7 @@ mod tests {
             crate::theme::install_fonts_with(&ctx, sources.clone());
             assert!(render(&ctx, "Recent file.png"));
             ctx.with_plugin::<CjkFontPlugin, _>(|p| {
-                assert!(!p.0.thai_tried, "Latin-only frames do not request Thai fonts");
+                assert!(!p.0.script_tried(LazyScript::Thai), "Latin-only frames do not request Thai fonts");
                 assert!(p.0.registered.is_empty());
             });
             // The stand-in does not draw Thai. An unavailable CJK glyph preceding Thai must
@@ -517,7 +633,8 @@ mod tests {
             assert!(!render(&ctx, "日本語/ภาพถ่าย/วันหยุดพักผ่อน.png"));
             ctx.with_plugin::<CjkFontPlugin, _>(|p| {
                 assert!(p.0.exhausted());
-                assert!(p.0.thai_tried);
+                assert!(p.0.script_tried(LazyScript::Thai));
+                assert!(!p.0.script_tried(LazyScript::Khmer), "a script nobody drew is not attempted");
                 assert_eq!(p.0.registered.len(), 1);
             });
             let fonts = ctx.fonts(|f| f.definitions().clone());
@@ -527,10 +644,11 @@ mod tests {
                 assert_eq!(stack.last().map(String::as_str), Some("system-cjk-0"));
             }
         }
-        // Exhausting Thai first must likewise leave CJK available.
+        // Exhausting one script first must likewise leave CJK and the other slots available.
         let mut fallback = CjkFallback::new(fake_sources(|| Some("ko".into())));
-        assert!(fallback.next_thai_font().is_none());
+        assert!(fallback.next_script_font(LazyScript::Thai).is_none());
         assert!(fallback.next_font(CjkChar::Hangul).is_some());
+        assert!(!fallback.scripts_exhausted());
     }
 
     #[test]
@@ -545,6 +663,25 @@ mod tests {
         let ctx = egui::Context::default();
         crate::theme::install_fonts(&ctx);
         assert!(render(&ctx, "ภาพถ่าย/วันหยุดพักผ่อน.png"), "Thai filename and combining marks still have missing glyphs");
+    }
+
+    #[test]
+    fn system_fonts_cover_southeast_asian_recent_file_names() {
+        // #218: like the Thai and CJK system-font tests, run per script when this machine has the
+        // font; the deterministic lazy-loading test above needs none.
+        for (script, name, file_name) in [
+            (LazyScript::Khmer, "Khmer", "ភាសាខ្មែរ/ឯកសារ.png"),
+            (LazyScript::Lao, "Lao", "ພາສາລາວ/ເອກະສານ.png"),
+            (LazyScript::Myanmar, "Myanmar", "မြန်မာဘာသာ/ဖိုင်.png"),
+        ] {
+            if !lazy_font_files(script).iter().any(|f| f.path.is_file()) {
+                eprintln!("skipping: no {name} system font");
+                continue;
+            }
+            let ctx = egui::Context::default();
+            crate::theme::install_fonts(&ctx);
+            assert!(render(&ctx, file_name), "{name} filename, subscripts and marks still have missing glyphs");
+        }
     }
 
     #[test]
@@ -587,7 +724,7 @@ mod tests {
 
     /// No system fonts at all: craft-fonts alone draws Japanese.
     fn craft_only(locale: fn() -> Option<String>) -> Sources {
-        Sources { locale, files: |_| vec![], last_resort: Vec::new, thai: Vec::new, embedded: craft_embedded }
+        Sources { locale, files: |_| vec![], last_resort: Vec::new, scripts: |_| Vec::new(), embedded: craft_embedded }
     }
 
     #[test]
@@ -617,7 +754,10 @@ mod tests {
         // The pre-craft-fonts behaviour: no embedded fonts, no system fonts. Latin renders,
         // Japanese is tried (and stays missing) without panicking, and the loader exhausts.
         let ctx = egui::Context::default();
-        crate::theme::install_fonts_with(&ctx, Sources { locale: || None, files: |_| vec![], last_resort: Vec::new, thai: Vec::new, embedded: no_embedded });
+        crate::theme::install_fonts_with(
+            &ctx,
+            Sources { locale: || None, files: |_| vec![], last_resort: Vec::new, scripts: |_| Vec::new(), embedded: no_embedded },
+        );
         assert!(render(&ctx, "Layer 1 – café"));
         assert!(!render(&ctx, "日本語の文字"));
         let n = ctx.fonts(|f| f.definitions().font_data.keys().filter(|k| k.starts_with(FONT_PREFIX)).count());
