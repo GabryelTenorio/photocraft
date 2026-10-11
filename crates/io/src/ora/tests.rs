@@ -35,7 +35,8 @@ fn doc(depth: SampleType) -> Document {
     hidden.visible = false;
     let mut inner = block("Inner screen", fmt, 20, 5, 30, 20, 4);
     inner.blend = BlendMode::Screen;
-    let mut group = Layer::group("Isolated", vec![inner, block("Inner plain", fmt, 5, 5, 8, 8, 5)]);
+    // Surrounding spaces are part of a name and survive the round trip (#3049).
+    let mut group = Layer::group(" Isolated ", vec![inner, block(" Inner plain ", fmt, 5, 5, 8, 8, 5)]);
     group.blend = BlendMode::Overlay;
     group.opacity = 0.75;
     let mut through_child = block("Through child", fmt, 40, 20, 25, 25, 6);
