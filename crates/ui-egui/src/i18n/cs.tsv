@@ -2150,6 +2150,7 @@
 	Developing {name}	Vyvolávání {name}
 	Cancelled {label}	Zrušeno: {label}
 	Esc to cancel	Esc pro zrušení
+	Opened {name}	Otevřeno: {name}
 	Opening {name}	Otevírání {name}
 	Saved {name}	Uloženo: {name}
 	Saving {name}	Ukládání {name}
@@ -2542,5 +2543,7 @@ cameraData	Lens	Objektiv
 	Select the crop presets to delete	Vyberte předvolby oříznutí k odstranění
 	Enter a name for the crop preset	Zadejte název předvolby oříznutí
 	There is no crop size or ratio to save	Není žádná velikost ani poměr oříznutí k uložení
+	Scale:	Měřítko:
+	Snap to Origin	Přichytit k počátku
 	Search settings…	Hledat nastavení…
 	No matching settings	Žádná odpovídající nastavení
