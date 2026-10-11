@@ -64,7 +64,7 @@ fn stroke_param(app: &PhotocraftApp) -> Value {
     let mut p = o.shape_stroke.params();
     p["width"] = json!(o.stroke_width);
     let color = if is_shape_tool(app.ui.tool) { crate::shape_options::stroke_color(app) } else { app.session.tools.background };
-    p["color"] = json!(hex(color));
+    p["color"] = json!(color);
     p
 }
 
@@ -185,6 +185,10 @@ pub(crate) fn finish_shape_gesture(app: &mut PhotocraftApp, tool: Tool, start: [
     }
 }
 
+fn fill_param(app: &PhotocraftApp) -> Value {
+    if app.ui.tool_options.shape_fill { json!(app.session.tools.foreground) } else { Value::Null }
+}
+
 /// Create a shape layer from `shape.create` geometry with the options bar's fill and stroke: the
 /// end of a drag, and the Create Rectangle / Ellipse / … dialogs (`shape_dialog`).
 pub fn create_shape(app: &mut PhotocraftApp, mut geometry: Value) -> Result<Value, String> {
@@ -204,62 +208,53 @@ fn add_paint(app: &PhotocraftApp, geometry: &mut Value) {
     geometry["stroke"] = paint["stroke"].clone();
 }
 
-/// Shape-tool drag preview using the same path and vector stroke geometry as the commit.
-pub fn draw_shape_preview(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, tool: Tool, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
+/// The preview and command both use the full paint, including transparent float colours.
+fn shape_preview(app: &PhotocraftApp, tool: Tool, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) -> Option<photocraft_doc::ShapeLayer> {
     let o = &app.ui.tool_options;
-    let Some(geometry) = shape_geometry(app, tool, start, end, mods) else { return };
+    let geometry = shape_geometry(app, tool, start, end, mods)?;
     let path = if tool == Tool::CustomShape {
-        let Some(rect) = geometry.get("rect").and_then(|r| serde_json::from_value::<[f64; 4]>(r.clone()).ok()) else { return };
+        let rect = geometry.get("rect").and_then(|r| serde_json::from_value::<[f64; 4]>(r.clone()).ok())?;
         let groups = photocraft_engine::presets::shapes::all_groups(&app.session);
-        let Some(shape) = groups.iter().flat_map(|g| &g.items).find(|s| s.name == app.ui.presets_ui.shape()) else { return };
+        let shape = groups.iter().flat_map(|g| &g.items).find(|s| s.name == app.ui.presets_ui.shape())?;
         let keep_aspect = app.ui.tool_options.shape.size_mode != "fixed" && (mods.shift || app.ui.tool_options.shape.constrain);
         photocraft_engine::presets::shapes::fit(&shape.path, rect, keep_aspect)
     } else {
-        let Ok(path) = photocraft_engine::vector_cmds::shape_path(&geometry) else { return };
-        path
+        photocraft_engine::vector_cmds::shape_path(&geometry).ok()?
     };
-    // ponytail: preview colours skip the canvas's colour management; the commit renders them exactly.
-    let path_only = o.shape.mode == "path";
-    let fill = if o.shape.mode == "pixels" {
-        let c = rgb32(app.session.tools.foreground);
-        egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (app.session.tools.foreground[3] * o.shape.opacity.clamp(0.0, 100.0) * 2.55).round() as u8)
-    } else if o.shape_fill && !path_only {
-        rgb32(crate::shape_options::fill_color(app))
-    } else {
-        Color32::TRANSPARENT
+    let (fill, stroke) = match o.shape.mode.as_str() {
+        "shape" => crate::shape_options::paint(app),
+        "pixels" => {
+            let mut color = app.session.tools.foreground;
+            color[3] *= o.shape.opacity.clamp(0.0, 100.0) / 100.0;
+            (Some(solid_paint(color)), None)
+        }
+        _ => (None, None),
     };
-    {
-        let mut shape = photocraft_doc::ShapeLayer {
-            path: path.clone(),
-            fill: (fill != Color32::TRANSPARENT).then(|| {
-                let c = fill.to_srgba_unmultiplied();
-                photocraft_doc::Fill::Solid(photocraft_doc::Color::rgba(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, c[3] as f32 / 255.0))
-            }),
-            ..Default::default()
-        };
-        if o.shape.mode == "shape" {
-            (shape.fill, shape.stroke) = crate::shape_options::paint(app);
-        }
-        if let Some(st) = app.session.active() {
-            let patterns: Vec<_> = shape
-                .fill
-                .iter()
-                .chain(shape.stroke.iter().map(|s| &s.paint))
-                .filter_map(|fill| match fill {
-                    Fill::Pattern { id, name, .. } => photocraft_doc::pattern::find(&st.doc.patterns, id, name)
-                        .or_else(|| photocraft_doc::pattern::find(&app.session.patterns.items, id, name))
-                        .cloned(),
-                    _ => None,
-                })
-                .collect();
-            crate::shape_stroke_ui::paint_document_shape_preview(painter, &shape, st.doc.bounds(), &patterns, st.doc.mode, xf);
-        }
+    Some(photocraft_doc::ShapeLayer { path, fill, stroke, ..Default::default() })
+}
+
+/// Shape-tool drag preview using the same paint and document-space geometry as the commit.
+pub fn draw_shape_preview(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, tool: Tool, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
+    let Some(shape) = shape_preview(app, tool, start, end, mods) else { return };
+    if let Some(st) = app.session.active() {
+        let patterns: Vec<_> = shape
+            .fill
+            .iter()
+            .chain(shape.stroke.iter().map(|s| &s.paint))
+            .filter_map(|fill| match fill {
+                Fill::Pattern { id, name, .. } => photocraft_doc::pattern::find(&st.doc.patterns, id, name)
+                    .or_else(|| photocraft_doc::pattern::find(&app.session.patterns.items, id, name))
+                    .cloned(),
+                _ => None,
+            })
+            .collect();
+        crate::shape_stroke_ui::paint_document_shape_preview(painter, &shape, st.doc.bounds(), &patterns, st.doc.mode, xf);
     }
     let (accent, width) = crate::shape_modes::path_display(app, painter.ctx());
-    if !o.shape.show_path {
+    if !app.ui.tool_options.shape.show_path {
         return;
     }
-    for (pts, closed) in path_lines(&path, &|q| xf.to_screen(q[0] as f32, q[1] as f32)) {
+    for (pts, closed) in path_lines(&shape.path, &|q| xf.to_screen(q[0] as f32, q[1] as f32)) {
         // The accent path over a dark halo: visible on any pixels (#172).
         let mut shapes = crate::tool_feedback::contrast_path(pts, closed, accent);
         for shape in &mut shapes {
@@ -369,13 +364,13 @@ fn commit_path(app: &mut PhotocraftApp, pen: &PenPath, closed: bool) {
     }
     let path = pen_to_json(pen, closed);
     let r = if app.ui.tool_options.vector_mode == "shape" {
-        let fill = if closed && app.ui.tool_options.shape_fill { json!(hex(app.session.tools.foreground)) } else { Value::Null };
+        let fill = if closed { fill_param(app) } else { Value::Null };
         let stroke = if closed {
             stroke_param(app)
         } else {
             let mut stroke = app.ui.tool_options.shape_stroke.params();
             stroke["width"] = json!(app.ui.tool_options.stroke_width.max(1.0));
-            stroke["color"] = json!(hex(app.session.tools.foreground));
+            stroke["color"] = json!(app.session.tools.foreground);
             stroke
         };
         app.run("shape.create", json!({"kind": "path", "path": path, "fill": fill, "stroke": stroke}))
@@ -821,8 +816,11 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         crate::widgets::vline(ui, 22.0);
         if o.vector_mode == "shape" {
             crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
-            if let Some(style) = crate::shape_stroke_ui::button(ui, "pen-stroke", &o.shape_stroke, &mut app.ui.stroke_editor, false, true, None) {
-                o.shape_stroke = style;
+            if let Some(change) =
+                crate::shape_stroke_ui::button(ui, "pen-stroke", &o.shape_stroke, &mut app.ui.stroke_editor, false, true, None, o.stroke_width > 0.0)
+            {
+                o.shape_stroke = change.options;
+                o.stroke_width = enabled_stroke_width(o.stroke_width);
             }
         }
         let enter = crate::shortcuts::pretty("Enter");
@@ -860,6 +858,14 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
 // ---------------------------------------------------------------------------------------------
 // Properties (shape layers)
 
+fn solid_paint(c: [f32; 4]) -> photocraft_doc::Fill {
+    photocraft_doc::Fill::Solid(photocraft_doc::Color::rgba(c[0], c[1], c[2], c[3]))
+}
+
+pub(crate) fn enabled_stroke_width(width: f32) -> f32 {
+    if width.is_finite() && width > 0.0 { width } else { 3.0 }
+}
+
 /// One corner of the live rectangle, preserving the other three radii.
 /// The engine takes the full [top-left, top-right, bottom-right, bottom-left] array.
 fn corner_radii_patch(radii: [f64; 4], corner: usize, radius: f32) -> Value {
@@ -868,6 +874,21 @@ fn corner_radii_patch(radii: [f64; 4], corner: usize, radius: f32) -> Value {
         *r = f64::from(radius.max(0.0));
     }
     json!({"radii": next})
+}
+
+/// Follow the existing brush/mask continuous-edit convention: one history state per press or
+/// keyboard edit, with every value tick of a held-pointer gesture sharing its key.
+fn paint_gesture(ui: &egui::Ui, key: egui::Id) -> u64 {
+    let pass = ui.ctx().cumulative_pass_nr();
+    let pressed = ui.input(|i| i.pointer.any_pressed());
+    ui.data_mut(|d| {
+        let gesture = d.get_temp_mut_or_default::<(u64, u64)>(key);
+        if pressed && gesture.1 != pass {
+            gesture.0 = gesture.0.wrapping_add(1);
+            gesture.1 = pass;
+        }
+        gesture.0
+    })
 }
 
 /// Properties panel for a shape layer: Appearance (fill, stroke) and live shape geometry.
@@ -888,6 +909,9 @@ pub fn shape_properties(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: photocra
     let mut edit: Option<Value> = None;
     let doc_id = app.session.active().map(|st| st.doc.id);
     let key = |k: &str| format!("shape-{doc_id:?}-{}-{k}", id.0);
+    let gesture_key = ui.id().with(key("paint-gesture"));
+    let gesture = paint_gesture(ui, gesture_key);
+    let coalesce = |field: &str| format!("{}:{}:{gesture}", key(field), gesture_key.value());
     // The shared collapsible section headers (#155).
     if crate::props_layout::section(ui, "appearance", tl!("Appearance")) {
         ui.horizontal(|ui| {
@@ -914,22 +938,27 @@ pub fn shape_properties(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: photocra
             }
             let mut w = sh.stroke.as_ref().map_or(0.0, |s| s.width);
             if crate::widgets::value_field(ui, &mut w, 0.0..=288.0, "px", 60.0).changed() {
-                edit = Some(if w <= 0.0 { json!({"stroke": null}) } else { json!({"stroke": {"width": w}, "coalesce": key("stroke-w")}) });
+                let stroke = if w <= 0.0 { Value::Null } else { json!({"width": w}) };
+                edit = Some(json!({"stroke": stroke, "coalesce": coalesce("stroke-w")}));
             }
         });
-        if let Some(stroke) = &sh.stroke {
-            let style = crate::shape_stroke_ui::StrokeOptions::from(stroke);
-            if let Some(next) = crate::shape_stroke_ui::button(
-                ui,
-                &key("style"),
-                &style,
-                &mut app.ui.stroke_editor,
-                sh.path.subpaths.iter().all(|s| s.closed),
-                !matches!(sh.live, Some(photocraft_doc::LiveShape::Ellipse { .. })),
-                app.session.active().map(|st| (st.doc.id, id)),
-            ) {
-                edit = Some(json!({"stroke": next.params()}));
+        let style = sh.stroke.as_ref().map(crate::shape_stroke_ui::StrokeOptions::from).unwrap_or_default();
+        let stroke_enabled = sh.stroke.as_ref().is_some_and(|stroke| stroke.width > 0.0);
+        if let Some(change) = crate::shape_stroke_ui::button(
+            ui,
+            &key("style"),
+            &style,
+            &mut app.ui.stroke_editor,
+            sh.path.subpaths.iter().all(|s| s.closed),
+            !matches!(sh.live, Some(photocraft_doc::LiveShape::Ellipse { .. })),
+            app.session.active().map(|st| (st.doc.id, id)),
+            stroke_enabled,
+        ) {
+            let mut stroke = change.options.params();
+            if !stroke_enabled {
+                stroke["width"] = json!(3.0);
             }
+            edit = Some(json!({"stroke": stroke, "coalesce": change.coalesce}));
         }
     }
     if let Some(live) = &sh.live
@@ -1010,6 +1039,12 @@ pub fn shape_properties(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: photocra
         if let Err(e) = app.run("shape.edit", p) {
             app.ui.status = e;
             app.ui.status_error = true;
+        }
+        if !ui.input(|i| i.pointer.any_down()) {
+            ui.data_mut(|d| {
+                let gesture = d.get_temp_mut_or_default::<(u64, u64)>(gesture_key);
+                gesture.0 = gesture.0.wrapping_add(1);
+            });
         }
     }
 }
@@ -1763,3 +1798,7 @@ mod tests {
 #[cfg(test)]
 #[path = "path_selection_tests.rs"]
 mod path_selection_tests;
+
+#[cfg(test)]
+#[path = "vector_paint_tests.rs"]
+mod paint_tests;

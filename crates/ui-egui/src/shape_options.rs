@@ -171,7 +171,14 @@ fn apply(app: &mut PhotocraftApp, id: Option<LayerId>, change: Change, coalesce:
                 }
                 json!({"stroke": stroke})
             }
-            Change::Style(style) => json!({"stroke": style.params()}),
+            Change::Style(style) => {
+                let mut stroke = style.params();
+                if sh.stroke.is_none() {
+                    stroke["width"] = json!(crate::vector_ui::enabled_stroke_width(default_width));
+                    stroke["fill"] = photocraft_engine::vector_cmds::shape_paint_params(Some(&default_stroke(app)), None)["fill"].clone();
+                }
+                json!({"stroke": stroke})
+            }
             Change::Size { height, value, linked } => resize(sh, *height, *value, *linked)?,
             Change::Radius(r) => {
                 if matches!(sh.live, Some(LiveShape::Polygon { .. })) {
@@ -218,7 +225,10 @@ fn apply(app: &mut PhotocraftApp, id: Option<LayerId>, change: Change, coalesce:
             }
         }
         Change::Width(w) => o.stroke_width = w,
-        Change::Style(style) => o.shape_stroke = style,
+        Change::Style(style) => {
+            o.shape_stroke = style;
+            o.stroke_width = crate::vector_ui::enabled_stroke_width(stroke_width);
+        }
         Change::Radius(r) => o.corner_radius = r,
         Change::Sides(n) => o.polygon_sides = n,
         Change::StarRatio(r) => o.shape.star_ratio = r,
@@ -293,6 +303,7 @@ pub(crate) fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool
     };
     let mut change = None;
     let mut discrete_paint = false;
+    let mut stroke_coalesce = None;
     let doc_id = app.session.active().map(|st| st.doc.id);
     let path_name = (mode == "path").then(|| app.ui.selected_path.as_deref().filter(|n| *n != "layer").unwrap_or("work").to_string());
     ui.push_id(("shape-toolbar", doc_id, id, path_name), |ui| {
@@ -312,21 +323,13 @@ pub(crate) fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool
                 if crate::widgets::value_field(ui, &mut width, 0.0..=max_width, "px", 58.0).changed() && ui.is_enabled() {
                     change = Some(Change::Width(width));
                 }
-                ui.add_enabled_ui(sh.is_none() || width > 0.0, |ui| {
-                    let closed = sh.is_none_or(|sh| sh.path.subpaths.iter().all(|s| s.closed));
-                    let corners = sh.map_or(tool != Tool::EllipseShape, |sh| !matches!(sh.live, Some(LiveShape::Ellipse { .. })));
-                    if let Some(next) = crate::shape_stroke_ui::button(
-                        ui,
-                        &format!("shape-toolbar-{doc_id:?}-{id:?}-stroke"),
-                        &style,
-                        &mut app.ui.stroke_editor,
-                        closed,
-                        corners,
-                        doc_id.zip(id),
-                    ) {
-                        change = Some(Change::Style(next));
-                    }
-                });
+                let closed = sh.is_none_or(|sh| sh.path.subpaths.iter().all(|s| s.closed));
+                let corners = sh.map_or(tool != Tool::EllipseShape, |sh| !matches!(sh.live, Some(LiveShape::Ellipse { .. })));
+                let key = id.map_or_else(|| "tool-stroke".to_string(), |_| format!("shape-toolbar-{doc_id:?}-{id:?}-stroke"));
+                if let Some(next) = crate::shape_stroke_ui::button(ui, &key, &style, &mut app.ui.stroke_editor, closed, corners, doc_id.zip(id), width > 0.0) {
+                    stroke_coalesce = Some(next.coalesce);
+                    change = Some(Change::Style(next.options));
+                }
                 crate::widgets::vline(ui, 22.0);
             }
             if mode != "pixels" {
@@ -413,7 +416,7 @@ pub(crate) fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool
             }
         });
     });
-    let key = if discrete_paint { None } else { edit_key(ui.ctx()) };
+    let key = if discrete_paint { None } else { stroke_coalesce.or_else(|| edit_key(ui.ctx())) };
     if let Some(change) = change
         && let Err(error) = apply(app, id, change, key)
     {
