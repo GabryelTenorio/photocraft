@@ -8,9 +8,11 @@
 //! client coordinates, so it no longer points at what is drawn under it.
 //!
 //! winit 0.27 — before rust-windowing/winit#2419 — simply omitted those styles for undecorated
-//! windows, and there was no offset. [`service`] restores that: it strips `WS_CAPTION` and
-//! `WS_BORDER` and forces Windows to recalculate the frame. winit puts them back whenever it
-//! changes the window flags (maximize, restore, …), so the returned guard checks every frame.
+//! windows, and there was no offset. [`service`] restores that for windowed windows: it strips
+//! `WS_CAPTION` and `WS_BORDER` and forces Windows to recalculate the frame. Maximized windows
+//! keep those styles so Windows applies taskbar-aware sizing (#3278); winit hides the non-client
+//! frame and sizes the client area to the monitor work area. winit puts the styles back whenever
+//! it changes the window flags, so the returned guard checks every frame.
 //!
 //! The Windows calls go through safe `winsafe` wrappers; the workspace forbids `unsafe`, and
 //! winsafe can't wrap a raw handle without it, so the window is found by its handle instead.
@@ -34,8 +36,8 @@ mod platform {
             _ => return None,
         };
         let hwnd = find_window(target)?;
-        strip(&hwnd);
-        Some(Box::new(move || strip(&hwnd)))
+        sync_frame_style(&hwnd);
+        Some(Box::new(move || sync_frame_style(&hwnd)))
     }
 
     /// The top-level window with the given raw handle. `EnumWindows` hands out real `HWND`s, so
@@ -53,15 +55,16 @@ mod platform {
         found
     }
 
-    /// Removes `WS_CAPTION`/`WS_BORDER` and has Windows recalculate the frame. A no-op once they
-    /// are gone, so it is cheap to call every frame.
-    fn strip(hwnd: &HWND) {
+    /// Keeps the native caption while maximized so Windows does not treat the window as
+    /// fullscreen and cover the taskbar. In windowed mode, removes it to avoid the compositor
+    /// offset fixed by #2246. A no-op while the style already matches, so it is cheap each frame.
+    fn sync_frame_style(hwnd: &HWND) {
         let style = hwnd.style();
-        let without = borderless(style);
-        if without.raw() == style.raw() {
+        let updated = custom_titlebar_style(style, hwnd.IsZoomed());
+        if updated.raw() == style.raw() {
             return;
         }
-        hwnd.set_style(without);
+        hwnd.set_style(updated);
         let _ = hwnd.SetWindowPos(
             HwndPlace::None,
             POINT::new(),
@@ -77,9 +80,15 @@ mod platform {
         style & !(co::WS::CAPTION | co::WS::BORDER)
     }
 
+    /// winit's `WM_NCCALCSIZE` handles the maximized client area; preserving these styles lets
+    /// Windows keep its normal taskbar-aware maximize behavior.
+    fn custom_titlebar_style(style: co::WS, maximized: bool) -> co::WS {
+        if maximized { style | co::WS::CAPTION | co::WS::BORDER } else { borderless(style) }
+    }
+
     #[cfg(test)]
     mod tests {
-        use super::borderless;
+        use super::{borderless, custom_titlebar_style};
         use winsafe::co;
 
         #[test]
@@ -94,6 +103,20 @@ mod platform {
             // Already borderless: unchanged, so the per-frame call does nothing.
             assert_eq!(bare.raw(), borderless(bare).raw());
         }
+
+        #[test]
+        fn maximized_windows_keep_caption_styles_for_taskbar_aware_sizing() {
+            let decorated = co::WS::CAPTION | co::WS::BORDER | co::WS::SYSMENU | co::WS::THICKFRAME;
+            let bare = borderless(decorated);
+
+            let maximized = custom_titlebar_style(bare, true);
+            assert!(maximized.has(co::WS::CAPTION) && maximized.has(co::WS::BORDER));
+            assert_eq!(maximized.raw(), custom_titlebar_style(maximized, true).raw());
+
+            let restored = custom_titlebar_style(maximized, false);
+            assert!(!restored.has(co::WS::CAPTION) && !restored.has(co::WS::BORDER));
+            assert!(restored.has(co::WS::THICKFRAME));
+        }
     }
 }
 
@@ -105,3 +128,4 @@ mod platform {
         None
     }
 }
+
