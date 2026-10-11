@@ -1,30 +1,23 @@
-//! The Switch Colors arrow in the toolbar's colour-chip block: a bold diagonal curve from the
-//! icon's top-right to its bottom-left with a filled head at each end, drawn in the 13x13 icon
-//! box. The geometry is measured from the reference glyph, and it lives here so its proportions
-//! are unit-testable.
+//! Compact colour-swap glyph above-right of the toolbar swatches. The shaft starts horizontally
+//! and bends clockwise into a vertical end. Filled heads point left and down, not diagonally.
+//! Geometry stays within the existing 13x13 icon box; this module never changes toolbar layout.
 
-use egui::{pos2, vec2, Color32, Painter, Pos2, Shape, Stroke, Vec2};
+use egui::{Color32, Painter, Pos2, Shape, Stroke, Vec2, pos2, vec2};
 
-/// The curve's endpoints on the 13x13 icon grid: it sweeps the top-right to bottom-left
-/// diagonal (the opposite corner pair from the old quarter arc), like the reference glyph.
-pub const START: Pos2 = pos2(10.2, 1.8);
-pub const END: Pos2 = pos2(2.2, 11.0);
-/// The quadratic Bezier control point: the curve leaves the start shallower than the diagonal
-/// and arrives at the end steeper, so the heads tilt apart like the reference glyph's.
-pub const CONTROL: Pos2 = pos2(5.5, 4.7);
-/// Stroke width, from the reference glyph's bold band at this scale.
-pub const WIDTH: f32 = 2.5;
-/// Filled arrowhead size: length along the curve, half-width across it.
-pub const HEAD_LEN: f32 = 2.2;
-pub const HEAD_HALF: f32 = 1.9;
+/// Shaft endpoints on the 13x13 icon grid.
+pub const START: Pos2 = pos2(4.0, 4.0);
+pub const END: Pos2 = pos2(9.0, 9.0);
+/// The control point keeps the starting tangent horizontal and the ending tangent vertical.
+pub const CONTROL: Pos2 = pos2(9.0, 4.0);
+/// A slim shaft leaves the two small heads distinct at toolbar size.
+pub const WIDTH: f32 = 1.6;
+/// Filled head length and half-width, in logical pixels.
+pub const HEAD_LEN: f32 = 3.0;
+pub const HEAD_HALF: f32 = 2.8;
 
 /// The curve's tangent at the start (false) or the end (true), pointing into the curve.
 fn tangent(at_end: bool) -> Vec2 {
-    if at_end {
-        vec2(END.x - CONTROL.x, END.y - CONTROL.y)
-    } else {
-        vec2(CONTROL.x - START.x, CONTROL.y - START.y)
-    }
+    if at_end { vec2(END.x - CONTROL.x, END.y - CONTROL.y) } else { vec2(CONTROL.x - START.x, CONTROL.y - START.y) }
 }
 
 /// Points sampled along the curve, `steps` segments.
@@ -34,10 +27,7 @@ pub fn curve_points(steps: usize) -> Vec<Pos2> {
         .map(|i| {
             let t = i as f32 / n as f32;
             let (a, b) = (1.0 - t, t);
-            pos2(
-                a * a * START.x + 2.0 * a * b * CONTROL.x + b * b * END.x,
-                a * a * START.y + 2.0 * a * b * CONTROL.y + b * b * END.y,
-            )
+            pos2(a * a * START.x + 2.0 * a * b * CONTROL.x + b * b * END.x, a * a * START.y + 2.0 * a * b * CONTROL.y + b * b * END.y)
         })
         .collect()
 }
@@ -74,15 +64,29 @@ mod tests {
         }
     }
 
-    /// The curve sweeps top-right to bottom-left and both heads point outward along it:
-    /// the start's head up-right, the end's head down-left, as in the reference glyph.
     #[test]
-    fn heads_point_outward_along_the_curve() {
+    fn rendered_glyph_has_a_left_head_and_a_lower_right_head() {
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(32.0, 32.0)).wgpu().build_ui(|ui| {
+            paint(ui.painter(), pos2(8.0, 8.0), Color32::WHITE);
+        });
+        h.run_steps(2);
+        let image = h.render().expect("render swap glyph");
+        let has_ink = |x0, y0, x1, y1| (y0..y1).any(|y| (x0..x1).any(|x| image.get_pixel(x, y).0[0] > 180));
+        assert!(has_ink(9, 10, 12, 14), "missing left-pointing head");
+        assert!(has_ink(15, 17, 20, 21), "missing downward-pointing head");
+        assert!(!has_ink(9, 17, 13, 21), "wrong diagonal runs into the lower-left corner");
+        if let Ok(path) = std::env::var("PHOTOCRAFT_SWAP_GLYPH_PNG") {
+            image.save(path).expect("save glyph inspection PNG");
+        }
+    }
+
+    /// Only the swap icon above-right of the swatches is the reference, not the pencil above
+    /// it. Its curve leaves horizontally, turns clockwise and finishes vertically downward.
+    #[test]
+    fn swap_heads_point_left_and_down_not_on_a_diagonal() {
         let (t0, t1) = (tangent(false).normalized(), tangent(true).normalized());
-        assert!(t0.x < 0.0 && t0.y > 0.0, "the curve leaves the start down-left, got {t0:?}");
-        assert!(t1.x < 0.0 && t1.y > 0.0, "the curve arrives at the end moving down-left, got {t1:?}");
-        let (tip0, tip1) = (START - t0 * HEAD_LEN, END + t1 * HEAD_LEN);
-        assert!(tip0.x > START.x && tip0.y < START.y, "the start head points up-right, got {tip0:?}");
-        assert!(tip1.x < END.x && tip1.y > END.y, "the end head points down-left, got {tip1:?}");
+        assert!(t0.x > 0.99 && t0.y.abs() < 0.01, "the left head must point left: {t0:?}");
+        assert!(t1.y > 0.99 && t1.x.abs() < 0.01, "the lower head must point down: {t1:?}");
+        assert!(START.x < END.x && START.y < END.y, "the curve must turn toward the bottom-right");
     }
 }

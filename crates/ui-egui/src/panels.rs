@@ -459,8 +459,8 @@ fn color_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, two_columns: bool) {
             p.add(egui::Shape::convex_polygon(vec![tip, base + side * 3.0, base - side * 3.0], ink(&s), Stroke::NONE));
         }
     } else {
-        // Switch Colors: a bold diagonal curve with a filled head at each end, measured from the
-        // reference glyph (see swap_arrow.rs, which owns the geometry and its unit tests).
+        // Switch Colors: the compact clockwise bend has left- and down-pointing heads.
+        // swap_arrow.rs owns its geometry and the pixel-level render regression test.
         crate::swap_arrow::paint(p, sr.min, ink(&s));
     }
     // Default Colors: a small black chip over a small white one.
