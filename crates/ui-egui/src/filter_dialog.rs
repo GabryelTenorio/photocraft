@@ -441,6 +441,39 @@ fn uses_logarithmic_slider(min: f32, max: f32) -> bool {
     min > 0.0 && max / min > 500.0
 }
 
+/// The filter's positive angle is counter-clockwise in document coordinates
+/// (y grows downward), matching the motion kernel's (cos(a), -sin(a)).
+fn motion_blur_angle_at(center: egui::Pos2, pointer: egui::Pos2) -> Option<f32> {
+    let v = pointer - center;
+    (v.length_sq() > 1e-4).then(|| (-v.y).atan2(v.x).to_degrees())
+}
+
+/// Photoshop-style direction wheel; the numeric field alongside it remains editable.
+fn motion_blur_angle_dial(ui: &mut egui::Ui, angle: &mut f32) {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(64.0, 64.0), egui::Sense::click_and_drag());
+    let center = rect.center();
+    let radius = 27.0;
+    let visuals = ui.visuals();
+    let painter = ui.painter_at(rect);
+    painter.circle_filled(center, radius, visuals.widgets.inactive.bg_fill);
+    painter.circle_stroke(center, radius, visuals.widgets.inactive.bg_stroke);
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let direction = egui::vec2(cos, -sin);
+    let tip = center + direction * (radius - 5.0);
+    painter.line_segment(
+        [center - direction * (radius - 5.0), tip],
+        egui::Stroke::new(2.0, visuals.selection.stroke.color),
+    );
+    painter.circle_filled(tip, 3.0, visuals.selection.stroke.color);
+    if (response.dragged() || response.clicked())
+        && let Some(pointer) = response.interact_pointer_pos()
+        && let Some(a) = motion_blur_angle_at(center, pointer)
+    {
+        *angle = a;
+    }
+    response.on_hover_text(tl!("Drag to set blur direction"));
+}
+
 /// Dialog body for filter commands.
 pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let t = Tokens::get(ui.ctx());
@@ -472,7 +505,13 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 } else {
                     ""
                 };
-                if uses_logarithmic_slider(min, max) {
+                if cmd == "filter.blur.motionBlur" && p.key == "angle" {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                        motion_blur_angle_dial(ui, &mut v);
+                        crate::widgets::value_field(ui, &mut v, min..=max, unit, 74.0);
+                    });
+                } else if uses_logarithmic_slider(min, max) {
                     // Keep one numeric field for direct entry and one log-scaled slider for
                     // wide ranges. slider_row would add a second, linear slider (#146).
                     ui.horizontal(|ui| {
@@ -761,6 +800,35 @@ mod tests {
         let params = params_of(&fields);
         assert_eq!(params["colors"].as_u64(), Some(17));
         assert_eq!(params["amount"].as_f64(), Some(37.5));
+    }
+
+    #[test]
+    fn motion_blur_direction_wheel_matches_the_filter_coordinate_system() {
+        let centre = egui::pos2(50.0, 50.0);
+        for (pointer, expected) in [
+            (egui::pos2(70.0, 50.0), 0.0),
+            (egui::pos2(50.0, 30.0), 90.0),
+            (egui::pos2(30.0, 50.0), 180.0),
+            (egui::pos2(50.0, 70.0), -90.0),
+        ] {
+            let actual = motion_blur_angle_at(centre, pointer).unwrap();
+            assert!((actual - expected).abs() < 0.01, "{pointer:?}: {actual} != {expected}");
+        }
+        assert_eq!(motion_blur_angle_at(centre, centre), None);
+    }
+
+    #[test]
+    fn motion_blur_dialog_preserves_its_numeric_angle_and_distance() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 24, "height": 24})).unwrap();
+        open(&mut app, "filter.blur.motionBlur").unwrap();
+        let mut fields = app.ui.dialogs.last().unwrap().fields.clone();
+        fields.insert("angle".into(), json!(-37.5));
+        fields.insert("distance".into(), json!(18.0));
+        egui::Context::default().run_ui(Default::default(), |ui| body(ui, &mut fields)).textures_delta.clear();
+        let p = params_of(&fields);
+        assert_eq!(p["angle"], json!(-37.5), "drawing the dial alone must not change the angle");
+        assert_eq!(p["distance"], json!(18.0));
     }
 
     #[test]
