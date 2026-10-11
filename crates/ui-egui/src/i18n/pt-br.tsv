@@ -2912,6 +2912,7 @@ cameraData	Lens	Lente
 	Frame Tool	Ferramenta Quadro
 	Create a new rectangular frame	Criar um quadro retangular
 	Create a new elliptical frame	Criar um quadro elíptico
+	Include in playback	Incluir na reprodução
 	Perspective Crop Tool	Ferramenta Corte demarcado em perspectiva
 	Show Grid	Mostrar grade
 	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Arraste uma caixa ou clique em quatro cantos · arraste os cantos até as bordas de uma forma inclinada · {commit} confirma · Esc cancela

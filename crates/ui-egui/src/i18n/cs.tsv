@@ -2493,6 +2493,7 @@ cameraData	Lens	Objektiv
 	Frame Tool	Nástroj rámeček
 	Create a new rectangular frame	Vytvořit nový obdélníkový rámeček
 	Create a new elliptical frame	Vytvořit nový eliptický rámeček
+	Include in playback	Zahrnout do přehrávání
 	Perspective Crop Tool	Nástroj perspektivní oříznutí
 	Show Grid	Zobrazit mřížku
 	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Táhněte rámeček nebo klikněte na čtyři rohy · přetáhněte rohy na okraje zkoseného tvaru · {commit} potvrdí · Esc zruší

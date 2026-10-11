@@ -2567,6 +2567,7 @@ cameraData	Lens	Objetivo
 	Frame Tool	Herramienta Marco
 	Create a new rectangular frame	Crear un marco rectangular nuevo
 	Create a new elliptical frame	Crear un marco elíptico nuevo
+	Include in playback	Incluir en la reproducción
 	Perspective Crop Tool	Herramienta Recortar con perspectiva
 	Show Grid	Mostrar cuadrícula
 	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Arrastre un cuadro o haga clic en cuatro esquinas · arrastre las esquinas a los bordes de una forma inclinada · {commit} confirma · Esc cancela
