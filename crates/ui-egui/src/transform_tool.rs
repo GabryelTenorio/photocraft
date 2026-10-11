@@ -602,8 +602,9 @@ fn enter_type_warp(app: &mut PhotocraftApp, ctx: &egui::Context) {
         && let Some(pv) = app.transform_preview.as_mut()
     {
         let max_side = ctx.input(|i| i.max_texture_side).max(app.gpu.as_ref().map_or(1, |g| g.max_texture_side()));
-        let (image, uv) = preview_image(&plain, id, None, b, max_side);
-        pv.texture = crate::transform_tex::PreviewTextures::new(ctx, format!("transform-{session}"), image, uv);
+        // Read as the session's texels were: without the style when the box draws it itself.
+        let (image, uv) = preview_image(&plain, id, None, b, max_side, pv.styled.is_some());
+        pv.texture =crate::transform_tex::PreviewTextures::new(ctx, format!("transform-{session}"), image, uv);
     }
     let warp =
         current.as_ref().and_then(|w| WarpStyle::parse(&w.style).filter(|s| s.is_preset()).map(|s| (w, s))).map_or(Warp::none(rect), |(w, style)| Warp {
