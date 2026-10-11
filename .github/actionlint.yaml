@@ -2,3 +2,6 @@
 self-hosted-runner:
   labels:
     - macos-release  # org larger runner (M2 Pro), used by release.yml
+    - depot-ubuntu-24.04    # Depot-managed runners (2/4/8 vCPU), used by ci.yml
+    - depot-ubuntu-24.04-4
+    - depot-ubuntu-24.04-8
