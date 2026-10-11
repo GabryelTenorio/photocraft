@@ -176,20 +176,21 @@ fn grd_stop_counts_are_capped() {
 }
 
 /// `Opct` is a unit float (`UntF` + a 4-byte unit tag), not a `doub`, so patching it needs a
-/// different offset — and it is the one field still clamped from a raw cast. `f32::clamp`
-/// propagates NaN rather than repairing it, so a non-finite value that reached the clamp would
-/// come straight back out of the parser. Every non-finite shape is tried, at both places a raw
-/// cast survives.
+/// different offset from the RGB components. Every numeric field now passes through `finite()`
+/// before any clamp, so this pins that a non-finite value is repaired first — saturated, or for a
+/// NaN replaced by the field default — rather than reaching `f32::clamp`, which propagates NaN and
+/// would hand it straight back out of the parser. Every non-finite shape is tried at both places.
 #[test]
 fn grd_non_finite_opacity_and_midpoint_do_not_survive() {
     // 3.0e38 is finite as both f64 and f32, so it is not caught by the finiteness check and must
     // be brought into range by the saturate-then-clamp path; it belongs here to keep that honest.
     let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e300, 3.0e38];
     // `doub`: key + 4-byte OSType + 8-byte value. `UntF`: key + OSType + 4-byte unit tag + value.
-    // `Opct` is the interesting one: a unit float, and the one field still clamped straight from a
-    // raw cast. `Mdpn` is written as an integer here, which cannot carry a non-finite value at all,
-    // so it is skipped rather than pretended to be covered; a hostile file storing `Mdpn` as a
-    // double is still guarded by `finite()` and by the fuzz target's range assertion.
+    // `Opct` is the interesting one: a unit float at a different offset from the RGB components, so
+    // both the `doub` and `UntF` shapes are patched. `Mdpn` is written as an integer here, which
+    // cannot carry a non-finite value at all, so it is skipped rather than pretended to be covered;
+    // a hostile file storing `Mdpn` as a double is still guarded by `finite()` and by the fuzz
+    // target's range assertion.
     for key in ["Opct", "Rd  ", "Grn ", "Bl  "] {
         for v in bad {
             let mut b = sample_grd();
@@ -208,11 +209,11 @@ fn grd_non_finite_opacity_and_midpoint_do_not_survive() {
     }
 }
 
-/// The two guards are one policy, and this pins it because the two routes disagree. A non-finite
-/// `f64` is dropped by `num`, so the reader falls back to its documented default (opacity 100 %);
-/// a value finite as `f64` but infinite as `f32` is caught by `finite()` and becomes 0.0. Both mean
-/// "unrepresentable, treat as absent", but they do not produce the same number, and nothing else in
-/// the suite would notice if that changed.
+/// `num` returns the raw f64 and `finite()` is the single guard every number passes through. This
+/// pins that one policy end to end: only a NaN is truly absent and falls back to the documented
+/// default (opacity 100 %, midpoint centred); every other shape — including `+/-inf` and a value
+/// finite as `f64` but above `f32::MAX` — saturates and then clamps, so a large positive lands at
+/// 1.0 and a large negative at 0.0, monotonic, never a snap back to the default.
 /// `Mdpn` is written as a `long` by this crate's own writer, so no fixture can smuggle a
 /// non-finite value into it and the guard inside `midpoint()` would never be exercised. The file
 /// format allows a `double` there, so the descriptor is built by hand with `Mdpn` as a `doub`:
@@ -365,9 +366,10 @@ fn grd_out_of_range_numbers_are_clamped() {
     assert_eq!(f[0].opacity[1], (0.0, 0.0, 1.0), "location/opacity clamp to 0.0, midpoint 42.0 to 1.0");
 }
 
-/// `num` rejects a non-finite f64, but that is not the only way a non-finite f32 appears: a
-/// value that is finite as f64 and above `f32::MAX` (1e300) becomes an infinity on the cast.
-/// Every numeric field must come back finite, so both doors are checked.
+/// `num` returns the raw f64 unfiltered; `finite()` is the single guard, and a NaN is not the only
+/// non-finite f32 it has to handle: a value that is finite as f64 and above `f32::MAX` (1e300)
+/// would become an infinity on a bare cast, so `finite()` saturates it. Every numeric field must
+/// come back finite, so both doors are checked.
 #[test]
 fn grd_huge_f64_does_not_overflow_to_infinity() {
     for key in ["Rd  ", "Grn ", "Bl  "] {
@@ -801,18 +803,31 @@ fn grd_every_colour_model_is_clamped_and_finite() {
 
     let hostile = [1e300, 3.0e38, -3.0e38, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
     for &x in &hostile {
+        // The exact boundary each clamp must land on, so a weaker clamp (e.g. a*/b* to -100..=100
+        // instead of -128..=127, or a unit range to 0..=0.5) is caught, not just an out-of-range
+        // value. A NaN becomes 0.0 (the finite guard's fallback for `f`), a positive saturates to
+        // the top of the range, a negative to the bottom.
+        let unit = if x.is_nan() || x < 0.0 { 0.0f32 } else { 1.0 };
+        let lab_l = if x.is_nan() || x < 0.0 { 0.0f32 } else { 100.0 };
+        let lab_ab = if x.is_nan() {
+            0.0f32
+        } else if x > 0.0 {
+            127.0
+        } else {
+            -128.0
+        };
         // RGB components are 0..=255 before the /255; the result must land in 0..=1.
         let f = grd::parse(&build("RGBC", &[("Rd  ", x), ("Grn ", x), ("Bl  ", x)])).expect("RGB parses");
         let GrdColor::Rgb(rgb) = f[0].stops[0].color else { panic!("expected an RGB stop") };
         for v in rgb {
-            assert!(v.is_finite() && (0.0..=1.0).contains(&v), "RGB component {v} out of range for input {x}");
+            assert_eq!(v, unit, "RGB component for input {x} must saturate to {unit}");
         }
         // HSB: hue 0..=360, saturation and brightness 0..=1.
         let f = grd::parse(&build("HSBC", &[("H   ", x), ("Strt", x), ("Brgh", x)])).expect("HSB parses");
         if let GrdColor::Hsb([h, sat, br]) = f[0].stops[0].color {
             assert!(h.is_finite() && (0.0..=360.0).contains(&h), "hue {h} out of range for input {x}");
-            assert!(sat.is_finite() && (0.0..=1.0).contains(&sat), "saturation {sat} out of range for input {x}");
-            assert!(br.is_finite() && (0.0..=1.0).contains(&br), "brightness {br} out of range for input {x}");
+            assert_eq!(sat, unit, "saturation for input {x} must saturate to {unit}");
+            assert_eq!(br, unit, "brightness for input {x} must saturate to {unit}");
         } else {
             panic!("expected an HSB stop");
         }
@@ -820,24 +835,24 @@ fn grd_every_colour_model_is_clamped_and_finite() {
         let f = grd::parse(&build("CMYC", &[("Cyn ", x), ("Mgnt", x), ("Ylw ", x), ("Blck", x)])).expect("CMYK parses");
         if let GrdColor::Cmyk(c) = f[0].stops[0].color {
             for v in c {
-                assert!(v.is_finite() && (0.0..=1.0).contains(&v), "CMYK ink {v} out of range for input {x}");
+                assert_eq!(v, unit, "CMYK ink for input {x} must saturate to {unit}");
             }
         } else {
             panic!("expected a CMYK stop");
         }
-        // Lab: L* 0..=100, a*/b* signed but finite.
+        // Lab: L* 0..=100, a*/b* bounded to the CIELAB gamut -128..=127.
         let f = grd::parse(&build("LbCl", &[("Lmnc", x), ("A   ", x), ("B   ", x)])).expect("Lab parses");
         if let GrdColor::Lab([l, a, b]) = f[0].stops[0].color {
-            assert!(l.is_finite() && (0.0..=100.0).contains(&l), "L* {l} out of range for input {x}");
-            assert!(a.is_finite() && (-128.0..=127.0).contains(&a), "a* {a} outside the CIELAB gamut for input {x}");
-            assert!(b.is_finite() && (-128.0..=127.0).contains(&b), "b* {b} outside the CIELAB gamut for input {x}");
+            assert_eq!(l, lab_l, "L* for input {x} must saturate to {lab_l}");
+            assert_eq!(a, lab_ab, "a* for input {x} must saturate to the gamut edge {lab_ab}");
+            assert_eq!(b, lab_ab, "b* for input {x} must saturate to the gamut edge {lab_ab}");
         } else {
             panic!("expected a Lab stop");
         }
         // Gray: 0..=1.
         let f = grd::parse(&build("Grsc", &[("Gry ", x)])).expect("Gray parses");
         if let GrdColor::Gray(g) = f[0].stops[0].color {
-            assert!(g.is_finite() && (0.0..=1.0).contains(&g), "gray {g} out of range for input {x}");
+            assert_eq!(g, unit, "gray for input {x} must saturate to {unit}");
         } else {
             panic!("expected a Gray stop");
         }
@@ -874,6 +889,11 @@ fn grd_hue_wraps_rather_than_clamping() {
     assert!((hue_of(&build(-10.0)) - 350.0).abs() < 0.01, "-10 degrees must wrap to 350, not clamp to 0");
     // And a value already in range is unchanged.
     assert!((hue_of(&build(123.0)) - 123.0).abs() < 0.01, "an in-range hue must be unchanged");
+    // Exactly 360 is in range and legal, so it is kept, not wrapped to 0 (a different position for
+    // anything that interpolates in HSB). Unconditional `rem_euclid(360)` would map it to 0, so this
+    // pins the in-range guard that keeps the boundary intact.
+    assert_eq!(hue_of(&build(360.0)), 360.0, "an in-range hue of exactly 360 must be preserved, not wrapped to 0");
+    assert_eq!(hue_of(&build(0.0)), 0.0, "a hue of 0 must stay 0");
 }
 
 /// A signature-only or empty file must be a clean error, never a panic and never an

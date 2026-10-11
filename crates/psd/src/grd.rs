@@ -91,6 +91,13 @@ fn f(d: &Descriptor, k: &str) -> f32 {
 fn clamp01(v: f32) -> f32 {
     v.clamp(0.0, 1.0)
 }
+/// A hue in degrees. An in-range value (0..=360, including exactly 360) is kept verbatim; only an
+/// out-of-range value wraps with `rem_euclid`, so 370 -> 10 and -10 -> 350. Wrapping every value
+/// would alter a legal 360 to 0 (and f32 round-off on a tiny negative can itself land on 360),
+/// changing the colour at the boundary. The input is already finite, so the result stays finite.
+fn hue(h: f32) -> f32 {
+    if (0.0..=360.0).contains(&h) { h } else { h.rem_euclid(360.0) }
+}
 
 fn obj<'a>(d: &'a Descriptor, k: &str) -> Option<&'a Descriptor> {
     match d.get(k)? {
@@ -115,10 +122,10 @@ fn color(c: &Descriptor) -> Option<GrdColor> {
         // module: a hostile file can store any integer at all, and dividing by 100 or 255 does not
         // bring it back into range on its own.
         b"RGBC" => GrdColor::Rgb([f(c, "Rd  ") / 255.0, f(c, "Grn ") / 255.0, f(c, "Bl  ") / 255.0].map(clamp01)),
-        // Hue is a circular degree value: it *wraps* rather than clamping, so 370 -> 10 and -10 ->
-        // 350 (clamping would turn a hostile hue into a different, wrong colour at the boundary).
-        // `f` has already made the input finite, so `rem_euclid` stays finite and lands in 0..360.
-        b"HSBC" => GrdColor::Hsb([f(c, "H   ").rem_euclid(360.0), (f(c, "Strt") / 100.0).clamp(0.0, 1.0), (f(c, "Brgh") / 100.0).clamp(0.0, 1.0)]),
+        // Hue is a circular degree value in 0..=360; see `hue`. An in-range value (including
+        // exactly 360) is kept, only an out-of-range one wraps, so a hostile hue cannot become a
+        // different, wrong colour at the boundary.
+        b"HSBC" => GrdColor::Hsb([hue(f(c, "H   ")), (f(c, "Strt") / 100.0).clamp(0.0, 1.0), (f(c, "Brgh") / 100.0).clamp(0.0, 1.0)]),
         b"CMYC" => GrdColor::Cmyk([f(c, "Cyn ") / 100.0, f(c, "Mgnt") / 100.0, f(c, "Ylw ") / 100.0, f(c, "Blck") / 100.0].map(clamp01)),
         // L* is 0..=100; a*/b* are signed and bounded to the CIELAB gamut (-128..=127) so a hostile
         // value cannot hand a downstream colour converter an out-of-gamut number to overflow on.

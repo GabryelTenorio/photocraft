@@ -24,6 +24,9 @@ pub const SIGNATURE: &[u8; 4] = b"ASEF";
 pub const MAX_SWATCHES: usize = 100_000;
 /// Longest name read or written, in UTF-16 code units.
 pub const MAX_NAME_UNITS: usize = 1024;
+// `put_name` writes the name length as `units.len() as u16 + 1`, so the cap must leave room in a
+// u16; this guards that invariant if the constant is ever raised.
+const _: () = assert!(MAX_NAME_UNITS < u16::MAX as usize);
 
 const GROUP_START: u16 = 0xC001;
 const GROUP_END: u16 = 0xC002;

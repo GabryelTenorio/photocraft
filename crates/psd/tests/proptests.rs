@@ -479,3 +479,71 @@ proptest! {
         let _ = b.parsed();
     }
 }
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// Pure random bytes rarely get past a header, so this damages a *valid* block one byte at a
+    /// time -- well-formed structure with one byte corrupted, where the interesting inputs live --
+    /// across the metadata, pattern and filter-effects parsers. None may panic.
+    #[test]
+    fn aux_parsers_never_panic_on_damaged_valid_blocks(idx in 0usize..4000, bit in 0u32..8, add in 0u8..=255) {
+        use photocraft_psd::compression::Compression;
+        use photocraft_psd::filter_effects::{EffectsPlane, FilterEffects, FilterEffectsItem};
+        use photocraft_psd::layer::Rect;
+        use photocraft_psd::metadata::{self, MetadataItem};
+        use photocraft_psd::patterns::{self, PsdPattern};
+
+        let shmd = metadata::write_shmd(&[MetadataItem::new(*b"cmls", vec![1, 2, 3, 4]), MetadataItem::new(*b"cust", vec![9; 6])]);
+        let pattern = PsdPattern {
+            mode: 3,
+            width: 4,
+            height: 3,
+            name: "d".into(),
+            id: "0bd2d3ba".into(),
+            palette: None,
+            depth: 8,
+            channels: vec![vec![7u8; 12], vec![8u8; 12], vec![9u8; 12]],
+            alpha: None,
+        };
+        let pat_block = patterns::write_pattern_block(std::slice::from_ref(&pattern)).unwrap();
+        let pat_file = patterns::write_pat_file(std::slice::from_ref(&pattern)).unwrap();
+        let rect = Rect { top: 1, left: 2, bottom: 5, right: 6 };
+        let plane = EffectsPlane::encode(Compression::Rle, &[10u8; 16], 4, 4, 8).unwrap();
+        let mut slots = vec![None; 26];
+        slots[0] = Some(plane.clone());
+        slots[25] = Some(plane.clone());
+        let fx = FilterEffects {
+            version: 3,
+            items: vec![FilterEffectsItem { id: "x".into(), version: 1, rect, depth: 8, max_channels: 24, slots, mask: Some((rect, plane)) }],
+        }
+        .to_bytes();
+
+        let damage = |mut b: Vec<u8>| -> Vec<u8> {
+            if !b.is_empty() {
+                let i = idx % b.len();
+                b[i] ^= 1u8 << bit;
+                b[i] = b[i].wrapping_add(add);
+            }
+            b
+        };
+        let _ = metadata::parse_shmd(&damage(shmd));
+        let _ = patterns::parse_pattern_block(&damage(pat_block));
+        let _ = patterns::parse_pat_file(&damage(pat_file));
+        if let Ok(f) = FilterEffects::parse(&damage(fx)) {
+            for it in &f.items {
+                let _ = it.decoded_mask();
+            }
+            let _ = f.to_bytes();
+        }
+    }
+
+    /// Every `check_structure` key over arbitrary data: the strict inner re-parse for placed layers,
+    /// linked files, object effects and filter caches is entered and never panics.
+    #[test]
+    fn tagged_structural_keys_never_panic(ki in 0usize..8, data in proptest::collection::vec(any::<u8>(), 0..200)) {
+        const KEYS: [&[u8; 4]; 8] = [b"PlLd", b"SoLd", b"SoLE", b"lnk2", b"lnk3", b"lnkD", b"lfx2", b"FEid"];
+        let b = TaggedBlock::new(*KEYS[ki], data);
+        let _ = b.check_structure();
+    }
+}
