@@ -185,3 +185,25 @@ fn combining_inverted_operands_rejects_atomically_for_every_operation() {
         }
     }
 }
+
+#[test]
+fn combining_shapes_clears_stale_psd_path_data_and_restores_it_on_undo() {
+    let mut s = session(16);
+    let back = shape(&mut s, json!({"rect":[4,4,24,24]}));
+    let front = shape(&mut s, json!({"rect":[18,4,24,24]}));
+    let doc = std::sync::Arc::make_mut(&mut s.active_mut().unwrap().doc);
+    let LayerContent::Shape(front_shape) = &mut doc.layer_mut(front).unwrap().content else { panic!("shape") };
+    front_shape.psd_raw = Some(std::sync::Arc::new(vec![1, 2, 3, 4]));
+    select(&mut s, &[back, front]);
+    let before = s.active().unwrap().doc.clone();
+    let history = s.active().unwrap().history.past_len();
+    s.execute("layer.combineShapes.unite", json!({})).unwrap();
+    let LayerContent::Shape(merged) = &s.active().unwrap().doc.layer(front).unwrap().content else { panic!("merged shape") };
+    assert!(merged.psd_raw.is_none(), "the original PSD geometry cannot describe the combined path");
+    assert_eq!(s.active().unwrap().history.past_len(), history + 1);
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.active().unwrap().doc, before);
+    s.execute("edit.redo", json!({})).unwrap();
+    let LayerContent::Shape(merged) = &s.active().unwrap().doc.layer(front).unwrap().content else { panic!("merged shape") };
+    assert!(merged.psd_raw.is_none());
+}

@@ -7,15 +7,23 @@ use crate::{EngineError, Result, Session};
 /// `None` preserves the existing single-layer/component operation. An explicit component
 /// or layer never implicitly merges the rest of the layer selection.
 pub(crate) fn selected(s: &mut Session, p: &Value, op: PathOp, bake: bool, label: &str) -> Result<Option<LayerId>> {
-    if p.get("subpath").is_some() {
+    if !bake && p.get("subpath").is_some() {
         return Ok(None);
     }
     let ids = crate::layer_multi_cmds::targets(s, p)?;
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    let ids = if p.get("layer").is_some() {
+        ids
+    } else {
+        crate::layer_multi_cmds::top_level(&st.doc, &ids)
+            .into_iter()
+            .filter(|id| st.doc.layer(*id).is_some_and(|layer| matches!(layer.content, LayerContent::Shape(_))))
+            .collect()
+    };
     if ids.len() < 2 {
         return Ok(None);
     }
     let top = ids.last().copied().ok_or(EngineError::NoDocument)?;
-    let st = s.active().ok_or(EngineError::NoDocument)?;
     let mut combined = Path::default();
     for (operand_index, &id) in ids.iter().enumerate() {
         let layer = st.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
@@ -54,7 +62,7 @@ pub(crate) fn selected(s: &mut Session, p: &Value, op: PathOp, bake: bool, label
         photocraft_vector::flatten::validate_shape(&combined, None).map_err(|e| EngineError::Other(e.to_string()))?;
     }
     if bake {
-        let tolerance = p.get("tolerance").and_then(Value::as_f64).unwrap_or(0.1);
+        let tolerance = p.get("tolerance").and_then(Value::as_f64).unwrap_or(0.1).clamp(0.05, 10.0);
         combined = photocraft_vector::components::merge(&combined, tolerance, 16_000_000).map_err(EngineError::Other)?;
     }
     let layer = st.doc.layer(top).ok_or(EngineError::NoLayer(top))?;
@@ -63,6 +71,7 @@ pub(crate) fn selected(s: &mut Session, p: &Value, op: PathOp, bake: bool, label
     };
     merged.path = combined;
     merged.live = None;
+    merged.psd_raw = None;
     merged.cache = None;
     photocraft_vector::flatten::validate_shape(&merged.path, merged.stroke.as_ref()).map_err(|e| EngineError::Other(e.to_string()))?;
     s.edit(label, |doc, active| {
