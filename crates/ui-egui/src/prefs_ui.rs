@@ -341,9 +341,11 @@ fn presets_store(app: &mut PhotocraftApp) {
 
 /// Resolve an absolute pixels-per-point preference without multiplying the OS DPI twice.
 /// Monitor dimensions are physical pixels, independent of window size and UI zoom.
-fn display_scale(pref: prefs::UiScale, native: Option<f32>, monitor_px: Option<egui::Vec2>) -> f32 {
+fn display_scale(pref: prefs::UiScale, native: Option<f32>) -> f32 {
     let native = native.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(1.0);
     match pref {
+        // The system's scale, fractional ones included (125%, 150%, 175%: #1072), and 100% on a
+        // large 4K display run unscaled (#1278); 200% there is a fixed choice.
         prefs::UiScale::Auto => native,
         fixed => fixed.name().parse::<f32>().map_or(1.0, |pct| pct / 100.0),
     }
@@ -351,12 +353,8 @@ fn display_scale(pref: prefs::UiScale, native: Option<f32>, monitor_px: Option<e
 
 fn sync_display_scale(app: &PhotocraftApp, ctx: &egui::Context) {
     let native = ctx.native_pixels_per_point();
-    // ViewportInfo uses egui points, including the current UI zoom. Converting back to
-    // physical pixels avoids oscillating between 100% and 200% on successive frames.
-    // logic() can receive new viewport DPI before InputState::pixels_per_point updates.
     let native_scale = native.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(1.0);
-    let monitor_px = ctx.input(|i| i.viewport().monitor_size).map(|s| s * (native_scale * ctx.zoom_factor()));
-    let scale = display_scale(app.session.prefs().interface.ui_scale, native, monitor_px);
+    let scale = display_scale(app.session.prefs().interface.ui_scale, native);
     ctx.set_zoom_factor(scale / native_scale);
 }
 
@@ -2457,24 +2455,14 @@ mod tests {
     #[test]
     fn auto_scale_preserves_system_scale() {
         use prefs::UiScale::Auto;
-        for size in [vec2(3840.0, 2160.0), vec2(4096.0, 2160.0), vec2(2160.0, 3840.0)] {
-            assert_eq!(display_scale(Auto, Some(1.0), Some(size)), 1.0);
-            for dpi in [1.25, 1.5, 1.75, 2.0, 2.5] {
-                assert_eq!(display_scale(Auto, Some(dpi), Some(size)), dpi);
-            }
+        // Whatever the monitor, 4K included: an unscaled desktop stays at 100% (#1278), and a
+        // fractional or below-100% system scale is the user's choice (#1072).
+        for dpi in [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0] {
+            assert_eq!(display_scale(Auto, Some(dpi)), dpi);
         }
-        assert_eq!(display_scale(Auto, Some(0.75), Some(vec2(3840.0, 2160.0))), 0.75);
-        for size in [vec2(1920.0, 1080.0), vec2(2560.0, 1440.0)] {
-            for dpi in [1.25, 1.5, 1.75] {
-                assert_eq!(display_scale(Auto, Some(dpi), Some(size)), dpi);
-            }
-        }
-        assert_eq!(display_scale(Auto, Some(3.0), Some(vec2(3840.0, 2160.0))), 3.0);
-        for size in [vec2(1920.0, 1080.0), vec2(2560.0, 1440.0), vec2(3840.0, 1080.0)] {
-            assert_eq!(display_scale(Auto, Some(1.0), Some(size)), 1.0);
-        }
-        assert_eq!(display_scale(Auto, None, None), 1.0);
-        assert_eq!(display_scale(Auto, Some(f32::NAN), Some(vec2(f32::INFINITY, 2160.0))), 1.0);
+        assert_eq!(display_scale(Auto, None), 1.0);
+        assert_eq!(display_scale(Auto, Some(f32::NAN)), 1.0);
+        assert_eq!(display_scale(Auto, Some(-2.0)), 1.0);
     }
 
     #[test]
