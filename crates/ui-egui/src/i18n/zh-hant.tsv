@@ -694,6 +694,8 @@
 	Theme	主題
 	Pro Theme	專業主題
 	Pro Medium Gray Theme	專業中灰主題
+	Pro Light Gray Theme	專業淺灰主題
+	Pro Light Theme	專業淺色主題
 	Studio Theme	工作室主題
 	Studio Light Theme	工作室淺色主題
 	Adwaita Light Theme	Adwaita 淺色主題
@@ -1622,6 +1624,8 @@
 	Highlights from:	亮部起點：
 	History Brush Tool	步驟記錄筆刷工具
 	Horizontal Type Tool	水平文字工具
+	Horizontal Type Mask Tool	水平文字遮色片工具
+	Vertical Type Mask Tool	垂直文字遮色片工具
 	Image Size:	影像尺寸：
 	Inches	英吋
 	Indexed	索引色
@@ -1699,6 +1703,8 @@
 	Postcard	明信片
 	Poster	海報
 	Pro (Dark)	Pro (深色)
+	Pro (Light)	Pro (淺色)
+	Pro (Light Gray)	Pro (淺灰)
 	Pro (Medium Gray)	Pro (中灰)
 	Protect Texture	保護紋理
 	Purple	紫色
@@ -1895,6 +1901,8 @@
 	Preserve details	保留細節
 	Print resolution	列印解析度
 	Pro	Pro
+	Pro light	Pro 淺色
+	Pro light gray	Pro 淺灰
 	Pro medium	Pro 中灰
 	Pro photo	ProPhoto
 	Quick export format	快速匯出格式
@@ -2465,6 +2473,16 @@ cameraData	Lens	鏡頭
 	Previous Document	上一個文件
 	W x H x Resolution	寬 x 高 x 解析度
 	Front Image	前面的影像
+	Include in playback	包含在播放中
+	Perspective Crop Tool	透視裁切工具
+	Show Grid	顯示格點
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	拖曳方框或按一下四個角 · 將角拖曳到傾斜形狀的邊緣 · {commit} 確認 · Esc 取消
+	Artboard Tool	工作區域工具
+	Make Portrait	設為直向
+	Make Landscape	設為橫向
+	Add New Artboard	新增工作區域
+	W	寬
+	H	高
 	Freeform Pen Tool	自由筆型工具
 	Curvature Pen Tool	曲線筆工具
 	Curve Fit:	曲線擬合：

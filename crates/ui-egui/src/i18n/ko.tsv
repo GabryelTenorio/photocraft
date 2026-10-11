@@ -662,6 +662,8 @@
 	Theme	테마
 	Pro Theme	프로 테마
 	Pro Medium Gray Theme	프로 중간 회색 테마
+	Pro Light Gray Theme	프로 밝은 회색 테마
+	Pro Light Theme	프로 밝은 테마
 	Studio Theme	스튜디오 테마
 	Studio Light Theme	스튜디오 밝은 테마
 	Adwaita Light Theme	Adwaita 밝은 테마
@@ -1586,6 +1588,8 @@
 	Highlights from:	밝은 영역 시작:
 	History Brush Tool	작업 내역 브러시 도구
 	Horizontal Type Tool	수평 문자 도구
+	Horizontal Type Mask Tool	수평 문자 마스크 도구
+	Vertical Type Mask Tool	세로 문자 마스크 도구
 	Image Size:	이미지 크기:
 	Inches	인치
 	Indexed	인덱스
@@ -1663,6 +1667,8 @@
 	Postcard	엽서
 	Poster	포스터
 	Pro (Dark)	프로(어둡게)
+	Pro (Light)	프로(밝게)
+	Pro (Light Gray)	프로(밝은 회색)
 	Pro (Medium Gray)	프로(중간 회색)
 	Protect Texture	텍스처 보호
 	Purple	보라
@@ -1857,6 +1863,8 @@
 	Preserve details	세부 정보 유지
 	Print resolution	인쇄 해상도
 	Pro	프로
+	Pro light	프로 밝게
+	Pro light gray	프로 밝은 회색
 	Pro medium	프로 중간 회색
 	Pro photo	ProPhoto
 	Quick export format	빠른 내보내기 형식
@@ -3066,6 +3074,16 @@ cameraData	Lens	렌즈
 	Previous Document	이전 문서
 	W x H x Resolution	폭 x 높이 x 해상도
 	Front Image	전면 이미지
+	Include in playback	재생에 포함
+	Perspective Crop Tool	원근 자르기 도구
+	Show Grid	격자 표시
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	상자를 드래그하거나 네 모서리를 클릭 · 모서리를 기울어진 모양의 가장자리로 드래그 · {commit} 적용 · Esc 취소
+	Artboard Tool	아트보드 도구
+	Make Portrait	세로 방향으로
+	Make Landscape	가로 방향으로
+	Add New Artboard	새 아트보드 추가
+	W	폭
+	H	높이
 	Freeform Pen Tool	자유 형태 펜 도구
 	Curvature Pen Tool	곡률 펜 도구
 	Curve Fit:	곡선 맞춤:

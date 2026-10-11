@@ -689,6 +689,8 @@
 	Theme	主题
 	Pro Theme	专业主题
 	Pro Medium Gray Theme	专业中灰主题
+	Pro Light Gray Theme	专业浅灰主题
+	Pro Light Theme	专业浅色主题
 	Studio Theme	工作室主题
 	Studio Light Theme	工作室浅色主题
 	Adwaita Light Theme	Adwaita 浅色主题
@@ -1629,6 +1631,8 @@
 	Highlights from:	高光下限：
 	History Brush Tool	历史记录画笔工具
 	Horizontal Type Tool	横排文字工具
+	Horizontal Type Mask Tool	横排文字蒙版工具
+	Vertical Type Mask Tool	直排文字蒙版工具
 	Image Size:	图像大小：
 	Inches	英寸
 	Indexed	索引色
@@ -1707,6 +1711,8 @@
 	Postcard	明信片
 	Poster	海报
 	Pro (Dark)	专业（深色）
+	Pro (Light)	专业（浅色）
+	Pro (Light Gray)	专业（浅灰色）
 	Pro (Medium Gray)	专业（中灰色）
 	Protect Texture	保护纹理
 	Purple	紫色
@@ -1903,6 +1909,8 @@
 	Preserve details	保留细节
 	Print resolution	打印分辨率
 	Pro	专业
+	Pro light	专业（浅色）
+	Pro light gray	专业（浅灰色）
 	Pro medium	专业（中灰色）
 	Pro photo	专业（摄影）
 	Quick export format	快速导出格式
@@ -2495,6 +2503,16 @@ cameraData	Lens	镜头
 	Previous Document	上一个文档
 	W x H x Resolution	宽 x 高 x 分辨率
 	Front Image	前面的图像
+	Include in playback	包含在播放中
+	Perspective Crop Tool	透视裁剪工具
+	Show Grid	显示网格
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	拖动方框或单击四个角 · 将角拖到倾斜形状的边缘 · {commit} 确认 · Esc 取消
+	Artboard Tool	画板工具
+	Make Portrait	设为纵向
+	Make Landscape	设为横向
+	Add New Artboard	添加新画板
+	W	宽
+	H	高
 	Freeform Pen Tool	自由钢笔工具
 	Curvature Pen Tool	弯度钢笔工具
 	Curve Fit:	曲线拟合：

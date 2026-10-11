@@ -22,6 +22,7 @@ pub mod adjust_ui;
 mod alt_grab;
 pub mod analysis_ui;
 pub mod anchor_tools;
+pub mod artboard_tool;
 pub mod artboard_ui;
 pub(crate) mod blend_preview;
 mod brand;
@@ -121,6 +122,7 @@ pub mod panels;
 pub mod parity;
 pub mod patch_preview;
 pub mod pattern_preview;
+pub mod perspective_crop_ui;
 pub mod perspective_ui;
 pub mod pixel_grid;
 pub mod plugin_ui;
@@ -147,6 +149,7 @@ pub(crate) mod shape_fill_ui;
 pub mod shape_stroke_ui;
 pub mod shortcut_dispatch;
 pub mod shortcuts;
+mod single_line_drag;
 mod sizing;
 pub mod slice_ui;
 pub mod smart_ui;
@@ -605,6 +608,8 @@ pub struct PhotocraftApp {
     pub(crate) layer_box: Option<move_box::LayerBox>,
     /// Crop tool gesture in progress (see `crop_ui`).
     pub(crate) crop: crop_ui::CropState,
+    /// Perspective Crop tool gesture and clicked corners (see `perspective_crop_ui`).
+    pub(crate) pcrop: perspective_crop_ui::PerspectiveCrop,
     /// Type tool layout cache: ((doc, revision, layer), layout).
     pub(crate) type_layout: Option<((u64, u64, u64), std::sync::Arc<photocraft_text::TextLayout>)>,
     pub(crate) type_transform_preview: Option<type_transform::Preview>,
@@ -724,6 +729,7 @@ impl PhotocraftApp {
             guide_drag: None,
             layer_box: None,
             crop: Default::default(),
+            pcrop: Default::default(),
             hover_doc: None,
             clone_preview: None,
             info_sample: None,
@@ -1454,7 +1460,8 @@ impl eframe::App for PhotocraftApp {
         }
         self.drain_control(ctx);
         native_menu::run(self, ctx);
-        if self.ui.text_edit.is_some() && !self.ui.tool.is_type() {
+        // Switching tools commits, also between the Type and Type Mask tools.
+        if self.ui.text_edit.as_ref().is_some_and(|ed| !self.ui.tool.is_type() || ed.mask != self.ui.tool.is_type_mask()) {
             type_tool::commit(self);
         }
         if self.ui.pen.as_ref().is_some_and(|p| !p.drawn_with(self.ui.tool)) {
@@ -1854,6 +1861,7 @@ impl PhotocraftApp {
     /// very first frame renders; otherwise `logic` does it and the first frame is skipped.
     pub fn setup_context(ctx: &egui::Context, kind: theme::ThemeKind) {
         ctx.add_plugin(tool_cursor::CursorLifecycle);
+        ctx.add_plugin(single_line_drag::SingleLineDrag::default());
         theme::install_fonts(ctx);
         egui_extras::install_image_loaders(ctx);
         theme::apply(ctx, kind);
@@ -2152,6 +2160,9 @@ mod warp_text_dialog_tests;
 mod blend_dropdown_wheel_tests;
 
 #[cfg(test)]
+mod dropdown_press_tests;
+
+#[cfg(test)]
 mod marquee_tests;
 
 #[cfg(test)]
@@ -2165,6 +2176,8 @@ mod stamp_tests;
 
 #[cfg(test)]
 mod alt_click_tests;
+#[cfg(test)]
+mod status_bar_tests;
 #[cfg(test)]
 mod stroke_timing_tests;
 
