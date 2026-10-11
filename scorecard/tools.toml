@@ -115,7 +115,7 @@ id = "TOOL-214-1"
 target = "Select and Mask workspace: view modes, Refine Edge brush, 6 outputs"
 status = "partial"
 issue = 214
-note = "Opens the generic select.refineEdge dialog (menus.rs:308)"
+note = "Opens the generic select.refineEdge dialog (menus.rs:308); all 6 outputs: Selection, Layer Mask, New Layer, New Layer with Mask, New Document, New Document with Mask (#2998)"
 
 [[item]]
 id = "TOOL-214-2"
