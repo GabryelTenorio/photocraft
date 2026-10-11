@@ -814,6 +814,39 @@ mod tests {
         assert_eq!(tr(cs, "Preferences can't be saved"), "Předvolby nelze uložit");
     }
 
+    #[test]
+    fn czech_dialog_and_hardware_labels_preserve_names() {
+        let cs = CS();
+        for label in [
+            "New Crop Preset…",
+            "Delete Crop Preset…",
+            "Color Picker (Background Color)",
+            "Color Picker (Foreground Color)",
+            "Pro (Medium Gray)",
+            "Grid view",
+            "List view",
+            "Scroll menu up",
+            "Scroll menu down",
+            "Commit transform",
+            "Cancel transform",
+        ] {
+            assert_ne!(tr(cs, label), label, "{label}");
+        }
+        for kind in [
+            crate::rasterize_prompt::Kind::Type,
+            crate::rasterize_prompt::Kind::Shape,
+            crate::rasterize_prompt::Kind::SmartObject,
+            crate::rasterize_prompt::Kind::Fill,
+        ] {
+            assert_ne!(tr(cs, kind.message()), kind.message());
+        }
+        assert_eq!(fmt(tr(cs, "Driver: {driver}"), &[("driver", "Mesa 25.0")]), "Ovladač: Mesa 25.0");
+        assert_eq!(
+            fmt(tr(cs, "Monitor profile on {display}: {profile}"), &[("display", "DELL U2720Q"), ("profile", "sRGB IEC61966-2.1")]),
+            "Profil monitoru DELL U2720Q: sRGB IEC61966-2.1"
+        );
+    }
+
     /// Every `tl!("literal")` in the shell has an entry in each language that claims complete menus
     /// (so a new label can't ship untranslated by accident). Literals that are deliberately shown as
     /// they are (names, units) are listed in `KEEP_AS_IS`.

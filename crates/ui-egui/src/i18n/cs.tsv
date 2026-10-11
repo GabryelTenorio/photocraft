@@ -3531,3 +3531,58 @@ layerLabel	No Color	Žádná barva
 	GPU error; using the CPU renderer.	Chyba GPU; používá se vykreslování pomocí CPU.
 @plural	{what} with {n} warning|{what} with {n} warnings	{what}: {n} upozornění|{what}: {n} upozornění|{what}: {n} upozornění
 	Couldn't open {name}: {error}	Soubor {name} se nepodařilo otevřít: {error}
+
+# Menus, tooltips and hardware information
+	Toggle the Brush Settings panel	Zobrazit/skrýt panel Nastavení štětce
+	New Brush Preset	Nové přednastavení štětce
+	Grid view	Zobrazení mřížky
+	List view	Zobrazení seznamu
+	{verb} {mask} {layer}	{verb}: {mask}, {layer}
+	Unlink	Rozpojit
+	Link	Propojit
+	layer mask	maska vrstvy
+	vector mask	vektorová maska
+	Commit transform	Potvrdit transformaci
+	Cancel transform	Zrušit transformaci
+	Scroll menu up	Posunout nabídku nahoru
+	Scroll menu down	Posunout nabídku dolů
+	This type layer must be rasterized before proceeding. Its text will no longer be editable. Rasterize the type?	Před pokračováním je nutné tuto textovou vrstvu rastrovat. Její text už nebude možné upravovat. Rastrovat text?
+	This shape layer must be rasterized before proceeding. It will no longer be editable as a shape. Rasterize the shape?	Před pokračováním je nutné tuto vrstvu tvaru rastrovat. Už ji nebude možné upravovat jako tvar. Rastrovat tvar?
+	This Smart Object must be rasterized before proceeding. Its contents will no longer be editable. Rasterize the Smart Object?	Před pokračováním je nutné tento chytrý objekt rastrovat. Jeho obsah už nebude možné upravovat. Rastrovat chytrý objekt?
+	This fill layer must be rasterized before proceeding. Its fill content will no longer be editable. Rasterize the layer?	Před pokračováním je nutné tuto vrstvu výplně rastrovat. Její výplň už nebude možné upravovat. Rastrovat vrstvu?
+	This layer must be rasterized before proceeding.	Před pokračováním je nutné tuto vrstvu rastrovat.
+	Color Picker (Background Color)	Výběr barvy (Barva pozadí)
+	Color Picker (Foreground Color)	Výběr barvy (Barva popředí)
+	Adwaita (Light)	Adwaita (světlý)
+	Adwaita (Dark)	Adwaita (tmavý)
+	Breeze Light	Breeze (světlý)
+	Breeze Dark	Breeze (tmavý)
+	Solarized Dark	Solarized (tmavý)
+	Open Recent is unavailable on the web	Otevření nedávných souborů není ve webové verzi dostupné
+	Graphics adapter: {adapter}	Grafický adaptér: {adapter}
+	Backend: {backend} ({type})	Backend: {backend} ({type})
+	Driver: {driver}	Ovladač: {driver}
+	GPU backend preference: {backend}	Předvolený backend GPU: {backend}
+	Selected at launch: {backend}	Vybráno při spuštění: {backend}
+	Image compositor: {processor}	Skládání obrazu: {processor}
+	Fallback: {reason}	Náhradní režim: {reason}
+	This session: {reason}	Tato relace: {reason}
+	Window renderer: {renderer}	Vykreslování oken: {renderer}
+	Software adapter	Softwarový adaptér
+	Graphics adapter	Grafický adaptér
+	unknown	neznámý
+	unknown type	neznámý typ
+	auto	automaticky
+	Platform: {os} {arch}	Platforma: {os} {arch}
+	previous reading kept; the last re-read failed: {reason}	ponechány předchozí údaje; poslední načtení selhalo: {reason}
+	Monitor profile: {profile}	Profil monitoru: {profile}
+	Display profiles: {reason}	Profily displejů: {reason}
+	Monitor profile in use on {display}: {profile}	Používaný profil monitoru {display}: {profile}
+	Monitor profile in use: {profile}	Používaný profil monitoru: {profile}
+	The canvas is shown as sRGB. Choose a monitor profile in Edit › Color Settings.	Plátno se zobrazuje v sRGB. Vyberte profil monitoru v nabídce Úpravy › Nastavení barev.
+	The canvas on {display} is shown as sRGB. Choose a monitor profile in Edit › Color Settings.	Plátno na displeji {display} se zobrazuje v sRGB. Vyberte profil monitoru v nabídce Úpravy › Nastavení barev.
+	Display profile not used	Profil displeje se nepoužívá
+	Monitor profile on {display} (main window): {profile}	Profil monitoru {display} (hlavní okno): {profile}
+	Monitor profile on {display}: {profile}	Profil monitoru {display}: {profile}
+	manual	ruční
+	fallback	náhradní

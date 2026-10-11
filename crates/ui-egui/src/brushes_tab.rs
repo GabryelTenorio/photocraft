@@ -895,10 +895,12 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.add(egui::TextEdit::singleline(&mut app.ui.brushes_panel.filter).hint_text(tl!("Search Brushes")).desired_width(WIDTH - 120.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let view = &mut app.ui.brushes_panel.view;
-            if icons::button(ui, "grid-2x2", 24.0, *view == BrushesView::Grid, "Grid view").clicked() {
+            let grid_tip = "Grid view";
+            let list_tip = "List view";
+            if icons::button(ui, "grid-2x2", 24.0, *view == BrushesView::Grid, tl!(grid_tip)).clicked() {
                 *view = BrushesView::Grid;
             }
-            if icons::button(ui, "align-justify", 24.0, *view == BrushesView::List, "List view").clicked() {
+            if icons::button(ui, "align-justify", 24.0, *view == BrushesView::List, tl!(list_tip)).clicked() {
                 *view = BrushesView::List;
             }
         });
