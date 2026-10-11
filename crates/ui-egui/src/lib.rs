@@ -21,6 +21,7 @@ pub mod adjust_preview;
 pub mod adjust_ui;
 mod alt_grab;
 pub mod analysis_ui;
+pub mod anchor_tools;
 pub mod artboard_ui;
 pub(crate) mod blend_preview;
 mod brand;
@@ -48,6 +49,7 @@ pub mod control;
 pub mod credits;
 pub mod crop_mode;
 pub mod crop_overlay;
+pub mod crop_presets;
 pub mod crop_shield;
 pub mod crop_size;
 pub mod crop_straighten;
@@ -2048,6 +2050,8 @@ mod color_swatch_tests;
 #[cfg(test)]
 mod input_tests;
 
+#[cfg(test)]
+mod color_replacement_tests;
 #[cfg(test)]
 mod pencil_tests;
 
