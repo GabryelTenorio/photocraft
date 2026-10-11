@@ -83,6 +83,7 @@ pub enum Tool {
     Brush,
     Pencil,
     MixerBrush,
+    ColorReplacement,
     Eraser,
     BackgroundEraser,
     MagicEraser,
@@ -90,6 +91,9 @@ pub enum Tool {
     PaintBucket,
     Type,
     VerticalType,
+    /// Horizontal Type Mask: types a selection in the shape of the glyphs, no type layer.
+    HorizontalTypeMask,
+    VerticalTypeMask,
     Hand,
     RotateView,
     Zoom,
@@ -111,6 +115,10 @@ pub enum Tool {
     QuickSelection,
     ObjectSelection,
     Pen,
+    FreeformPen,
+    CurvaturePen,
+    AddAnchorPoint,
+    DeleteAnchorPoint,
     PathSelection,
     DirectSelection,
     Rectangle,
@@ -124,7 +132,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 56] = [
+    pub const ALL: [Tool; 63] = [
         Tool::Move,
         Tool::Artboard,
         Tool::RectMarquee,
@@ -143,6 +151,7 @@ impl Tool {
         Tool::Brush,
         Tool::Pencil,
         Tool::MixerBrush,
+        Tool::ColorReplacement,
         Tool::Eraser,
         Tool::BackgroundEraser,
         Tool::MagicEraser,
@@ -150,6 +159,8 @@ impl Tool {
         Tool::PaintBucket,
         Tool::Type,
         Tool::VerticalType,
+        Tool::HorizontalTypeMask,
+        Tool::VerticalTypeMask,
         Tool::Hand,
         Tool::RotateView,
         Tool::Zoom,
@@ -171,6 +182,10 @@ impl Tool {
         Tool::QuickSelection,
         Tool::ObjectSelection,
         Tool::Pen,
+        Tool::FreeformPen,
+        Tool::CurvaturePen,
+        Tool::AddAnchorPoint,
+        Tool::DeleteAnchorPoint,
         Tool::PathSelection,
         Tool::DirectSelection,
         Tool::Rectangle,
@@ -194,6 +209,7 @@ impl Tool {
             Tool::Brush => "Brush Tool",
             Tool::Pencil => "Pencil Tool",
             Tool::MixerBrush => "Mixer Brush Tool",
+            Tool::ColorReplacement => "Color Replacement Tool",
             Tool::Eraser => "Eraser Tool",
             Tool::BackgroundEraser => "Background Eraser Tool",
             Tool::MagicEraser => "Magic Eraser Tool",
@@ -212,6 +228,8 @@ impl Tool {
             Tool::PaintBucket => "Paint Bucket Tool",
             Tool::Type => "Horizontal Type Tool",
             Tool::VerticalType => "Vertical Type Tool",
+            Tool::HorizontalTypeMask => "Horizontal Type Mask Tool",
+            Tool::VerticalTypeMask => "Vertical Type Mask Tool",
             Tool::Hand => "Hand Tool",
             Tool::RotateView => "Rotate View Tool",
             Tool::Zoom => "Zoom Tool",
@@ -233,6 +251,10 @@ impl Tool {
             Tool::QuickSelection => "Quick Selection Tool",
             Tool::ObjectSelection => "Object Selection Tool",
             Tool::Pen => "Pen Tool",
+            Tool::FreeformPen => "Freeform Pen Tool",
+            Tool::CurvaturePen => "Curvature Pen Tool",
+            Tool::AddAnchorPoint => "Add Anchor Point Tool",
+            Tool::DeleteAnchorPoint => "Delete Anchor Point Tool",
             Tool::PathSelection => "Path Selection Tool",
             Tool::DirectSelection => "Direct Selection Tool",
             Tool::Rectangle => "Rectangle Tool",
@@ -244,7 +266,15 @@ impl Tool {
         }
     }
     pub fn is_type(self) -> bool {
-        matches!(self, Self::Type | Self::VerticalType)
+        matches!(self, Self::Type | Self::VerticalType | Self::HorizontalTypeMask | Self::VerticalTypeMask)
+    }
+    /// The Type Mask tools: their text becomes a selection on commit.
+    pub fn is_type_mask(self) -> bool {
+        matches!(self, Self::HorizontalTypeMask | Self::VerticalTypeMask)
+    }
+    /// Type tools that lay text out vertically.
+    pub fn is_vertical_type(self) -> bool {
+        matches!(self, Self::VerticalType | Self::VerticalTypeMask)
     }
 
     /// Retouching and painting tools that stroke with the brush (share the brush cursor and chip).
@@ -254,6 +284,7 @@ impl Tool {
             Tool::Brush
                 | Tool::Pencil
                 | Tool::MixerBrush
+                | Tool::ColorReplacement
                 | Tool::Eraser
                 | Tool::BackgroundEraser
                 | Tool::Remove
@@ -275,14 +306,14 @@ impl Tool {
         match self {
             Tool::Move | Tool::Artboard => 'V',
             Tool::RectMarquee | Tool::EllipseMarquee => 'M',
-            Tool::Brush | Tool::Pencil | Tool::MixerBrush => 'B',
+            Tool::Brush | Tool::Pencil | Tool::MixerBrush | Tool::ColorReplacement => 'B',
             Tool::Eraser | Tool::BackgroundEraser | Tool::MagicEraser => 'E',
             Tool::Eyedropper | Tool::Ruler | Tool::Note | Tool::Count => 'I',
             Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => 'L',
             Tool::MagicWand => 'W',
             Tool::Crop | Tool::Slice | Tool::SliceSelect => 'C',
             Tool::Gradient | Tool::PaintBucket => 'G',
-            Tool::Type | Tool::VerticalType => 'T',
+            Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => 'T',
             Tool::Hand => 'H',
             Tool::RotateView => 'R',
             Tool::Zoom => 'Z',
@@ -294,7 +325,7 @@ impl Tool {
             Tool::SingleRowMarquee | Tool::SingleColumnMarquee => '\0',
             Tool::Dodge | Tool::Burn | Tool::Sponge => 'O',
             Tool::QuickSelection | Tool::ObjectSelection => 'W',
-            Tool::Pen => 'P',
+            Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint => 'P',
             Tool::PathSelection | Tool::DirectSelection => 'A',
             Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => 'U',
         }
@@ -313,7 +344,7 @@ impl Tool {
             Tool::MagicWand => "W",
             Tool::Crop => "C",
             Tool::Gradient | Tool::PaintBucket => "G",
-            Tool::Type | Tool::VerticalType => "T",
+            Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => "T",
             Tool::Hand => "✋",
             Tool::RotateView => "🧭",
             Tool::Zoom => "🔍",
@@ -525,6 +556,9 @@ pub struct ToolOptions {
     pub corner_radius: f32,
     pub polygon_sides: u32,
     pub line_weight: f32,
+    /// Freeform Pen › Curve Fit: how far (px) the fitted path may stray from the pointer trace.
+    #[serde(default = "default_curve_fit")]
+    pub curve_fit: f32,
     /// Marquee options bar: "normal" | "fixedRatio" | "fixedSize", with the ratio or size.
     #[serde(default = "default_marquee_style")]
     pub marquee_style: String,
@@ -544,6 +578,12 @@ pub struct ToolOptions {
     /// Delete Cropped Pixels.
     #[serde(default)]
     pub crop_ratio: String,
+    /// In-progress custom crop ratio fields. Kept separately because entering one side before the
+    /// other must survive a frame while the ratio itself remains unconstrained.
+    #[serde(default)]
+    pub crop_custom_ratio_width: f32,
+    #[serde(default)]
+    pub crop_custom_ratio_height: f32,
     #[serde(default = "yes")]
     pub crop_delete: bool,
     /// Crop W x H x Resolution (`crop_ratio` = "whr", #2443): width and height as typed lengths
@@ -577,6 +617,14 @@ pub struct ToolOptions {
     pub bg_limits: String,
     pub bg_tolerance: f32,
     pub bg_protect_fg: bool,
+    /// Color Replacement: mode (hue | saturation | color | luminosity), sampling (continuous |
+    /// once | backgroundSwatch), limits (discontiguous | contiguous | findEdges), tolerance % and
+    /// anti-alias, as `paint.colorReplacement` takes them.
+    pub cr_mode: String,
+    pub cr_sampling: String,
+    pub cr_limits: String,
+    pub cr_tolerance: f32,
+    pub cr_anti_alias: bool,
     /// Zoom tool › Scrubby Zoom: dragging left/right zooms continuously (else a zoom rectangle).
     #[serde(default = "yes")]
     pub zoom_scrubby: bool,
@@ -622,6 +670,10 @@ fn default_crop_resolution_unit() -> String {
 
 fn default_move_target() -> String {
     "layer".into()
+}
+
+fn default_curve_fit() -> f32 {
+    2.0
 }
 
 fn default_eraser_mode() -> String {
@@ -703,6 +755,7 @@ impl Default for ToolOptions {
             corner_radius: 0.0,
             polygon_sides: 5,
             line_weight: 3.0,
+            curve_fit: default_curve_fit(),
             marquee_style: default_marquee_style(),
             marquee_width: 1.0,
             marquee_height: 1.0,
@@ -710,6 +763,8 @@ impl Default for ToolOptions {
             move_target: default_move_target(),
             move_show_transform: false,
             crop_ratio: String::new(),
+            crop_custom_ratio_width: 0.0,
+            crop_custom_ratio_height: 0.0,
             crop_delete: true,
             crop_width: String::new(),
             crop_height: String::new(),
@@ -724,6 +779,11 @@ impl Default for ToolOptions {
             bg_limits: "contiguous".into(),
             bg_tolerance: 50.0,
             bg_protect_fg: false,
+            cr_mode: "color".into(),
+            cr_sampling: "continuous".into(),
+            cr_limits: "contiguous".into(),
+            cr_tolerance: 30.0,
+            cr_anti_alias: true,
             zoom_scrubby: true,
             pencil_auto_erase: false,
             eraser_mode: default_eraser_mode(),
@@ -822,6 +882,9 @@ pub struct TextEdit {
     pub session: String,
     /// The layer was created by this session (its name follows the text; empty on commit = delete).
     pub created: bool,
+    /// A Type Mask tool session: the layer is temporary and commits as a selection.
+    #[serde(default)]
+    pub mask: bool,
     #[serde(skip)]
     pub dragging: bool,
     /// Paragraph-box handle being dragged (0-3 corners from top-left clockwise, 4-7 top/right/bottom/left edges).
@@ -1211,13 +1274,19 @@ mod tests {
         assert_eq!(Tool::from_name("Eraser Tool"), Some(Tool::Eraser));
         assert_eq!(Tool::from_name("mixerBrush"), Some(Tool::MixerBrush));
         assert_eq!(Tool::from_name("Mixer Brush Tool"), Some(Tool::MixerBrush));
+        assert_eq!(Tool::from_name("colorReplacement"), Some(Tool::ColorReplacement));
+        assert_eq!(Tool::from_name("Color Replacement Tool"), Some(Tool::ColorReplacement));
         assert_eq!(Tool::from_name("redEye"), Some(Tool::RedEye));
         assert_eq!(Tool::from_name("Red Eye Tool"), Some(Tool::RedEye));
         assert_eq!(Tool::RedEye.key(), 'J');
         assert!(!Tool::RedEye.is_brushlike());
         assert_eq!(Tool::from_name("patternStamp"), Some(Tool::PatternStamp));
         assert_eq!(Tool::from_name("Pattern Stamp Tool"), Some(Tool::PatternStamp));
-        assert_eq!(Tool::ALL.len(), 56);
+        assert_eq!(Tool::ALL.len(), 63);
+        assert_eq!(Tool::from_name("Vertical Type Mask Tool"), Some(Tool::VerticalTypeMask));
+        assert_eq!(Tool::from_name("addAnchorPoint"), Some(Tool::AddAnchorPoint));
+        assert_eq!(Tool::from_name("Delete Anchor Point Tool"), Some(Tool::DeleteAnchorPoint));
+        assert_eq!(Tool::DeleteAnchorPoint.key(), 'P');
         assert_eq!(Tool::from_name("Remove Tool"), Some(Tool::Remove));
         assert_eq!(Tool::Remove.key(), 'J');
         assert!(Tool::Remove.is_brushlike());
