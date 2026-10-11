@@ -812,6 +812,35 @@ mod tests {
     }
 
     #[test]
+    fn preview_and_eyedropper_keep_the_original_selection_boundary() {
+        let mut app = app_with_doc();
+        app.session.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
+        let doc = app.session.active().unwrap().doc.clone();
+        for params in [
+            json!({"select": "sampledColors", "color": "#ff0000", "fuzziness": 0}),
+            json!({"select": "reds"}),
+        ] {
+            let mask = proxy_mask(&app, &doc, 1, &params).unwrap();
+            assert_eq!(mask[5 * 40 + 5], 1.0, "red inside the selection stays visible");
+            assert_eq!(mask[5 * 40 + 25], 0.0, "the blue outside the selection stays excluded");
+        }
+        for params in [
+            json!({"select": "sampledColors", "color": "#ffffff", "invert": true}),
+            json!({"select": "outOfGamut", "invert": true}),
+        ] {
+            let mask = proxy_mask(&app, &doc, 1, &params).unwrap();
+            assert_eq!(mask[5 * 40 + 25], 0.0, "even inverted previews stay within the selection");
+        }
+
+        open(&mut app);
+        assert!(!pick_top(&mut app, [25.0, 5.0], egui::Modifiers::NONE));
+        let fields = &app.ui.dialogs.last().unwrap().fields;
+        assert!(points(fields, "points").is_empty(), "a click outside the selection is ignored");
+        assert!(pick_top(&mut app, [5.0, 5.0], egui::Modifiers::NONE));
+        assert_eq!(points(&app.ui.dialogs.last().unwrap().fields, "points"), vec![[5.0, 5.0]]);
+    }
+
+    #[test]
     fn preview_cache_refreshes_after_foreground_and_proof_changes() {
         let mut app = app_with_doc();
         let p = json!({"select": "outOfGamut"});
