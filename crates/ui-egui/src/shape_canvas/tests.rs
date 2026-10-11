@@ -83,8 +83,14 @@ fn radius_handles_follow_rotated_flipped_scaled_canvas() {
         for flip in [false, true] {
             for zoom in [0.25, 1.0, 4.0] {
                 a.ui.views[0].zoom = zoom;
-                let xf =
-                    ViewXform { rect: egui::Rect::from_min_size(egui::pos2(70.0, 30.0), egui::vec2(600.0, 450.0)), zoom, center: [80.0, 70.0], flip, rotation };
+                let xf = ViewXform {
+                    aspect: 1.0,
+                    rect: egui::Rect::from_min_size(egui::pos2(70.0, 30.0), egui::vec2(600.0, 450.0)),
+                    zoom,
+                    center: [80.0, 70.0],
+                    flip,
+                    rotation,
+                };
                 let expected = handles([20.0, 20.0, 120.0, 100.0], [5.0, 10.0, 15.0, 20.0], f64::from(zoom));
                 let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
                     draw_overlay(&a, &ui.ctx().layer_painter(egui::LayerId::background()), &xf);
@@ -103,10 +109,71 @@ fn radius_handles_follow_rotated_flipped_scaled_canvas() {
                     let screen = xf.to_screen(p[0] as f32, p[1] as f32);
                     assert!(circles[i].distance(screen) < 0.001);
                     let doc = xf.to_doc(screen);
-                    assert_eq!(hit([20.0, 20.0, 120.0, 100.0], [5.0, 10.0, 15.0, 20.0], doc, f64::from(zoom)), Some(i));
+                    assert_eq!(hit([20.0, 20.0, 120.0, 100.0], [5.0, 10.0, 15.0, 20.0], doc, f64::from(zoom), f64::from(xf.aspect)), Some(i));
                     assert_eq!(cursor(&a, doc), Some(egui::CursorIcon::PointingHand));
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn radius_hit_area_is_six_screen_points_with_pixel_aspect_correction() {
+    let rect = [20.0, 20.0, 120.0, 100.0];
+    let radii = [5.0, 10.0, 15.0, 20.0];
+    for aspect in [0.5, 1.0, 2.0] {
+        for rotation in [0.0, 43.0, -90.0] {
+            for flip in [false, true] {
+                let xf = ViewXform {
+                    rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 450.0)),
+                    zoom: 2.0,
+                    center: [80.0, 70.0],
+                    flip,
+                    rotation,
+                    aspect,
+                };
+                let p = handles(rect, radii, f64::from(xf.zoom))[0];
+                let screen = xf.to_screen(p[0] as f32, p[1] as f32);
+                for direction in [egui::vec2(1.0, 0.0), egui::vec2(0.0, 1.0)] {
+                    for (distance, expected) in [(5.0, Some(0)), (7.0, None)] {
+                        let doc = xf.to_doc(screen + direction * distance);
+                        assert_eq!(
+                            hit(rect, radii, doc, f64::from(xf.zoom), f64::from(xf.aspect)),
+                            expected,
+                            "aspect {aspect}, rotation {rotation}, flip {flip}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn native_anamorphic_radius_press_matches_its_hover_area() {
+    let (mut a, ctx) = canvas_app();
+    crate::menus::invoke(&mut a, &ctx, "view.pixelAspectRatio.anamorphic2To1", json!({})).unwrap();
+    for rotation in [0.0, 43.0, -90.0] {
+        a.ui.views[0].rotation = rotation;
+        for flip in [false, true] {
+            a.ui.view.flip_horizontal = flip;
+            canvas_frame(&mut a, &ctx, vec![]);
+            let before = a.session.active().unwrap().doc.clone();
+            let history = a.session.active().unwrap().history.past_len();
+            let xf = ViewXform::active(&a).unwrap();
+            let p = knob(&a, 0);
+            let screen = xf.to_screen(p[0] as f32, p[1] as f32);
+            let inside = screen + egui::vec2(5.0, 0.0);
+            let outside = screen + egui::vec2(7.0, 0.0);
+            assert_eq!(cursor(&a, xf.to_doc(inside)), Some(egui::CursorIcon::PointingHand));
+            assert_eq!(cursor(&a, xf.to_doc(outside)), None);
+            canvas_frame(&mut a, &ctx, vec![egui::Event::PointerMoved(inside), button(inside, true, Modifiers::NONE)]);
+            assert!(dragging(&a), "a visible radius grip owns the press, rotation {rotation}, flip {flip}");
+            assert!(a.drag.is_none() && a.ui.transform.is_none());
+            canvas_frame(&mut a, &ctx, vec![button(inside, false, Modifiers::NONE)]);
+            assert!(!dragging(&a));
+            assert_eq!(a.session.active().unwrap().doc, before);
+            assert_eq!(a.session.active().unwrap().history.past_len(), history);
         }
     }
 }
@@ -399,6 +466,7 @@ fn move_path_and_handles_follow_the_image_shown_before_later_pointer_input() {
     let ctx = egui::Context::default();
     PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::Pro);
     let xf = ViewXform {
+        aspect: 1.0,
         rect: egui::Rect::from_min_size(egui::pos2(17.0, 29.0), egui::vec2(600.0, 450.0)),
         zoom: 1.6,
         center: [100.0, 80.0],
@@ -470,6 +538,7 @@ fn stale_move_images_do_not_supply_shape_overlay_geometry() {
         let ctx = egui::Context::default();
         PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::Pro);
         let xf = ViewXform {
+            aspect: 1.0,
             rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(500.0, 400.0)),
             zoom: 1.0,
             center: [100.0, 80.0],
@@ -505,7 +574,14 @@ fn move_bounds_use_four_canvas_transformed_corners_of_the_last_shown_image() {
         let corners = [[bounds.x0, bounds.y0], [bounds.x1, bounds.y0], [bounds.x1, bounds.y1], [bounds.x0, bounds.y1]];
         let ctx = egui::Context::default();
         PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::Pro);
-        let xf = ViewXform { rect: egui::Rect::from_min_size(egui::pos2(17.0, 29.0), egui::vec2(600.0, 450.0)), zoom, center: [100.0, 80.0], flip, rotation };
+        let xf = ViewXform {
+            aspect: 1.0,
+            rect: egui::Rect::from_min_size(egui::pos2(17.0, 29.0), egui::vec2(600.0, 450.0)),
+            zoom,
+            center: [100.0, 80.0],
+            flip,
+            rotation,
+        };
         tool_event(&mut a, ToolEvent::Down { x: 70.0, y: 60.0, pressure: 1.0 }, Modifiers::NONE);
         move_to(&mut a, [120.4, 85.6], Modifiers::NONE);
         crate::move_ui::display_doc(&mut a, 0).unwrap();

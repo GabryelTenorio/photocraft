@@ -62,7 +62,7 @@ fn prepared_mask_source_is_immutable_and_capped() {
     mask.fill_rect(Rect::new(8, 8, 12, 12), &[1.0]);
     let clip = Rect::new(0, 0, 64, 64);
     let affine = Affine { m: [10_000.0, 0.0, 0.0, 10_000.0, -99_968.0, -99_968.0] };
-    let output = prepared.warp_clipped(affine, "bicubic", clip);
+    let output = prepared.warp_clipped(affine, "bicubic", clip).unwrap();
     assert_eq!(output.pixel(32, 32), vec![0.0]);
     assert_eq!(output.default_pixel(), vec![1.0]);
     assert!(clip.contains_rect(&output.content_bounds()));
@@ -72,7 +72,7 @@ fn prepared_mask_source_is_immutable_and_capped() {
     sparse.write_pixel(10_000, 10_000, &[1.0]);
     assert!(PreparedShapeMask::new(&sparse).is_err(), "reject before reading an enormous sparse bounding box");
     assert!(PreparedShapeMask::new(&Surface::new(PixelFormat::RGBA8)).is_err());
-    let rejected = prepared.warp_clipped(Affine::IDENTITY, "bicubic", Rect::new(0, 0, 2049, 2049));
+    let rejected = prepared.warp_clipped(Affine::IDENTITY, "bicubic", Rect::new(0, 0, 2049, 2049)).unwrap();
     assert!(rejected.tiles().next().is_none());
     assert_eq!(rejected.default_pixel(), vec![1.0]);
 }

@@ -126,7 +126,7 @@ pub fn draw_grid(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, d
         }
         let st = Stroke::new(1.0, base.gamma_multiply(alpha));
         let [step_x, step_y] = steps;
-        if step_x * (xf.zoom as f64) >= 6.0 {
+        if step_x * (xf.zoom_x() as f64) >= 6.0 {
             let mut x = step_x;
             while x < w {
                 styled_line(painter, xf.to_screen(x as f32, 0.0), xf.to_screen(x as f32, h as f32), st, g.grid_style);
@@ -143,11 +143,25 @@ pub fn draw_grid(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, d
     }
 }
 
+pub(crate) fn parse_guide_color(value: &str) -> Option<Color32> {
+    let value = value.strip_prefix('#')?;
+    if value.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(value.get(0..2)?, 16).ok()?;
+    let g = u8::from_str_radix(value.get(2..4)?, 16).ok()?;
+    let b = u8::from_str_radix(value.get(4..6)?, 16).ok()?;
+    Some(Color32::from_rgb(r, g, b))
+}
+
 pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, doc: &Document) {
     let clip = painter.clip_rect();
     let drag = app.guide_drag;
     let g = &app.session.prefs().guides_grid_and_slices;
-    let (guide, style) = (pref_color(&g.guide_color, Color32::from_rgb(74, 255, 255)), g.guide_style);
+    let preview = crate::guide_layout_ui::preview(app, doc);
+    let guides = preview.as_ref().map(|(guides, _)| guides).unwrap_or(&doc.guides);
+    let (guide, style) =
+        (preview.as_ref().map(|(_, color)| *color).unwrap_or_else(|| pref_color(&g.guide_color, Color32::from_rgb(74, 255, 255))), g.guide_style);
     let line = |vertical: bool, pos: f64, color: Color32| {
         if vertical {
             let x = xf.to_screen(pos as f32, 0.0).x;
@@ -157,8 +171,8 @@ pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
             styled_line(painter, pos2(clip.left(), y), pos2(clip.right(), y), Stroke::new(1.0, color), style);
         }
     };
-    if app.ui.extras.guides {
-        for (vertical, list) in [(true, &doc.guides.vertical), (false, &doc.guides.horizontal)] {
+    if app.ui.extras.guides || preview.is_some() {
+        for (vertical, list) in [(true, &guides.vertical), (false, &guides.horizontal)] {
             for (i, p) in list.iter().enumerate() {
                 if drag.is_some_and(|d| d.vertical == vertical && d.index == Some(i)) {
                     continue;
@@ -245,8 +259,11 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     let whole = unit == photocraft_engine::prefs::Unit::Pixels;
     let label = |v: f64, step: f64| -> String { if step >= 1.0 || whole { format!("{}", v.round() as i64) } else { crate::widgets::fmt_num2(v) } };
     for (vertical, extent) in [(false, size[0]), (true, size[1])] {
+        let p = p.with_clip_rect(if vertical { left } else { top });
         let px_per_unit = unit.to_px(1.0, dpi, extent, ppi).max(1e-9);
-        let step = nice_step(60.0 / (xf.zoom as f64 * px_per_unit).max(1e-6), whole);
+        // The top ruler runs along document x, which pixel aspect correction stretches.
+        let zoom = if vertical { xf.zoom } else { xf.zoom_x() };
+        let step = nice_step(60.0 / (zoom as f64 * px_per_unit).max(1e-6), whole);
         let (u0, u1) = if vertical {
             ruler_range(xf, left.left_top(), left.left_bottom(), 1, px_per_unit)
         } else {
@@ -284,8 +301,8 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     // Pointer position markers.
     if let Some(h) = ui.ctx().pointer_hover_pos().filter(|h| full.contains(*h)) {
         let m = Stroke::new(1.0, t.text);
-        p.line_segment([pos2(h.x, top.top()), pos2(h.x, top.bottom())], m);
-        p.line_segment([pos2(left.left(), h.y), pos2(left.right(), h.y)], m);
+        p.with_clip_rect(top).line_segment([pos2(h.x, top.top()), pos2(h.x, top.bottom())], m);
+        p.with_clip_rect(left).line_segment([pos2(left.left(), h.y), pos2(left.right(), h.y)], m);
     }
     // Drag a new guide out of a ruler; right-click to switch the ruler unit.
     let mut chosen_unit: Option<&'static str> = None;
@@ -322,6 +339,45 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ruler_ticks_labels_and_pointer_stay_out_of_the_origin_corner() {
+        let mut failures = Vec::new();
+        for theme in crate::theme::ThemeKind::ALL {
+            for (zoom, flip, rotation, width) in [(1.0, false, 0.0, 560.0), (1.0, false, 0.0, 800.0), (0.25, true, 0.0, 560.0), (2.0, false, 30.0, 560.0)] {
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+                app.run("file.new", json!({"width": 256, "height": 128})).unwrap();
+                let full = Rect::from_min_size(pos2(32.0, 32.0), vec2(width - 80.0, 320.0));
+                let corner = Rect::from_min_size(full.min, vec2(RULER, RULER));
+                let builder = egui_kittest::Harness::builder().with_size(vec2(width, 400.0));
+                let mut h = builder.build_ui_state(
+                    move |ui, app| {
+                        let rect = Rect::from_min_max(full.min + vec2(RULER, RULER), full.max);
+                        let xf = ViewXform { rect, zoom, center: [(width - 80.0) / 2.0, 160.0], flip, rotation, aspect: 1.0 };
+                        draw_rulers(app, ui, full, &xf);
+                    },
+                    app,
+                );
+                PhotocraftApp::setup_context(&h.ctx, theme);
+                h.event(egui::Event::PointerMoved(corner.center()));
+                h.run_steps(4);
+                let mut ticks = 0;
+                let mut labels = 0;
+                for shape in &h.output().shapes {
+                    if matches!(shape.shape, egui::Shape::LineSegment { .. } | egui::Shape::Text(_)) {
+                        ticks += usize::from(matches!(shape.shape, egui::Shape::LineSegment { .. }));
+                        labels += usize::from(matches!(shape.shape, egui::Shape::Text(_)));
+                        let visible = shape.shape.visual_bounding_rect().intersect(shape.clip_rect);
+                        if visible.intersect(corner.shrink(0.5)).is_positive() {
+                            failures.push(format!("{theme:?}: zoom={zoom}, flip={flip}, rotation={rotation}, {visible:?}"));
+                        }
+                    }
+                }
+                assert!(ticks > 2 && labels > 0, "rulers still draw ticks and labels");
+            }
+        }
+        assert!(failures.is_empty(), "ruler drawing overlaps the origin corner: {failures:?}");
+    }
 
     #[test]
     fn percentage_grid_spacing_uses_both_canvas_dimensions() {
@@ -429,6 +485,40 @@ mod tests {
         assert_eq!(guide_at(&app, 0.0, 0.0), None);
     }
 
+    /// ⌘ is the Move tool with any tool, so a ⌘-drag over a guide moves the guide, never the layer
+    /// (#2690); with Lock Guides a ⌘-drag with a marquee moves the layer as before.
+    #[test]
+    fn command_drag_over_a_guide_moves_the_guide_with_any_tool() {
+        use crate::canvas::{ToolEvent, tool_event};
+        use crate::state::Tool;
+        for (tool, locked) in [(Tool::Brush, false), (Tool::RectMarquee, false), (Tool::Lasso, false), (Tool::MagicWand, false), (Tool::RectMarquee, true)] {
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+            app.run("file.new", json!({"width": 80, "height": 60, "background": "transparent"})).unwrap();
+            app.sync_views();
+            app.ui.tool = tool;
+            app.ui.extras.lock_guides = locked;
+            let layer = app.session.active().unwrap().active_layer.unwrap();
+            app.session
+                .edit("paint", |doc, _| {
+                    doc.layer_mut(layer).unwrap().surface_mut().unwrap().fill_rect(photocraft_geom::Rect::new(10, 10, 30, 30), &[1.0, 0.0, 0.0, 1.0]);
+                    Ok(())
+                })
+                .unwrap();
+            app.run("view.newGuide", json!({"orientation": "vertical", "position": 50})).unwrap();
+            let cmd = egui::Modifiers::COMMAND;
+            tool_event(&mut app, ToolEvent::Down { x: 50.0, y: 40.0, pressure: 1.0 }, cmd);
+            tool_event(&mut app, ToolEvent::Move { x: 65.0, y: 40.0, pressure: 1.0 }, cmd);
+            tool_event(&mut app, ToolEvent::Up { x: 65.0, y: 40.0 }, cmd);
+            let doc = &app.session.active().unwrap().doc;
+            let moved = doc.layer(layer).unwrap().surface().unwrap().rgba(12, 12)[3] == 0.0;
+            if locked {
+                assert_eq!((doc.guides.vertical.clone(), moved), (vec![50.0], true), "{tool:?}, guides locked: the layer moves");
+            } else {
+                assert_eq!((doc.guides.vertical.clone(), moved), (vec![65.0], false), "{tool:?}: the guide moves, the layer stays");
+            }
+        }
+    }
+
     #[test]
     fn ruler_range_is_normalised_when_flipped() {
         // #1814: with View > Flip Horizontal, `to_doc` negates x, so the raw
@@ -437,7 +527,7 @@ mod tests {
         let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
         let top = Rect::from_min_size(rect.min, vec2(rect.width(), RULER));
         for flip in [false, true] {
-            let xf = ViewXform { rect, zoom: 1.0, center: [400.0, 300.0], flip, rotation: 0.0 };
+            let xf = ViewXform { rect, zoom: 1.0, center: [400.0, 300.0], flip, rotation: 0.0, aspect: 1.0 };
             let (u0, u1) = ruler_range(&xf, top.left_top(), top.right_top(), 0, 1.0);
             assert!(u0 <= u1, "flip={flip}: u0 ({u0}) must be <= u1 ({u1})");
             assert!(u1 - u0 > 0.0, "flip={flip}: range is empty");

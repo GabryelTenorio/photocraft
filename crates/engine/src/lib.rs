@@ -11,14 +11,17 @@ pub mod actions_cmds;
 pub mod adjust_cmds;
 pub mod adjust_params;
 pub mod align_cmds;
+mod allocation;
 pub mod analysis_cmds;
 pub mod artboard_cmds;
 pub mod automate_cmds;
+pub mod background_cmds;
 pub mod brush_cmds;
 pub mod brush_key_cmds;
 pub mod brush_preset_cmds;
 pub mod build_info;
 mod canvas_geom;
+mod channel_clip;
 pub mod channel_cmds;
 pub mod color_cmds;
 pub mod color_to_alpha_cmds;
@@ -31,6 +34,7 @@ pub mod document_preset_cmds;
 pub mod edit_cmds;
 pub mod edit_menu_cmds;
 pub mod eraser_cmds;
+pub mod exr_cmds;
 pub mod extra_cmds;
 pub mod file_cmds;
 pub mod fill_cmds;
@@ -44,6 +48,7 @@ pub mod fx_visibility_cmds;
 pub mod gallery_cmds;
 pub mod gradient_fill_cmds;
 pub mod group_view_cmds;
+pub mod guide_layout;
 pub mod hidden_target;
 pub mod history_cmds;
 pub mod image_cmds;
@@ -67,6 +72,7 @@ pub mod notes_cmds;
 pub mod paint_cmds;
 mod path_edit_cmds;
 pub mod pattern_cmds;
+pub mod perspective_crop_cmds;
 pub mod photo_cmds;
 pub mod pick_cmds;
 mod pixels;
@@ -77,6 +83,7 @@ pub mod preset_store;
 pub mod presets;
 pub mod print_cmds;
 pub mod proof_sim;
+pub mod rasterize_style_cmds;
 pub mod redeye_cmds;
 pub mod render_cmds;
 pub mod retouch_cmds;
@@ -99,6 +106,7 @@ mod trap_cmds;
 pub mod type_caret_cmds;
 pub mod type_cmds;
 pub mod type_extra_cmds;
+pub mod type_mask_cmds;
 pub mod type_spell_cmds;
 pub mod type_styles_cmds;
 mod variables_cmds;
@@ -141,6 +149,12 @@ pub enum EngineError {
 }
 
 pub type Result<T> = std::result::Result<T, EngineError>;
+
+impl From<photocraft_raster::AllocationError> for EngineError {
+    fn from(error: photocraft_raster::AllocationError) -> Self {
+        Self::Other(format!("not enough memory for this operation ({error}); the document was not changed"))
+    }
+}
 
 /// The pixels of a raster layer (typically one a command just created), as an error instead
 /// of a panic if the layer has none.
@@ -366,6 +380,11 @@ pub struct Session {
     pub authorize: Option<fn(&str, &serde_json::Value) -> Result<()>>,
     /// Background jobs (see [`jobs`]).
     jobs: jobs::Jobs,
+    /// Select Subject's last result, reused while the pixels are unchanged (#2865).
+    subject_cache: smartselect_cmds::SubjectCache,
+    /// A finished live stroke offered to the `paint.stroke` / `paint.pencil` that commits it
+    /// ([`Session::offer_live_stroke`]).
+    pub(crate) live_commit: Option<brush_cmds::LiveCommit>,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when
@@ -439,6 +458,7 @@ impl Session {
         smart_cmds::on_close(self, index);
         if let Some(id) = self.docs.get(index).map(|d| d.doc.id) {
             self.cancel_jobs_on(id);
+            self.subject_cache.forget_doc(id);
         }
         let d = self.docs.remove(index);
         self.active = if self.docs.is_empty() {
@@ -469,6 +489,20 @@ impl Session {
         }
     }
 
+    /// Offer a finished live stroke to the next command: a `paint.stroke` / `paint.pencil` whose
+    /// params match it exactly takes its pixels instead of rendering the stroke again (its result
+    /// then says `"fromLive": true`); any other command drops the offer. The command still runs
+    /// through the normal dispatch, so authorization, the journal and history are unchanged.
+    pub fn offer_live_stroke(&mut self, live: brush_cmds::LiveStroke) -> Result<()> {
+        self.live_commit = Some(live.into_commit()?);
+        Ok(())
+    }
+
+    /// Withdraw an offer the command didn't take.
+    pub fn clear_live_stroke(&mut self) {
+        self.live_commit = None;
+    }
+
     /// Is the command currently runnable? (drives menu enablement)
     pub fn is_enabled(&self, id: &str) -> bool {
         self.is_enabled_with(id, &Value::Null)
@@ -494,7 +528,17 @@ impl Session {
 
     /// The command's own precondition for a call with `params` (their target filled in).
     fn precondition(&self, spec: &commands::CommandSpec, params: &Value) -> std::result::Result<(), String> {
+        if self.names_existing_layer(spec.id, params) {
+            return Ok(());
+        }
         channel_cmds::mask_target_enabled(self, spec.id, params).unwrap_or_else(|| (spec.enabled)(self))
+    }
+
+    /// Whether `id` is a layer command whose `"layer"` param names an existing layer, so it needs no
+    /// active layer (#2457). Matches how `layer_param` resolves the layer when the command runs.
+    fn names_existing_layer(&self, id: &str, params: &Value) -> bool {
+        matches!(id, "layer.hideLayers" | "layer.showLayers" | "layer.renameLayer")
+            && params.get("layer").and_then(Value::as_u64).is_some_and(|l| self.active().is_some_and(|st| st.doc.layer(LayerId(l)).is_some()))
     }
 
     /// Apply an undoable edit to the active document.
@@ -533,6 +577,10 @@ impl Session {
         st.coalesce = key;
         st.revision += 1;
         st.last_damage = unchanged.then_some(photocraft_geom::Rect::EMPTY);
+        if !unchanged {
+            // Free the mask early; a stale entry would only miss (it is keyed by pixels).
+            self.subject_cache = Default::default();
+        }
         Ok(r)
     }
 
@@ -648,6 +696,15 @@ impl Session {
 
 /// Undo / redo: target the layers the restored state targeted, as far as they still exist.
 fn restore_target(st: &mut DocState, layers: LayerTarget) {
+    // Deselect Layers is a valid history target, not a missing layer to replace with the top
+    // layer. An edit after deselection must undo back to no active or selected layers (#3042).
+    if layers.active.is_none() && layers.selected.is_empty() {
+        st.active_layer = None;
+        st.selected_layers.clear();
+        st.layer_anchor = None;
+        channel_cmds::fix_view(st);
+        return;
+    }
     if layers.active.is_some_and(|id| st.doc.layer(id).is_some()) {
         st.active_layer = layers.active;
         st.selected_layers = layers.selected;

@@ -22,7 +22,14 @@ fn shape_below_text_size(depth: u32, size: u32) -> (PhotocraftApp, LayerId, Laye
 
 fn texture_meshes(app: &PhotocraftApp, ctx: &egui::Context) -> usize {
     let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-        let xf = ViewXform { rect: egui::Rect::from_min_size(Pos2::ZERO, vec2(256.0, 256.0)), zoom: 2.0, center: [64.0, 64.0], flip: false, rotation: 0.0 };
+        let xf = ViewXform {
+            aspect: 1.0,
+            rect: egui::Rect::from_min_size(Pos2::ZERO, vec2(256.0, 256.0)),
+            zoom: 2.0,
+            center: [64.0, 64.0],
+            flip: false,
+            rotation: 0.0,
+        };
         draw_overlay(app, &ui.painter().with_clip_rect(xf.rect), &xf);
     });
     output.textures_delta.clear();
@@ -220,7 +227,7 @@ fn rotated_shape_drag_preview_tracks_committed_path_in_screen_space() {
             for rotation in [-0.7, 0.35, std::f32::consts::FRAC_PI_2] {
                 let ctx = egui::Context::default();
                 let rect = egui::Rect::from_min_size(pos2(17.0, 29.0), vec2(600.0, 450.0));
-                let xf = ViewXform { rect, zoom: 1.6, center: [55.0, 63.0], flip, rotation };
+                let xf = ViewXform { aspect: 1.0, rect, zoom: 1.6, center: [55.0, 63.0], flip, rotation };
                 let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
                     let painter = ui.ctx().layer_painter(egui::LayerId::background()).with_clip_rect(rect);
                     crate::vector_ui::draw_shape_preview(&app, &painter, &xf, tool, start, end, egui::Modifiers::NONE);
@@ -362,7 +369,7 @@ fn rotated_and_flipped_shape_preview_texture_samples_document_paint() {
             for rotation in [-0.7, std::f32::consts::FRAC_PI_2] {
                 let ctx = egui::Context::default();
                 let rect = egui::Rect::from_min_size(pos2(17.0, 29.0), vec2(400.0, 400.0));
-                let xf = ViewXform { rect, zoom: 0.75, center: [64.0, 64.0], flip, rotation };
+                let xf = ViewXform { aspect: 1.0, rect, zoom: 0.75, center: [64.0, 64.0], flip, rotation };
                 let draw = |ui: &mut egui::Ui| {
                     let painter = ui.ctx().layer_painter(egui::LayerId::background()).with_clip_rect(rect);
                     crate::vector_ui::draw_shape_preview(&app, &painter, &xf, Tool::Rectangle, [16.0, 16.0], [112.0, 112.0], egui::Modifiers::NONE);
@@ -535,6 +542,47 @@ fn changed_shape_proxy_keeps_paint_masks_text_and_bounded_tiles() {
             }
         }
     }
+}
+
+#[test]
+fn pattern_preview_repeated_tile_uses_exact_shape_transform_after_a_proxy() {
+    let (mut app, shape, _) = shape_below_text(8);
+    app.session
+        .edit("wide canvas", |doc, _| {
+            doc.size = photocraft_doc::Size::new(4097, 1000);
+            Ok(())
+        })
+        .unwrap();
+    app.last_canvas_rect = egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 320.0));
+    app.ui.views[0].center = [64.0, 64.0];
+    app.ui.views[0].zoom = 1.0;
+    let ctx = egui::Context::default();
+    begin(&mut app, &ctx).unwrap();
+    scale_about_pivot(&mut app, 1.5, 1.5);
+    follow_edits(&mut app);
+    assert!(shape_proxy(&app, 0).is_some(), "start with a reduced shape preview");
+    let source = app.session.active().unwrap().doc.clone();
+    let transform = app.ui.transform.as_ref().unwrap();
+    let affine = rect_to_quad_affine(transform.rect, transform.quad).unwrap();
+    let expected = photocraft_engine::transform_cmds::preview_shape_transform(&source, shape, affine, &transform.interpolation).unwrap();
+
+    app.ui.view.pattern_preview = true;
+    app.ui.views[0].center = [-4097.0 + 64.0, 64.0];
+    follow_edits(&mut app);
+    assert!(shape_proxy(&app, 0).is_none(), "the original document is offscreen; copies must not reuse its empty proxy region");
+    let (shown, _) = display_doc(&app, 0).unwrap();
+    let region = Rect::new(0, 0, 96, 64);
+    assert_eq!(
+        photocraft_compose::render(&shown, region).px,
+        photocraft_compose::render(&expected, region).px,
+        "the repeated tile retains the shape and higher text"
+    );
+    assert!(Arc::ptr_eq(&source, &app.session.active().unwrap().doc), "preview leaves committed pixels untouched");
+
+    app.ui.view.pattern_preview = false;
+    app.ui.views[0].center = [64.0, 64.0];
+    follow_edits(&mut app);
+    assert!(shape_proxy(&app, 0).is_some(), "normal canvas previews can resume their bounded proxy");
 }
 
 #[test]

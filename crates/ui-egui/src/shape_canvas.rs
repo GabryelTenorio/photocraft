@@ -100,13 +100,14 @@ fn handles(rect: [f64; 4], radii: [f64; 4], zoom: f64) -> [[f64; 2]; 4] {
     })
 }
 
-fn hit(rect: [f64; 4], radii: [f64; 4], p: [f64; 2], zoom: f64) -> Option<usize> {
-    let tolerance = GRAB / zoom.max(0.01);
+fn hit(rect: [f64; 4], radii: [f64; 4], p: [f64; 2], zoom: f64, aspect: f64) -> Option<usize> {
+    let zoom = zoom.max(0.01);
+    let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
     handles(rect, radii, zoom)
         .into_iter()
         .enumerate()
-        .map(|(i, q)| (i, (q[0] - p[0]).hypot(q[1] - p[1])))
-        .filter(|(_, distance)| *distance <= tolerance)
+        .map(|(i, q)| (i, ((q[0] - p[0]) * zoom * aspect).hypot((q[1] - p[1]) * zoom)))
+        .filter(|(_, distance)| *distance <= GRAB)
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(i, _)| i)
 }
@@ -149,7 +150,7 @@ pub(crate) fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -
     match ev {
         ToolEvent::Down { x, y, .. } => {
             let Some(r) = rectangle(app) else { return false };
-            let Some(corner) = hit(r.rect, r.radii, [x, y], f64::from(app.point_zoom())) else { return false };
+            let Some(corner) = hit(r.rect, r.radii, [x, y], f64::from(app.point_zoom()), f64::from(app.ui.view.display_aspect())) else { return false };
             app.shape_canvas.serial = app.shape_canvas.serial.wrapping_add(1);
             app.shape_canvas.drag = Some(Drag {
                 doc: r.doc,
@@ -223,7 +224,8 @@ pub(crate) fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &Vi
 
 pub(crate) fn cursor(app: &PhotocraftApp, p: [f64; 2]) -> Option<egui::CursorIcon> {
     let r = rectangle(app)?;
-    (app.shape_canvas.drag.is_some() || hit(r.rect, r.radii, p, f64::from(app.point_zoom())).is_some()).then_some(egui::CursorIcon::PointingHand)
+    (app.shape_canvas.drag.is_some() || hit(r.rect, r.radii, p, f64::from(app.point_zoom()), f64::from(app.ui.view.display_aspect())).is_some())
+        .then_some(egui::CursorIcon::PointingHand)
 }
 
 #[cfg(test)]
