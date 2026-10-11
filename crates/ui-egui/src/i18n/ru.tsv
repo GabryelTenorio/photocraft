@@ -2896,6 +2896,16 @@ cameraData	Lens	Объектив
 	No matching settings	Нет подходящих настроек
 	Apply mask to layer before removing?	Применить маску к слою перед удалением?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Слой или его маска изменились. Перетащите маску в корзину ещё раз.
+# Select and Mask view modes (#1754)
+	Onion Skin	Калька
+	Marching Ants	Бегущие муравьи
+	On Black	На черном
+	On White	На белом
+	On Layers	На слоях
+	Show Edge	Показать край
+	Show Original	Показать исходное
+	F cycles the views; hold X to see the image	F переключает виды; удерживайте X, чтобы увидеть изображение
+	Show rulers	Показать линейки
 	New Crop Preset…	Новый набор параметров кадрирования…
 	Delete Crop Preset…	Удалить набор параметров кадрирования…
 	Select the crop presets to delete:	Выберите наборы параметров кадрирования для удаления:
