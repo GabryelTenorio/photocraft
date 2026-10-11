@@ -84,7 +84,31 @@ The app's top bar (`panels::title_bar`) starts with the brand mark (the app icon
 - **macOS:** the traffic lights sit over the integrated title strip (`integrated_titlebar`).
 - **Narrow windows** drop controls that are also in a menu before anything overlaps: Discord (Help › Discord), then the theme toggle, then search (Edit › Search), then the workspace switcher narrows (Window › Workspace).
 
+## Compact tool controls
+
+The toolbar scrolls its tool rows when two columns still exceed the available height. Foreground
+and background colours stay visible below those rows, together with Pro's Quick Mask and Screen
+Mode controls. Long options rows scroll horizontally. Both scrollers bring newly focused
+controls into view and retain the existing tool actions and popups.
+
+The offscreen regression fixture uses production panels, fonts and SVG loaders across every
+theme, 800×480 and 1280×720 point viewports, and 1×, 1.5× and 2× display scales. To retain its
+60 initial/scrolled PNGs while running the compact geometry and interaction checks:
+
+```sh
+CRAFT_UI_VISUAL_FIXTURES=/tmp/photocraft-compact cargo test -p photocraft-ui-egui --lib compact_visual_regressions -- --nocapture
+```
+
+Keyboard tests clear the configurable `window.togglePanels` canvas shortcut through preferences,
+then send normal Tab and Space events through the app's shortcut dispatcher. They exercise
+focus traversal and activation with that nondefault binding; default canvas Tab still toggles
+panels. These offscreen checks do not establish native window or platform input acceptance.
+
 ## Menus
+
+Horizontal and vertical ruler ticks, labels and pointer markers are clipped to their respective
+strips. Their intersection is a clear origin square, including when the view is panned, flipped
+or rotated; the origin square retains its ruler-unit context menu.
 
 An embedding application's `panels.menu_bar` and `panels.rail` flags belong to its current
 session. Restoring a saved workspace or remembered panel layout preserves both flags, including
@@ -108,7 +132,7 @@ Use `ui.click {x,y}`, `ui.move`, `ui.key` and `ui.type` (synthetic input in scre
 
 The Type options bar, Character panel, Character/Paragraph Style editors and Glyphs panel
 share a searchable family picker. Each visible row shows an `AaBbCc` sample rendered by
-PhotoCraft's text engine in that family (script/symbol fonts use characters they support).
+PhotoCraft's text engine in that family (script/symbol fonts use characters they support). A family whose face also covers Arabic (alef, lam, meem, ain and the sample letters) shows a short `أبجد هوز` sample left of it, shaped right-to-left by the same engine; its row reserves the extra width once that row has been painted, and Latin-only families are unchanged.
 Samples are cached with a bounded cache and follow display scale and theme text colour.
 Builds without system fonts preview the bundled fonts.
 While the menu is open, Up/Down applies the previous/next matching family and scrolls it into

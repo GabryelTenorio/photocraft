@@ -100,6 +100,19 @@ pub(crate) fn reselect(s: &mut Session, ids: Vec<LayerId>, active: Option<LayerI
     }
 }
 
+/// Layer rows follow the Layers panel's visual order, not Document::walk's storage order.
+/// Closed groups hide their children unless both endpoints were selected programmatically.
+fn range_order(layers: &[Layer], include_collapsed: bool, out: &mut Vec<LayerId>) {
+    for layer in layers.iter().rev() {
+        out.push(layer.id);
+        if let LayerContent::Group(group) = &layer.content
+            && (group.expanded || include_collapsed)
+        {
+            range_order(&group.children, include_collapsed, out);
+        }
+    }
+}
+
 /// `layer.select`: `{"layer": id, "mode": "replace|toggle|range|add"}`.
 pub fn select(s: &mut Session, p: &Value) -> Result<Value> {
     let id = LayerId(p.get("layer").and_then(Value::as_u64).ok_or_else(|| bad("layer.select", "missing `layer`"))?);
@@ -133,7 +146,14 @@ pub fn select(s: &mut Session, p: &Value) -> Result<Value> {
         }
         "range" => {
             let anchor = st.layer_anchor.filter(|a| st.doc.layer(*a).is_some()).or(st.active_layer).unwrap_or(id);
-            let order: Vec<LayerId> = st.doc.walk().into_iter().map(|(_, _, l)| l.id).collect();
+            let mut order = Vec::new();
+            range_order(&st.doc.layers, false, &mut order);
+            // Engine clients may target a child of a collapsed group that the panel cannot
+            // click. Retain that capability by using expanded visual order for such calls.
+            if !order.contains(&anchor) || !order.contains(&id) {
+                order.clear();
+                range_order(&st.doc.layers, true, &mut order);
+            }
             let (a, b) = (order.iter().position(|x| *x == anchor).unwrap_or(0), order.iter().position(|x| *x == id).unwrap_or(0));
             let range = order[a.min(b)..=a.max(b)].to_vec();
             set_selection(s, range, Some(id), Some(anchor))?;
@@ -143,7 +163,7 @@ pub fn select(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"selected": selected(s).iter().map(|l| l.0).collect::<Vec<_>>()}))
 }
 
-fn is_locked_background(l: &Layer) -> bool {
+pub(crate) fn is_locked_background(l: &Layer) -> bool {
     l.name == "Background" && l.locks.transparency && matches!(l.content, LayerContent::Raster(_))
 }
 
@@ -934,6 +954,7 @@ pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
     }
 
     let original_active = st.active_layer;
+    let background = crate::background_cmds::background_id(doc);
     let (count, copies) = s.edit(if copy { "Duplicate Layer" } else { "Reorder Layers" }, |doc, active| {
         let mut moved = Vec::with_capacity(moved_ids.len());
         for &id in &moved_ids {
@@ -956,6 +977,7 @@ pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
             siblings.splice(at..at, moved);
         }
         check_group_depth(doc, "Reorder Layer")?;
+        crate::background_cmds::keep_background_at_bottom(background, doc)?;
         *active = if copy {
             copies.last().copied()
         } else if batch.is_some() {
@@ -1056,6 +1078,7 @@ fn rename_layer(s: &mut Session, p: &Value) -> Result<Value> {
 fn reverse(s: &mut Session) -> Result<Value> {
     let sel = selected(s);
     s.edit("Reverse", |doc, _| {
+        let background = crate::background_cmds::background_id(doc);
         let ids = top_level(doc, &sel);
         if ids.len() < 2 {
             return Err(EngineError::Other("select two or more layers to reverse".into()));
@@ -1067,7 +1090,7 @@ fn reverse(s: &mut Session) -> Result<Value> {
         for (path, l) in paths.iter().zip(layers.into_iter().rev()) {
             *doc.layer_at_mut(path).ok_or_else(|| EngineError::Other("layer tree changed".into()))? = l;
         }
-        Ok(())
+        crate::background_cmds::keep_background_at_bottom(background, doc)
     })?;
     Ok(Value::Null)
 }
