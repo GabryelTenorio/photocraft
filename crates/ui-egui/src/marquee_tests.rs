@@ -507,7 +507,42 @@ fn arrow_keys_nudge_the_selection_outline() {
     }
 }
 
+
+#[test]
+fn crop_arrow_keys_move_pending_frame_without_editing_pixels() {
+    use egui::Key;
+    let mut h = harness(Tool::Crop);
+    h.run_steps(2);
+    let initial = h.state().ui.crop_rect.expect("Crop tool shows its default full-canvas frame");
+    assert_eq!(initial, [0.0, 0.0, 400.0, 300.0]);
+    assert!(h.state().crop.default_frame);
+    let history = h.state().session.active().unwrap().history.past_len();
+
+    h.key_press(Key::ArrowRight);
+    h.run_steps(2);
+    assert_eq!(h.state().ui.crop_rect, Some([1.0, 0.0, 401.0, 300.0]));
+    assert!(!h.state().crop.default_frame, "nudging arms the crop instead of leaving a no-op default frame");
+    assert!(h.state().crop.editing, "nudging shows the pending crop preview");
+
+    h.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    h.run_steps(2);
+    assert_eq!(h.state().ui.crop_rect, Some([1.0, 10.0, 401.0, 310.0]));
+    h.key_press(Key::ArrowLeft);
+    h.run_steps(2);
+    h.key_press(Key::ArrowUp);
+    h.run_steps(2);
+    assert_eq!(h.state().ui.crop_rect, Some([0.0, 9.0, 400.0, 309.0]));
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), history, "nudge does not touch image pixels before crop commit");
+    assert_eq!(h.state().session.active().unwrap().doc.size, photocraft_geom::Size::new(400, 300));
+
+    // The unmodified Crop shortcut routing should not accept arrows with Ctrl held.
+    h.key_press_modifiers(Modifiers::CTRL, Key::ArrowRight);
+    h.run_steps(2);
+    assert_eq!(h.state().ui.crop_rect, Some([0.0, 9.0, 400.0, 309.0]));
+}
+
 /// Arrow keys with a marquee but no selection change nothing and report no error.
+
 #[test]
 fn arrow_keys_without_a_selection_do_nothing() {
     let mut h = harness(Tool::RectMarquee);
