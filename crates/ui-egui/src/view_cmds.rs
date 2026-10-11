@@ -457,6 +457,7 @@ fn wraps(id: &str) -> bool {
             | "type.pasteLoremIpsum"
             | "image.applyImage"
             | "image.calculations"
+            | "image.dtf"
     )
 }
 
@@ -824,6 +825,10 @@ mod label_tests {
 
 /// Body of a `__form` dialog: text fields, number fields, checkboxes and `__choices` dropdowns.
 pub fn form_body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+    if let Some(note) = f.get("__note").and_then(Value::as_str) {
+        ui.label(note);
+        ui.add_space(6.0);
+    }
     let choices = f.get("__choices").cloned().unwrap_or(Value::Null);
     // Data-driven labels (a per-part checkbox shows the part's name, not a catalogue entry)
     // come from `__labels` verbatim; everything else goes through the catalogue.
@@ -1116,6 +1121,16 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
                     json!({"source1Channel": load.clone(), "source2Channel": load, "blending": blends, "result": ["newChannel", "newDocument", "selection"]}),
                 ),
             }
+        }
+        "image.dtf" => {
+            let mut fields = photocraft_engine::dtf_cmds::dialog_fields(app.session.prefs().dialogs.get("image.dtf"));
+            if let Some(obj) = fields.as_object_mut() {
+                obj.insert(
+                    "__note".into(),
+                    json!("Builds a spot channel from the active layer, or from every visible layer. The selection is contracted, then the spot is filled. These settings are kept for the next dialog and for the DTF action. Save as PSD or TIFF so the RIP keeps the spot."),
+                );
+            }
+            dialog(app, fields, json!({"source": ["layer", "composite"]}))
         }
         _ => None,
     }
