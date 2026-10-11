@@ -50,9 +50,9 @@ note = "fill_ui.rs dialog over edit.fill (fill_cmds.rs): all contents, mode, opa
 [[item]]
 id = "TOOL-213-7"
 target = "Live stroke preview for every brush-based retouch tool"
-status = "missing"
+status = "partial"
 issue = 213
-note = "Live stroke only for Brush and Eraser (canvas.rs:1684)"
+note = "Live (canvas.rs strokes_live): Brush, Pencil, Eraser, Blur, Sharpen, Smudge, Dodge, Burn, Sponge, Clone Stamp, Healing Brush, History Brush (#1026, #1040); the release commits the live stroke's pixels (P32). Not yet live: Spot Healing Brush, Mixer Brush, Background Eraser, Pattern Stamp"
 
 [[item]]
 id = "TOOL-213-8"
@@ -134,9 +134,9 @@ note = "Fuzziness-0 tests cover midtones/shadows only (selection_cmds.rs:444-447
 [[item]]
 id = "TOOL-214-4"
 target = "Move tool: box-select layers, Auto-Select hover outline, double-click fit, drag to a tab"
-status = "missing"
+status = "partial"
 issue = 214
-note = "move_mods.rs covers Shift/Alt/arrows only"
+note = "Auto-Select hover outline done (Preferences › Tools › Show Highlight on Rollover, #2834); box-select layers, double-click fit and drag to a tab open"
 
 [[item]]
 id = "TOOL-214-5"
