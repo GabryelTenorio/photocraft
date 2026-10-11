@@ -992,7 +992,6 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "workspace.autoShowHiddenPanels",
     "workspace.enableFloatingDocumentWindowDocking",
     "workspace.enableNarrowOptionsBar",
-    "tools.enableFlickPanning",
     "tools.showTransformationValues",
     "fileHandling.imagePreviews",
     "fileHandling.saveInBackground",
