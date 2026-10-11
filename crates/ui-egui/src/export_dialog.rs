@@ -296,6 +296,20 @@ fn quick_export(app: &mut PhotocraftApp, p: Value) -> Result<Value, String> {
     Ok(r)
 }
 
+/// File › Export › Render Video…: ask where to save with a save dialog, then render.
+pub fn render_video_ui(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let st = app.session.active().ok_or("no document")?;
+    let stem = st.doc.name.rsplit_once('.').map_or(st.doc.name.as_str(), |(a, _)| a);
+    let (suggested, doc) = (format!("{stem}.gif"), st.doc.id);
+    app.pick_save(&suggested, move |app, path| {
+        app.refocus(doc)?;
+        let r = app.run("file.export.renderVideo", json!({"path": path}))?;
+        app.ui.status = format!("Rendered video to {path}");
+        app.ui.status_error = false;
+        Ok(r)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

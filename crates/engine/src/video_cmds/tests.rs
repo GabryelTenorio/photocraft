@@ -231,3 +231,41 @@ fn tga_sequence_frames_keep_their_transparency() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn render_video_with_explicit_path_gif() {
+    let dir = tmpdir("gifpath_src");
+    write_png(&format!("{dir}/a.png"), 10, 8, "#ff0000");
+    write_png(&format!("{dir}/b.png"), 10, 8, "#00ff00");
+    let mut s = session();
+    s.execute("layer.videoLayers.newVideoLayerFromFile", json!({"path": dir})).unwrap();
+    let out = tmpdir("gifpath_out");
+    let path = format!("{out}/custom_animation.gif");
+    let r = s.execute("file.export.renderVideo", json!({"path": path})).unwrap();
+    assert_eq!(r["frames"], 2);
+    assert_eq!(r["file"], path);
+    let gif = std::fs::read(&path).unwrap();
+    assert_eq!(&gif[..6], b"GIF89a");
+}
+
+#[test]
+fn render_video_with_explicit_path_png_sequence() {
+    let dir = tmpdir("pngseq_src");
+    write_png(&format!("{dir}/a.png"), 10, 8, "#112233");
+    write_png(&format!("{dir}/b.png"), 10, 8, "#445566");
+    let mut s = session();
+    s.execute("layer.videoLayers.newVideoLayerFromFile", json!({"path": dir})).unwrap();
+    let out = tmpdir("pngseq_out");
+    let target = format!("{out}/my_sequence.png");
+    let r = s.execute("file.export.renderVideo", json!({"path": target})).unwrap();
+    assert_eq!(r["frames"], 2);
+    assert!(std::path::Path::new(&format!("{out}/my_sequence_0000.png")).exists());
+    assert!(std::path::Path::new(&format!("{out}/my_sequence_0001.png")).exists());
+}
+
+#[test]
+fn render_video_without_location_on_unsaved_doc_errors_gracefully() {
+    let mut s = session();
+    let err = s.execute("file.export.renderVideo", json!({})).unwrap_err();
+    assert!(err.to_string().contains("need `dir` or `path`"));
+}

@@ -321,11 +321,43 @@ fn frames_to_layers(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// Export › Render Video: composite the whole document at each timeline frame and write an image
-/// sequence (`{dir}/{stem}_NNNN.{format}`). Clean-room; no proprietary codec.
+/// sequence (`{dir}/{stem}_NNNN.{format}`) or animated GIF (`{dir}/{stem}.gif`). Clean-room; no proprietary codec.
 fn render_video(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = p.get("dir").and_then(Value::as_str).ok_or_else(|| EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: "need `dir`".into() })?;
-    std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("mkdir `{dir}`: {e}")))?;
-    render_video_with(s, p, |name, bytes| crate::file_cmds::write_file(&format!("{dir}/{name}"), bytes), |_, _| true)
+    let (dir, inferred_format, inferred_stem) = if let Some(d) = p.get("dir").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        (d.to_string(), None, None)
+    } else if let Some(path_str) = p.get("path").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        let pth = std::path::Path::new(path_str);
+        let d = pth.parent().map(|p| p.to_string_lossy().into_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| ".".into());
+        let ext = pth.extension().and_then(|e| e.to_str()).map(str::to_string);
+        let stem = pth.file_stem().and_then(|s| s.to_str()).map(str::to_string);
+        (d, ext, stem)
+    } else if let Some(doc_path) = s.active().and_then(|st| st.path.as_deref()) {
+        let pth = std::path::Path::new(doc_path);
+        let d = pth.parent().map(|p| p.to_string_lossy().into_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| ".".into());
+        (d, None, None)
+    } else {
+        return Err(EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: "need `dir` or `path`".into() });
+    };
+
+    let mut p_merged = p.clone();
+    p_merged["dir"] = json!(&dir);
+    if p_merged.get("format").is_none()
+        && let Some(ext) = inferred_format
+    {
+        p_merged["format"] = json!(ext);
+    }
+    if p_merged.get("stem").is_none()
+        && let Some(stem) = inferred_stem
+    {
+        p_merged["stem"] = json!(stem);
+    }
+    if dir != "." {
+        std::fs::create_dir_all(&dir).map_err(|e| EngineError::Other(format!("mkdir `{dir}`: {e}")))?;
+    }
+    render_video_with(s, &p_merged, |name, bytes| {
+        let full = if dir == "." { name.to_string() } else { format!("{dir}/{name}") };
+        crate::file_cmds::write_file(&full, bytes)
+    }, |_, _| true)
 }
 
 /// Render through a caller-owned writer. The writer receives one filename, never an ambient
@@ -343,7 +375,9 @@ pub fn render_video_with(
     store(&mut base);
     let frames = base.timeline.as_ref().map_or(1, |t| t.duration).max(1);
     let fps = base.timeline.as_ref().map_or(30.0, |t| t.fps).max(1.0);
-    let stem = base.name.rsplit_once('.').map_or(base.name.as_str(), |(a, _)| a).to_string();
+    let stem = p.get("stem").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| {
+        base.name.rsplit_once('.').map_or(base.name.as_str(), |(a, _)| a).to_string()
+    });
     let fmt = base.pixel_format();
     let bounds = base.bounds();
     let (w, h) = (bounds.width() as usize, bounds.height() as usize);
@@ -381,7 +415,7 @@ pub fn render_video_with(
         if !progress(frames, frames) {
             return Err(cancelled());
         }
-        let path = format!("{dir}/{name}");
+        let path = if dir.is_empty() || dir == "." { name } else { format!("{dir}/{name}") };
         return Ok(json!({"frames": frames, "file": path}));
     }
 

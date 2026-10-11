@@ -586,3 +586,20 @@ fn convert_to_linked_asks_where_to_write_the_contents() {
         assert_eq!(smart_source(&app, id), photocraft_doc::SmartSource::Linked { path: path.clone() });
     }
 }
+
+#[test]
+fn render_video_from_menu_asks_where_to_save_and_renders() {
+    let (mut app, open, _) = app();
+    let ctx = egui::Context::default();
+    let dir = std::env::temp_dir().join(format!("pcraft-render-video-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("anim.gif").to_string_lossy().into_owned();
+    menus::invoke(&mut app, &ctx, "file.export.renderVideo", json!({})).unwrap();
+    app.poll_file_dialog(&ctx, None);
+    assert!(matches!(open.borrow().as_slice(), [(FileDialogRequest::Save { suggested }, _)] if suggested == "Untitled.gif"));
+    answer(&open, Some(FileDialogAnswer::SaveTo(path.clone())));
+    app.poll_file_dialog(&ctx, None);
+    assert!(!app.ui.status_error, "{}", app.ui.status);
+    assert!(std::fs::metadata(&path).is_ok_and(|m| m.len() > 0));
+    std::fs::remove_dir_all(&dir).ok();
+}
