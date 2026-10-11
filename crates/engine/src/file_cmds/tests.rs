@@ -555,6 +555,59 @@ fn flatten_all_layer_effects_and_masks() {
 }
 
 #[test]
+fn flatten_all_layer_effects_keeps_raster_and_vector_masks() {
+    let mut s = session(40, 40, 8);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 20, "height": 20})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    let id = s.active().unwrap().active_layer.unwrap();
+    s.edit("fx", |doc, _| {
+        let l = doc.layer_mut(id).unwrap();
+        l.effects.enabled = true;
+        l.effects.items.push(photocraft_doc::Effect::ColorOverlay {
+            common: photocraft_doc::effects::FxCommon::new(photocraft_color::BlendMode::Normal, 1.0),
+            color: photocraft_color::Color::rgb(0.0, 1.0, 0.0),
+        });
+        Ok(())
+    })
+    .unwrap();
+    s.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 40})).unwrap();
+    s.execute("select.inverse", json!({})).unwrap();
+    s.execute("layer.layerMask.revealSelection", json!({})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    s.execute("layer.layerMask.enabled", json!({"enabled": false})).unwrap();
+    let before_disabled = composite(&s, 15, 15);
+    assert!(before_disabled[1] > 0.99, "disabled mask still shows the overlay");
+    assert_eq!(s.execute("file.scripts.flattenAllLayerEffects", json!({})).unwrap()["flattened"], 1);
+    let l = doc(&s).layer(id).unwrap();
+    assert!(l.mask.as_ref().is_some_and(|m| !m.enabled), "disabled raster mask stays on the layer");
+    assert!(l.effects.items.is_empty());
+    let after_disabled = composite(&s, 15, 15);
+    assert!((after_disabled[1] - before_disabled[1]).abs() < 0.01);
+    s.undo();
+
+    s.execute("layer.layerMask.enabled", json!({"enabled": true})).unwrap();
+    let before_on = composite(&s, 15, 15);
+    assert!(before_on[0] > 0.99 && before_on[1] > 0.99, "enabled mask still hides the left");
+    assert_eq!(s.execute("file.scripts.flattenAllLayerEffects", json!({})).unwrap()["flattened"], 1);
+    let l = doc(&s).layer(id).unwrap();
+    assert!(l.mask.as_ref().is_some_and(|m| m.enabled));
+    let after_on = composite(&s, 15, 15);
+    assert!((after_on[0] - before_on[0]).abs() < 0.02 && (after_on[1] - before_on[1]).abs() < 0.02);
+    s.undo();
+
+    s.execute("layer.vectorMask.add", json!({"layer": id.0, "path": {"subpaths": [{"closed": true, "knots": [[25, 5], [35, 5], [35, 35], [25, 35]]}]}}))
+        .unwrap();
+    s.execute("layer.vectorMask.enabled", json!({"enabled": false})).unwrap();
+    assert_eq!(s.execute("file.scripts.flattenAllLayerEffects", json!({})).unwrap()["flattened"], 1);
+    let l = doc(&s).layer(id).unwrap();
+    assert!(l.vector_mask.as_ref().is_some_and(|m| !m.enabled));
+    assert!(s.undo());
+    assert!(doc(&s).layer(id).unwrap().vector_mask.is_some());
+}
+
+#[test]
 fn layers_to_files_writes_each_visible_layer() {
     let dir = tmp("layers");
     let mut s = session(12, 12, 8);
