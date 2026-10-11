@@ -90,15 +90,15 @@ When parity rises, raise `FLOOR` in `crates/ui-egui/src/parity.rs` (never lower 
 
 ### Claiming an issue
 
-Contributors can't assign themselves, so a plain comment is the claim. Before you start on an issue:
+Contributors can't assign themselves, so the claim is a **draft PR plus a comment**. Fresh issues get taken within minutes, and comments alone get overlooked, so claim before you write any code. Before you start on an issue:
 
-1. Read its comments (`gh issue view N --comments`). A comment that **starts with** `I'm working on this` and is less than 72 hours old (or whose author has since posted progress or opened a PR) means it is taken: pick another issue. Quoted replies don't count.
-2. Check for an open PR that fixes it (`gh pr list --search "N in:body" --state open`, or the issue's *Development* sidebar). If there is one, it is taken.
-3. Otherwise claim it **before writing code**: comment `I'm working on this.` (details may follow on the next lines).
-4. Put `Fixes #N` in the PR, and re-check for a competing PR right before opening it; if one appeared, review it instead of opening a duplicate.
-5. If you stop, comment `Releasing my claim.` so the issue is free again.
+1. **Check it's free.** Read its comments (`gh issue view N --comments`): a comment that **starts with** `I'm working on this` (quoted replies don't count) less than 72 hours old means it is taken. So does an open PR for it: check the issue's *Development* sidebar and search open PRs by number **and** by feature keywords (`gh pr list --state open --search "N"`, `--search "<keywords>"`), since some PRs cover an issue without naming it.
+2. **Claim it.** Open a draft PR from an empty commit (`git commit --allow-empty -m "WIP: <title> (#N)"`, push, `gh pr create --draft`) with `Fixes #N` in the body, then comment `I'm working on this.` on the issue (one line; details may follow).
+3. **Push progress often.** Commit and push to the draft as you go, even half-done work, so others can see the claim is alive and how far it got.
+4. **Re-check before every push and before marking it ready.** If a competing PR appeared, keep whichever one is further along: if yours is still empty or behind, hand over (comment on theirs, close your draft). Progress matters, not credit.
+5. **If you stop**, remove your claim right away: delete your `I'm working on this.` comment, close the draft (GitHub can't delete PRs) and delete its branch. Never leave an empty draft or a stale claim behind.
 
-A claim older than 72 hours with no PR and no update has expired; you may take the issue and mention the old claim in your comment.
+A claim expires after 72 hours with no new commit, PR or update; you may then take the issue and mention the old claim in your comment.
 
 ## 5. Before you finish a task
 
