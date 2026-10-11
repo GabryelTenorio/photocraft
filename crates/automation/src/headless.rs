@@ -91,6 +91,8 @@ impl Headless {
             }
             None => Some(requested.to_string()),
         };
+        let mut warnings = o.warnings;
+        append_missing_font_warnings(&mut warnings, &o.document);
         let index = self.session.add_document(o.document, path.filter(|_| !o.source_read_only));
         if let Some(st) = self.session.active_mut() {
             st.source_read_only = o.source_read_only;
@@ -102,7 +104,7 @@ impl Headless {
             "width": d.doc.size.width,
             "height": d.doc.size.height,
             "layers": d.doc.layer_count(),
-            "warnings": o.warnings,
+            "warnings": warnings,
         }))
     }
 
@@ -133,7 +135,7 @@ impl Headless {
             }
         };
         let target_text = target.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
-        let warnings = match &self.filesystem {
+        let mut warnings = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: write authority is absent".into())),
             Filesystem::TrustedLocal => {
                 let writer = self.writers.entry(doc.id.0).or_default();
@@ -145,6 +147,7 @@ impl Headless {
                 warnings
             }
         };
+        append_missing_font_warnings(&mut warnings, &doc);
         // A layered document save (PSD, PSB, OpenRaster or .pcraft) is a full write, not a flattened copy:
         // record the current revision as saved so the session stops reporting `dirty`, and make
         // the file the document's path. A flat export (PNG, JPEG, …) is a copy and leaves both
@@ -244,13 +247,35 @@ impl Headless {
         }
         // Background jobs that finished since the last request (or batch step) are applied first.
         self.sync_jobs();
-        if wait {
-            return Ok(self.session.execute(id, params)?);
+        let mut result = if wait {
+            self.session.execute(id, params)?
+        } else {
+            match self.session.start(id, params)? {
+                photocraft_engine::jobs::Started::Done(v) => v,
+                photocraft_engine::jobs::Started::Job(job) => json!({"job": job.0, "pending": true}),
+            }
+        };
+        if matches!(id, "type.create" | "type.setStyle" | "type.edit")
+            && let Some(doc) = self.session.active().map(|state| &state.doc)
+        {
+            let mut warnings = Vec::new();
+            append_missing_font_warnings(&mut warnings, doc);
+            if !warnings.is_empty()
+                && let Some(object) = result.as_object_mut()
+            {
+                object.insert("warnings".into(), json!(warnings));
+            }
         }
-        Ok(match self.session.start(id, params)? {
-            photocraft_engine::jobs::Started::Done(v) => v,
-            photocraft_engine::jobs::Started::Job(job) => json!({"job": job.0, "pending": true}),
-        })
+        Ok(result)
+    }
+}
+
+fn append_missing_font_warnings(warnings: &mut Vec<String>, doc: &photocraft_doc::Document) {
+    for family in photocraft_engine::type_extra_cmds::missing_fonts(doc) {
+        let warning = format!("font '{family}' is not installed; text may render using a fallback face");
+        if !warnings.contains(&warning) {
+            warnings.push(warning);
+        }
     }
 }
 
@@ -282,3 +307,46 @@ impl Headless {
         }
     }
 }
+
+#[cfg(test)]
+mod missing_font_warning_tests {
+    use super::*;
+
+    fn has_font_warning(value: &Value, family: &str) -> bool {
+        value["warnings"].as_array().is_some_and(|warnings| warnings.iter().any(|warning| warning.as_str().is_some_and(|warning| warning.contains(family))))
+    }
+
+    #[test]
+    fn headless_type_commands_report_missing_fonts() {
+        let family = "PhotoCraft Missing Family 3391";
+        let mut h = Headless::trusted_local();
+        h.command_run("file.new", json!({"width": 80, "height": 50})).unwrap();
+        let created = h.command_run("type.create", json!({"text": "First", "font": family, "size": 18})).unwrap();
+        assert!(has_font_warning(&created, family), "{created}");
+        let layer = created["layer"].as_u64().unwrap();
+
+        let edited = h.command_run("type.edit", json!({"layer": layer, "text": "Changed"})).unwrap();
+        assert!(has_font_warning(&edited, family), "{edited}");
+        let styled = h.command_run("type.setStyle", json!({"layer": layer, "font": family})).unwrap();
+        assert!(has_font_warning(&styled, family), "{styled}");
+    }
+
+    #[test]
+    fn open_and_save_include_missing_font_warnings() {
+        let family = "PhotoCraft Missing Family 3391 IO";
+        let dir = std::env::temp_dir().join(format!("photocraft-automation-font-warning-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("missing-font.pcraft");
+        let mut h = Headless::trusted_local();
+        h.command_run("file.new", json!({"width": 80, "height": 50})).unwrap();
+        h.command_run("type.create", json!({"text": "Persisted", "font": family, "size": 18})).unwrap();
+
+        let saved = h.save(None, Some(&path), None, &ExportOptions::default()).unwrap();
+        assert!(has_font_warning(&saved, family), "{saved}");
+        let opened = Headless::trusted_local().open(&path).unwrap();
+        assert!(has_font_warning(&opened, family), "{opened}");
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
