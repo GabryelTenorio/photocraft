@@ -361,10 +361,8 @@ pub fn style_paragraphs(t: &mut TextLayer, a: usize, b: usize, f: &dyn Fn(&mut P
     for pr in photocraft_text::layout::split_paragraphs(&t.text) {
         let mut st = style_at(pr.start);
         let terminal_empty = pr.start == pr.end;
-        let touches = (pr.start < b && pr.end > a)
-            || (a == b
-                && a >= pr.start
-                && (a < pr.end || terminal_empty || (pr.end == t.text.len() && !trailing_break)));
+        let touches =
+            (pr.start < b && pr.end > a) || (a == b && a >= pr.start && (a < pr.end || terminal_empty || (pr.end == t.text.len() && !trailing_break)));
         if touches {
             f(&mut st);
         }
@@ -1118,11 +1116,7 @@ mod tests {
     #[test]
     fn trailing_empty_paragraph_styles_without_changing_previous_lines() {
         let mut s = session();
-        let id = s
-            .execute("type.create", json!({"text":"a\nb\n","x":20,"y":20,"size":12,"font":"Inter","align":"left"}))
-            .unwrap()["layer"]
-            .as_u64()
-            .unwrap();
+        let id = s.execute("type.create", json!({"text":"a\nb\n","x":20,"y":20,"size":12,"font":"Inter","align":"left"})).unwrap()["layer"].as_u64().unwrap();
         let before = s.execute("type.info", json!({"layer":id})).unwrap();
         let previous_line = before["lines"][1].clone();
 

@@ -417,8 +417,7 @@ impl TextLayer {
     /// Paragraph runs covering exactly `text.len()` bytes, with an optional zero-length
     /// final run for an empty paragraph after a trailing line break.
     pub fn paragraph_runs(&self) -> Vec<text::ParagraphRun> {
-        let mut runs =
-            normalize_runs(&self.text, self.paragraphs.iter().map(|r| (r.len, r.style.clone())).collect(), text::ParagraphStyle::default());
+        let mut runs = normalize_runs(&self.text, self.paragraphs.iter().map(|r| (r.len, r.style.clone())).collect(), text::ParagraphStyle::default());
         // The final empty paragraph owns the synthetic terminal paragraph marker in PSD
         // text. Its formatting has no source bytes; do not lose that last run when normalizing.
         if self.text.ends_with(['\r', '\n'])
