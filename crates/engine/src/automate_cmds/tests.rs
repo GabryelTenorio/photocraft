@@ -55,6 +55,38 @@ fn browse_runs_a_script_file() {
 }
 
 #[test]
+fn recording_browse_script_captures_each_effect_once() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 12, "height": 8})).unwrap();
+    s.execute("actions.record", json!({"name": "Rotate script"})).unwrap();
+    let run = s.execute("file.scripts.browse", json!({"steps": [["image.imageRotation.90cw", {}]]})).unwrap();
+    assert_eq!(run["ok"], true);
+    assert_eq!((s.active().unwrap().doc.size.width, s.active().unwrap().doc.size.height), (8, 12));
+    let done = s.execute("actions.stop", json!({})).unwrap();
+    assert_eq!(done["steps"], 1, "Browse must not be recorded a second time");
+    let recorded = s.execute("actions.get", json!({"action": "Rotate script"})).unwrap();
+    assert_eq!(recorded["steps"], json!([["image.imageRotation.90cw", {}]]));
+
+    s.execute("image.imageRotation.90ccw", json!({})).unwrap();
+    assert_eq!((s.active().unwrap().doc.size.width, s.active().unwrap().doc.size.height), (12, 8));
+    let replay = s.execute("actions.play", json!({"action": "Rotate script"})).unwrap();
+    assert_eq!(replay["ran"], 1);
+    assert_eq!((s.active().unwrap().doc.size.width, s.active().unwrap().doc.size.height), (8, 12));
+}
+
+#[test]
+fn standalone_browse_script_still_runs_and_journals_concrete_commands() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 12, "height": 8})).unwrap();
+    let start = s.journal.len();
+    let result = s.execute("file.scripts.browse", json!({"steps": [["image.imageRotation.90cw", {}]]})).unwrap();
+    assert_eq!(result["ok"], true);
+    assert_eq!(s.journal.len(), start + 2, "the child and Browse retain their diagnostic journal entries");
+    assert_eq!(s.journal[start].0, "image.imageRotation.90cw");
+    assert_eq!((s.active().unwrap().doc.size.width, s.active().unwrap().doc.size.height), (8, 12));
+}
+
+#[test]
 fn script_events_fire_on_new_and_close() {
     let mut s = Session::new();
     let r = s
@@ -111,6 +143,21 @@ fn droplets_are_written_and_run() {
     let out = photocraft_codecs::decode(&std::fs::read(format!("{dir}/out/img0.png")).unwrap()).unwrap();
     assert_eq!(out.dimensions(), (20, 40));
     assert!(s.execute("file.automate.createDroplet", json!({"path": path, "steps": [["bogus", {}]]})).is_err());
+}
+
+#[test]
+fn batch_and_droplets_skip_recorded_view_steps() {
+    let dir = tmp("view-steps");
+    images(&dir, 1, 40, 20);
+    let steps = json!([["view.zoomIn", {}], ["image.imageRotation.90cw", {}], ["view.fitOnScreen", {}]]);
+    let mut s = Session::new();
+    let r = s.execute("file.automate.batch", json!({"steps": steps, "input": dir.clone(), "output": format!("{dir}/batch"), "format": "png"})).unwrap();
+    assert!(r["errors"].as_array().unwrap().is_empty(), "{r}");
+    let out = photocraft_codecs::decode(&std::fs::read(format!("{dir}/batch/img0.png")).unwrap()).unwrap();
+    assert_eq!(out.dimensions(), (20, 40));
+    let r = s.execute("file.automate.createDroplet", json!({"path": format!("{dir}/Rotate"), "steps": steps})).unwrap();
+    let v: Value = serde_json::from_slice(&std::fs::read(r["path"].as_str().unwrap()).unwrap()).unwrap();
+    assert_eq!(v["action"]["steps"], json!([["image.imageRotation.90cw", {}]]));
 }
 
 #[test]
