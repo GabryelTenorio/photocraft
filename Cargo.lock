@@ -4175,6 +4175,7 @@ dependencies = [
 name = "photocraft"
 version = "0.6.0"
 dependencies = [
+ "android-activity",
  "arboard",
  "async-io",
  "core-graphics2",
@@ -4183,8 +4184,11 @@ dependencies = [
  "egui",
  "fmv-macos-events",
  "futures-lite",
+ "jni",
  "log",
  "muda",
+ "ndk",
+ "ndk-context",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",

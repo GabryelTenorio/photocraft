@@ -7,13 +7,32 @@ default-run = "photocraft"
 description = "Photocraft: an open-source, native image editor"
 build = "build.rs"
 
+# Android: the cdylib exports `android_main` (src/lib.rs) for the Gradle/NativeActivity skeleton;
+# the desktop binary stays src/main.rs. `rlib` keeps the lib linkable from integration tests.
+[lib]
+name = "photocraft"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "photocraft"
+path = "src/main.rs"
+
 [features]
 # Open HEIC/HEIF photos (the optional photocraft-heif crate). Not default so distributors choose
 # it; official builds (CI, packaging/, release) build with `--features heif`.
 heif = ["photocraft-codecs/heif"]
 
-[lints]
-workspace = true
+# Like crates/tablet, this crate relaxes the workspace-wide `unsafe_code = "forbid"` to `deny`:
+# android-activity's glue links `extern "Rust" { fn android_main }`, so the Android entry (lib.rs)
+# must export the unmangled symbol with `#[unsafe(no_mangle)]` — the crate's only unsafe op, scoped
+# with `#[allow(unsafe_code)]` in lib.rs. The clippy lints mirror `[workspace.lints]`.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
 
 [dependencies]
 photocraft-doc = { workspace = true }
@@ -29,17 +48,33 @@ photocraft-automation = { workspace = true }
 photocraft-ui-egui = { workspace = true }
 # Pen tablet pressure/tilt on macOS and X11 (the workspace's one isolated unsafe helper crate).
 photocraft-tablet = { workspace = true }
-eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence"] }
+# Android drops the desktop-only eframe backends (accesskit/wayland/x11). The `cfg(not(android))`
+# table below re-adds them only where they apply; Cargo merges its features with this base set.
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "persistence"] }
 egui = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Desktop (native, non-Android, non-wasm) only: file dialogs, clipboard, browser opener, saved
+# window layout, and eframe's accessibility/Wayland/X11 backends. None of these exist on Android.
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+eframe = { workspace = true, features = ["accesskit", "wayland", "x11"] }
 rfd = { workspace = true }
 arboard = { version = "3.6", features = ["wayland-data-control"] }
 open = "5"
 # Reads the saved window layout (eframe persistence) to drop values that would abort startup.
 ron = "0.12"
+
+# Android: android-activity bridges JNI to `android_main` (src/lib.rs). ndk/ndk-context/jni are the
+# glue eframe 0.36 / winit 0.30 already use; versions match Cargo.lock exactly. The NativeActivity
+# backend is chosen by `eframe/android-native-activity` -> egui-winit -> winit ->
+# android-activity/native-activity (android-activity has no default backend).
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { workspace = true, features = ["android-native-activity"] }
+android-activity = "0.6.1"
+ndk = "0.9.0"
+ndk-context = "0.1.1"
+jni = "0.22.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Safe CoreGraphics bindings, compatible with the existing macOS 11 deployment target.
