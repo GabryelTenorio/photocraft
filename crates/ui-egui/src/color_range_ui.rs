@@ -202,6 +202,20 @@ fn query_key(app: &PhotocraftApp, params: &Value) -> u64 {
     key.finish().max(1)
 }
 
+/// Keep the accelerated preview paths in sync with the engine's Color Range replacement.
+/// The full-resolution engine handles other combine modes itself.
+fn scope_preview(proxy: &Document, params: &Value, mask: &mut [f32]) {
+    if matches!(params.get("mode").and_then(Value::as_str), Some("add" | "subtract" | "intersect")) {
+        return;
+    }
+    if let Some(selection) = proxy.selection.as_ref() {
+        let prior = photocraft_algo::selection::mask_from_surface(Some(selection), proxy.bounds());
+        for (value, bound) in mask.iter_mut().zip(prior) {
+            *value = value.min(bound);
+        }
+    }
+}
+
 /// The selection mask `params` would make, on the proxy: the engine command run on a scratch
 /// session (Out Of Gamut uses the document's own proof setup).
 fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> Result<Vec<f32>, String> {
@@ -223,7 +237,7 @@ fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> 
             _ => photocraft_compose::render(proxy, area).px,
         };
         let invert = params.get("invert").and_then(Value::as_bool).unwrap_or(false);
-        return Ok(query
+        let mut mask: Vec<f32> = query
             .coverage(&px, area.width() as usize, k as f32, [0.0, 0.0])
             .into_iter()
             .map(|v| {
@@ -231,13 +245,17 @@ fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> 
                 // Match the command's GRAY8 mask rounding, before display interpolation.
                 (v.clamp(0.0, 1.0) * 255.0 + 0.5).floor() / 255.0
             })
-            .collect());
+            .collect();
+        scope_preview(proxy, params, &mut mask);
+        return Ok(mask);
     }
     if params.get("select").and_then(Value::as_str) == Some("outOfGamut") {
         let pv = app.session.color.proof(proxy.id);
         let (m, _) = photocraft_engine::color_cmds::gamut_mask(proxy, &pv.setup, pv.gamut_threshold).map_err(|e| e.to_string())?;
         let invert = params.get("invert").and_then(Value::as_bool).unwrap_or(false);
-        return Ok(m.iter().map(|v| f32::from(*v) / 255.0).map(|v| if invert { 1.0 - v } else { v }).collect());
+        let mut mask: Vec<f32> = m.iter().map(|v| f32::from(*v) / 255.0).map(|v| if invert { 1.0 - v } else { v }).collect();
+        scope_preview(proxy, params, &mut mask);
+        return Ok(mask);
     }
     let mut p = params.clone();
     // Eyedropper points are in document pixels; the proxy is 1/k the size.
@@ -258,9 +276,8 @@ fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> 
     }
     let mut s = photocraft_engine::Session::new();
     s.tools = app.session.tools.clone();
-    let mut doc = proxy.clone();
-    doc.selection = None;
-    s.add_document(doc, None);
+    // Preserve the proxy's pre-existing selection so preview and OK use the same scope.
+    s.add_document(proxy.clone(), None);
     if let Some(id) = app.session.active().and_then(|d| d.active_layer) {
         let _ = s.select_layer(id);
     }
@@ -627,6 +644,9 @@ pub fn pick_top(app: &mut PhotocraftApp, at: [f64; 2], mods: egui::Modifiers) ->
     if !at[0].is_finite() || !at[1].is_finite() || at[0] < 0.0 || at[1] < 0.0 || at[0] >= f64::from(doc.size.width) || at[1] >= f64::from(doc.size.height) {
         return false;
     }
+    if doc.selection.as_ref().is_some_and(|selection| selection.sample_channel(at[0].floor() as i32, at[1].floor() as i32, 0) <= 0.0) {
+        return false;
+    }
     pick(app, &mut f, at, mods);
     match app.ui.dialogs.last_mut() {
         Some(d) => {
@@ -683,6 +703,9 @@ pub fn pick(app: &PhotocraftApp, f: &mut Map<String, Value>, at: [f64; 2], mods:
     let (w, h) = (f64::from(st.doc.size.width.max(1)), f64::from(st.doc.size.height.max(1)));
     let [x, y] = at;
     let at = [x.floor().clamp(0.0, w - 1.0), y.floor().clamp(0.0, h - 1.0)];
+    if st.doc.selection.as_ref().is_some_and(|selection| selection.sample_channel(at[0] as i32, at[1] as i32, 0) <= 0.0) {
+        return;
+    }
     let tool = if mods.shift {
         "add"
     } else if mods.alt {
