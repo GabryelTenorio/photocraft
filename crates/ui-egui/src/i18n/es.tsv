@@ -2133,6 +2133,7 @@
 	Developing {name}	Revelando {name}
 	Cancelled {label}	Se canceló {label}
 	Esc to cancel	Esc para cancelar
+	Opened {name}	Se abrió {name}
 	Opening {name}	Abriendo {name}
 	Saved {name}	Guardado: {name}
 	Saving {name}	Guardando {name}
@@ -2388,6 +2389,20 @@ cameraRaw	Amount	Cantidad
 	Domed	Abovedado
 	Domed (Inverted)	Abovedado (invertido)
 	Diagonal (Descending)	Diagonal (descendente)
+	Contour Editor	Editor de contorno
+	Anti-aliased	Suavizado
+	Corner	Esquina
+	Gloss Contour	Contorno de brillo
+	Contour	Contorno
+	Cone - Inverted	Cono - invertido
+	Cove - Deep	Ensenada - profunda
+	Cove - Shallow	Ensenada - poco profunda
+	Half Round	Medio redondo
+	Ring	Anillo
+	Ring - Double	Anillo - doble
+	Rolling Slope - Descending	Pendiente ondulada - descendente
+	Rounded Steps	Pasos redondeados
+	Sawtooth 1	Diente de sierra 1
 
 	Red Eye Tool	Herramienta Ojos rojos
 	Red Eye	Ojos rojos
@@ -2615,6 +2630,8 @@ cameraData	Lens	Objetivo
 	Select the crop presets to delete	Seleccione los ajustes preestablecidos de recorte que desea eliminar
 	Enter a name for the crop preset	Introduzca un nombre para el ajuste preestablecido de recorte
 	There is no crop size or ratio to save	No hay ningún tamaño ni proporción de recorte que guardar
+	Scale:	Escala:
+	Snap to Origin	Ajustar a origen
 	Search settings…	Buscar ajustes…
 	No matching settings	No hay ajustes que coincidan
 	Amount:	Cantidad:
