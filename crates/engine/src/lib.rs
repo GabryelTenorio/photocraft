@@ -399,6 +399,11 @@ pub struct Session {
     /// A finished live stroke offered to the `paint.stroke` / `paint.pencil` that commits it
     /// ([`Session::offer_live_stroke`]).
     pub(crate) live_commit: Option<brush_cmds::LiveCommit>,
+    /// Segmentation provider configuration for Select Subject, Object Selection, and Remove Background.
+    /// Controls whether ML models (BiRefNet, SAM 2.1) are used via ComfyUI HTTP backend.
+    pub segmentation_backend: photocraft_algo::segment::SegmentationBackend,
+    /// ComfyUI server URL for ML segmentation (None = use default or PHOTOCRAFT_AI_BACKEND env var).
+    pub segmentation_model_url: Option<String>,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when

@@ -9,16 +9,25 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# ML model segmentation through ComfyUI HTTP API (opt-in feature)
+ml-segmentation = ["dep:ureq"]
+
 [dependencies]
 photocraft-geom = { workspace = true }
 photocraft-color = { workspace = true }
 photocraft-raster = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 rustfft = "6.4.1"
 
 # Parallel tiles on native; wasm builds stay single-threaded.
+# HTTP client for the ComfyUI backend (optional, only used with model segmentation).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rayon = { workspace = true }
+ureq = { version = "2", default-features = false, features = ["json"], optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+# Independent PNG reader/writer to check the ComfyUI client's hand-rolled PNG code.
+png = "0.18"
