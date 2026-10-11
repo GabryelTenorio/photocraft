@@ -146,6 +146,7 @@ fn apply(app: &mut PhotocraftApp, id: Option<LayerId>, change: Change, coalesce:
         .or(path_shape.as_ref());
     let default_width = app.ui.tool_options.stroke_width;
     let stroke_width = shape.and_then(|sh| sh.stroke.as_ref()).map_or(if default_width > 0.0 { default_width } else { 3.0 }, |s| s.width);
+    let style_width = crate::vector_ui::enabled_stroke_width(if stroke_width > 0.0 { stroke_width } else { default_width });
     if id.is_some() || path_shape.is_some() {
         let sh = shape.ok_or("The toolbar target is no longer a shape layer")?;
         let mut patch = match &change {
@@ -174,7 +175,7 @@ fn apply(app: &mut PhotocraftApp, id: Option<LayerId>, change: Change, coalesce:
             Change::Style(style) => {
                 let mut stroke = style.params();
                 if sh.stroke.as_ref().is_none_or(|stroke| stroke.width <= 0.0) {
-                    stroke["width"] = json!(crate::vector_ui::enabled_stroke_width(default_width));
+                    stroke["width"] = json!(style_width);
                 }
                 if sh.stroke.is_none() {
                     stroke["fill"] = photocraft_engine::vector_cmds::shape_paint_params(Some(&default_stroke(app)), None)["fill"].clone();
@@ -229,7 +230,7 @@ fn apply(app: &mut PhotocraftApp, id: Option<LayerId>, change: Change, coalesce:
         Change::Width(w) => o.stroke_width = w,
         Change::Style(style) => {
             o.shape_stroke = style;
-            o.stroke_width = crate::vector_ui::enabled_stroke_width(stroke_width);
+            o.stroke_width = style_width;
         }
         Change::Radius(r) => o.corner_radius = r,
         Change::Sides(n) => o.polygon_sides = n,
@@ -557,22 +558,33 @@ mod tests {
 
     #[test]
     fn deliberate_stroke_style_enables_zero_width_and_preserves_paint_with_undo() {
-        let mut app = app(8);
-        let id = rectangle(&mut app);
-        app.run("shape.edit", json!({"layer": id.0, "stroke": {"color": [0.125, 0.375, 0.625, 0.5], "width": 0}})).unwrap();
-        let original = shape(&app, id).clone();
-        let mut style = StrokeOptions::from(original.stroke.as_ref().unwrap());
-        style.dashes = vec![1.0, 3.0];
-        app.ui.tool_options.stroke_width = 0.0;
-        let history = app.session.active().unwrap().history.past_len();
-        apply(&mut app, Some(id), Change::Style(style), None).unwrap();
-        let stroke = shape(&app, id).stroke.as_ref().unwrap();
-        assert_eq!(stroke.width, 3.0);
-        assert_eq!(stroke.paint, original.stroke.as_ref().unwrap().paint);
-        assert_eq!(stroke.dashes, [1.0, 3.0]);
-        assert_eq!(app.session.active().unwrap().history.past_len(), history + 1);
-        app.run("edit.undo", json!({})).unwrap();
-        assert_eq!(shape(&app, id), &original);
+        for (default_width, expected_width) in [(0.0, 3.0), (10.0, 10.0)] {
+            let mut app = app(8);
+            let raster = app.session.active().unwrap().active_layer.unwrap();
+            let id = rectangle(&mut app);
+            app.run("shape.edit", json!({"layer": id.0, "stroke": {"color": [0.125, 0.375, 0.625, 0.5], "width": 0}})).unwrap();
+            let original = shape(&app, id).clone();
+            let mut style = StrokeOptions::from(original.stroke.as_ref().unwrap());
+            style.dashes = vec![1.0, 3.0];
+            app.ui.tool_options.stroke_width = default_width;
+            let history = app.session.active().unwrap().history.past_len();
+            apply(&mut app, Some(id), Change::Style(style), None).unwrap();
+            let stroke = shape(&app, id).stroke.as_ref().unwrap();
+            assert_eq!(stroke.width, expected_width);
+            assert_eq!(stroke.paint, original.stroke.as_ref().unwrap().paint);
+            assert_eq!(stroke.dashes, [1.0, 3.0]);
+            assert_eq!(app.ui.tool_options.stroke_width, expected_width);
+            assert_eq!(app.session.active().unwrap().history.past_len(), history + 1);
+            app.run("edit.undo", json!({})).unwrap();
+            assert_eq!(shape(&app, id), &original);
+            app.run("edit.redo", json!({})).unwrap();
+            assert_eq!(shape(&app, id).stroke.as_ref().unwrap().width, expected_width);
+            app.run("layer.select", json!({"layer": raster.0})).unwrap();
+            let next = crate::vector_ui::create_shape(&mut app, json!({"kind": "ellipse", "rect": [120, 20, 70, 50]})).unwrap();
+            let stroke = shape(&app, LayerId(next["layer"].as_u64().unwrap())).stroke.as_ref().unwrap();
+            assert_eq!(stroke.width, expected_width, "a new shape inherits the activated width after changing selection");
+            assert_eq!(stroke.dashes, [1.0, 3.0]);
+        }
     }
 
     fn harness(app: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
