@@ -7,6 +7,8 @@ use crate::theme::{self, Tokens};
 
 mod color_count;
 pub use color_count::color_count_row;
+mod type_ahead;
+pub use type_ahead::list_open as dropdown_list_open;
 
 /// Match the Spectrum application-menu padding and blue/white hover state in
 /// secondary menus (status bar, dock hamburger, layer context menus; #2187).
@@ -302,7 +304,10 @@ fn value_field_box(
     if !t.bevel {
         ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
     }
-    let suffix_w = if suffix.is_empty() { 0.0 } else { 16.0 };
+    // The number's slot ends 1 pt left of the suffix, by its measured width (the suffix is drawn
+    // 6 pt from the right edge), so a one-character unit like `%` leaves the number room (#3040).
+    let suffix_font = theme::mono(11.0);
+    let suffix_w = if suffix.is_empty() { 0.0 } else { ui.painter().layout_no_wrap(suffix.to_owned(), suffix_font.clone(), t.text_faint).size().x + 3.0 };
     // 1 pt higher than centred: digits have no descenders, so centred text looks low. The slot
     // is at least one text row tall, so a slim box's number isn't pushed out of it (#2823).
     let font = theme::mono(12.0);
@@ -339,7 +344,7 @@ fn value_field_box(
     };
     ui.data_mut(|d| d.insert_temp(slot.id, resp.id));
     if !suffix.is_empty() {
-        ui.painter().text(pos2(rect.right() - 6.0 - trailing, rect.center().y), Align2::RIGHT_CENTER, suffix, theme::mono(11.0), t.text_faint);
+        ui.painter().text(pos2(rect.right() - 6.0 - trailing, rect.center().y), Align2::RIGHT_CENTER, suffix, suffix_font, t.text_faint);
     }
     if step != 0.0 {
         // Round to the step before adding it, so whole-number fields drop decimals (55.4 + 1 = 56).
@@ -479,7 +484,9 @@ fn number_edit(ui: &mut Ui, value: &mut f32, range: std::ops::RangeInclusive<f32
         ui.memory_mut(|m| m.request_focus(id));
     }
     // Tab in a dialog goes from one of these to the next (field_tab.rs).
-    crate::field_tab::register(&ctx, id);
+    if ui.is_enabled() {
+        crate::field_tab::register(&ctx, id);
+    }
     let held = id.with("arithmetic");
     let math = ui.memory(|m| m.has_focus(id)) && ui.data(|d| d.get_temp(held)).unwrap_or(false);
     ui.data_mut(|d| d.insert_temp(held, math));
@@ -994,7 +1001,7 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
     // The wheel's notches add up over the button and the open list alike.
     let wheel_id = ui.make_persistent_id(id).with("wheel");
     let wheel = wheel && ui.is_enabled();
-    let (mut over_list, mut wheeled) = (false, false);
+    let (mut over_list, mut wheeled, mut keyed) = (false, false, false);
     // A wheel step scrolls the open list to the new value: at once over the list, the next frame
     // after a step over the button.
     let reveal_id = wheel_id.with("reveal");
@@ -1004,6 +1011,15 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
     let response =
         egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(420.0).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
             fit_widest_option(ui, options.iter().map(|(_, l)| tl!(l)));
+            // A typed letter jumps to the next option starting with it, ↩ closes the list (#1481).
+            let labels: Vec<&str> = options.iter().map(|(_, l)| tl!(l)).collect();
+            let shown = options.iter().position(|(v, _)| v == current);
+            if let Some((v, _)) = type_ahead::keys(ui, ui.make_persistent_id(id), shown, &labels).and_then(|i| options.get(i)) {
+                *current = v.clone();
+                chosen.push(v.clone());
+                reveal = true;
+                keyed = true;
+            }
             // Over the open list the wheel steps the value too, instead of scrolling the list.
             over_list = wheel && ui.rect_contains_pointer(ui.clip_rect());
             if over_list {
@@ -1052,7 +1068,8 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
         }
         chosen.extend(stepped);
     }
-    if wheel && wheel_rests(ui, wheel_id, wheeled) {
+    // Nor is the option under a pointer resting where the keyboard picked another.
+    if wheel_rests(ui, wheel_id, wheeled || keyed) {
         hovered = None;
     }
     (chosen, hovered)
@@ -1191,6 +1208,12 @@ pub fn dropdown_with_tooltips<T: PartialEq + Clone>(ui: &mut Ui, id: &str, curre
     let response =
         egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(420.0).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
             fit_widest_option(ui, options.iter().map(|(_, l, _)| tl!(l)));
+            let labels: Vec<&str> = options.iter().map(|(_, l, _)| tl!(l)).collect();
+            let shown = options.iter().position(|(v, _, _)| v == current);
+            if let Some((v, _, _)) = type_ahead::keys(ui, ui.make_persistent_id(id), shown, &labels).and_then(|i| options.get(i)) {
+                *current = v.clone();
+                changed = true;
+            }
             for (v, l, tip) in options {
                 let item = ui.selectable_label(v == current, tl!(l)).on_hover_text(tl!(tip));
                 if press.chosen(ui, &item) {
@@ -1388,6 +1411,30 @@ mod tests {
                 assert!(field.contains_rect(number), "{what}");
                 assert!((field.center().y - number.center().y - 1.0).abs() < 0.51, "{what}");
             }
+        }
+    }
+
+    /// The number's slot ends just left of its unit, by the unit's measured width: a one-character
+    /// `%` (the status bar zoom) leaves the number more room than the old fixed 16 pt, and a longer
+    /// unit never sits under the number (#3040).
+    #[test]
+    fn value_field_number_slot_stops_at_its_measured_suffix() {
+        for suffix in ["%", "px", "°", "×"] {
+            let mut h = Harness::new_ui_state(
+                move |ui, s: &mut (f32, egui::Rect, f32)| {
+                    let before = ui.cursor().min;
+                    super::compact_value_field(ui, &mut s.0, 0.0..=3200.0, suffix, 64.0, 18.0);
+                    s.1 = egui::Rect::from_min_size(before, egui::vec2(64.0, 18.0));
+                    s.2 = ui.painter().layout_no_wrap(suffix.to_owned(), crate::theme::mono(11.0), egui::Color32::WHITE).size().x;
+                },
+                (33.33, egui::Rect::NOTHING, 0.0),
+            );
+            h.run();
+            let number = h.get_by_role(egui::accesskit::Role::SpinButton).rect();
+            let (_, field, suffix_w) = *h.state();
+            let suffix_left = field.right() - 6.0 - suffix_w;
+            assert!(number.right() <= suffix_left, "{suffix}: number {number:?} runs under the suffix at {suffix_left}");
+            assert!(suffix_left - number.right() <= 1.5, "{suffix}: {:.1} pt wasted before the suffix", suffix_left - number.right());
         }
     }
 

@@ -425,6 +425,8 @@ pub const PLACE_EMBEDDED: &str = "Place Embedded";
 /// Place a file's bytes as a smart object layer, centred, and (with Preferences ▸ General ▸
 /// Resize Image During Place, on by default) scaled down to fit when larger than the canvas.
 /// `linked` makes it a linked smart object that refers to that path instead of embedding the bytes.
+/// With Preferences ▸ General ▸ Always Create Smart Objects When Placing off, an embedded place
+/// lands as a plain pixel layer instead (an explicit `"smartObject": false` asks for one).
 pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<String>, p: &Value) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let (cw, ch) = (d.doc.size.width as f64, d.doc.size.height as f64);
@@ -456,23 +458,31 @@ pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<S
         px = resize_surface(&px, scale, scale, Resample::Bicubic);
     }
     let px = translate_surface(&px, dx as i32, dy as i32);
+    // Preferences ▸ General ▸ Always Create Smart Objects When Placing (on by default): off, an
+    // embedded place lands as a plain pixel layer. A linked place is always a smart object.
+    let smart = linked.is_some() || p.get("smartObject").and_then(Value::as_bool).unwrap_or(s.prefs().general.always_create_smart_objects_when_placing);
     let source = match linked {
         Some(path) => SmartSource::Linked { path },
         None => SmartSource::Embedded { file_name: file_name(name), bytes: Arc::new(bytes) },
     };
-    let mut so = SmartObject::new(source, Affine { m: [scale, 0.0, 0.0, scale, dx, dy] }, Some(px));
-    // A vector source (SVG) renders at its placement scale instead of as a resampled raster.
-    if vector && let Some(sharp) = crate::smart_cmds::render(&d.doc, &so)? {
-        so.cache = Some(sharp);
-    }
     let layer_name = stem(name);
-    let label = if matches!(so.source, SmartSource::Linked { .. }) { "Place Linked" } else { PLACE_EMBEDDED };
+    let label = if matches!(&source, SmartSource::Linked { .. }) { "Place Linked" } else { PLACE_EMBEDDED };
     let id = s.edit(label, |doc, active| {
-        let id = doc.insert_above(*active, Layer::new(layer_name, LayerContent::Smart(so)));
+        let layer = if smart {
+            let mut so = SmartObject::new(source, Affine { m: [scale, 0.0, 0.0, scale, dx, dy] }, Some(px));
+            // A vector source (SVG) renders at its placement scale instead of as a resampled raster.
+            if vector && let Some(sharp) = crate::smart_cmds::render(doc, &so)? {
+                so.cache = Some(sharp);
+            }
+            Layer::new(layer_name, LayerContent::Smart(so))
+        } else {
+            Layer::new(layer_name, LayerContent::Raster(px))
+        };
+        let id = doc.insert_above(*active, layer);
         *active = Some(id);
         Ok(id)
     })?;
-    Ok(json!({"layer": id.0, "scale": scale * 100.0, "bounds": [dx, dy, dx + w * scale, dy + h * scale]}))
+    Ok(json!({"layer": id.0, "scale": scale * 100.0, "bounds": [dx, dy, dx + w * scale, dy + h * scale], "smartObject": smart}))
 }
 
 fn place(s: &mut Session, p: &Value, linked: bool) -> Result<Value> {
@@ -1260,84 +1270,14 @@ fn color_lookup_tables(s: &mut Session, p: &Value) -> Result<Value> {
 
 // ---------- guides ----------
 
-fn push_unique(v: &mut Vec<f32>, x: f64) {
-    let x = x as f32;
+fn push_unique(v: &mut Vec<f64>, x: f64) {
     if !v.iter().any(|g| (g - x).abs() < 0.01) {
         v.push(x);
     }
 }
 
-/// Guide positions for `count` columns (or rows) across `[start, end]`, Photoshop-style: both
-/// edges of every column; a fixed `width` packs columns from `start` (or centres them).
-fn layout_lines(start: f64, end: f64, count: u32, width: Option<f64>, gutter: f64, center: bool, out: &mut Vec<f32>) {
-    let avail = (end - start).max(0.0);
-    if count == 0 {
-        return;
-    }
-    let n = count as f64;
-    let w = width.unwrap_or(((avail - (n - 1.0) * gutter) / n).max(0.0));
-    let total = n * w + (n - 1.0) * gutter;
-    let x0 = if center && width.is_some() { start + (avail - total) / 2.0 } else { start };
-    for i in 0..count {
-        let a = x0 + i as f64 * (w + gutter);
-        push_unique(out, a);
-        push_unique(out, a + w);
-    }
-}
-
 fn new_guide_layout(s: &mut Session, p: &Value) -> Result<Value> {
-    let d = s.active().ok_or(EngineError::NoDocument)?;
-    let (cw, ch) = (d.doc.size.width as f64, d.doc.size.height as f64);
-    let m = match p.get("margin") {
-        Some(Value::Array(a)) if a.len() == 4 => [0, 1, 2, 3].map(|i| a[i].as_f64().unwrap_or(0.0)),
-        Some(v) if v.is_number() => [v.as_f64().unwrap_or(0.0); 4],
-        _ => [0.0; 4],
-    };
-    let [top, left, bottom, right] = m;
-    let cols = p.get("columns").and_then(Value::as_u64).unwrap_or(0);
-    let rows = p.get("rows").and_then(Value::as_u64).unwrap_or(0);
-    // Each column/row costs a loop iteration plus a duplicate scan, so an
-    // absurd count from the caller would block the app for minutes (#704).
-    // Photoshop's own dialog caps at 32; 1000 is a generous ceiling that
-    // still finishes instantly.
-    const MAX_GUIDE_LINES: u64 = 1000;
-    for (n, what) in [(cols, "columns"), (rows, "rows")] {
-        if n > MAX_GUIDE_LINES {
-            return Err(EngineError::BadParams { cmd: "view.newGuideLayout".into(), msg: format!("{what} must be {MAX_GUIDE_LINES} or fewer (got {n})") });
-        }
-    }
-    let (cols, rows) = (cols as u32, rows as u32);
-    let mut v: Vec<f32> = Vec::new();
-    let mut h: Vec<f32> = Vec::new();
-    let has_margin = m.iter().any(|x| *x != 0.0);
-    if has_margin {
-        push_unique(&mut v, left);
-        push_unique(&mut v, cw - right);
-        push_unique(&mut h, top);
-        push_unique(&mut h, ch - bottom);
-    }
-    let center = p.get("centerColumns").and_then(Value::as_bool).unwrap_or(false);
-    layout_lines(left, cw - right, cols, size_param(p, "width"), f64_param(p, "gutter").unwrap_or(0.0), center, &mut v);
-    layout_lines(top, ch - bottom, rows, size_param(p, "height"), f64_param(p, "rowGutter").or_else(|| f64_param(p, "gutter")).unwrap_or(0.0), center, &mut h);
-    if v.is_empty() && h.is_empty() {
-        return Err(EngineError::BadParams { cmd: "view.newGuideLayout".into(), msg: "give \"columns\", \"rows\" or a \"margin\"".into() });
-    }
-    let clear = p.get("clearExisting").and_then(Value::as_bool).unwrap_or(false);
-    let (nv, nh) = (v.len(), h.len());
-    s.edit("New Guide Layout", |doc, _| {
-        if clear {
-            doc.guides.vertical.clear();
-            doc.guides.horizontal.clear();
-        }
-        for x in v {
-            push_unique(&mut doc.guides.vertical, x as f64);
-        }
-        for y in h {
-            push_unique(&mut doc.guides.horizontal, y as f64);
-        }
-        Ok(())
-    })?;
-    Ok(json!({"vertical": nv, "horizontal": nh}))
+    crate::guide_layout::apply(s, p)
 }
 
 fn guides_from_shape(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1363,9 +1303,9 @@ fn clear_canvas_guides(s: &mut Session) -> Result<Value> {
     // Guides inside an artboard belong to it (View › Clear Selected Artboard Guides); the rest
     // are canvas guides. Without artboards every guide is a canvas guide.
     let boards: Vec<Rect> = d.doc.artboards().iter().map(|b| b.2.rect).collect();
-    let in_x = move |x: f32| boards.iter().any(|r| f64::from(x) > f64::from(r.x0) && f64::from(x) < f64::from(r.x1));
+    let in_x = move |x: f64| boards.iter().any(|r| x > f64::from(r.x0) && x < f64::from(r.x1));
     let boards_y: Vec<Rect> = d.doc.artboards().iter().map(|b| b.2.rect).collect();
-    let in_y = move |y: f32| boards_y.iter().any(|r| f64::from(y) > f64::from(r.y0) && f64::from(y) < f64::from(r.y1));
+    let in_y = move |y: f64| boards_y.iter().any(|r| y > f64::from(r.y0) && y < f64::from(r.y1));
     let n = d.doc.guides.vertical.iter().filter(|x| !in_x(**x)).count() + d.doc.guides.horizontal.iter().filter(|y| !in_y(**y)).count();
     if n == 0 {
         return Ok(json!({"cleared": 0}));
@@ -1438,7 +1378,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place Embedded…",
             &["File"],
             None,
-            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool? (default: Preferences > General > Resize Image During Place),"center":[x,y]?}"##,
+            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool? (default: Preferences > General > Resize Image During Place),"smartObject":bool? (default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
             native_doc,
             |s, p| place(s, p, false)
         ),
@@ -1465,7 +1405,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Fit Image…",
             &["File", "Automate"],
             None,
-            r##"{"width":px,"height":px,"dontEnlarge":bool=false,"resample":"bicubic|bilinear|nearest|lanczos|preserveDetails"="bicubic"}"##,
+            r##"{"width":px,"height":px,"dontEnlarge":bool=false,"resample":"automatic|preserveDetails|bicubicSmoother|bicubicSharper|bicubicAutomatic|bicubic|nearest|bilinear|lanczos"="bicubic"}"##,
             has_doc,
             fit_image
         ),
@@ -1538,7 +1478,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Guide Layout…",
             &["View"],
             None,
-            r##"{"columns":n=0,"width":px?,"gutter":px=0,"rows":n=0,"height":px?,"rowGutter":px=gutter,"margin":px|[top,left,bottom,right]=0,"centerColumns":bool=false,"clearExisting":bool=false}"##,
+            r##"{"columns":n=0,"width":px?,"gutter":px=0,"rows":n=0,"height":px?,"rowGutter":px=gutter,"margin":px|[top,left,bottom,right]=0,"centerColumns":bool=false,"clearExisting":bool=false,"target":"document|selectedArtboards"="document"}"##,
             has_doc,
             new_guide_layout
         ),
