@@ -29,7 +29,9 @@ pub struct CanvasToolMenu {
 /// One menu row: label and command id. `None` is a separator.
 pub type Row = Option<(&'static str, &'static str)>;
 
-/// Right-click while transforming: what the box's handles do.
+/// Right-click while transforming, in Photoshop's order: what the box's handles do, then Rotate
+/// and Flip, which turn the open box without committing it (`transform_tool::intercept`).
+/// Content-Aware Scale and Puppet Warp are greyed while a box is open.
 pub const TRANSFORM_MENU: &[Row] = &[
     Some(("Free Transform", "edit.freeTransform")),
     Some(("Scale", "edit.transform.scale")),
@@ -37,6 +39,17 @@ pub const TRANSFORM_MENU: &[Row] = &[
     Some(("Skew", "edit.transform.skew")),
     Some(("Distort", "edit.transform.distort")),
     Some(("Perspective", "edit.transform.perspective")),
+    Some(("Warp", "edit.transform.warp")),
+    None,
+    Some(("Content-Aware Scale", "edit.contentAwareScale")),
+    Some(("Puppet Warp", "edit.puppetWarp")),
+    None,
+    Some(("Rotate 180°", "edit.transform.rotate180")),
+    Some(("Rotate 90° Clockwise", "edit.transform.rotate90Cw")),
+    Some(("Rotate 90° Counter Clockwise", "edit.transform.rotate90Ccw")),
+    None,
+    Some(("Flip Horizontal", "edit.transform.flipHorizontal")),
+    Some(("Flip Vertical", "edit.transform.flipVertical")),
 ];
 
 /// Photoshop's pasteboard menu (right-click outside the image): the pasteboard colour, the choice
@@ -134,7 +147,16 @@ pub const PEN_MENU: &[Row] = &[
 pub fn applies(tool: Tool) -> bool {
     matches!(
         tool,
-        Tool::RectMarquee | Tool::EllipseMarquee | Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso | Tool::MagicWand | Tool::ObjectSelection | Tool::Pen
+        Tool::RectMarquee
+            | Tool::EllipseMarquee
+            | Tool::SingleRowMarquee
+            | Tool::SingleColumnMarquee
+            | Tool::Lasso
+            | Tool::PolygonLasso
+            | Tool::MagneticLasso
+            | Tool::MagicWand
+            | Tool::ObjectSelection
+            | Tool::Pen
     )
 }
 
@@ -162,13 +184,14 @@ pub fn available(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) -> b
 }
 
 /// Is `command` the transform box's current mode (checked in the transform menu)?
-/// Scale and Rotate are Free Transform's mode, so only Free Transform shows it checked.
-fn mode_checked(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) -> bool {
+/// Scale and Rotate are Free Transform's mode, so only Free Transform shows it checked. Warp is
+/// not a box mode (it is its own session), and `for_command` would read it as Free.
+pub(crate) fn mode_checked(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) -> bool {
     if menu.pasteboard {
         return pasteboard_choice(command) == Some(app.session.prefs().interface.canvas_color);
     }
     menu.transform
-        && !matches!(command, "edit.transform.scale" | "edit.transform.rotate")
+        && matches!(command, "edit.freeTransform" | "edit.transform.skew" | "edit.transform.distort" | "edit.transform.perspective")
         && app.ui.transform.as_ref().is_some_and(|t| t.mode == crate::state::TransformMode::for_command(command))
 }
 
@@ -235,6 +258,10 @@ fn choose_pasteboard(app: &mut PhotocraftApp, menu: &CanvasToolMenu, command: &s
 pub fn entry_enabled(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) -> bool {
     if menu.pasteboard {
         return PASTEBOARD_MENU.iter().flatten().any(|(_, id)| *id == command);
+    }
+    // Warp needs a layer or selection box: a lone mask, channel or path keeps the plain box.
+    if menu.transform && command == "edit.transform.warp" {
+        return app.ui.transform.as_ref().is_some_and(|t| t.warp.is_none() && t.target.is_none() && t.path.is_none());
     }
     if menu.transform || menu.tool != Tool::Pen {
         return crate::menus::is_enabled(app, command);
@@ -524,6 +551,86 @@ mod tests {
         h.run_steps(2);
         right_click(&mut h, outside, Modifiers::NONE);
         assert!(h.state().ui.canvas_tool_menu.is_none() && h.state().ui.brush_picker.is_some());
+    }
+
+    /// #2832: right-click over an open Free Transform box: Photoshop's transform menu. Skew
+    /// switches the box's mode; Rotate and Flip turn the box about its reference point without
+    /// committing it; Content-Aware Scale and Puppet Warp are greyed.
+    #[test]
+    fn right_click_during_free_transform_switches_modes_rotates_and_flips_the_box() {
+        let mut app = app();
+        app.ui.tool = Tool::RectMarquee;
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("select.rect", json!({"x": 4, "y": 6, "width": 10, "height": 8})).unwrap();
+        app.run("edit.fill", json!({"color": "#ff0000"})).unwrap();
+        app.run("select.deselect", json!({})).unwrap();
+        let mut h = harness(app);
+        let ctx = h.ctx.clone();
+        crate::menus::invoke(h.state_mut(), &ctx, "edit.freeTransform", json!({})).unwrap();
+        h.run_steps(2);
+        let center = h.state().last_canvas_rect.center();
+        let (revision, journal) = (h.state().session.active().unwrap().revision, h.state().session.journal.len());
+        right_click(&mut h, center, Modifiers::NONE);
+        let menu = h.state().ui.canvas_tool_menu.clone().expect("the transform menu");
+        assert!(menu.transform && rows(&menu) == TRANSFORM_MENU);
+        for (id, on) in
+            [("edit.contentAwareScale", false), ("edit.puppetWarp", false), ("edit.transform.rotate90Cw", true), ("edit.transform.flipVertical", true)]
+        {
+            assert_eq!(entry_enabled(h.state(), &menu, id), on, "{id}");
+        }
+        choose(h.state_mut(), &ctx, "edit.transform.skew");
+        assert_eq!(h.state().ui.transform.as_ref().unwrap().mode, crate::state::TransformMode::Skew);
+        let t = h.state().ui.transform.clone().unwrap();
+        let (q0, c) = (t.quad, t.pivot);
+        right_click(&mut h, center, Modifiers::NONE);
+        choose(h.state_mut(), &ctx, "edit.transform.flipHorizontal");
+        let q = h.state().ui.transform.as_ref().expect("the box stays open").quad;
+        for (a, b) in q.iter().zip(q0) {
+            assert!((a[0] - (2.0 * c[0] - b[0])).abs() < 1e-9 && (a[1] - b[1]).abs() < 1e-9, "mirrored about the reference point: {q0:?} -> {q:?}");
+        }
+        right_click(&mut h, center, Modifiers::NONE);
+        choose(h.state_mut(), &ctx, "edit.transform.rotate180");
+        let q = h.state().ui.transform.as_ref().unwrap().quad;
+        for (a, b) in q.iter().zip(q0) {
+            assert!((a[1] - (2.0 * c[1] - b[1])).abs() < 1e-9 && (a[0] - b[0]).abs() < 1e-9, "flipped then turned 180°: {q0:?} -> {q:?}");
+        }
+        let st = h.state().session.active().unwrap();
+        assert_eq!((st.revision, h.state().session.journal.len()), (revision, journal), "nothing is committed");
+    }
+
+    #[test]
+    fn transform_menu_follows_photoshop_order() {
+        assert_eq!(
+            labels(TRANSFORM_MENU),
+            vec![
+                Some("Free Transform"),
+                Some("Scale"),
+                Some("Rotate"),
+                Some("Skew"),
+                Some("Distort"),
+                Some("Perspective"),
+                Some("Warp"),
+                None,
+                Some("Content-Aware Scale"),
+                Some("Puppet Warp"),
+                None,
+                Some("Rotate 180°"),
+                Some("Rotate 90° Clockwise"),
+                Some("Rotate 90° Counter Clockwise"),
+                None,
+                Some("Flip Horizontal"),
+                Some("Flip Vertical"),
+            ]
+        );
+        // Over a box on editable type, Distort and Perspective are greyed (#2630).
+        let mut app = app();
+        app.run("type.create", json!({"x": 2, "y": 20, "text": "Hi", "size": 16})).unwrap();
+        crate::transform_tool::begin(&mut app, &Context::default()).unwrap();
+        assert!(open_transform(&mut app, [10.0, 10.0]));
+        let menu = app.ui.canvas_tool_menu.clone().unwrap();
+        for (id, on) in [("edit.transform.skew", true), ("edit.transform.distort", false), ("edit.transform.perspective", false)] {
+            assert_eq!(entry_enabled(&app, &menu, id), on, "{id}");
+        }
     }
 
     fn labels(rows: &[Row]) -> Vec<Option<&str>> {
