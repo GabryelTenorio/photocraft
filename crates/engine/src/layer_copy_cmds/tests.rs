@@ -155,3 +155,94 @@ fn bad_params_and_states_fail_without_changing_anything() {
     s.close(1);
     assert!(!s.is_enabled(cmd));
 }
+
+#[test]
+fn cross_document_copy_remaps_link_groups_and_isolates_movement() {
+    let mut s = Session::new();
+    // Document 0 (source) with two linked layers
+    s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+    let src_a = LayerId(s.execute("layer.new.layer", json!({"name": "Source A"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("select.rect", json!({"x": 0, "y": 0, "width": 8, "height": 8})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    let src_b = LayerId(s.execute("layer.new.layer", json!({"name": "Source B"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 8, "height": 8})).unwrap();
+    s.execute("edit.fill", json!({"color": "#00ff00"})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    s.execute("layer.select", json!({"layer": src_a.0})).unwrap();
+    s.execute("layer.select", json!({"layer": src_b.0, "mode": "add"})).unwrap();
+    s.execute("layer.linkLayers", json!({})).unwrap();
+
+    // Document 1 (destination) with two linked layers
+    s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+    let dst_a = LayerId(s.execute("layer.new.layer", json!({"name": "Destination A"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("select.rect", json!({"x": 0, "y": 0, "width": 8, "height": 8})).unwrap();
+    s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
+    let dst_b = LayerId(s.execute("layer.new.layer", json!({"name": "Destination B"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 8, "height": 8})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ffff00"})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    s.execute("layer.select", json!({"layer": dst_a.0})).unwrap();
+    s.execute("layer.select", json!({"layer": dst_b.0, "mode": "add"})).unwrap();
+    s.execute("layer.linkLayers", json!({})).unwrap();
+
+    let dst_group = doc(&s, 1).layer(dst_a).unwrap().link_group;
+    assert!(dst_group.is_some());
+    assert_eq!(doc(&s, 1).layer(dst_b).unwrap().link_group, dst_group);
+
+    // Copy source linked pair into destination document
+    s.set_active(0);
+    s.execute("layer.select", json!({"layer": src_a.0})).unwrap();
+    s.execute("layer.select", json!({"layer": src_b.0, "mode": "add"})).unwrap();
+    let r = s.execute("layer.copyToDocument", json!({"document": 1})).unwrap();
+    let copied_ids: Vec<LayerId> = r["layers"].as_array().unwrap().iter().map(|v| LayerId(v.as_u64().unwrap())).collect();
+    assert_eq!(copied_ids.len(), 2);
+
+    let copy_a = copied_ids[0];
+    let copy_b = copied_ids[1];
+    let copy_group = doc(&s, 1).layer(copy_a).unwrap().link_group;
+    assert!(copy_group.is_some());
+    assert_ne!(copy_group, dst_group, "copied pair gets a distinct link group");
+    assert_eq!(doc(&s, 1).layer(copy_b).unwrap().link_group, copy_group);
+
+    // Move Destination A: Destination B moves with it, copied pair stays in place
+    s.execute("layer.select", json!({"layer": dst_a.0})).unwrap();
+    s.execute("layer.translate", json!({"dx": 1, "dy": 0})).unwrap();
+    assert_eq!(bounds(&s, 1, dst_a), Rect::new(1, 0, 9, 8));
+    assert_eq!(bounds(&s, 1, dst_b), Rect::new(11, 10, 19, 18));
+    assert_eq!(bounds(&s, 1, copy_a), Rect::new(0, 0, 8, 8));
+    assert_eq!(bounds(&s, 1, copy_b), Rect::new(10, 10, 18, 18));
+
+    // Move Copy A: Copy B moves with it, destination pair stays in place
+    s.execute("layer.select", json!({"layer": copy_a.0})).unwrap();
+    s.execute("layer.translate", json!({"dx": 0, "dy": 2})).unwrap();
+    assert_eq!(bounds(&s, 1, dst_a), Rect::new(1, 0, 9, 8));
+    assert_eq!(bounds(&s, 1, dst_b), Rect::new(11, 10, 19, 18));
+    assert_eq!(bounds(&s, 1, copy_a), Rect::new(0, 2, 8, 10));
+    assert_eq!(bounds(&s, 1, copy_b), Rect::new(10, 12, 18, 20));
+
+    // Undo restores moved positions
+    s.undo();
+    assert_eq!(bounds(&s, 1, copy_a), Rect::new(0, 0, 8, 8));
+    assert_eq!(bounds(&s, 1, copy_b), Rect::new(10, 10, 18, 18));
+    s.undo();
+    assert_eq!(bounds(&s, 1, dst_a), Rect::new(0, 0, 8, 8));
+    assert_eq!(bounds(&s, 1, dst_b), Rect::new(10, 10, 18, 18));
+}
+
+#[test]
+fn single_linked_layer_copied_without_partner_becomes_unlinked() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+    let src_a = LayerId(s.execute("layer.new.layer", json!({"name": "Source A"})).unwrap()["layer"].as_u64().unwrap());
+    let src_b = LayerId(s.execute("layer.new.layer", json!({"name": "Source B"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("layer.select", json!({"layer": src_a.0})).unwrap();
+    s.execute("layer.select", json!({"layer": src_b.0, "mode": "add"})).unwrap();
+    s.execute("layer.linkLayers", json!({})).unwrap();
+
+    s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+    s.set_active(0);
+    s.execute("layer.select", json!({"layer": src_a.0})).unwrap();
+    let r = s.execute("layer.copyToDocument", json!({"document": 1})).unwrap();
+    let copy_id = copied(&r);
+    assert_eq!(doc(&s, 1).layer(copy_id).unwrap().link_group, None, "lone copied layer is unlinked");
+}

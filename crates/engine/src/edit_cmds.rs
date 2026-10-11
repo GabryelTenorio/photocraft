@@ -257,6 +257,7 @@ fn paste_layers(s: &mut Session, layers: &Document, dx: i32, dy: i32) -> Result<
     }
     crate::layer_copy_cmds::adapt_copies(s, &mut copies, &d.doc)?;
     crate::layer_copy_cmds::translate_copies(&mut copies, dx, dy);
+    crate::layer_copy_cmds::remap_copied_links(&mut copies, &d.doc);
     let patterns: Vec<_> = copies.patterns.iter().filter(|pat| !d.doc.patterns.iter().any(|q| q.id == pat.id)).cloned().collect();
     let id = s.edit("Paste", |doc, active| {
         doc.patterns.extend(patterns);

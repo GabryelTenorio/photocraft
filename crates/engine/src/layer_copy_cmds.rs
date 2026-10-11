@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use photocraft_color::ColorMode;
-use photocraft_doc::{Document, LayerContent, LayerId, SmartContentsId};
+use photocraft_doc::{Document, Layer, LayerContent, LayerId, SmartContentsId};
 use photocraft_geom::Rect;
 use serde_json::{Value, json};
 
@@ -98,6 +98,59 @@ pub(crate) fn translate_copies(copies: &mut Document, dx: i32, dy: i32) {
     }
 }
 
+/// Remaps link groups of copied layers so that internally linked sets remain linked
+/// with new, unused link groups in the destination document, while layers copied without
+/// their linked partners become unlinked.
+pub(crate) fn remap_copied_links(copies: &mut Document, doc: &Document) {
+    let mut counts = HashMap::<u64, usize>::new();
+    for (_, _, l) in copies.walk() {
+        if let Some(g) = l.link_group {
+            *counts.entry(g).or_default() += 1;
+        }
+    }
+
+    let mut used: Vec<u64> = doc.walk().iter().filter_map(|(_, _, l)| l.link_group).collect();
+    used.sort_unstable();
+    used.dedup();
+
+    let mut remap = HashMap::new();
+    for (&old_group, &count) in &counts {
+        if count >= 2 {
+            let next = if let Some(n) = used.last().copied().unwrap_or(0).checked_add(1) {
+                n
+            } else {
+                let mut free = 1u64;
+                for &g in &used {
+                    if g > free {
+                        break;
+                    }
+                    if g == free {
+                        free = free.saturating_add(1);
+                    }
+                }
+                free
+            };
+            if let Err(idx) = used.binary_search(&next) {
+                used.insert(idx, next);
+            }
+            remap.insert(old_group, next);
+        }
+    }
+
+    fn apply(l: &mut Layer, remap: &HashMap<u64, u64>) {
+        l.link_group = l.link_group.and_then(|g| remap.get(&g).copied());
+        if let Some(ch) = l.children_mut() {
+            for c in ch {
+                apply(c, remap);
+            }
+        }
+    }
+
+    for l in &mut copies.layers {
+        apply(l, &remap);
+    }
+}
+
 /// `layer.copyToDocument`.
 fn copy_to_document(s: &mut Session, p: &Value) -> Result<Value> {
     let dest = doc_index(s, p, "document")?.ok_or_else(|| bad("missing `document` (the destination's index)"))?;
@@ -162,6 +215,7 @@ fn copy_to_document(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let (dx, dy) = (dx.round() as i32, dy.round() as i32);
     translate_copies(&mut copies, dx, dy);
+    remap_copied_links(&mut copies, &ddoc);
     let patterns: Vec<_> = sdoc.patterns.iter().filter(|pat| !ddoc.patterns.iter().any(|d| d.id == pat.id)).cloned().collect();
     s.set_active(dest);
     let label = if ids.len() == 1 { "Duplicate Layer" } else { "Duplicate Layers" };
