@@ -860,6 +860,16 @@ impl PhotocraftApp {
         if gate.is_some() {
             self.session.authorize = None;
         }
+        // An explicit channel target (⌘2, ⌘\, ⌘3…) decides what the Layers panel targets too:
+        // ⌘2 after the mask was targeted goes back to the layer's pixels.
+        if result.is_ok() && id.starts_with("channel.target") {
+            if let Some(t) = self.session.active().map(|st| st.channel_view.target) {
+                use photocraft_engine::channel_cmds::ChannelTarget;
+                self.ui.mask_target = t == ChannelTarget::LayerMask;
+                self.ui.vector_mask_target = t == ChannelTarget::VectorMask;
+            }
+            self.sync_mask_targets();
+        }
         result
     }
 

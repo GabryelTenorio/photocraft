@@ -54,6 +54,16 @@ fn command_backslash_targets_the_layer_mask() {
     app.run("channel.target.composite", json!({})).unwrap();
     press(&mut app, Key::Backslash, Modifiers::COMMAND);
     assert_eq!(app.session.active().unwrap().channel_view.target, photocraft_engine::channel_cmds::ChannelTarget::LayerMask);
+    assert!(app.ui.mask_target && app.layer_mask_targeted(), "the Layers panel targets the mask too");
+    // Ctrl+2 goes back to the layer's pixels, in the Layers panel and for the tools.
+    press(&mut app, Key::Num2, Modifiers::COMMAND);
+    assert_eq!(app.session.active().unwrap().channel_view.target, photocraft_engine::channel_cmds::ChannelTarget::Composite);
+    assert!(!app.ui.mask_target && !app.layer_mask_targeted());
+    // The same after targeting the mask by its thumbnail (the panel's own flag).
+    app.ui.mask_target = true;
+    app.sync_mask_targets();
+    press(&mut app, Key::Num2, Modifiers::COMMAND);
+    assert!(!app.ui.mask_target && !app.layer_mask_targeted());
 }
 
 #[test]
