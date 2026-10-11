@@ -621,3 +621,57 @@ fn cmd_is_not_the_move_tool_for_selection_hand_zoom_pen_shape_or_type_tools() {
         assert!(cmd_moves(tool), "{tool:?}");
     }
 }
+
+/// The `erase` flag of the last brush stroke (`paint.stroke`, or the Pencil's `paint.pencil`).
+fn last_stroke_erases(h: &Harness<'static, PhotocraftApp>) -> Option<bool> {
+    let journal = &h.state().session.journal;
+    journal.iter().rev().find(|(id, _)| id == "paint.stroke" || id == "paint.pencil").and_then(|(_, p)| p["erase"].as_bool())
+}
+
+/// `~` held with the Brush or the Pencil erases with that tool's own brush (#3439); the tool
+/// stays, and the next stroke without the key paints again.
+#[test]
+fn tilde_held_with_the_brush_or_pencil_erases_with_its_brush() {
+    for tool in [Tool::Brush, Tool::Pencil] {
+        let mut h = harness(tool);
+        with_layer(&mut h);
+        key(&mut h, Key::Backtick, true, Modifiers::NONE);
+        drag_with(&mut h, Modifiers::NONE, 110.0, 130.0, 150.0, 130.0);
+        key(&mut h, Key::Backtick, false, Modifiers::NONE);
+        assert_eq!(last_stroke_erases(&h), Some(true), "{tool:?}");
+        assert_eq!(rgba(&h, 130, 130)[3], 0.0, "{tool:?}: erased to transparency");
+        assert_eq!(h.state().ui.tool, tool, "the tool stays");
+        drag_with(&mut h, Modifiers::NONE, 110.0, 140.0, 150.0, 140.0);
+        assert_eq!(last_stroke_erases(&h), Some(false), "{tool:?}: paints again");
+    }
+}
+
+/// Other tools ignore `~`: the Mixer Brush and the retouching tools have no erasing stroke.
+#[test]
+fn tilde_is_not_an_eraser_for_other_tools() {
+    let mut h = harness(Tool::Eraser);
+    with_layer(&mut h);
+    h.state_mut().ui.tool = Tool::CloneStamp;
+    key(&mut h, Key::Backtick, true, Modifiers::NONE);
+    assert!(!erase_held(h.state(), &h.ctx));
+    key(&mut h, Key::Backtick, false, Modifiers::NONE);
+}
+
+/// The key is a Tools › Temporary binding: rebound, the new key erases and `~` no longer does.
+#[test]
+fn rebound_brush_eraser_uses_the_new_key_only() {
+    let mut h = harness(Tool::Brush);
+    with_layer(&mut h);
+    let items = crate::prefs_ui::shortcut_items(h.state());
+    let item = items.iter().find(|i| i.0 == "tools.temporary.erase").map(|i| (i.2.clone(), i.3.clone()));
+    assert_eq!(item, Some((vec!["Tools".to_string(), "Temporary".to_string()], Some("`".into()))));
+    h.state_mut().run("edit.keyboardShortcuts", json!({"set": {"tools.temporary.erase": "F9"}})).unwrap();
+    key(&mut h, Key::Backtick, true, Modifiers::NONE);
+    drag_with(&mut h, Modifiers::NONE, 110.0, 130.0, 150.0, 130.0);
+    key(&mut h, Key::Backtick, false, Modifiers::NONE);
+    assert_eq!(last_stroke_erases(&h), Some(false), "` is no longer bound");
+    key(&mut h, Key::F9, true, Modifiers::NONE);
+    drag_with(&mut h, Modifiers::NONE, 110.0, 140.0, 150.0, 140.0);
+    key(&mut h, Key::F9, false, Modifiers::NONE);
+    assert_eq!(last_stroke_erases(&h), Some(true), "F9 erases");
+}
