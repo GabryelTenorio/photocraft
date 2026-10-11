@@ -704,6 +704,9 @@ impl Layouter {
                 prev_baseline = Some(baseline);
                 let last_line = li + 1 == nlines;
                 let adv = m.advance - m.trailing_whitespace;
+                // Line extent used for point-text pinning and `LineInfo`; widened below when an
+                // RTL start pin must keep trailing spaces.
+                let mut line_adv = adv;
                 let map = |o: usize| (prange.start + o.saturating_sub(prefix.len())).min(content_end);
 
                 // Kerning after each cluster (px), per run in visual cluster order: manual
@@ -835,9 +838,20 @@ impl Layouter {
                         0.0
                     }
                 } else {
-                    let target = match ps.align {
-                        TextAlign::Center | TextAlign::JustifyCenter => -(adv + line_kern) / 2.0,
-                        TextAlign::Right | TextAlign::JustifyRight => -(adv + line_kern),
+                    // Point text: pin the *start* edge to the click. For RTL that is the right
+                    // side, so Left (the Type tool default) must grow leftward — otherwise the
+                    // left edge stays put, earlier glyphs budge right, and the caret looks stuck
+                    // (Photoshop's physical-left RTL behaviour). Explicit Right/Center stay physical.
+                    // Trailing spaces are part of that growth: `adv` strips them (for box wrap /
+                    // ink bounds), but an RTL start pin must keep them or the caret jumps back
+                    // toward the anchor when Space is typed.
+                    let align = point_align_for_direction(ps.align, ps.direction, content);
+                    if matches!(align, TextAlign::Right | TextAlign::JustifyRight) && paragraph_is_rtl(ps.direction, content) {
+                        line_adv = adv + m.trailing_whitespace;
+                    }
+                    let target = match align {
+                        TextAlign::Center | TextAlign::JustifyCenter => -(line_adv + line_kern) / 2.0,
+                        TextAlign::Right | TextAlign::JustifyRight => -(line_adv + line_kern),
                         _ => indent_start,
                     };
                     target - m.offset
@@ -997,7 +1011,7 @@ impl Layouter {
                     range: map(lr.start)..map(lr.end).min(content_end),
                     baseline,
                     x0,
-                    x1: x0 + adv + extra - trailing_tabs,
+                    x1: x0 + line_adv + extra - trailing_tabs,
                     ascent,
                     descent,
                     paragraph: pi,
@@ -1080,6 +1094,59 @@ pub fn split_paragraphs(text: &str) -> Vec<Range<usize>> {
     }
     v.push(start..b.len());
     v
+}
+
+/// Strong RTL (R / AL) code points used for Auto paragraph direction.
+fn is_rtl_strong(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x0590..=0x05FF
+            | 0x0600..=0x06FF
+            | 0x0700..=0x074F
+            | 0x0750..=0x077F
+            | 0x0780..=0x07BF
+            | 0x07C0..=0x07FF
+            | 0x0870..=0x08FF
+            | 0xFB1D..=0xFB4F
+            | 0xFB50..=0xFDFF
+            | 0xFE70..=0xFEFF
+            | 0x1EE00..=0x1EEFF
+    )
+}
+
+fn is_ltr_strong(c: char) -> bool {
+    c.is_ascii_alphabetic() || matches!(c as u32, 0x0370..=0x052F)
+}
+
+/// Whether this paragraph reads right to left (forced Rtl, or Auto with a first strong RTL char).
+fn paragraph_is_rtl(direction: TextDirection, content: &str) -> bool {
+    match direction {
+        TextDirection::Rtl => true,
+        TextDirection::Ltr => false,
+        TextDirection::Auto => {
+            for c in content.chars() {
+                if is_rtl_strong(c) {
+                    return true;
+                }
+                if is_ltr_strong(c) {
+                    return false;
+                }
+            }
+            false
+        }
+    }
+}
+
+/// Point-text alignment: map physical Left to the start edge when the paragraph is RTL.
+fn point_align_for_direction(align: TextAlign, direction: TextDirection, content: &str) -> TextAlign {
+    if !paragraph_is_rtl(direction, content) {
+        return align;
+    }
+    match align {
+        TextAlign::Left => TextAlign::Right,
+        TextAlign::JustifyLeft => TextAlign::JustifyRight,
+        other => other,
+    }
 }
 
 fn strip_break(text: &str, r: &Range<usize>) -> usize {

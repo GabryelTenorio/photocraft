@@ -266,6 +266,30 @@ fn rtl_text_is_reordered() {
     assert!(l.clusters.iter().all(|c| c.range.end <= "שלום abc".len()));
 }
 
+/// Left-aligned RTL point text pins the *start* (right) edge so typing grows leftward — the
+/// caret moves, earlier glyphs don't budge right (unlike Photoshop's physical-left RTL).
+#[test]
+fn rtl_point_text_left_align_grows_from_the_right() {
+    let mut e = TextEngine::new();
+    // Auto + Arabic/Kurdish: first strong is RTL → Left means start = right edge at the anchor.
+    let short = e.layout(&point("ئا", 20.0), 72.0);
+    let long = e.layout(&point("ئەمە تێستە", 20.0), 72.0);
+    assert!(short.lines[0].x1.abs() < 0.5, "short RTL right edge on anchor: {:?}", short.lines[0]);
+    assert!(long.lines[0].x1.abs() < 0.5, "long RTL right edge on anchor: {:?}", long.lines[0]);
+    assert!(
+        long.lines[0].x0 < short.lines[0].x0 - 1.0,
+        "longer text extends further left: short={:?} long={:?}",
+        short.lines[0],
+        long.lines[0]
+    );
+    // Logical start (byte 0) stays at the anchor; the far end of the line is what moves left.
+    assert!((short.caret(0).0).abs() < 1.0, "RTL start caret at anchor: {}", short.caret(0).0);
+    assert!((long.caret(0).0).abs() < 1.0, "RTL start caret at anchor: {}", long.caret(0).0);
+    // Latin Left align is unchanged: left edge stays near the anchor.
+    let en = e.layout(&point("Hi", 20.0), 72.0);
+    assert!(en.lines[0].x0.abs() < 0.5, "LTR left edge on anchor: {:?}", en.lines[0]);
+}
+
 /// Builds a TrueType collection from standalone fonts (table offsets rebased).
 fn make_ttc(fonts: &[&[u8]]) -> Vec<u8> {
     let header_len = 12 + 4 * fonts.len();
@@ -1400,4 +1424,31 @@ fn a_served_script_fallback_joins_the_fallback_stack_once_it_arrives() {
     assert!(!db.fallback_stack().any(|f| f == "Cairo"), "not before it arrives");
     db.register_font_data(cairo.bytes.to_vec());
     assert!(db.fallback_stack().any(|f| f == "Cairo"), "{:?}", db.fallback_stack().collect::<Vec<_>>());
+}
+
+/// Trailing Space must keep moving the caret left (typing direction), not jump back to the
+/// anchor — `adv` strips trailing whitespace, so the RTL start pin has to put it back.
+#[test]
+fn rtl_trailing_space_caret_keeps_moving_left() {
+    let mut e = TextEngine::new();
+    let word = e.layout(&point("ئەمە", 20.0), 72.0);
+    let spaced = e.layout(&point("ئەمە ", 20.0), 72.0);
+    let (word_end, ..) = word.caret("ئەمە".len());
+    let (space_end, ..) = spaced.caret("ئەمە ".len());
+    assert!(
+        (word.lines[0].x1).abs() < 0.5 && (spaced.lines[0].x1).abs() < 0.5,
+        "right edge stays on the anchor: word={:?} spaced={:?}",
+        word.lines[0],
+        spaced.lines[0]
+    );
+    assert!(
+        space_end < word_end - 1.0,
+        "caret after Space continues left: word_end={word_end} space_end={space_end}"
+    );
+    assert!(
+        spaced.lines[0].x0 < word.lines[0].x0 - 1.0,
+        "trailing Space extends the line left: word={:?} spaced={:?}",
+        word.lines[0],
+        spaced.lines[0]
+    );
 }
