@@ -459,22 +459,23 @@ fn color_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, two_columns: bool) {
             p.add(egui::Shape::convex_polygon(vec![tip, base + side * 3.0, base - side * 3.0], ink(&s), Stroke::NONE));
         }
     } else {
-        // Switch Colors: a quarter-circle arrow with a head at each end.
-        let stroke = Stroke::new(1.3, ink(&s));
-        let (c, rad) = (pos2(sr.left() + 2.0, sr.bottom() - 1.0), sr.width() - 4.0);
-        let arc: Vec<_> = (0..=8)
+        // Switch Colors: a bold 2px quarter curve with a small filled head at each end, drawn on
+        // the 13px icon grid (arc radius 7 from (3, 4.5) to (9.5, 11), heads left and down).
+        let o = sr.min;
+        let ink = ink(&s);
+        let (c, rad) = (o + vec2(2.52, 11.48), 7.0_f32);
+        let (a0, a1) = ((4.5_f32 - 11.48).atan2(3.0 - 2.52), (11.0_f32 - 11.48).atan2(9.5 - 2.52));
+        let arc: Vec<_> = (0..=10)
             .map(|i| {
-                let a = std::f32::consts::FRAC_PI_2 * i as f32 / 8.0;
-                c + vec2(rad * a.sin(), -rad * a.cos())
+                let a = a0 + (a1 - a0) * i as f32 / 10.0;
+                c + vec2(rad * a.cos(), rad * a.sin())
             })
             .collect();
-        let (start, end) = (arc[0], arc[arc.len() - 1]);
-        p.add(egui::Shape::line(arc, stroke));
-        let head = 3.0;
-        p.line_segment([start, start + vec2(head, -head)], stroke);
-        p.line_segment([start, start + vec2(head, head)], stroke);
-        p.line_segment([end, end + vec2(-head, -head)], stroke);
-        p.line_segment([end, end + vec2(head, -head)], stroke);
+        p.add(egui::Shape::line(arc, Stroke::new(2.0, ink)));
+        for head in [[(0.2, 4.5), (3.4, 2.2), (3.4, 6.8)], [(9.5, 13.8), (7.2, 10.6), (11.8, 10.6)]] {
+            let pts = head.iter().map(|&(x, y)| o + vec2(x, y)).collect();
+            p.add(egui::Shape::convex_polygon(pts, ink, Stroke::NONE));
+        }
     }
     // Default Colors: a small black chip over a small white one.
     if let (Some(dr), Some(d)) = (dr, d.as_ref()) {
