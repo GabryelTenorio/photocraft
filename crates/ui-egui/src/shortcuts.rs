@@ -147,56 +147,6 @@ pub fn key_matches(sc: &KeyboardShortcut, key: Key, mods: Modifiers) -> bool {
     mods.alt == sc.modifiers.alt && shift_ok && mods.cmd_ctrl_matches(sc.modifiers)
 }
 
-/// The key a press stands for when its layout types something egui can't name, keyed by the text
-/// it typed and whether ⇧ was held.
-///
-/// - ⇧+ / ⇧− (#3102): on layouts with a key of its own for `+` (German, Italian, Spanish…) ⇧+
-///   types `*`, which egui has no key for, so it reports the physical key instead: `]` on German,
-///   which would be ⇧] (Increase Brush Hardness). ⇧- types `_` and arrives as the physical `/`.
-///   They become `+` and `-`, as ⇧= arrives as `+` on a US layout, so ⇧+ / ⇧− step the blend mode
-///   on every layout. A US ⇧] still arrives as `}` and ⇧8 (`*` too) as a digit.
-/// - The brush keys (#3109): Photoshop's German shortcuts are Ö / # for `[` / `]` (smaller,
-///   bigger) and ⇧Ö / ⇧# for the hardness, since `[` and `]` need AltGr there. `ö` and `#` arrive
-///   as the physical `;` and `\`, and ⇧# types `'`.
-fn layout_symbol(text: &str, shift: bool) -> Option<Key> {
-    Some(match (text, shift) {
-        ("*", true) => Key::Plus,
-        ("_", true) => Key::Minus,
-        ("ö", false) | ("Ö", true) => Key::OpenBracket,
-        ("#", false) | ("'", true) => Key::CloseBracket,
-        _ => return None,
-    })
-}
-
-/// Gives this frame's key presses the keys [`layout_symbol`] reads from their text, so every
-/// shortcut handler after it sees them. Only a press whose key egui took from the physical key
-/// (it had no name for the symbol) or from that very text is changed, and never a digit: US ⇧8
-/// types `*` and stays ⇧8 for the opacity keys.
-///
-/// What was typed comes as the text event next to the key press: right after it natively, right
-/// before it on the web.
-fn layout_symbols(ctx: &egui::Context) {
-    use egui::Event;
-    ctx.input_mut(|i| {
-        for at in 0..i.events.len() {
-            let text_at = if cfg!(target_arch = "wasm32") { at.checked_sub(1) } else { at.checked_add(1) };
-            let Some(Event::Text(text)) = text_at.and_then(|t| i.events.get(t)) else { continue };
-            let text = text.clone();
-            if let Some(Event::Key { key, physical_key, pressed: true, modifiers, .. }) = i.events.get_mut(at)
-                && !modifiers.command
-                && !modifiers.ctrl
-                && !modifiers.alt
-                && let Some(symbol) = layout_symbol(&text, modifiers.shift)
-                && physical_key.is_some()
-                && (*physical_key == Some(*key) || Key::from_name(&text) == Some(*key))
-                && !matches!(key, Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3 | Key::Num4 | Key::Num5 | Key::Num6 | Key::Num7 | Key::Num8 | Key::Num9)
-            {
-                *key = symbol;
-            }
-        }
-    });
-}
-
 /// Consume a press of `sc` (see [`key_matches`]); true when one was found.
 pub fn consume(ctx: &egui::Context, sc: &KeyboardShortcut) -> bool {
     ctx.input_mut(|i| {
@@ -378,9 +328,9 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if symmetry_editing && (app.ui.symmetry_transform.is_none() || egui::Popup::is_any_open(ctx)) {
         return;
     }
-    // Before any key handler: on a German layout ⇧+ is `+`, Ö is `[` and # is `]` (#3102, #3109).
+    // Before any key handler: per-layout symbol keys and the bracket fallback (#3102, #3109).
     if !ctx.text_edit_focused() {
-        layout_symbols(ctx);
+        crate::layout_keys::apply(ctx);
     }
     // Liquify is a full-window custom dialog with focusable sliders. egui can therefore claim
     // keyboard input before the distortion-mode handler below runs. Give Liquify's local
