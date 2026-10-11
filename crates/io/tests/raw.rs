@@ -34,6 +34,47 @@ fn cr2_opens() {
     assert_eq!(r.document.depth, SampleType::U16);
 }
 
+#[test]
+fn orfs_develop_and_survive_native_save_and_16_bit_export() {
+    let (w, h) = (40, 33);
+    let padded = photocraft_raw::testgen::orf_padded12(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, 4095));
+    let fields = photocraft_raw::testgen::orf_two_field12(w, h, &mosaic(&scene(w, h), w, [2, 1, 1, 0], 0, 4095));
+    let words = photocraft_raw::testgen::orf_word_packed12(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, 4095));
+    let compressed12 = photocraft_raw::testgen::orf_compressed(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, 4095), 12);
+    let compressed14 = photocraft_raw::testgen::orf_compressed(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 256, 16383), 14);
+    for (bytes, expected_size, name) in [
+        (padded, (36, 29), "shot.ORF"),
+        (fields, (40, 33), "shot.ORF"),
+        (words, (36, 29), "shot.ORF"),
+        (compressed12, (36, 29), "shot.ORI"),
+        (compressed14, (36, 29), "shot.ORF"),
+    ] {
+        let initial = import(name, &bytes).unwrap();
+        assert!(initial.warnings.iter().any(|w| w.contains("ORF") && w.contains("developed with default settings")));
+        let (tuned, wb_applied) =
+            photocraft_io::raw::import_raw_tuned(name, &bytes, &photocraft_io::raw::RawTuning { exposure: 0.5, temperature: 5.0, tint: 0.0 }).unwrap();
+        assert!(wb_applied, "Camera Raw must apply the file's white balance during development");
+        let doc = tuned.document;
+        assert_eq!((doc.size.width, doc.size.height), expected_size);
+        assert_eq!(doc.depth, SampleType::U16);
+        assert_eq!(doc.icc_profile.as_deref().unwrap().as_slice(), photocraft_cms::Builtin::ProPhotoCompat.profile().to_bytes().as_slice());
+        let pixels = doc.layers[0].surface().unwrap().read_region(doc.bounds());
+        assert_ne!(pixels, initial.document.layers[0].surface().unwrap().read_region(doc.bounds()));
+
+        // A usable raw import must retain the developed pixels and their colour profile through
+        // a native save and a flat export, rather than silently becoming its 8-bit JPEG preview.
+        let mut current = doc;
+        for name in ["edited.pcraft", "edited.png", "edited.tif"] {
+            let saved = photocraft_io::export(&current, name, &Default::default()).unwrap();
+            let back = import(name, &saved.bytes).unwrap().document;
+            assert_eq!((back.size, back.mode, back.depth), (current.size, current.mode, SampleType::U16), "{name}");
+            assert_eq!(back.icc_profile, current.icc_profile, "{name}");
+            assert_eq!(back.layers[0].surface().unwrap().read_region(back.bounds()), pixels, "{name}");
+            current = back;
+        }
+    }
+}
+
 /// A NEF-like file with Nikon's (undocumented) compression and a full-size
 /// baseline JPEG preview in IFD0.
 fn nef_with_preview() -> Vec<u8> {
