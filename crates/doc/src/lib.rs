@@ -423,7 +423,7 @@ impl TextLayer {
         // text. Its formatting has no source bytes; do not lose that last run when normalizing.
         if self.text.ends_with(['\r', '\n'])
             && let Some((last, preceding)) = self.paragraphs.split_last()
-            && last.len == 0
+            && last.len <= 1
             && preceding.iter().try_fold(0usize, |n, r| n.checked_add(r.len)) == Some(self.text.len())
         {
             runs.push((0, last.style.clone()));
