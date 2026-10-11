@@ -743,7 +743,13 @@ fn resize(layout: &mut DockLayout, heights: &[(Group, f32)], i: usize, dy: f32) 
 
 /// What `prefs.panelLayout` holds: the live layout and open panels.
 fn snapshot(app: &PhotocraftApp) -> Value {
-    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
+    // The Brush Settings window is a transient tool window, not a dock panel: the workspace must not
+    // remember it, or a launch with nothing open restores it (#3548).
+    let mut panels = serde_json::to_value(&app.ui.panels).unwrap_or(Value::Null);
+    if let Some(o) = panels.as_object_mut() {
+        o.remove("brush_settings");
+    }
+    json!({"workspace": app.ui.workspace, "panels": panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
 }
 
 /// Remember the layout in the preferences once the user lets go of the mouse (Workspace ›
@@ -765,6 +771,9 @@ pub fn restore(app: &mut PhotocraftApp) {
     }
     let saved = app.session.prefs().panel_layout.clone();
     apply(app, &saved);
+    // The Brush Settings window is transient (opened by F5 or the options-bar toggle): a launch with
+    // nothing open must not restore it, even from a layout saved before this rule (#3548).
+    app.ui.panels.brush_settings = false;
     if let Some(ws) = saved.get("workspace").and_then(Value::as_str) {
         app.ui.workspace = ws.to_string();
     }

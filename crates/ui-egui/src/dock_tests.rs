@@ -919,6 +919,23 @@ fn navigator_preview_fills_its_group_and_keeps_aspect() {
     }
 }
 
+/// #3548: Brush Settings is a transient floating window, not a dock panel. A launch must not
+/// restore it from a saved layout, and it is never written to one.
+#[test]
+fn restoring_a_saved_layout_never_reopens_brush_settings() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.session.prefs.edit(|p| p.workspace.remember_workspace_changes = true);
+    // A layout as an older build saved it: Brush Settings open.
+    let mut saved = snapshot(&app);
+    saved["panels"]["brush_settings"] = json!(true);
+    app.session.prefs.edit(|p| p.panel_layout = saved);
+    restore(&mut app);
+    assert!(!app.ui.panels.brush_settings, "Brush Settings is not restored on launch (#3548)");
+    // And a fresh snapshot never records it.
+    app.ui.panels.brush_settings = true;
+    assert!(snapshot(&app)["panels"].get("brush_settings").is_none(), "the window is not persisted");
+}
+
 fn strip_tabs(h: &Harness<'static, PhotocraftApp>, g: Group) -> Vec<(usize, Rect)> {
     last_strips(&h.ctx).into_iter().find(|s| s.group == g).map(|s| s.tabs).unwrap_or_else(|| panic!("{g:?} strip not drawn"))
 }
