@@ -3175,3 +3175,6 @@ cameraData	Lens	렌즈
 	Emulsion Down	감광면 아래로
 	Functions	기능
 	Print Resolution:	인쇄 해상도:
+
+# Batch / Image Processor
+	Include All Subfolders	모든 하위 폴더 포함

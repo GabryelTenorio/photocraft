@@ -2939,3 +2939,6 @@ cameraData	Lens	Объектив
 	Emulsion Down	Эмульсией вниз
 	Functions	Функции
 	Print Resolution:	Разрешение печати:
+
+# Batch / Image Processor
+	Include All Subfolders	Включить все вложенные папки

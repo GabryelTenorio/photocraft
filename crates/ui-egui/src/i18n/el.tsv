@@ -3691,3 +3691,6 @@ cameraData	Lens	Φακός
 	Emulsion Down	Γαλάκτωμα προς τα κάτω
 	Functions	Λειτουργίες
 	Print Resolution:	Ανάλυση εκτύπωσης:
+
+# Batch / Image Processor
+	Include All Subfolders	Συμπερίληψη όλων των υποφακέλων

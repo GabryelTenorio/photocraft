@@ -2578,3 +2578,6 @@ cameraData	Lens	鏡頭
 	Emulsion Down	感光乳劑面朝下
 	Functions	功能
 	Print Resolution:	列印解析度：
+
+# Batch / Image Processor
+	Include All Subfolders	包含所有子資料夾

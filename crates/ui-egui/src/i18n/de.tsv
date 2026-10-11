@@ -2632,3 +2632,6 @@ cameraData	Lens	Objektiv
 	Emulsion Down	Schichtseite unten
 	Functions	Funktionen
 	Print Resolution:	Druckauflösung:
+
+# Batch / Image Processor
+	Include All Subfolders	Alle Unterordner einschließen

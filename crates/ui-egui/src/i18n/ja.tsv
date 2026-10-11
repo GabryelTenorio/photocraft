@@ -3606,3 +3606,6 @@ cameraData	Lens	レンズ
 	Emulsion Down	乳剤面を下
 	Functions	機能
 	Print Resolution:	プリント解像度:
+
+# Batch / Image Processor
+	Include All Subfolders	すべてのサブフォルダーを含める

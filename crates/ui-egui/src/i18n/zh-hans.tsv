@@ -2608,3 +2608,6 @@ cameraData	Lens	镜头
 	Emulsion Down	药膜朝下
 	Functions	功能
 	Print Resolution:	打印分辨率：
+
+# Batch / Image Processor
+	Include All Subfolders	包含所有子文件夹
