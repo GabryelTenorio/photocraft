@@ -19,6 +19,7 @@
 
 [people.Skyfuller1303]
 display_name = "Skyfuller"
+sync_github_name = true
 
 [people.AlanRockefeller]
 sync_github_name = true
@@ -100,5 +101,3 @@ sync_github_name = true
 [people.TheTeslak]
 sync_github_name = true
 
-[people.Skyfuller1303]
-sync_github_name = true
