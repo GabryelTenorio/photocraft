@@ -3572,3 +3572,13 @@ cameraData	Lens	Obiektyw
 	Amount:	Wartość:
 	Protect:	Chroń:
 	Protect skin tones	Chroń odcienie skóry
+# Select and Mask view modes (#1754)
+	Onion Skin	Skórka cebuli
+	Marching Ants	Maszerujące mrówki
+	On Black	Na czarnym
+	On White	Na białym
+	On Layers	Na warstwach
+	Show Edge	Pokaż krawędź
+	Show Original	Pokaż oryginał
+	F cycles the views; hold X to see the image	F przełącza widoki; przytrzymaj X, aby zobaczyć obraz
+	Show rulers	Pokaż linijki

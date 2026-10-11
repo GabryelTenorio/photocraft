@@ -2628,3 +2628,13 @@ cameraData	Lens	Obiettivo
 	Amount:	Quantità:
 	Protect:	Proteggi:
 	Protect skin tones	Proteggi toni pelle
+# Select and Mask view modes (#1754)
+	Onion Skin	Velina
+	Marching Ants	Formiche in marcia
+	On Black	Su nero
+	On White	Su bianco
+	On Layers	Su livelli
+	Show Edge	Mostra bordo
+	Show Original	Mostra originale
+	F cycles the views; hold X to see the image	F scorre le viste; tieni premuto X per vedere l'immagine
+	Show rulers	Mostra righelli

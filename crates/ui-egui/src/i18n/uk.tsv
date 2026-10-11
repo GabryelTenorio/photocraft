@@ -3647,6 +3647,16 @@ cameraData	Lens	Об'єктив
 	Amount:	Величина:
 	Protect:	Захистити:
 	Protect skin tones	Захистити тони шкіри
+# Select and Mask view modes (#1754)
+	Onion Skin	Калька
+	Marching Ants	Мурашки
+	On Black	На чорному
+	On White	На білому
+	On Layers	На шарах
+	Show Edge	Показати край
+	Show Original	Показати початкове
+	F cycles the views; hold X to see the image	F перемикає види; утримуйте X, щоб побачити зображення
+	Show rulers	Показати лінійки
 	Frame Tool	Інструмент «Рамка»
 	Create a new rectangular frame	Створити прямокутну рамку
 	Create a new elliptical frame	Створити еліптичну рамку

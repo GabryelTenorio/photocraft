@@ -2566,6 +2566,16 @@ cameraData	Lens	镜头
 	Amount:	数量：
 	Protect:	保护：
 	Protect skin tones	保护肤色
+# Select and Mask view modes (#1754)
+	Onion Skin	洋葱皮
+	Marching Ants	蚂蚁线
+	On Black	黑底
+	On White	白底
+	On Layers	图层上
+	Show Edge	显示边缘
+	Show Original	显示原始
+	F cycles the views; hold X to see the image	按 F 切换视图；按住 X 查看图像
+	Show rulers	显示标尺
 	New Crop Preset…	新建裁剪预设…
 	Delete Crop Preset…	删除裁剪预设…
 	Select the crop presets to delete:	选择要删除的裁剪预设：
