@@ -386,7 +386,14 @@ pub fn pen_edit_existing(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
             let Some(sp) = path.subpaths.get(s) else { return false };
             let (knots, unlinked) = load_knots(&sp.knots, k == 0 && sp.knots.len() > 1);
             let kept = knots.len();
-            app.ui.pen = Some(PenPath { knots, unlinked, resume: Some(PenResume { name, layer, subpath: s, kept }), dragging: true, adjusting_last: true });
+            app.ui.pen = Some(PenPath {
+                knots,
+                unlinked,
+                resume: Some(PenResume { name, layer, subpath: s, kept }),
+                dragging: true,
+                adjusting_last: true,
+                ..Default::default()
+            });
             true
         }
         photocraft_vector::edit::Hit::Anchor([s, k]) => {

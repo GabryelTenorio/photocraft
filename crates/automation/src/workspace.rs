@@ -803,6 +803,7 @@ mod tests {
                 | "path.convertPoint"
                 | "path.addAnchor"
                 | "path.deleteAnchor"
+                | "path.replaceSubpath"
                 | "path.clippingPath.set"
                 | "path.rename"
                 | "select.toWorkPath"
