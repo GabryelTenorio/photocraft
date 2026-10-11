@@ -22,6 +22,16 @@ pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Se
 /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
 pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("ui.symmetryTransform", "Transform Symmetry", &[], None),
+    // Right-click the options bar's tool icon (#2825); `tool.resetAll` asks first.
+    ("tool.reset", "Reset Tool", &[], None),
+    ("tool.resetAll", "Reset All Tools", &[], None),
+    ("window.panel.group", "Change Panel Group", &[], None),
+    ("window.panel.layout", "Change Panel Layout", &[], None),
+    ("window.panel.move", "Move Panel", &[], None),
+    ("window.panel.float", "Float Panel", &[], None),
+    ("window.panel.dock", "Dock Panel", &[], None),
+    ("window.panel.activate", "Activate Panel", &[], None),
+    ("window.panel.close", "Close Panel", &[], None),
     ("file.open", "Open…", &["File"], Some("Cmd+O")),
     ("file.save", "Save", &["File"], Some("Cmd+S")),
     ("file.saveAs", "Save As…", &["File"], Some("Cmd+Shift+S")),
@@ -69,12 +79,16 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.theme.toggle", "Next Appearance Mode", &["Window"], None),
     ("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),
     ("window.theme.proMedium", "Pro Medium Gray Theme", &["Window", "Theme"], None),
+    ("window.theme.proLightGray", "Pro Light Gray Theme", &["Window", "Theme"], None),
+    ("window.theme.proLight", "Pro Light Theme", &["Window", "Theme"], None),
     ("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),
     ("window.theme.studioLight", "Studio Light Theme", &["Window", "Theme"], None),
     ("window.theme.classic", "Classic Theme", &["Window", "Theme"], None),
     ("window.theme.solarizedDark", "Solarized Dark Theme", &["Window", "Theme"], None),
     ("window.theme.adwaita", "Adwaita Light Theme", &["Window", "Theme"], None),
     ("window.theme.adwaitaDark", "Adwaita Dark Theme", &["Window", "Theme"], None),
+    ("window.theme.breezeLight", "Breeze Light Theme", &["Window", "Theme"], None),
+    ("window.theme.breezeDark", "Breeze Dark Theme", &["Window", "Theme"], None),
     ("window.theme.system", "Sync with system", &["Window", "Theme"], None),
     ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),
     ("help.discord", "Join the ArtCraft Discord…", &["Help"], None),
@@ -146,6 +160,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if id == "ui.symmetryTransform" {
         return crate::symmetry_ui::begin(app).map(|_| Value::Null);
     }
+    if let Some(r) = crate::tool_reset::invoke(app, id, &params) {
+        return r;
+    }
     // A pending Pen anchor is gesture state; Edit › Undo must match the keyboard.
     if id == "edit.undo" && crate::vector_ui::pen_undo_last_point(app) {
         return Ok(Value::Null);
@@ -154,6 +171,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if id == "image.crop" && crate::crop_ui::pending(app) {
         crate::canvas::commit_crop(app);
         return Ok(json!({"committed": true}));
+    }
+    if let Some(result) = crate::panel_docking::command(app, id, &params) {
+        return result;
     }
     // Help › Discord, website, GitHub, Report an Issue.
     if let Some(url) = crate::links::url_for(id) {
@@ -269,11 +289,12 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         }
         "file.save" => {
             // Writes back only to a layered file; a flat one goes through Save As.
+            let tga_bits = crate::targa_options_ui::bits_param(&params, id)?;
             match params.get("path").and_then(Value::as_str) {
-                Some(path) => app.save_as(Some(path.to_string())),
+                Some(path) => app.save_as_with(Some(path.to_string()), tga_bits),
                 None => match app.session.active().and_then(|d| d.path.clone()).filter(|p| photocraft_engine::file_cmds::saves_in_place(p)) {
                     Some(path) => app.save_in_place(path),
-                    None => app.save_as(None),
+                    None => app.save_as_with(None, tga_bits),
                 },
             }
         }
@@ -304,7 +325,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 Err("Open Recent is unavailable on the web".to_string())
             }
         }
-        "file.saveAs" => app.save_as(params.get("path").and_then(Value::as_str).map(str::to_string)),
+        "file.saveAs" => {
+            let tga_bits = crate::targa_options_ui::bits_param(&params, id)?;
+            app.save_as_with(params.get("path").and_then(Value::as_str).map(str::to_string), tga_bits)
+        }
         "view.zoomIn" | "view.zoomOut" | "view.fitOnScreen" | "view.actualPixels" => app.run(id, params),
         "window.newWindowForDocument" => {
             let doc = app.session.active_index().ok_or("no document")?;
@@ -324,12 +348,16 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         }
         "window.theme.pro"
         | "window.theme.proMedium"
+        | "window.theme.proLightGray"
+        | "window.theme.proLight"
         | "window.theme.studio"
         | "window.theme.studioLight"
         | "window.theme.classic"
         | "window.theme.solarizedDark"
         | "window.theme.adwaita"
-        | "window.theme.adwaitaDark" => {
+        | "window.theme.adwaitaDark"
+        | "window.theme.breezeLight"
+        | "window.theme.breezeDark" => {
             let k = crate::theme::ThemeKind::from_name(&id["window.theme.".len()..]).unwrap_or_default();
             app.set_theme(ctx, k);
             Ok(Value::Null)
@@ -367,6 +395,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         "layer.layerStyle.blendingOptions" if params.as_object().is_none_or(|o| o.is_empty()) => {
             crate::layer_style::open(app, Some(crate::layer_style::BLENDING)).map(|d| json!({"dialog": d})).ok_or_else(|| "no active layer".to_string())
         }
+        // ⇧⌘> / ⇧⌘<: the selected characters while typing, else the whole type layer.
+        "type.increaseSize" | "type.decreaseSize" | "type.increaseSizeMore" | "type.decreaseSizeMore" if params.as_object().is_none_or(|o| o.is_empty()) => {
+            let p = crate::type_tool::with_target(app, json!({})).ok_or("the active layer is not a type layer")?;
+            app.run(id, p)
+        }
         // Formatting menus follow an inline text selection when editing. Outside an edit,
         // snapshot the selected type layers; explicit automation targets retain their scope.
         t if (t.starts_with("type.antiAlias.")
@@ -392,9 +425,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
             Ok(Value::Null)
         }
-        // Solid Color uses the Color Picker; other adjustment / fill controls use Properties.
+        // Solid Color fills and solid-colour shapes use the Color Picker; other adjustment /
+        // fill / shape controls use Properties.
         "layer.layerContentOptions" => {
-            if let Some(dialog) = crate::solid_fill_ui::open(app) {
+            if let Some(dialog) = crate::solid_fill_ui::open(app).or_else(|| crate::shape_fill_ui::open(app)) {
                 return Ok(json!({"dialog": dialog}));
             }
             let r = app.run(id, params)?;
@@ -439,7 +473,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 && app.session.active_index().zip(app.session.clipboard.as_ref()).is_some_and(|(i, clip)| {
                     let v = &app.ui.views[i];
                     let pz = app.point_zoom();
-                    let (hw, hh) = (app.last_canvas_rect.width() / 2.0 / pz, app.last_canvas_rect.height() / 2.0 / pz);
+                    let (hw, hh) = (app.last_canvas_rect.width() / 2.0 / pz / app.ui.view.display_aspect(), app.last_canvas_rect.height() / 2.0 / pz);
                     let r =
                         photocraft_geom::Rect::new((v.center[0] - hw) as i32, (v.center[1] - hh) as i32, (v.center[0] + hw) as i32, (v.center[1] + hh) as i32);
                     !clip.bounds.intersect(&r).is_empty()
@@ -604,6 +638,8 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     match id {
+        "window.panel.activate" | "window.panel.layout" => true,
+        "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
         "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
         i if i.starts_with("file.openRecent.") => true,
         i if crate::links::url_for(i).is_some() => true,
@@ -658,6 +694,9 @@ const MODE_CHECKS: [&str; 11] = ["rgb", "grayscale", "cmyk", "lab", "multichanne
 
 /// Is a UI-level panel toggle currently on (for checkmarks)?
 fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
+    if let Some(checked) = crate::panel_docking::checked(app, id) {
+        return Some(checked);
+    }
     use photocraft_doc::{ColorMode, SampleType};
     if let Some(name) = id.strip_prefix("window.theme.").filter(|n| *n != "toggle") {
         let auto = app.session.prefs().interface.appearance_mode == photocraft_engine::prefs::AppearanceMode::Auto;
@@ -1327,6 +1366,11 @@ pub fn apply_workspace(app: &mut PhotocraftApp) {
     }
     // Presets use the default group order, heights and tabs (Reset brings everything back).
     app.ui.dock = Default::default();
+    app.ui.docking_reveal = None;
+    app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
+    app.ui.docking = None;
+    app.ui.docking_hidden.clear();
+    app.ui.docking_collapsed.clear();
     app.ui.dock_tabs = Default::default();
     let p = &mut app.ui.panels;
     let (nav, color, layers, history, props) = match app.ui.workspace.as_str() {

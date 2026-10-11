@@ -18,7 +18,15 @@ fn bad(msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: "edit.transform".into(), msg: msg.into() }
 }
 
-/// Document-space bounds a transform of `layer` starts from (what Free Transform frames).
+/// Layers a transform moves as a whole, even with a selection: groups, and the kinds that keep the
+/// transform instead of pixels (type, shapes, smart objects). Only pixel layers move just the
+/// selected pixels.
+pub fn moves_whole(layer: &Layer) -> bool {
+    matches!(layer.content, LayerContent::Group(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Smart(_))
+}
+
+/// Document-space bounds a transform of `layer` starts from (what Free Transform frames): the
+/// content within the selection, or all of it for a layer that [`moves_whole`] (#2630).
 /// Content scans are cached per tile: snapping asks for every layer's bounds per Move drag.
 pub fn transform_bounds(doc: &Document, layer: &Layer) -> Rect {
     let content = match &layer.content {
@@ -28,7 +36,7 @@ pub fn transform_bounds(doc: &Document, layer: &Layer) -> Rect {
     let content =
         if content.is_empty() { layer.mask.as_ref().map_or(Rect::EMPTY, |m| photocraft_compose::bounds::content_bounds(&m.surface)) } else { content };
     match &doc.selection {
-        Some(sel) if !layer.is_group() => content.intersect(&sel.content_bounds()),
+        Some(sel) if !moves_whole(layer) => content.intersect(&sel.content_bounds()),
         _ => content,
     }
 }
@@ -226,7 +234,7 @@ pub(crate) fn transform_layer(doc_sel: Option<&Surface>, group: Locks, l: &mut L
     }
     // With a selection only the selected pixels move, and so only the same region of a linked
     // mask (#205). Groups, type, shapes and smart objects move whole.
-    let mask_sel = doc_sel.filter(|_| !matches!(l.content, LayerContent::Group(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Smart(_)));
+    let mask_sel = doc_sel.filter(|_| !moves_whole(l));
     match &mut l.content {
         LayerContent::Group(g) => {
             for c in g.children.iter_mut() {
@@ -383,7 +391,21 @@ fn quad_param(p: &Value) -> Option<[[f64; 2]; 4]> {
     Some(q)
 }
 
+/// `p`, with the Channels panel's targeted alpha channel or Quick Mask as its `"target"` when it
+/// names neither a target nor a layer (#2835).
+fn with_panel_target(s: &Session, p: &Value) -> Value {
+    let mut p = if p.is_object() { p.clone() } else { json!({}) };
+    if p.get("target").is_none()
+        && p.get("layer").is_none()
+        && let (Some(m), Some(Value::Object(t))) = (p.as_object_mut(), crate::channel_cmds::targeted_channel(s))
+    {
+        m.extend(t);
+    }
+    p
+}
+
 fn transform(s: &mut Session, p: &Value) -> Result<Value> {
+    let p = &with_panel_target(s, p);
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let id = match p.get("layer").and_then(Value::as_u64) {
         Some(v) => Some(LayerId(v)),
@@ -744,6 +766,36 @@ mod tests {
         assert_eq!(active_bounds(&s), Rect::new(10, 10, 30, 20), "layer untouched");
     }
 
+    /// The Channels panel targets an alpha channel: Edit › Transform › Flip Horizontal and a
+    /// 50% `edit.transform` (no `target` param) work on the channel, not the layer (BUG-207-4).
+    #[test]
+    fn transforms_follow_the_targeted_alpha_channel() {
+        let mut s = session();
+        s.execute("channel.new", json!({})).unwrap();
+        s.edit("paint channel", |doc, _| {
+            let ch = &mut doc.channels[0].surface;
+            ch.fill_rect(Rect::new(10, 10, 20, 20), &[1.0]);
+            ch.fill_rect(Rect::new(10, 10, 12, 20), &[0.5]);
+            Ok(())
+        })
+        .unwrap();
+        s.execute("channel.target", json!({"channel": 0})).unwrap();
+        let layer = |s: &Session| crate::active_layer_of(s).unwrap().surface().unwrap().read_region(Rect::new(0, 0, 100, 100));
+        let (pixels, past) = (layer(&s), s.active().unwrap().history.past_len());
+        s.execute("edit.transform.flipHorizontal", json!({})).unwrap();
+        // 8-bit channel: 0.5 is stored as 128/255.
+        let ch = |s: &Session, x, y| (s.active().unwrap().doc.channels[0].surface.sample_channel(x, y, 0) * 10.0).round() / 10.0;
+        assert_eq!((ch(&s, 19, 15), ch(&s, 10, 15)), (0.5, 1.0), "the channel flips within its frame");
+        assert!(layer(&s) == pixels, "the layer is untouched");
+        assert_eq!(s.active().unwrap().history.past_len(), past + 1, "one undo step");
+        s.execute("edit.transform", json!({"matrix": [0.5, 0, 0, 0.5, 0, 0], "interpolation": "nearest"})).unwrap();
+        assert_eq!((ch(&s, 7, 7), ch(&s, 15, 15)), (1.0, 0.0), "the channel scales to 50%");
+        assert!(layer(&s) == pixels, "the layer is untouched");
+        s.undo();
+        s.undo();
+        assert_eq!((ch(&s, 10, 15), ch(&s, 19, 15)), (0.5, 1.0));
+    }
+
     #[test]
     fn transform_targets_fail_gracefully() {
         let mut s = session();
@@ -767,5 +819,33 @@ mod tests {
         let mut sel = Surface::new(PixelFormat::GRAY8);
         sel.fill_rect(Rect::new(0, 0, 4, 4), &[1.0]);
         assert!(matches!(split_gray_selected(&s, &sel), Ok(None)));
+    }
+
+    /// #2630: type can't be partly transformed, so a selection doesn't narrow the frame: Free
+    /// Transform (and the frame-based presets) act on the whole type layer.
+    #[test]
+    fn a_selection_does_not_narrow_a_type_layers_frame() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 200, "height": 120})).unwrap();
+        s.execute("type.create", json!({"x": 20, "y": 60, "text": "Hello", "size": 36})).unwrap();
+        let whole = active_bounds(&s);
+        s.execute("select.rect", json!({"x": whole.x0, "y": whole.y0, "width": whole.width() / 2, "height": whole.height()})).unwrap();
+        let st = s.active().unwrap();
+        let l = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        assert_eq!(transform_bounds(&st.doc, l), whole, "the frame is the whole type layer");
+        // Corners of the frame moved 10 px right: a pure translation of the whole text.
+        let q = [[whole.x0 + 10, whole.y0], [whole.x1 + 10, whole.y0], [whole.x1 + 10, whole.y1], [whole.x0 + 10, whole.y1]];
+        s.execute("edit.transform", json!({"quad": q})).unwrap();
+        let moved = active_bounds(&s);
+        assert!(moved.x0.abs_diff(whole.x0 + 10) <= 1 && moved.width().abs_diff(whole.width()) <= 1, "{whole:?} -> {moved:?}");
+        // Rotate 180° turns it about its own centre, not the selection's.
+        s.execute("edit.transform.rotate180", json!({})).unwrap();
+        let turned = active_bounds(&s);
+        assert!(turned.x0.abs_diff(moved.x0) <= 2 && turned.x1.abs_diff(moved.x1) <= 2, "{moved:?} -> {turned:?}");
+        // A pixel layer still frames only the selected pixels.
+        let mut s = session();
+        s.execute("select.rect", json!({"x": 10, "y": 10, "width": 5, "height": 10})).unwrap();
+        let st = s.active().unwrap();
+        assert_eq!(transform_bounds(&st.doc, st.doc.layer(st.active_layer.unwrap()).unwrap()), Rect::new(10, 10, 15, 20));
     }
 }

@@ -111,7 +111,8 @@ impl Default for ViewOptions {
             snap_to: SnapTo::default(),
             flip_horizontal: false,
             pixel_aspect: "square".into(),
-            pixel_aspect_correction: false,
+            // Photoshop shows non-square pixels corrected until the user turns it off.
+            pixel_aspect_correction: true,
             pattern_preview: false,
             pixel_art_preview: false,
             arrange: "tabs".into(),
@@ -133,6 +134,13 @@ impl ViewOptions {
     }
     pub fn hides_tabs(&self) -> bool {
         self.screen_mode != "standard"
+    }
+    /// Horizontal display scale of a document pixel: the pixel aspect ratio while View › Pixel
+    /// Aspect Ratio Correction is on, else 1 (square). The document's pixels never change.
+    pub fn display_aspect(&self) -> f32 {
+        let r = pixel_aspect_ratio(&self.pixel_aspect);
+        // `ui.set` can store any string; only the dialog's 0.1–10 range is drawn.
+        if self.pixel_aspect_correction && r.is_finite() { r.clamp(0.1, 10.0) } else { 1.0 }
     }
     /// Photoshop's full screen modes show no scroll bars.
     pub fn shows_scrollbars(&self) -> bool {
@@ -208,7 +216,7 @@ fn snap_slot<'a>(s: &'a mut SnapTo, key: &str) -> Option<&'a mut bool> {
 
 /// Window › <panel>: (panel, dock tab) for panels that live as tabs of a dock card.
 fn panel_tab(app: &PhotocraftApp, id: &str) -> Option<(&'static str, usize)> {
-    let pro = matches!(app.ui.theme, crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium);
+    let pro = app.ui.theme.is_pro();
     Some(match id {
         "window.panel.info" => ("navigator", 2),
         "window.panel.histogram" => ("navigator", 1),
@@ -477,13 +485,24 @@ fn run(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, p: &Value) -> Res
         let group = crate::dock::Group::from_key(panel);
         let collapsed = group.is_some_and(|g| app.ui.dock.is_collapsed(g));
         let (vis, cur) = panel_state(app, panel);
-        // Like Photoshop: choosing a visible panel's menu item again hides it. A collapsed
-        // group is expanded instead, so the menu item always brings the panel back (#129).
-        if *vis && *cur == tab && !collapsed && !id.starts_with("type.panels.") {
-            *vis = false;
+        let requested = match p.get("show").or_else(|| p.get("on")) {
+            None => None,
+            Some(value) => Some(value.as_bool().ok_or("show must be a boolean")?),
+        };
+        if let Some(show) = requested {
+            *vis = show;
+            if show {
+                *cur = tab;
+            }
         } else {
-            *vis = true;
-            *cur = tab;
+            // Like Photoshop: choosing a visible panel's menu item again hides it. A collapsed
+            // group is expanded instead, so the menu item always brings the panel back (#129).
+            if *vis && *cur == tab && !collapsed && !id.starts_with("type.panels.") {
+                *vis = false;
+            } else {
+                *vis = true;
+                *cur = tab;
+            }
         }
         let visible = *vis;
         if let Some(g) = group.filter(|_| visible) {
@@ -678,6 +697,8 @@ fn arrange(app: &mut PhotocraftApp, k: &str) -> Result<Value, String> {
 /// Screen rectangles for `n` documents in an arrangement (`None` = tabs). The active document
 /// always gets a cell; n-up layouts show that many documents starting from the active one.
 pub fn cells(layout: &str, rect: egui::Rect, n: usize) -> Option<Vec<egui::Rect>> {
+    use craft_ui::layout::{SplitAxis, SplitSize, split_rect};
+
     if n < 2 || !LAYOUTS.contains(&layout) {
         return None;
     }
@@ -690,17 +711,20 @@ pub fn cells(layout: &str, rect: egui::Rect, n: usize) -> Option<Vec<egui::Rect>
     Some(match layout {
         "tileAllVertically" => grid(n, 1, n),
         "tileAllHorizontally" => grid(1, n, n),
-        "twoUpVertical" => grid(2, 1, 2),
-        "twoUpHorizontal" => grid(1, 2, 2),
+        "twoUpVertical" => {
+            let panes = split_rect(rect, SplitAxis::Horizontal, SplitSize::Ratio(0.5), 0.0, 0.0)?;
+            vec![panes.first, panes.second]
+        }
+        "twoUpHorizontal" => {
+            let panes = split_rect(rect, SplitAxis::Vertical, SplitSize::Ratio(0.5), 0.0, 0.0)?;
+            vec![panes.first, panes.second]
+        }
         "threeUpVertical" => grid(3, 1, 3),
         "threeUpHorizontal" => grid(1, 3, 3),
         "threeUpStacked" => {
-            let half = rect.width() / 2.0;
-            let left = egui::Rect::from_min_size(rect.min, egui::vec2(half, rect.height()));
-            let r = egui::Rect::from_min_max(egui::pos2(rect.min.x + half, rect.min.y), rect.max);
-            let top = egui::Rect::from_min_max(r.min, egui::pos2(r.max.x, r.center().y));
-            let bottom = egui::Rect::from_min_max(egui::pos2(r.min.x, r.center().y), r.max);
-            vec![left, top, bottom]
+            let columns = split_rect(rect, SplitAxis::Horizontal, SplitSize::Ratio(0.5), 0.0, 0.0)?;
+            let rows = split_rect(columns.second, SplitAxis::Vertical, SplitSize::Ratio(0.5), 0.0, 0.0)?;
+            vec![columns.first, rows.first, rows.second]
         }
         "fourUp" => grid(2, 2, 4),
         "sixUp" => grid(3, 2, 6),
@@ -864,6 +888,24 @@ pub fn form_body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
             ui.end_row();
         }
     });
+    camera_data(ui, f);
+}
+
+/// File Info's read-only Camera Data section (`__camera`, from the document's EXIF/XMP).
+fn camera_data(ui: &mut egui::Ui, f: &Map<String, Value>) {
+    let Some(camera) = f.get("__camera").and_then(Value::as_object).filter(|c| !c.is_empty()) else { return };
+    ui.add_space(10.0);
+    ui.label(egui::RichText::new(tl!("Camera Data")).font(crate::theme::semibold(13.0)));
+    ui.add_space(4.0);
+    egui::Grid::new("form-camera-data").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
+        for (key, label) in photocraft_engine::file_cmds::CAMERA_FIELDS {
+            if let Some(v) = camera.get(key).and_then(Value::as_str) {
+                ui.label(crate::i18n::tr_ctx(crate::i18n::current(), "cameraData", label));
+                ui.add(egui::Label::new(v).selectable(true));
+                ui.end_row();
+            }
+        }
+    });
 }
 
 /// Folder the batch dialogs start from: next to the active document, else the working directory.
@@ -948,7 +990,7 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
             let kw = info["keywords"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; ")).unwrap_or_default();
             dialog(
                 app,
-                json!({"title": info["title"], "author": info["author"], "authorTitle": info["authorTitle"], "description": info["description"], "keywords": kw, "copyright": info["copyright"], "copyrightStatus": info["copyrightStatus"], "copyrightUrl": info["copyrightUrl"]}),
+                json!({"title": info["title"], "author": info["author"], "authorTitle": info["authorTitle"], "description": info["description"], "keywords": kw, "copyright": info["copyright"], "copyrightStatus": info["copyrightStatus"], "copyrightUrl": info["copyrightUrl"], "__camera": info["camera"]}),
                 json!({"copyrightStatus": ["unknown", "copyrighted", "publicDomain"]}),
             )
         }
@@ -961,10 +1003,7 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
             json!({"from": "any", "to": "rgb"}),
             json!({"from": ["any", "rgb", "grayscale", "cmyk", "lab", "indexed", "bitmap", "duotone", "multichannel"], "to": ["rgb", "grayscale", "cmyk", "lab"]}),
         ),
-        "view.newGuideLayout" => {
-            let fields = app.ui.view.guide_layout.clone();
-            dialog(app, fields, json!({}))
-        }
+        "view.newGuideLayout" => Some(Ok(json!({"dialog": crate::guide_layout_ui::open(app)}))),
         "type.warpText" => Some(Ok(json!({"dialog": crate::dialogs::open_command_dialog(app, id, label)}))),
         "file.export.layersToFiles" => {
             let (_, _, name) = doc?;
@@ -1121,6 +1160,17 @@ fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
     let suggested = format!("{stem} copy.psd");
     // The copy is of the document as it was when asked.
     app.pick_save(&suggested, move |app, path| {
+        // An RGB Targa asks for its bits per pixel first; the copy is written from the prompt.
+        let parked = app.with_document(doc.id, |app| {
+            let ask = crate::targa_options_ui::wants_prompt(app, &path);
+            if ask {
+                crate::targa_options_ui::park(app, path.clone(), true, false)?;
+            }
+            Ok(ask)
+        })?;
+        if parked {
+            return Ok(json!({"path": path, "warnings": []}));
+        }
         let export = app.services.export.as_ref().ok_or("no exporter configured")?;
         let (bytes, warnings) = export(&doc, &path, &crate::ExportSettings::default())?;
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
