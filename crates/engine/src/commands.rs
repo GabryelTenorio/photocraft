@@ -534,6 +534,18 @@ fn build() -> Vec<CommandSpec> {
                     if under.is_some() {
                         doc.shift(id, -1);
                     }
+                    // Like Photoshop, a group added inside a clipping mask joins it, so the layers
+                    // clipped above keep their base instead of clipping to the empty group.
+                    if let Some(path) = doc.path_of(id)
+                        && let Some((&k, parent)) = path.split_last()
+                    {
+                        let siblings = if parent.is_empty() { Some(doc.layers.as_slice()) } else { doc.layer_at(parent).and_then(Layer::children) };
+                        if siblings.and_then(|sib| sib.get(k + 1)).is_some_and(|above| above.clipped)
+                            && let Some(g) = doc.layer_at_mut(&path)
+                        {
+                            g.clipped = true;
+                        }
+                    }
                     crate::background_cmds::keep_background_at_bottom(bg, doc)?;
                     *active = Some(id);
                     Ok(id)
