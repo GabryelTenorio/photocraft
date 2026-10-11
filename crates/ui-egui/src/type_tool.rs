@@ -334,6 +334,53 @@ fn insert(app: &mut PhotocraftApp, s: &str) {
     }
 }
 
+/// Typed text (not a paste): with Preferences ▸ Type ▸ Use Smart Quotes, straight quotes become
+/// typographic (Photoshop does not rewrite pasted text).
+fn insert_typed(app: &mut PhotocraftApp, s: &str) {
+    if !app.session.prefs().type_.smart_quotes {
+        return insert(app, s);
+    }
+    let prev = app.ui.text_edit.clone().and_then(|ed| {
+        let at = ed.caret.min(ed.anchor);
+        let text = current_text(app, LayerId(ed.layer))?;
+        (at > 0).then(|| text.chars().nth(at - 1)).flatten()
+    });
+    insert(app, &smart_quotes(s, prev));
+}
+
+/// Straight quotes become “ ” and ‘ ’: opening after whitespace, a bracket or a dash (or at the
+/// start of the text), closing next to a letter or another quote. `prev` is the character before
+/// the caret.
+fn smart_quotes(s: &str, mut prev: Option<char>) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        let c = match c {
+            '"' => {
+                if opens_quote(prev) {
+                    '\u{201c}'
+                } else {
+                    '\u{201d}'
+                }
+            }
+            '\'' => {
+                if opens_quote(prev) {
+                    '\u{2018}'
+                } else {
+                    '\u{2019}'
+                }
+            }
+            _ => c,
+        };
+        out.push(c);
+        prev = Some(c);
+    }
+    out
+}
+
+fn opens_quote(prev: Option<char>) -> bool {
+    prev.is_none_or(|p| p.is_whitespace() || matches!(p, '(' | '[' | '{' | '-' | '\u{2013}' | '\u{2014}'))
+}
+
 /// Alt+←/→: kern the pair before the caret by `by` (1/1000 em). No pair (caret at a text or line
 /// edge): nothing happens, like Photoshop. Not coalesced: one history step per press.
 fn kern_pair(app: &mut PhotocraftApp, id: LayerId, caret: usize, by: f32) {
@@ -476,7 +523,8 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
         };
         handled[k] = true;
         match ev {
-            egui::Event::Text(s) | egui::Event::Paste(s) => insert(app, s),
+            egui::Event::Text(s) => insert_typed(app, s),
+            egui::Event::Paste(s) => insert(app, s),
             // A bare line break from the IME is the Enter key, which the key arm handles.
             egui::Event::Ime(egui::ImeEvent::Preedit { text: s, .. } | egui::ImeEvent::Commit(s)) if s == "\n" || s == "\r" => handled[k] = false,
             egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => ime_update(app, text, false),
@@ -547,6 +595,8 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
                     }
                     Key::Enter if m.command => commit(app),
                     Key::Enter => insert(app, "\n"),
+                    // Photoshop types a tab character; layout advances it to the next tab stop.
+                    Key::Tab if !m.command && !m.alt && !m.shift => insert(app, "\t"),
                     Key::Escape if crate::type_transform::active(app) => crate::type_transform::cancel_drag(app),
                     // Preferences ▸ Type: with "Use Escape to Commit" off, Escape cancels the
                     // session (undoes it, removing a just-created layer) like the Cancel button.
@@ -794,8 +844,8 @@ pub fn style_label(style: &str) -> String {
 }
 
 /// Searchable font-family combo box.
-fn font_picker(ui: &mut egui::Ui, current: &mut String, width: f32) -> bool {
-    family_picker_in(ui, "type-font", current, width, &families())
+fn font_picker(ui: &mut egui::Ui, current: &mut String, width: f32, preview: photocraft_engine::prefs::FontPreview) -> bool {
+    family_picker_in(ui, "type-font", current, width, &families(), preview)
 }
 
 /// Maximum height of the font menu.
@@ -803,13 +853,20 @@ const FONT_MENU_HEIGHT: f32 = 460.0;
 
 /// [`font_picker`] over a given family list (tests pass their own).
 #[cfg(test)]
-fn font_picker_in(ui: &mut egui::Ui, current: &mut String, width: f32, families: &[String]) -> bool {
-    family_picker_in(ui, "type-font", current, width, families)
+fn font_picker_in(ui: &mut egui::Ui, current: &mut String, width: f32, families: &[String], preview: photocraft_engine::prefs::FontPreview) -> bool {
+    family_picker_in(ui, "type-font", current, width, families, preview)
 }
 
 /// Shared by the Type options, Character, style and Glyphs panels. Selection changes still
 /// flow through each caller's existing engine command.
-pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut String, width: f32, families: &[String]) -> bool {
+pub(crate) fn family_picker_in(
+    ui: &mut egui::Ui,
+    salt: &str,
+    current: &mut String,
+    width: f32,
+    families: &[String],
+    preview: photocraft_engine::prefs::FontPreview,
+) -> bool {
     let mut changed = false;
     let search_id = ui.id().with(("font-search", salt));
     let combo = egui::ComboBox::from_id_salt(salt)
@@ -820,7 +877,8 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
         // Clicks inside the menu (the search field, the scroll bar) must not close it (#1369);
         // picking a font closes it explicitly below.
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-    combo.show_ui(ui, |ui| {
+
+    let response = combo.show_ui(ui, |ui| {
         let (pass_id, focus_id, height_id) = (search_id.with("pass"), search_id.with("focus"), search_id.with("height"));
         let pass = ui.ctx().cumulative_pass_nr();
         let last_pass: Option<u64> = ui.data(|d| d.get_temp(pass_id));
@@ -861,20 +919,32 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
                 photocraft_text::served::request(f);
             }
         }
-        if enter && filtered.iter().any(|f| *f == current) {
+        let accept = enter && filtered.iter().any(|f| *f == current);
+        if accept {
             ui.data_mut(|d| d.remove::<String>(search_id));
             ui.close();
         }
+        let preview = crate::font_preview::sample(preview);
+        let row_h = preview.map_or(28.0, |(_, [_, h])| (h + 4.0).max(28.0));
+
+        let mut hovered: Option<String> = None;
         for f in filtered {
-            let response = ui.add_sized(
-                [330.0, 28.0],
-                egui::Button::selectable(f == current, f).truncate().right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(100.0, 24.0))),
-            );
+            let mut button = egui::Button::selectable(f == current, f).truncate();
+            if let Some((size, [_, h])) = preview {
+                button =
+                    button.right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(crate::font_preview::slot_width(ui.ctx(), f, size), h)));
+            }
+            let response = ui.add_sized([330.0, row_h], button);
             if (down || up) && f == current {
                 response.scroll_to_me(Some(egui::Align::Center));
             }
-            if ui.is_rect_visible(response.rect) {
-                crate::font_preview::paint(ui, f, response.rect);
+            if let Some((size, _)) = preview
+                && ui.is_rect_visible(response.rect)
+            {
+                crate::font_preview::paint(ui, f, response.rect, size);
+            }
+            if response.hovered() {
+                hovered = Some(f.clone());
             }
             if response.clicked() {
                 *current = f.clone();
@@ -882,6 +952,7 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
                 photocraft_text::served::request(f);
                 changed = true;
                 ui.data_mut(|d| d.remove::<String>(search_id));
+                hovered = None;
                 ui.close();
             }
         }
@@ -894,12 +965,24 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
         } else if let Some(h) = ui.data(|d| d.get_temp::<f32>(height_id)) {
             ui.set_min_height(h.min(FONT_MENU_HEIGHT));
         }
+        if accept { None } else { hovered }
     });
+    let hovered_font = response.inner.unwrap_or_default();
+
+    if salt == "type-font" {
+        let hover_id = egui::Id::new("type-font-hover");
+        if let Some(f) = hovered_font {
+            ui.ctx().data_mut(|d| d.insert_temp(hover_id, f));
+        } else {
+            ui.ctx().data_mut(|d| d.remove::<String>(hover_id));
+        }
+    }
+
     changed
 }
 
 /// Representative for the displayed properties: the edit layer, else a selected type layer.
-fn target(app: &PhotocraftApp) -> Option<(u64, Option<[usize; 2]>)> {
+pub(crate) fn target(app: &PhotocraftApp) -> Option<(u64, Option<[usize; 2]>)> {
     if let Some(ed) = &app.ui.text_edit {
         let (a, b) = (ed.caret.min(ed.anchor), ed.caret.max(ed.anchor));
         return Some((ed.layer, (a < b).then_some([a, b])));
@@ -942,6 +1025,17 @@ fn shown_scale(app: &PhotocraftApp) -> f32 {
     let m = t.transform.m;
     let k = (m[0] * m[3] - m[1] * m[2]).abs().sqrt() as f32;
     if k.is_finite() && k > 1e-3 { k } else { 1.0 }
+}
+
+/// The display unit for type metrics (Preferences ▸ Units & Rulers ▸ Type): the multiplier from
+/// the model's points to the unit, and its label. Pixels follow the document's resolution.
+pub(crate) fn type_unit(app: &PhotocraftApp) -> (f32, &'static str) {
+    let dpi = app.session.active().map_or(72.0, |d| d.doc.resolution_dpi.max(1.0));
+    match app.session.prefs().units_and_rulers.type_units {
+        photocraft_engine::prefs::TypeUnit::Points => (1.0, "pt"),
+        photocraft_engine::prefs::TypeUnit::Pixels => (dpi / 72.0, "px"),
+        photocraft_engine::prefs::TypeUnit::Millimeters => (25.4 / 72.0, "mm"),
+    }
 }
 
 /// Coalesce key while a field is being scrubbed: every step of one drag shares one history step
@@ -998,7 +1092,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         Some((tl.font_family.clone(), run.as_ref().map(selected_style).unwrap_or_default(), size, styles_at(app).map_or(tl.color, |(c, _)| c.color)))
     });
     let o = app.ui.tool_options.clone();
-    let (mut fam, mut style, mut size) = match &shown {
+    let (mut fam, mut style, size) = match &shown {
         Some((f, s, z, _)) => (f.clone(), if s.is_empty() { "Regular".into() } else { s.clone() }, *z),
         None => (o.type_font.clone(), o.type_style.clone(), o.type_size),
     };
@@ -1012,7 +1106,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             app.ui.status_error = true;
         }
     }
-    if font_picker(ui, &mut fam, 170.0) {
+    if font_picker(ui, &mut fam, 170.0, app.session.prefs().type_.font_preview) {
         app.ui.tool_options.type_font = fam.clone();
         let st = styles(&fam);
         style = if st.contains(&style) { style } else { st.first().cloned().unwrap_or_else(|| "Regular".into()) };
@@ -1027,7 +1121,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     let (r, _) = ui.allocate_exact_size(egui::vec2(18.0, 22.0), egui::Sense::hover());
     crate::icons::paint(ui, r, "type", 13.0, t.icon);
-    if crate::widgets::value_field(ui, &mut size, 1.0..=1296.0, "pt", 66.0).changed() {
+    let (unit, label) = type_unit(app);
+    let mut display = size * unit;
+    if crate::widgets::value_field(ui, &mut display, unit..=1296.0 * unit, label, 66.0).changed() {
+        let size = display / unit;
         app.ui.tool_options.type_size = size;
         apply(app, ui.ctx(), json!({"size": size, "metricsAsShown": true}));
     }
@@ -1312,7 +1409,7 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
         let w = field_width(full, 2, LABEL_W);
         let mut fam = c.font_family.clone();
         row(ui, &mut |ui| {
-            if font_picker(ui, &mut fam, full) {
+            if font_picker(ui, &mut fam, full, app.session.prefs().type_.font_preview) {
                 app.ui.tool_options.type_font = fam.clone();
                 apply(app, ui.ctx(), json!({"font": fam}));
             }
@@ -1612,6 +1709,20 @@ mod tests {
         assert!(app.ui.text_edit.is_none());
     }
 
+    /// Preferences ▸ Units & Rulers ▸ Type switches the display unit of type metrics: points by
+    /// default, pixels by the document's resolution, or millimetres.
+    #[test]
+    fn type_unit_follows_the_units_and_rulers_preference() {
+        let mut app = app();
+        assert_eq!(type_unit(&app), (1.0, "pt"));
+        app.run("prefs.set", json!({"path": "unitsAndRulers.typeUnits", "value": "pixels"})).unwrap();
+        assert_eq!(type_unit(&app), (1.0, "px"), "a 72 ppi document: 1 pt is 1 px");
+        app.run("image.imageSize", json!({"resolution": 144, "resample": "none"})).unwrap();
+        assert_eq!(type_unit(&app), (2.0, "px"), "144 ppi: a point is two pixels");
+        app.run("prefs.set", json!({"path": "unitsAndRulers.typeUnits", "value": "mm"})).unwrap();
+        assert!((type_unit(&app).0 - 25.4 / 72.0).abs() < 1e-6, "millimetres ignore the resolution");
+    }
+
     /// Preferences ▸ Type ▸ Fill new type layers with placeholder text: off, a click creates an
     /// empty layer (nothing selected) and committing without typing removes it again.
     #[test]
@@ -1626,6 +1737,29 @@ mod tests {
         commit(&mut app);
         assert_eq!(app.session.active().unwrap().doc.layers.len(), 1, "an empty type layer is removed on commit");
         assert!(app.ui.text_edit.is_none());
+    }
+
+    /// Pure smart-quote mapping: opening after whitespace, a bracket or a dash, closing next to a
+    /// letter or another quote.
+    #[test]
+    fn smart_quotes_are_typographic() {
+        assert_eq!(smart_quotes("\"Hello\"", None), "\u{201c}Hello\u{201d}");
+        assert_eq!(smart_quotes("don't", None), "don\u{2019}t");
+        assert_eq!(smart_quotes("(\"x\")", None), "(\u{201c}x\u{201d})");
+        assert_eq!(smart_quotes("--'x'", None), "--\u{2018}x\u{2019}", "a dash stays a dash, the quote opens after it");
+        assert_eq!(smart_quotes("\"\"", None), "\u{201c}\u{201d}");
+    }
+
+    /// Preferences ▸ Type ▸ Use Smart Quotes switches typed quotes (typed text only, not paste).
+    #[test]
+    fn smart_quotes_preference_controls_typed_quotes() {
+        for (smart, expected) in [(true, "hi \u{201c}you\u{201d}"), (false, "hi \"you\"")] {
+            let mut app = app();
+            app.run("prefs.set", json!({"path": "type.smartQuotes", "value": smart})).unwrap();
+            pointer_up(&mut app, [50.0, 100.0], [50.0, 100.0]);
+            insert_typed(&mut app, "hi \"you\"");
+            assert_eq!(layer_text(&app), expected, "smartQuotes={smart}");
+        }
     }
 
     #[test]

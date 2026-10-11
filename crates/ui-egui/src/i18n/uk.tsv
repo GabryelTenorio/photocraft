@@ -40,6 +40,8 @@
 	Right	Правий
 	Open Recent	Нещодавні файли
 	Clear Recent Files	Очистити список нещодавніх файлів
+	Remove from Recent	Вилучити з нещодавніх
+	Remove {name} from Recent	Вилучити {name} з нещодавніх
 	Close	Закрити
 	Minimize	Згорнути
 	Maximize	Розгорнути
@@ -141,6 +143,7 @@
 	Rename Layer	Перейменувати шар
 	Layer From Background…	Шар із фону…
 	Layer from Background…	Шар із фону…
+	Background From Layer	Фон із шару
 	Group Layers	Згрупувати шари
 	Group…	Група…
 	Ungroup Layers	Розгрупувати шари
@@ -371,6 +374,10 @@
 	100%	100%
 	200%	200%
 	75%	75%
+	80%	80%
+	85%	85%
+	90%	90%
+	95%	95%
 	125%	125%
 	150%	150%
 	175%	175%
@@ -466,6 +473,7 @@
 	Wand	Чарівна паличка
 	Eyedropper	Піпетка
 	Brush	Пензель
+	Block	Блок
 	Pencil	Олівець
 	Eraser	Гумка
 	Clone Stamp	Клонувальний штамп
@@ -486,6 +494,7 @@
 	Magnetic Lasso	Магнітне ласо
 	Mixer Brush	Змішувальний пензель
 	Mixer Brush Tool	Інструмент «Змішувальний пензель»
+	Color Replacement Tool	Інструмент «Заміна кольору»
 	History Brush	Пензель історії
 	Art History Brush	Художній пензель історії
 	Pattern Stamp	Візерунковий штамп
@@ -620,6 +629,7 @@
 	Resolution:	Роздільність:
 	Resolution: {dpi} pixels/inch	Роздільність: {dpi} пікселів/дюйм
 	{w} px x {h} px ({ppi} ppi)	{w} пкс x {h} пкс ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Pixels:	Пікселі:
 	Pixel Length:	Довжина в пікселях:
 	Logical Length:	Логічна довжина:
@@ -1366,6 +1376,10 @@
 	Classic Theme	Класична тема
 	Solarized dark	Solarized темна
 	Solarized Dark Theme	Темна тема Solarized
+	Breeze dark	Breeze темна
+	Breeze Dark Theme	Темна тема Breeze
+	Breeze light	Breeze світла
+	Breeze Light Theme	Світла тема Breeze
 	Adwaita Light Theme	Світла тема Adwaita
 	Adwaita Dark Theme	Темна тема Adwaita
 	Adwaita	Adwaita
@@ -1494,8 +1508,11 @@
 	{name} Properties	Властивості: {name}
 	Move Tool	Інструмент «Переміщення»
 	Could not use the move tool because the layer is locked.	Не вдалося використати інструмент «Переміщення», бо шар заблоковано.
+	Could not complete the Free Transform command because the layer is locked.	Не вдалося виконати команду «Вільна трансформація», бо шар заблоковано.
 	Rectangular Marquee Tool	Інструмент «Прямокутне виділення»
 	Elliptical Marquee Tool	Інструмент «Еліптичне виділення»
+	Single Row Marquee Tool	Інструмент «Виділення одного рядка»
+	Single Column Marquee Tool	Інструмент «Виділення одного стовпця»
 	Brush Tool	Інструмент «Пензель»
 	Pencil Tool	Інструмент «Олівець»
 	Eraser Tool	Інструмент «Гумка»
@@ -2166,6 +2183,7 @@
 	Cache tile size	Розмір плитки кешу
 	Camera Raw Defaults	Типові параметри Camera Raw
 	Canvas border	Межа полотна
+	Show canvas dots	Показувати крапки полотна
 	Canvas color	Колір полотна
 	Canvas custom color	Довільний колір полотна
 	Classic	Класична
@@ -2289,6 +2307,7 @@
 	Show only crosshair while painting	Показувати лише перехрестя під час малювання
 	Show slice numbers	Показувати номери фрагментів
 	Show tooltips	Показувати підказки
+	Show highlight on rollover	Показувати підсвічування під час наведення
 	Show bounding box when dragging layer	Показувати рамку під час перетягування шару
 	System title bar	Системний рядок заголовка
 	Show transformation values	Показувати значення трансформації
@@ -2334,6 +2353,7 @@
 	Cancelled {label}	Скасовано: {label}
 	Esc to cancel	Esc для скасування
 	Opening {name}	Відкриття {name}
+	Saved {name}	Збережено: {name}
 	Saving {name}	Збереження {name}
 	A save to {name} is still running; try again when it finishes	Збереження в {name} ще триває; спробуйте ще раз, коли воно завершиться
 	{label} is writing the file and can no longer be cancelled	{label}: триває запис файлу, скасувати вже не можна
@@ -2641,6 +2661,7 @@ fontWeight	Italic	Курсивний
 	Prevent auto-nesting in and out of Artboards and Frames	Запобігати автоматичному вкладенню в монтажні області та кадри або виходу з них
 	Quick Actions	Швидкі дії
 	Radial Gradient	Радіальний градієнт
+	Refine	Уточнення
 	Reflected Gradient	Відбитий градієнт
 	Reset to defaults	Скинути до типових значень
 	Search commands	Пошук команд
@@ -2762,6 +2783,7 @@ fontWeight	Italic	Курсивний
 	Create Warped Text	Створити деформований текст
 	Rasterize Smart Object	Растеризувати смартоб'єкт
 	Rasterize Fill Content	Растеризувати вміст заливки
+	Rasterize Layer Style	Растеризувати стиль шару
 	Toggle the Brush Settings panel  (F5)	Перемкнути панель налаштувань пензля  (F5)
 	Create new brush preset from the current settings	Створити новий набір пензля з поточних параметрів
 	Brush Settings…  (F5): every option of this brush	Налаштування пензля…  (F5): усі параметри цього пензля
@@ -3518,7 +3540,48 @@ cameraRaw	Masking	Маскування
 	Quick Selection found nothing there	Швидке виділення нічого тут не знайшло
 	Object Selection found nothing there — try a tighter rectangle	Виділення об'єктів нічого тут не знайшло — спробуйте вужчий прямокутник
 	No subject found — try a rectangle around the object	Об'єкт не знайдено — спробуйте прямокутник навколо об'єкта
+	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Клацніть першу точку або натисніть {key}, щоб замкнути · {del} видаляє точку · Esc скасовує
+	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Клацніть і ведіть уздовж краю · клацання закріплює точку · {alt}-клацання — прямий відрізок · подвійне клацання замикає
+	Follows only edges this close to the pointer ([ and ] change it)	Відстежує лише краї на такій відстані від вказівника ([ і ] змінюють її)
+	Higher values follow only edges that contrast sharply with their surroundings	Що більше значення, то лише краї з різким контрастом до оточення
+	How often fastening points are placed by themselves	Як часто точки прив’язки ставляться автоматично
+	Appearance Settings…	Налаштування вигляду…
+	Add to favorites	Додати до вибраного
+	Remove from favorites	Видалити з вибраного
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+cameraData	Make	Виробник
+cameraData	Model	Модель
+cameraData	Date Taken	Дата зйомки
+cameraData	Exposure	Витримка
+cameraData	F-Stop	Діафрагма
+cameraData	ISO Speed	Світлочутливість ISO
+cameraData	Focal Length	Фокусна відстань
+cameraData	Focal Length (35 mm)	Фокусна відстань (35 мм)
+cameraData	Lens	Об'єктив
+# Shared panel docking
+	Activate Panel	Активувати панель
+	Change Panel Group	Змінити групу панелей
+	Change Panel Layout	Змінити розташування панелей
+	Close Panel	Закрити панель
+	Dock Panel	Закріпити панель
+	Float Panel	Зробити панель плаваючою
+	Move Panel	Перемістити панель
+	Group with	Згрупувати з
+	Panel menu	Меню панелі
+	Resize panel window	Змінити розмір вікна панелі
+	Resize panels	Змінити розмір панелей
+	Use Classic Mode	Використовувати класичний режим
+	Auto Center Preview	Автоматично центрувати перегляд
 	Next Document	Наступний документ
 	Previous Document	Попередній документ
 	W x H x Resolution	Ш x В x Роздільна здатність
 	Front Image	Зображення переднього плану
+	Search settings…	Пошук налаштувань…
+	No matching settings	Немає відповідних налаштувань
+	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
+	New Crop Preset…	Новий набір параметрів кадрування…
+	Delete Crop Preset…	Видалити набір параметрів кадрування…
+	Select the crop presets to delete:	Виберіть набори параметрів кадрування для видалення:
+	Select the crop presets to delete	Виберіть набори параметрів кадрування для видалення
+	Enter a name for the crop preset	Введіть назву набору параметрів кадрування
+	There is no crop size or ratio to save	Немає розміру чи співвідношення сторін кадрування для збереження

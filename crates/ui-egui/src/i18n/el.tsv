@@ -25,6 +25,8 @@
 	Right	Δεξιά
 	Open Recent	Πρόσφατα αρχεία
 	Clear Recent Files	Εκκαθάριση πρόσφατων αρχείων
+	Remove from Recent	Αφαίρεση από τα πρόσφατα
+	Remove {name} from Recent	Αφαίρεση του {name} από τα πρόσφατα
 	Close	Κλείσιμο
 	Minimize	Ελαχιστοποίηση
 	Maximize	Μεγιστοποίηση
@@ -1436,6 +1438,7 @@
 	Show only crosshair while painting	Εμφάνιση μόνο σταυρονήματος κατά τη ζωγραφική
 	Show slice numbers	Εμφάνιση αριθμών τομών
 	Show tooltips	Εμφάνιση επεξηγήσεων
+	Show highlight on rollover	Εμφάνιση επισήμανσης κατά την κατάδειξη
 	Show bounding box when dragging layer	Εμφάνιση πλαισίου οριοθέτησης κατά τη μετακίνηση επιπέδου
 	Show transformation values	Εμφάνιση τιμών μετασχηματισμού
 	Slice color	Χρώμα τομής
@@ -1484,6 +1487,7 @@
 	Create Warped Text	Δημιουργία παραμορφωμένου κειμένου
 	Rasterize Smart Object	Ραστεροποίηση έξυπνου αντικειμένου
 	Rasterize Fill Content	Ραστεροποίηση περιεχομένου γεμίσματος
+	Rasterize Layer Style	Ραστεροποίηση στυλ επιπέδου
 	Unlock: picking a preset replaces these settings	Ξεκλείδωμα: η επιλογή προεπιλογής αντικαθιστά αυτές τις ρυθμίσεις
 	Lock: keep these settings when picking another preset	Κλείδωμα: διατήρηση ρυθμίσεων κατά την αλλαγή προεπιλογής
 	Diameter:	Διάμετρος:
@@ -1544,6 +1548,7 @@
 	Cancelled {label}	Ακυρώθηκε: {label}
 	Esc to cancel	Esc για ακύρωση
 	Opening {name}	Άνοιγμα του {name}
+	Saved {name}	Αποθηκεύτηκε το {name}
 	Saving {name}	Αποθήκευση του {name}
 	A save to {name} is still running; try again when it finishes	Η αποθήκευση στο {name} βρίσκεται ακόμη σε εξέλιξη· δοκιμάστε ξανά όταν ολοκληρωθεί
 	{label} is writing the file and can no longer be cancelled	{label}: γίνεται εγγραφή του αρχείου και δεν μπορεί πλέον να ακυρωθεί
@@ -1579,6 +1584,7 @@
 	Cache tile size	Μέγεθος πλακιδίου προσωρινής μνήμης
 	Camera Raw Defaults	Προεπιλογές Camera Raw
 	Canvas border	Περίγραμμα καμβά
+	Show canvas dots	Εμφάνιση κουκκίδων καμβά
 	Canvas color	Χρώμα καμβά
 	Canvas custom color	Προσαρμοσμένο χρώμα καμβά
 	Color picker	Επιλογέας χρώματος
@@ -1725,6 +1731,7 @@
 	Layer via Cut	Επίπεδο μέσω αποκοπής
 	Layer From Background…	Επίπεδο από φόντο…
 	Layer from Background…	Επίπεδο από φόντο…
+	Background From Layer	Φόντο από επίπεδο
 	New Shape Layer	Νέο επίπεδο σχήματος
 	New Type Layer	Νέο επίπεδο κειμένου
 	New Fill Layer	Νέο επίπεδο γεμίσματος
@@ -1891,6 +1898,8 @@
 	White Balance: As Shot	Ισορροπία λευκού: όπως στη λήψη
 	Mixer Brush	Πινέλο ανάμειξης (Mixer Brush)
 	Mixer Brush Tool	Πινέλο ανάμειξης (Mixer Brush Tool)
+	Color Replacement Tool	Αντικατάσταση χρώματος (Color Replacement Tool)
+	Color Replacement	Αντικατάσταση χρώματος
 	Wet	Υγρασία
 	Load	Φόρτωση
 	Mix	Ανάμειξη
@@ -2068,6 +2077,10 @@
 	Classic Theme	Κλασικό θέμα
 	Solarized dark	Solarized σκούρο
 	Solarized Dark Theme	Σκούρο θέμα Solarized
+	Breeze dark	Breeze σκούρο
+	Breeze Dark Theme	Σκούρο θέμα Breeze
+	Breeze light	Breeze φωτεινό
+	Breeze Light Theme	Φωτεινό θέμα Breeze
 	Clear Canvas Guides	Απαλοιφή οδηγών καμβά
 	Clear Override	Απαλοιφή παράκαμψης
 	Clear Samples	Απαλοιφή δειγμάτων
@@ -2789,6 +2802,7 @@
 	Reduce Noise	Μείωση θορύβου
 	Reduce Noise…	Μείωση θορύβου…
 	Reflected	Ανακλώμενο
+	Refine	Βελτίωση
 	Reflected Gradient	Ανακλώμενη διαβάθμιση
 	Registration Marks	Σημάδια συμπτώσεως
 	Regular	Κανονικό
@@ -3214,6 +3228,8 @@ cameraRaw	Yellow	Κίτρινο
 	Dodge Tool	Φωτισμός (Dodge Tool)
 	Ellipse Tool	Έλλειψη (Ellipse Tool)
 	Elliptical Marquee Tool	Ελλειπτική επιλογή (Elliptical Marquee Tool)
+	Single Row Marquee Tool	Επιλογή μίας γραμμής (Single Row Marquee Tool)
+	Single Column Marquee Tool	Επιλογή μίας στήλης (Single Column Marquee Tool)
 	Eraser Tool	Γόμα (Eraser Tool)
 	Eyedropper Tool	Σταγονόμετρο (Eyedropper Tool)
 	Gradient Tool	Διαβάθμιση (Gradient Tool)
@@ -3227,6 +3243,7 @@ cameraRaw	Yellow	Κίτρινο
 	Magic Wand Tool	Μαγικό ραβδί (Magic Wand Tool)
 	Move Tool	Μετακίνηση (Move Tool)
 	Could not use the move tool because the layer is locked.	Δεν ήταν δυνατή η χρήση του εργαλείου Μετακίνηση, επειδή το επίπεδο είναι κλειδωμένο.
+	Could not complete the Free Transform command because the layer is locked.	Δεν ήταν δυνατή η ολοκλήρωση της εντολής Ελεύθερος μετασχηματισμός, επειδή το επίπεδο είναι κλειδωμένο.
 	Note Tool	Σημείωση (Note Tool)
 	Object Selection Tool	Επιλογή αντικειμένου (Object Selection Tool)
 	Paint Bucket Tool	Κουβάς γεμίσματος (Paint Bucket Tool)
@@ -3338,6 +3355,7 @@ cameraRaw	Yellow	Κίτρινο
 	open source	ανοιχτού κώδικα
 	{size} (was {old})	{size} (ήταν {old})
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	…and {n} more	…και {n} ακόμη
 	125%	125%
 	150%	150%
@@ -3346,12 +3364,18 @@ cameraRaw	Yellow	Κίτρινο
 	300%	300%
 	50% Gray	50% γκρι
 	75%	75%
+	80%	80%
+	85%	85%
+	90%	90%
+	95%	95%
 	Adobe	Adobe
 	Adobe rgb	Adobe RGB
 	Android 1080p	Android 1080p
 	Apple Watch 45mm	Apple Watch 45mm
 	Black Matte	Μαύρο ματ
 	Brush	Πινέλο
+	Pencil	Μολύβι
+	Block	Μπλοκ
 	Color…	Χρώμα…
 	Cone (Inverted)	Κώνος (αντεστραμμένος)
 	Could not open	Δεν ήταν δυνατό το άνοιγμα
@@ -3438,6 +3462,7 @@ fontWeight	Thin	Πολύ λεπτά
 	Color to Alpha…	Χρώμα σε άλφα…
 	Transparency Threshold	Κατώφλι διαφάνειας
 	Opacity Threshold	Κατώφλι αδιαφάνειας
+	PhotoCraft — Screen Color Picker	PhotoCraft — Επιλογή χρώματος οθόνης
 
 	Rasterize svg groups deeper than	Ραστεροποίηση ομάδων SVG πέρα από αυτό το βάθος
 	0 turns this threshold off; SVG groups nested deeper than 100 levels are always rasterized.	Το 0 απενεργοποιεί αυτό το όριο· ομάδες SVG με ένθεση βαθύτερη από 100 επίπεδα ραστεροποιούνται πάντα.
@@ -3519,7 +3544,42 @@ fontWeight	Thin	Πολύ λεπτά
 	Quick Selection found nothing there	Η Γρήγορη επιλογή δεν βρήκε τίποτα εκεί
 	Object Selection found nothing there — try a tighter rectangle	Η Επιλογή αντικειμένου δεν βρήκε τίποτα εκεί — δοκιμάστε ένα πιο στενό ορθογώνιο
 	No subject found — try a rectangle around the object	Δεν βρέθηκε θέμα — δοκιμάστε ένα ορθογώνιο γύρω από το αντικείμενο
+	Appearance Settings…	Ρυθμίσεις εμφάνισης…
+	Add to favorites	Προσθήκη στα αγαπημένα
+	Remove from favorites	Αφαίρεση από τα αγαπημένα
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+cameraData	Make	Κατασκευαστής
+cameraData	Model	Μοντέλο
+cameraData	Date Taken	Ημερομηνία λήψης
+cameraData	Exposure	Χρόνος έκθεσης
+cameraData	F-Stop	Διάφραγμα
+cameraData	ISO Speed	Ευαισθησία ISO
+cameraData	Focal Length	Εστιακή απόσταση
+cameraData	Focal Length (35 mm)	Εστιακή απόσταση (35 mm)
+cameraData	Lens	Φακός
+# Shared panel docking
+	Activate Panel	Ενεργοποίηση πάνελ
+	Change Panel Group	Αλλαγή ομάδας πάνελ
+	Change Panel Layout	Αλλαγή διάταξης πάνελ
+	Close Panel	Κλείσιμο πάνελ
+	Dock Panel	Αγκύρωση πάνελ
+	Float Panel	Αιωρούμενο πάνελ
+	Move Panel	Μετακίνηση πάνελ
+	Group with	Ομαδοποίηση με
+	Panel menu	Μενού πάνελ
+	Resize panel window	Αλλαγή μεγέθους παραθύρου πάνελ
+	Resize panels	Αλλαγή μεγέθους πάνελ
+	Use Classic Mode	Χρήση κλασικής λειτουργίας
+	Auto Center Preview	Αυτόματο κεντράρισμα προεπισκόπησης
 	Next Document	Επόμενο έγγραφο
 	Previous Document	Προηγούμενο έγγραφο
 	W x H x Resolution	Π x Υ x Ανάλυση
 	Front Image	Μπροστινή εικόνα
+	New Crop Preset…	Νέα προεπιλογή περικοπής…
+	Delete Crop Preset…	Διαγραφή προεπιλογής περικοπής…
+	Select the crop presets to delete:	Επιλέξτε τις προεπιλογές περικοπής για διαγραφή:
+	Select the crop presets to delete	Επιλέξτε τις προεπιλογές περικοπής για διαγραφή
+	Enter a name for the crop preset	Εισαγάγετε ένα όνομα για την προεπιλογή περικοπής
+	There is no crop size or ratio to save	Δεν υπάρχει μέγεθος ή αναλογία περικοπής για αποθήκευση
+	Search settings…	Αναζήτηση ρυθμίσεων…
+	No matching settings	Δεν βρέθηκαν ρυθμίσεις
