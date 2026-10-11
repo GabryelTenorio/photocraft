@@ -958,28 +958,13 @@ pub fn open_shortcuts(app: &mut PhotocraftApp, tab: u64) -> u64 {
     open_kind(app, "shortcuts", tl!("Keyboard Shortcuts and Menus"), fields)
 }
 
-/// Open the Embedded Profile Mismatch prompt for the active document.
-pub fn open_mismatch(app: &mut PhotocraftApp, report: &Value) -> u64 {
-    let msg = if report.get("missing").and_then(Value::as_bool) == Some(true) {
-        format!("The document does not have an embedded colour profile. Working space: {}.", report["working"].as_str().unwrap_or("?"))
-    } else {
-        format!(
-            "The document has an embedded colour profile that does not match the working space.\nEmbedded: {}\nWorking: {}",
-            report["embedded"].as_str().unwrap_or("?"),
-            report["working"].as_str().unwrap_or("?")
-        )
-    };
-    let action = match report["action"].as_str() {
-        Some("converted") => "convert",
-        Some("discarded") => "discard",
-        _ => "preserve",
-    };
-    open_kind(
-        app,
-        "mismatch",
-        tl!("Embedded Profile Mismatch"),
-        json!({"message": msg, "action": action, "applied": action, "missing": report.get("missing").is_some()}),
-    )
+/// Open the Embedded Profile Mismatch prompt for a file waiting to open (`open_prompt`): its
+/// `message`, the answer selected first (`action`), and `marker`, the field that routes OK and
+/// Cancel back to `open_prompt`.
+pub fn open_mismatch(app: &mut PhotocraftApp, message: &str, action: &str, missing: bool, marker: &str) -> u64 {
+    let mut fields = json!({"message": message, "action": action, "missing": missing});
+    fields[marker] = json!(true);
+    open_kind(app, "mismatch", tl!("Embedded Profile Mismatch"), fields)
 }
 
 // ------------------------------------------------------------------ bodies
@@ -1919,13 +1904,10 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
                 })
             }
         }
+        // The file it asks about opens with this answer (`open_prompt`).
         "mismatch" => {
             let action = f.get("action").and_then(Value::as_str).unwrap_or("preserve");
-            let applied = f.get("applied").and_then(Value::as_str).unwrap_or("preserve");
-            if action == applied {
-                return Ok(json!({"action": action}));
-            }
-            app.run("color.profileMismatch", json!({"action": action}))
+            crate::open_prompt::answer(app, Some(action))
         }
         _ => Err("unknown dialog".into()),
     }

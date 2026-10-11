@@ -57,9 +57,7 @@ impl PhotocraftApp {
             crate::jobs_ui::start_open(self, &display_name(path), Some(path.to_string()), crate::jobs_ui::bytes(bytes))?;
             return Ok(Vec::new());
         }
-        let warnings = self.open_bytes(&display_name(path), bytes)?;
-        self.opened_from(path);
-        Ok(warnings)
+        self.open_bytes_from(&display_name(path), bytes, Some(path))
     }
 
     /// Record that the active document was just opened from `path`: File › Save writes back to it
