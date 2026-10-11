@@ -1333,8 +1333,10 @@ mod multi_layer_formatting {
         h
     }
 
-    fn number(h: &mut Harness<'static, PhotocraftApp>, index: usize, value: &str) {
-        h.get_all_by_role(Role::SpinButton).nth(index).expect("numeric field").click();
+    fn number(h: &mut Harness<'static, PhotocraftApp>, label: &str, value: &str) {
+        // Variable-font axes add numeric fields before size/leading. Select the setting by
+        // its accessible name, so a font scan cannot shift this action onto another control.
+        h.get_by_role_and_label(Role::SpinButton, label).click();
         h.run();
         h.key_press_modifiers(Modifiers::COMMAND, egui::Key::A);
         h.event(egui::Event::Text(value.into()));
@@ -1400,16 +1402,16 @@ mod multi_layer_formatting {
         let raster = LayerId(app.run("layer.new.layer", json!({"name": "Selected raster"})).unwrap()["layer"].as_u64().unwrap());
         selected(&mut app, &[ids[0], ids[1], raster]);
         let mut h = controls(app, true);
-        number(&mut h, 0, "60");
+        number(&mut h, "Font size", "60");
         // Differ from the automatic 72 pt leading so this is an actual property change.
-        number(&mut h, 1, "84");
+        number(&mut h, "Leading (set to the font size × auto-leading when Auto)", "84");
         h.get_by_label("Faux Bold").click();
         h.run();
         h.get_by_label("Center text").click();
         h.run();
         h.get_by_label("Hyphenate").click();
         h.run();
-        number(&mut h, 6, "9");
+        number(&mut h, "Indent left margin", "9");
         for (id, scale) in [(ids[0], 2.0), (ids[1], 4.0)] {
             let c = style(h.state(), id, 0);
             assert_eq!(c.size_pt * scale, 60.0);
@@ -1426,7 +1428,7 @@ mod multi_layer_formatting {
         let peer = text(h.state(), ids[1]).char_runs();
         editing(h.state_mut(), ids[0]);
         h.run();
-        number(&mut h, 0, "40");
+        number(&mut h, "Font size", "40");
         assert_eq!((size_at(h.state(), ids[0], 0), size_at(h.state(), ids[0], 1), size_at(h.state(), ids[0], 3)), (30.0, 20.0, 30.0));
         assert_eq!(text(h.state(), ids[1]).char_runs(), peer);
     }
