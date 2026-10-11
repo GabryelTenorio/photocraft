@@ -143,11 +143,11 @@ pub fn draw(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) -> boo
     painter.ctx().set_cursor_icon(egui::CursorIcon::None);
     let at = painter.ctx().pointer_latest_pos().unwrap_or(c);
     let (label, value) = if app.session.prefs().tools.vary_round_brush_hardness_on_hud {
-        ("Hardness:", format!("{}%", (b.hardness * 100.0).round() as i64))
+        (tl!("Hardness:"), format!("{}%", (b.hardness * 100.0).round() as i64))
     } else {
-        ("Opacity:", format!("{}%", (b.opacity * 100.0).round() as i64))
+        (tl!("Opacity:"), format!("{}%", (b.opacity * 100.0).round() as i64))
     };
-    crate::canvas::draw_readout(painter.ctx(), "brush-resize-readout", at, ["Diameter:", label], [format!("{} px", b.size.round() as i64), value]);
+    crate::canvas::draw_readout(painter.ctx(), "brush-resize-readout", at, [tl!("Diameter:"), label], [format!("{} px", b.size.round() as i64), value]);
     true
 }
 
