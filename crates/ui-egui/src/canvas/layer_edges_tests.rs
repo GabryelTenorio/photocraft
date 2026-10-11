@@ -29,7 +29,7 @@ fn assert_edges(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize, primar
         canvas_view(app, ui, idx, rect, view.clone(), primary);
     });
     output.textures_delta.clear();
-    let xf = ViewXform { rect, zoom: view.zoom / ctx.pixels_per_point(), center: view.center, flip: false, rotation: 0.0 };
+    let xf = ViewXform { rect, zoom: view.zoom / ctx.pixels_per_point(), center: view.center, flip: false, rotation: 0.0, aspect: 1.0 };
     let edges: Vec<_> = output
         .shapes
         .iter()
