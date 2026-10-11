@@ -591,7 +591,8 @@ fn applying_a_feathered_mask_preserves_its_soft_composite() {
             mask.feather = 2.0;
             doc.layer_mut(active.unwrap()).unwrap().mask = Some(mask);
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
         let before = photocraft_compose::flatten(doc(&s)).px;
         assert!(before[15 * 40 + 19][3] > 0.0 && before[15 * 40 + 19][3] < 1.0, "mask must start with a soft edge");
         s.execute("layer.layerMask.apply", json!({})).unwrap();
@@ -615,7 +616,44 @@ fn applying_a_disabled_feathered_mask_does_not_hide_pixels() {
         mask.enabled = false;
         doc.layer_mut(active.unwrap()).unwrap().mask = Some(mask);
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
     s.execute("layer.layerMask.apply", json!({})).unwrap();
     assert_eq!(active(&s).surface().unwrap().rgba(20, 15)[3], 1.0);
+}
+
+#[test]
+fn from_transparency_preserves_mask_coverage_outside_the_canvas() {
+    for depth in DEPTHS {
+        let mut s = session(depth, "rgb");
+        paint(&mut s, |_, _| [1.0, 0.0, 0.0, 0.5]);
+        let before = photocraft_compose::flatten(doc(&s)).px;
+        s.execute("layer.translate", json!({"dx": 20})).unwrap();
+        s.execute("layer.layerMask.fromTransparency", json!({})).unwrap();
+        let mask = active(&s).mask.as_ref().unwrap();
+        assert!((mask.value(50, 10) - 0.5).abs() < 1.0 / 255.0 + 1e-6, "off-canvas mask at depth {depth}");
+        s.execute("layer.translate", json!({"dx": -20})).unwrap();
+        let after = photocraft_compose::flatten(doc(&s)).px;
+        for (a, b) in before.iter().zip(&after) {
+            assert!((a[3] - b[3]).abs() <= 1.0 / 255.0 + 1e-6, "alpha changed at depth {depth}: {a:?} -> {b:?}");
+        }
+    }
+}
+
+#[test]
+fn applying_a_feathered_mask_keeps_off_canvas_pixels_it_reveals() {
+    let mut s = session(8, "rgb");
+    paint(&mut s, |_, _| [1.0, 0.0, 0.0, 1.0]);
+    s.execute("layer.translate", json!({"dx": 20})).unwrap();
+    s.edit("mask fixture", |doc, active| {
+        // Reveal the whole layer, including the 20 px now past the right edge.
+        let mut mask = LayerMask::hide_all();
+        mask.surface.fill_rect(Rect::new(0, 0, 60, 30), &[1.0]);
+        mask.feather = 2.0;
+        doc.layer_mut(active.unwrap()).unwrap().mask = Some(mask);
+        Ok(())
+    })
+    .unwrap();
+    s.execute("layer.layerMask.apply", json!({})).unwrap();
+    assert_eq!(active(&s).surface().unwrap().rgba(52, 15)[3], 1.0, "off-canvas pixel stays visible");
 }

@@ -135,7 +135,10 @@ fn apply_mask(s: &mut Session, p: &Value) -> Result<Value> {
                 // Do not bake an independent vector mask that remains attached after Apply.
                 let mut mask_only = layer.clone();
                 mask_only.vector_mask = None;
-                photocraft_compose::masks::combined_mask(&mask_only, doc.bounds())
+                // Cover off-canvas pixels too: outside its area the combined mask is only the
+                // mask's default value, which would hide moved-off content (#3043).
+                let area = layer.surface().map_or(doc.bounds(), |surf| doc.bounds().union(&surf.content_bounds()));
+                photocraft_compose::masks::combined_mask(&mask_only, area)
             } else {
                 None
             }
@@ -165,9 +168,10 @@ fn apply_mask(s: &mut Session, p: &Value) -> Result<Value> {
 fn mask_from_transparency(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer_param(s, p)?;
     s.edit("From Transparency", |doc, _| {
-        let bounds = doc.bounds();
         let surf = crate::commands::paint_surface(doc, id, &Value::Null)?;
-        let r = surf.content_bounds().intersect(&bounds);
+        // Masks are attached to layer coordinates, including pixels temporarily off-canvas.
+        // Clipping to document bounds loses their alpha permanently when moved back (#3043).
+        let r = surf.content_bounds();
         let mut mask = LayerMask::hide_all();
         if !r.is_empty() {
             let mut px = read_rgba(surf, r);
