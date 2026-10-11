@@ -77,6 +77,47 @@ pub struct ActionState {
     pub rev: u64,
 }
 
+/// Visibility gestures name a layer for replay, since document-local ids change on another image.
+pub(crate) fn recorded_params(s: &Session, id: &str, mut p: Value) -> Value {
+    if s.actions.recording.is_none() || id != "layer.setProps" || p.get("visible").is_none() {
+        return p;
+    }
+    let Some(st) = s.active() else { return p };
+    let Some(layer) = p.get("layer").and_then(Value::as_u64).map(photocraft_doc::LayerId).or(st.active_layer).and_then(|id| st.doc.layer(id)) else { return p };
+    let ordinal = st.doc.walk().into_iter().filter(|(_, _, l)| l.name == layer.name).position(|(_, _, l)| l.id == layer.id).unwrap_or(0);
+    if let Some(object) = p.as_object_mut() {
+        object.remove("layer");
+        object.remove("coalesce");
+        object.insert("_actionLayer".into(), json!({"name": layer.name, "ordinal": ordinal}));
+    }
+    p
+}
+
+/// Resolve the recorded visibility target identically in engine and shell playback.
+pub fn playback_params(s: &Session, id: &str, p: &Value) -> Result<Value> {
+    let mut p = p.clone();
+    if id == "layer.setProps"
+        && let Some(target) = p.get("_actionLayer")
+    {
+        let name = target.get("name").and_then(Value::as_str).ok_or_else(|| bad(id, "missing recorded layer name"))?;
+        let ordinal =
+            target.get("ordinal").and_then(Value::as_u64).and_then(|v| usize::try_from(v).ok()).ok_or_else(|| bad(id, "invalid recorded layer ordinal"))?;
+        let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
+        let layer = doc
+            .walk()
+            .into_iter()
+            .filter(|(_, _, l)| l.name == name)
+            .nth(ordinal)
+            .map(|(_, _, l)| l.id)
+            .ok_or_else(|| bad(id, format!("recorded layer `{name}` does not exist")))?;
+        if let Some(object) = p.as_object_mut() {
+            object.remove("_actionLayer");
+            object.insert("layer".into(), json!(layer.0));
+        }
+    }
+    Ok(p)
+}
+
 impl ActionState {
     pub(crate) fn touch(&mut self) {
         self.rev = self.rev.saturating_add(1);
@@ -292,7 +333,7 @@ fn run_recorded(s: &mut Session, action: &Action, from: usize) -> (u64, Option<V
             failed = Some(json!({"step": i, "id": id, "error": e.to_string()}));
             break;
         }
-        match s.execute(id, params.clone()) {
+        match playback_params(s, id, params).and_then(|p| s.execute(id, p)) {
             Ok(value) => {
                 if let Some(error) = nested_failure(id, &value) {
                     failed = Some(json!({"step": i, "id": id, "error": error}));
@@ -671,6 +712,27 @@ mod tests {
             assert!(s.execute("actions.toggle", bad.clone()).is_err(), "{bad}");
         }
         assert_eq!(s.actions.list[0].disabled.iter().copied().collect::<Vec<_>>(), [1], "rejected toggles change nothing");
+    }
+
+    #[test]
+    fn recorded_eye_visibility_replays_on_another_document_and_duplicate_names() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("layer.new.layer", json!({"name": "Same"})).unwrap();
+        let hidden = s.execute("layer.new.layer", json!({"name": "Same"})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("actions.record", json!({"name": "Hide"})).unwrap();
+        s.execute("layer.setProps", json!({"layer": hidden, "visible": false, "coalesce": "eye-sweep"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let keep = s.execute("layer.new.layer", json!({"name": "Same"})).unwrap()["layer"].as_u64().unwrap();
+        let target = s.execute("layer.new.layer", json!({"name": "Same"})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("select.deselectLayers", json!({})).unwrap();
+        let result = s.execute("actions.play", json!({"action": "Hide"})).unwrap();
+        assert!(result.get("failed").is_none(), "{result}");
+        assert!(s.active().unwrap().doc.layer(photocraft_doc::LayerId(keep)).unwrap().visible);
+        assert!(!s.active().unwrap().doc.layer(photocraft_doc::LayerId(target)).unwrap().visible);
+        s.execute("edit.undo", json!({})).unwrap();
+        assert!(s.active().unwrap().doc.layer(photocraft_doc::LayerId(target)).unwrap().visible);
     }
 
     #[test]

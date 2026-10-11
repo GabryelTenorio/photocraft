@@ -94,6 +94,8 @@ pub(crate) fn play(app: &mut PhotocraftApp, params: &Value) -> Result<Value, Str
     let mut failed = None;
     for (i, (id, p)) in action.enabled_steps().skip_while(|(i, _)| *i < from) {
         let result = (|| {
+            let resolved = actions_cmds::playback_params(&app.session, id, p).map_err(|e| e.to_string())?;
+            let p = &resolved;
             if let Some(auth) = app.session.authorize {
                 auth(id, p).map_err(|e| e.to_string())?;
             }
@@ -540,6 +542,23 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_playback_resolves_recorded_eye_target_on_new_document() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        app.run("layer.new.layer", json!({"name": "Target"})).unwrap();
+        app.run("actions.record", json!({"name": "Hide"})).unwrap();
+        let id = app.session.active().unwrap().active_layer.unwrap();
+        app.run("layer.setProps", json!({"layer": id.0, "visible": false})).unwrap();
+        app.run("actions.stop", json!({})).unwrap();
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        app.run("layer.new.layer", json!({"name": "Target"})).unwrap();
+        let id = app.session.active().unwrap().active_layer.unwrap();
+        let result = play(&mut app, &json!({"action": "Hide"})).unwrap();
+        assert!(result.get("failed").is_none(), "{result}");
+        assert!(!app.session.active().unwrap().doc.layer(id).unwrap().visible);
+    }
 
     #[test]
     fn double_clicking_an_action_name_renames_it_in_place() {

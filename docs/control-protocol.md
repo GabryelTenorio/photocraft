@@ -117,6 +117,10 @@ store expose and persist the same setting; scripts keep using canonical command 
 | `actions.toggle` | `{"action": name or index, "step": index?, "enabled": bool?}` → `{action, disabled}`. Switches one 0-based step (pending recorded steps included) on or off; omitting `enabled` flips it. Without `step`, switches every step: on unless all already are. Playback, Batch and droplets skip steps that are off. In the desktop panel, click a step's check box |
 | `actions.rename` | `{"action": name or index, "name": str}` → `{action, index}`. Empty, whitespace-only or duplicate names are rejected and keep the old name. Nested `actions.play` steps that call the action by name and its function key follow the new name. In the desktop panel, double-click an action's name to rename it in place (Enter commits, Esc cancels) |
 
+Newly recorded Layers eye gestures resolve their targets by layer name and duplicate-name
+ordinal during playback rather than retaining a document-local layer id. A missing target
+reports a failed step instead of changing another layer.
+
 The Actions panel shows replayable steps immediately while recording. Click an individual
 step to select it, then use the trash button to remove that step; selecting the action
 heading instead targets the whole action. Step deletion also works during recording

@@ -538,7 +538,9 @@ impl Session {
     /// Whether `id` is a layer command whose `"layer"` param names an existing layer, so it needs no
     /// active layer (#2457). Matches how `layer_param` resolves the layer when the command runs.
     fn names_existing_layer(&self, id: &str, params: &Value) -> bool {
-        matches!(id, "layer.hideLayers" | "layer.showLayers" | "layer.renameLayer")
+        (matches!(id, "layer.hideLayers" | "layer.showLayers" | "layer.renameLayer")
+            || (id == "layer.setProps"
+                && params.as_object().is_some_and(|o| o.contains_key("visible") && o.keys().all(|k| matches!(k.as_str(), "layer" | "visible" | "coalesce")))))
             && params.get("layer").and_then(Value::as_u64).is_some_and(|l| self.active().is_some_and(|st| st.doc.layer(LayerId(l)).is_some()))
     }
 
