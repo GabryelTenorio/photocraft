@@ -103,6 +103,7 @@ fn setup() -> Option<Harness> {
 
 #[test]
 fn dragging_inside_moves_the_image_and_the_box_stays_centred() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     assert!(!photocraft_ui_egui::crop_ui::pending(h.state()), "the untouched frame");
     let c = h.state().last_canvas_rect.center();
@@ -133,6 +134,7 @@ fn dragging_inside_moves_the_image_and_the_box_stays_centred() {
 
 #[test]
 fn a_resize_keeps_the_box_centre_after_a_space_pan() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     // Space held: the temporary Hand pans the view 80, 40.
     let c = h.state().last_canvas_rect.center();
