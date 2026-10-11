@@ -95,6 +95,7 @@ pub fn preview(bytes: &[u8]) -> Result<Preview<'_>, Error> {
                 image_data = true;
             }
             b"IEND" if !image_data => return Err(Error::Malformed("PNG has no image data")),
+            b"IEND" => {}
             _ if kind.first().is_some_and(u8::is_ascii_uppercase) => {
                 return Err(Error::Unsupported("unknown critical PNG chunk"));
             }
