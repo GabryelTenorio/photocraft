@@ -597,6 +597,60 @@ mod tests {
         assert!(matches!(decode(&b, &Limits::default()), Err(CodecError::Unsupported { .. })));
     }
 
+    /// Hostile headers: absurd or negative axes, bad BITPIX, overflowing sizes, missing END,
+    /// a long chain of empty HDUs and declared data past the end all error, never panic or
+    /// allocate the declared size.
+    #[test]
+    fn hostile_headers_error_without_panicking() {
+        let base = ["SIMPLE  = T", "BITPIX  = 16"];
+        let cases: &[&[&str]] = &[
+            &["NAXIS   = 2", "NAXIS1  = 4294967296", "NAXIS2  = 1"],
+            &["NAXIS   = 2", "NAXIS1  = -5", "NAXIS2  = 1"],
+            &["NAXIS   = 2", "NAXIS1  = 2000000", "NAXIS2  = 2000000"],
+            &["NAXIS   = 3", "NAXIS1  = 65536", "NAXIS2  = 65536", "NAXIS3  = 9223372036854775807"],
+            &["NAXIS   = 1000"],
+            &["NAXIS   = -1"],
+            &["NAXIS   = 2", "NAXIS1  = 0", "NAXIS2  = 0"],
+            &["NAXIS   = 2", "NAXIS1  = 1.5D300", "NAXIS2  = 1"],
+            &["NAXIS   = 2"],
+            &["NAXIS   = 2", "NAXIS1  = 100", "NAXIS2  = 100"],
+        ];
+        for extra in cases {
+            let cards: Vec<&str> = base.iter().chain(extra.iter()).copied().collect();
+            let b = header(&cards);
+            assert!(decode(&b, &Limits::default()).is_err(), "{extra:?}");
+        }
+        for bitpix in ["0", "7", "-16", "128", "'X'"] {
+            let card = format!("BITPIX  = {bitpix}");
+            let b = header(&["SIMPLE  = T", &card, "NAXIS   = 2", "NAXIS1  = 1", "NAXIS2  = 1"]);
+            assert!(decode(&b, &Limits::default()).is_err(), "BITPIX {bitpix}");
+        }
+        // No END card: the header runs off the end of the file.
+        let mut w = Writer { out: Vec::new() };
+        for c in ["SIMPLE  = T", "BITPIX  = 8", "NAXIS   = 2"] {
+            w.card(c);
+        }
+        assert!(decode(&w.out, &Limits::default()).is_err());
+        // An empty primary followed by many empty extensions: bounded walk, then "no image".
+        let mut b = header(&["SIMPLE  = T", "BITPIX  = 8", "NAXIS   = 0"]);
+        for _ in 0..(MAX_HDUS + 5) {
+            b.extend(header(&["XTENSION= 'IMAGE   '", "BITPIX  = 8", "NAXIS   = 0"]));
+        }
+        assert!(decode(&b, &Limits::default()).is_err());
+        // An extension whose declared data size overflows.
+        let mut b = header(&["SIMPLE  = T", "BITPIX  = 8", "NAXIS   = 0"]);
+        b.extend(header(&[
+            "XTENSION= 'BINTABLE'",
+            "BITPIX  = 64",
+            "NAXIS   = 2",
+            "NAXIS1  = 9223372036854775807",
+            "NAXIS2  = 4",
+            "PCOUNT  = 0",
+            "GCOUNT  = 1",
+        ]));
+        assert!(decode(&b, &Limits::default()).is_err());
+    }
+
     #[test]
     fn extra_planes_warn() {
         let mut b = header(&["SIMPLE  = T", "BITPIX  = 8", "NAXIS   = 3", "NAXIS1  = 1", "NAXIS2  = 1", "NAXIS3  = 4"]);
