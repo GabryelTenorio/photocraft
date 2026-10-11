@@ -48,6 +48,7 @@ pub mod fx_visibility_cmds;
 pub mod gallery_cmds;
 pub mod gradient_fill_cmds;
 pub mod group_view_cmds;
+pub mod guide_layout;
 pub mod hidden_target;
 pub mod history_cmds;
 pub mod image_cmds;
@@ -72,6 +73,7 @@ pub mod notes_cmds;
 pub mod paint_cmds;
 mod path_edit_cmds;
 pub mod pattern_cmds;
+pub mod perspective_crop_cmds;
 pub mod photo_cmds;
 pub mod pick_cmds;
 mod pixels;
@@ -103,6 +105,7 @@ mod trap_cmds;
 pub mod type_caret_cmds;
 pub mod type_cmds;
 pub mod type_extra_cmds;
+pub mod type_mask_cmds;
 pub mod type_spell_cmds;
 pub mod type_styles_cmds;
 mod variables_cmds;
@@ -378,6 +381,8 @@ pub struct Session {
     pub link_stamps: std::collections::HashMap<(u64, String), link_watch::Stamp>,
     /// The stamps being taken on a worker thread ([`Session::start_link_scan`]).
     pub link_scan: Option<link_watch::LinkScan>,
+    /// Select Subject's last result, reused while the pixels are unchanged (#2865).
+    subject_cache: smartselect_cmds::SubjectCache,
     /// A finished live stroke offered to the `paint.stroke` / `paint.pencil` that commits it
     /// ([`Session::offer_live_stroke`]).
     pub(crate) live_commit: Option<brush_cmds::LiveCommit>,
@@ -454,6 +459,7 @@ impl Session {
         smart_cmds::on_close(self, index);
         if let Some(id) = self.docs.get(index).map(|d| d.doc.id) {
             self.cancel_jobs_on(id);
+            self.subject_cache.forget_doc(id);
         }
         let d = self.docs.remove(index);
         self.active = if self.docs.is_empty() {
@@ -572,6 +578,10 @@ impl Session {
         st.coalesce = key;
         st.revision += 1;
         st.last_damage = unchanged.then_some(photocraft_geom::Rect::EMPTY);
+        if !unchanged {
+            // Free the mask early; a stale entry would only miss (it is keyed by pixels).
+            self.subject_cache = Default::default();
+        }
         Ok(r)
     }
 

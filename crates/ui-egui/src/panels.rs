@@ -15,12 +15,13 @@ use crate::{PhotocraftApp, icons, widgets};
 /// Photoshop toolbar: divider-separated sections of slots; each slot is a flyout group whose button
 /// shows the group's last-used tool.
 const TOOL_SECTIONS: &[&[&[Tool]]] = &[
-    &[&[Tool::Move]],
+    &[&[Tool::Move, Tool::Artboard]],
     &[
         &[Tool::RectMarquee, Tool::EllipseMarquee, Tool::SingleRowMarquee, Tool::SingleColumnMarquee],
         &[Tool::Lasso, Tool::PolygonLasso, Tool::MagneticLasso],
         &[Tool::ObjectSelection, Tool::QuickSelection, Tool::MagicWand],
-        &[Tool::Crop, Tool::Slice, Tool::SliceSelect],
+        &[Tool::Crop, Tool::PerspectiveCrop, Tool::Slice, Tool::SliceSelect],
+        &[Tool::Frame],
         &[Tool::Eyedropper, Tool::Ruler, Tool::Note, Tool::Count],
     ],
     &[
@@ -34,8 +35,8 @@ const TOOL_SECTIONS: &[&[&[Tool]]] = &[
         &[Tool::Dodge, Tool::Burn, Tool::Sponge],
     ],
     &[
-        &[Tool::Pen],
-        &[Tool::Type, Tool::VerticalType],
+        &[Tool::Pen, Tool::FreeformPen, Tool::CurvaturePen, Tool::AddAnchorPoint, Tool::DeleteAnchorPoint],
+        &[Tool::Type, Tool::VerticalType, Tool::VerticalTypeMask, Tool::HorizontalTypeMask],
         &[Tool::PathSelection, Tool::DirectSelection],
         &[Tool::Rectangle, Tool::EllipseShape, Tool::Triangle, Tool::Polygon, Tool::Line, Tool::CustomShape],
     ],
@@ -147,7 +148,7 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                     let sel = slot.contains(&app.ui.tool);
                                     let tip =
                                         if tool.key() == '\0' { tl!(tool.label()).to_string() } else { format!("{}  ({})", tl!(tool.label()), tool.key()) };
-                                    let resp = icons::button(ui, icons::tool_icon(tool), bx, sel, &tip);
+                                    let resp = icons::button_with_icon_size(ui, icons::tool_icon(tool), bx, toolbar_icon_size(bx, t.pro), sel, &tip);
                                     if slot.len() > 1 {
                                         paint_toolbar_flyout_indicator(ui, &t, &resp);
                                     }
@@ -306,6 +307,12 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
         },
     );
+}
+
+/// Glyph size of a toolbar tool button. Pro fills two thirds of the button, close to Photoshop's
+/// toolbar glyphs (#2665); the other themes keep the general icon-button proportion.
+fn toolbar_icon_size(box_size: f32, pro: bool) -> f32 {
+    (box_size * if pro { 2.0 / 3.0 } else { 0.52 }).round()
 }
 
 /// Paints a triangle on the bottom right corner of an icon button to indicate that a toolbar item has a submenu.
@@ -826,12 +833,32 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, t.separator));
             ui.style_mut().spacing.scroll = egui::style::ScrollStyle { bar_width: 4.0, ..egui::style::ScrollStyle::floating() };
             egui::ScrollArea::horizontal().id_salt("tool-options").auto_shrink([false, false]).show(ui, |ui| {
+            // Font ink can extend beyond its advance width at fractional positions.
+            // Include its gutter in the container layout, including right-aligned actions.
+            egui::Frame::NONE.inner_margin(egui::Margin { right: 2, ..Default::default() }).show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 if t.pro {
                     crate::chrome_ui::home_button(app, ui);
                     widgets::vline(ui, 22.0);
                 }
-                let _ = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
+                let tool_icon = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
+                // Photoshop: right-click the tool icon for Reset Tool / Reset All Tools (#2825).
+                let mut reset = None;
+                tool_icon.context_menu(|ui| {
+                    if ui.button(tl!("Reset Tool")).clicked() {
+                        reset = Some("tool.reset");
+                        ui.close();
+                    }
+                    if ui.button(tl!("Reset All Tools")).clicked() {
+                        reset = Some("tool.resetAll");
+                        ui.close();
+                    }
+                });
+                if let Some(id) = reset
+                    && let Err(e) = crate::menus::invoke(app, ui.ctx(), id, json!({}))
+                {
+                    app.ui.status = e;
+                }
                 if t.pro {
                     let (r, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
                     icons::paint(ui, r, "chevron-down", 10.0, t.text_faint);
@@ -868,6 +895,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     || crate::vector_ui::options_bar(app, ui, tool)
                     || crate::analysis_ui::options_bar(app, ui, tool)
                     || crate::slice_ui::options_bar(app, ui, tool)
+                    || crate::frame_tool::options_bar(app, ui, tool)
+                    || crate::artboard_tool::options_bar(app, ui, tool)
                 {
                     return;
                 }
@@ -1147,26 +1176,27 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         // Live mode: the options also change a selected gradient fill layer.
                         crate::gradient_ui::options_changed(app, &before);
                     }
+                    Tool::PerspectiveCrop if t.pro => crate::perspective_crop_ui::options_bar(app, ui),
                     Tool::Crop if t.pro => {
-                        let presets = crate::crop_size::dropdown_options();
-                        if widgets::dropdown(ui, "crop-ratio", &mut app.ui.tool_options.crop_ratio, &presets, 140.0) {
-                            // A size preset or Front Image fills W x H x Resolution (#2443).
-                            crate::crop_size::chosen(app);
-                        }
+                        let before_ratio = crate::crop_ui::preset_ratio(app);
+                        let doc_size = app.session.active().map_or((0.0, 0.0), |s| (f64::from(s.doc.size.width), f64::from(s.doc.size.height)));
+                        // Ratios, sizes, saved presets, New / Delete Crop Preset… (#2443, #1919).
+                        crate::crop_presets::dropdown(app, ui);
                         let o = &mut app.ui.tool_options;
                         if o.crop_ratio == crate::crop_size::WHR {
                             crate::crop_size::fields(o, ui);
                         } else {
-                            // Custom ratio fields (Photoshop shows the preset's numbers here).
-                            let (mut rw, mut rh) = crate::chrome_ui::crop_ratio(&o.crop_ratio, 0.0, 0.0).map_or((0.0, 0.0), |(w, h)| (w as f32, h as f32));
+                            // Keep partial edits in ToolOptions so the first side survives a frame;
+                            // Original Ratio shows the document's numbers, as Photoshop does.
+                            let (mut rw, mut rh) = crate::crop_size::custom_ratio_fields(o, doc_size);
                             let cw = widgets::value_field(ui, &mut rw, 0.0..=99_999.0, "", 54.0).changed();
                             let swap = icons::button(ui, "arrow-left-right", 22.0, false, tl!("Swaps height and width")).clicked();
                             let ch = widgets::value_field(ui, &mut rh, 0.0..=99_999.0, "", 54.0).changed();
                             if swap {
                                 std::mem::swap(&mut rw, &mut rh);
                             }
-                            if (cw || ch || swap) && rw > 0.0 && rh > 0.0 {
-                                o.crop_ratio = format!("{}:{}", widgets::fmt_num(rw as f64), widgets::fmt_num(rh as f64));
+                            if cw || ch || swap {
+                                crate::crop_size::set_custom_ratio_fields(o, rw, rh);
                             }
                         }
                         widgets::vline(ui, 22.0);
@@ -1181,6 +1211,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         crate::crop_overlay::options_button(o, ui);
                         let pick_shield_color = crate::crop_shield::options_button(&mut o.crop_shield, ui);
                         widgets::checkbox(ui, &mut o.crop_delete, tl!("Delete Cropped Pixels"));
+                        if crate::crop_ui::preset_ratio(app) != before_ratio {
+                            crate::crop_ui::apply_ratio(app);
+                        }
                         if pick_shield_color {
                             crate::crop_shield::pick_custom_color(app);
                         }
@@ -1202,7 +1235,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         });
                     }
                     // Every theme gets the font, style and size controls (#1387), as with Auto-Select (#1275).
-                    Tool::Type | Tool::VerticalType => crate::type_tool::options_bar(app, ui),
+                    Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => crate::type_tool::options_bar(app, ui),
                     Tool::Move if t.pro => {
                         let o = &mut app.ui.tool_options;
                         widgets::checkbox(ui, &mut o.move_auto_select, tl!("Auto-Select:"));
@@ -1353,6 +1386,13 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             ],
                         ),
                     ),
+                    Tool::PerspectiveCrop => hint(
+                        ui,
+                        &crate::i18n::fmt(
+                            tl!("Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels"),
+                            &[("commit", &crate::shortcuts::pretty("Enter"))],
+                        ),
+                    ),
                     Tool::Gradient => hint(ui, tl!("Drag to draw a gradient")),
                     Tool::PaintBucket => hint(ui, tl!("Click to fill similar colours")),
                     // Retouching and smart-selection tools draw their bar in `retouch_ui::options_bar`.
@@ -1365,9 +1405,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 }
                 crate::brush_panel::commit_gesture(app, ui.ctx(), &brush_before, &brush);
             });
-            // Font ink can extend beyond its advance width at fractional positions.
-            ui.expand_to_include_x(ui.min_rect().right() + 2.0);
             reveal_focused_control(ui);
+            });
             });
         });
 }
@@ -1448,12 +1487,19 @@ fn hint(ui: &mut egui::Ui, s: &str) {
 
 // ----------------------------------------------------------------------------- status bar
 
+/// The status bar's height and the height of the controls in it (zoom field, Fit), which leaves
+/// them an even margin above and below inside the bar (#2823).
+pub fn status_bar_heights(t: &Tokens) -> (f32, f32) {
+    if t.pro { (24.0, 18.0) } else { (30.0, 22.0) }
+}
+
 pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("status_bar")
-        .exact_size(if t.pro { 24.0 } else { 30.0 })
+        .exact_size(status_bar_heights(&t).0)
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(10, 0)))
         .show(ui, |ui| {
+            let control_h = status_bar_heights(&t).1;
             ui.horizontal_centered(|ui| {
                 if t.pro {
                     crate::chrome_ui::status_bar_pro(app, ui);
@@ -1465,7 +1511,7 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     let (w, h, mode, bits, layers) =
                         (st.doc.size.width, st.doc.size.height, crate::canvas::mode_label(&st.doc), st.doc.depth.bits(), st.doc.layer_count());
                     let mut pct = app.ui.views[i].zoom * 100.0;
-                    if widgets::value_field(ui, &mut pct, crate::zoom_levels::percent_range(&app.ui.views[i]), "%", 78.0).changed() {
+                    if widgets::compact_value_field(ui, &mut pct, crate::zoom_levels::percent_range(&app.ui.views[i]), "%", 78.0, control_h).changed() {
                         app.ui.views[i].zoom = crate::zoom_levels::clamp(pct / 100.0, app.ui.views[i].doc_size);
                         app.ui.views[i].fit_pending = false;
                     }
@@ -1486,7 +1532,7 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if app.session.active().is_some()
                         && !t.pro
-                        && widgets::secondary_button(ui, tl!("Fit"), 0.0).clicked()
+                        && widgets::compact_button(ui, tl!("Fit"), control_h).clicked()
                         && let Some(i) = app.session.active_index()
                     {
                         app.ui.views[i].fit_pending = true;
@@ -2594,8 +2640,9 @@ fn layer_row(
     }
     // Double-click: the name renames in place (over the row's full height, not just the glyphs:
     // #651); the Background, which can't be renamed while it's locked, becomes a normal layer; an
-    // adjustment or fill thumbnail opens its settings and a Smart Object thumbnail its contents,
-    // and a type thumbnail edits its text; anywhere else on the row opens Layer Style (#350, #537).
+    // adjustment, fill or shape thumbnail opens its settings (a solid colour: the Color Picker,
+    // #2812) and a Smart Object thumbnail its contents, and a type thumbnail edits its text;
+    // anywhere else on the row opens Layer Style (#350, #537).
     // The first click already made this the active layer.
     if resp.double_clicked() {
         let pos = resp.interact_pointer_pos();
@@ -2621,7 +2668,7 @@ fn layer_row(
             }
         } else if pos.and_then(|p| masks.hit(p)).is_none() {
             let id = match &l.content {
-                LayerContent::Adjustment(_) | LayerContent::Fill(_) if on(thumb) => "layer.layerContentOptions",
+                LayerContent::Adjustment(_) | LayerContent::Fill(_) | LayerContent::Shape(_) if on(thumb) => "layer.layerContentOptions",
                 LayerContent::Smart(_) if on(thumb) => "layer.smartObjects.editContents",
                 LayerContent::Text(_) if on(thumb) => "type.editText",
                 _ => "layer.layerStyle.blendingOptions",
@@ -4069,8 +4116,17 @@ mod swatch_type_tests {
         app.run("tools.setColors", json!({"foreground": "#d8452e"})).unwrap();
         let fg = app.session.tools.foreground;
         app.ui.tool = Tool::Type;
-        app.ui.text_edit =
-            Some(crate::state::TextEdit { layer: id, caret: 0, anchor: 5, session: "s".into(), created: false, dragging: false, resize: None, preedit: None });
+        app.ui.text_edit = Some(crate::state::TextEdit {
+            layer: id,
+            caret: 0,
+            anchor: 5,
+            session: "s".into(),
+            created: false,
+            mask: false,
+            dragging: false,
+            resize: None,
+            preedit: None,
+        });
         let mut h = Harness::builder().with_size(vec2(300.0, 300.0)).build_ui_state(|ui, app: &mut PhotocraftApp| color_picker(app, ui), app);
         h.run_steps(4);
         assert_eq!(h.state().session.tools.foreground, fg);
@@ -4218,6 +4274,15 @@ mod type_flyout_tests {
         assert_eq!(*hand, [Tool::Hand, Tool::RotateView]);
         assert_eq!(Tool::RotateView.key(), 'R');
     }
+
+    #[test]
+    fn pro_toolbar_glyphs_fill_two_thirds_of_the_button() {
+        // #2665: Photoshop-style themes draw tool glyphs larger than other icon buttons.
+        assert_eq!(toolbar_icon_size(30.0, true), 20.0);
+        assert_eq!(toolbar_icon_size(36.0, false), (36.0f32 * 0.52).round(), "other themes keep the icon-button size");
+        // The glyph stays inside the button with room for the flyout triangle's corner.
+        assert!(toolbar_icon_size(30.0, true) <= 30.0 - 2.0 * 4.0);
+    }
 }
 
 #[cfg(test)]
@@ -4259,14 +4324,14 @@ mod toolbar_hidden_tests {
 
     #[test]
     fn a_slot_keeps_only_its_visible_tools_and_its_index() {
-        let sections = visible_sections(&["Sponge".to_string(), "Move".to_string()]);
+        let sections = visible_sections(&["Sponge".to_string(), "Move".to_string(), "Artboard".to_string()]);
         assert_eq!(sections.len(), TOOL_SECTIONS.len() - 1, "the Move section has no tools left");
         let index = TOOL_SECTIONS.iter().flat_map(|section| section.iter()).position(|slot| slot.contains(&Tool::Sponge)).unwrap();
         let slot = sections.iter().flatten().find(|(i, _)| *i == index).map(|(_, tools)| tools.clone());
         assert_eq!(slot, Some(vec![Tool::Dodge, Tool::Burn]));
         assert!(sections.iter().flatten().all(|(_, tools)| !tools.contains(&Tool::Move) && !tools.contains(&Tool::Sponge)));
         assert_eq!(visible_sections(&[]).iter().map(Vec::len).sum::<usize>(), TOOL_SECTIONS.iter().map(|section| section.len()).sum::<usize>());
-        let by_command = visible_sections(&["sponge".to_string(), "move".to_string()]);
+        let by_command = visible_sections(&["sponge".to_string(), "move".to_string(), "artboard".to_string()]);
         assert_eq!(by_command, sections, "edit.toolbar names are read like `ui.set {{tool}}` names");
     }
 }
@@ -4903,6 +4968,62 @@ mod compact_visual_regressions {
                 let current = if pro { harness.state().ui.tool_options.pencil_auto_erase } else { harness.state().session.tools.brush.pressure_opacity };
                 assert_ne!(current, previous, "{kind:?} at {scale}x: Space must activate the revealed option");
                 assert!(harness.state().ui.panels.options_bar, "widget traversal must preserve the options bar");
+            }
+        }
+    }
+
+    #[test]
+    fn a_wide_crop_options_bar_does_not_scroll() {
+        for kind in crate::theme::ThemeKind::ALL {
+            for scale in [1.0, 1.5, 2.0] {
+                for mode in ["", crate::crop_size::WHR] {
+                    let ctx = egui::Context::default();
+                    crate::theme::install_fonts(&ctx);
+                    crate::theme::apply(&ctx, kind);
+                    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                    if !Tokens::get(&ctx).pro {
+                        continue;
+                    }
+                    app.ui.tool = Tool::Crop;
+                    app.ui.tool_options.crop_ratio = mode.into();
+                    let screen = Rect::from_min_size(egui::Pos2::ZERO, vec2(1600.0, 120.0));
+                    let clear_x = |output: &egui::FullOutput| {
+                        output
+                            .shapes
+                            .iter()
+                            .find_map(|s| match &s.shape {
+                                egui::Shape::Text(t) if t.galley.job.text == "Clear" => Some(t.pos.x),
+                                _ => None,
+                            })
+                            .unwrap()
+                    };
+                    let mut before = ctx.run_ui(input_at_scale(screen, scale), |ui| options_bar(&mut app, ui));
+                    before.textures_delta.clear();
+                    for _ in 0..3 {
+                        before = ctx.run_ui(input_at_scale(screen, scale), |ui| options_bar(&mut app, ui));
+                        before.textures_delta.clear();
+                    }
+                    let mut after = before.clone();
+                    for _ in 0..6 {
+                        after = ctx.run_ui(
+                            egui::RawInput {
+                                events: vec![
+                                    egui::Event::PointerMoved(pos2(800.0, 20.0)),
+                                    egui::Event::MouseWheel {
+                                        unit: egui::MouseWheelUnit::Point,
+                                        delta: vec2(-100.0, 0.0),
+                                        modifiers: egui::Modifiers::NONE,
+                                        phase: egui::TouchPhase::Move,
+                                    },
+                                ],
+                                ..input_at_scale(screen, scale)
+                            },
+                            |ui| options_bar(&mut app, ui),
+                        );
+                        after.textures_delta.clear();
+                    }
+                    assert_eq!(clear_x(&before), clear_x(&after), "a roomy bar must not have horizontal overflow");
+                }
             }
         }
     }

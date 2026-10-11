@@ -218,19 +218,27 @@ pub(crate) fn import(name: &str, bytes: &[u8]) -> Result<Document> {
     Ok(r.document)
 }
 
-/// What a headless save writes beyond the format: JPEG quality and TIFF layers.
+/// What a headless save writes beyond the format: JPEG quality, TIFF layers and Targa bits.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct SaveOpts {
     /// Photoshop's 0–12 JPEG scale.
     pub quality: Option<f64>,
     /// TIFF: keep the layers. Off unless a command's params ask (`"tiffLayers": true`).
     pub tiff_layers: bool,
+    /// Targa: 24 or 32 bits per pixel (`"tgaBits"`); unset, 32 with an alpha channel or
+    /// transparency, else 24.
+    pub tga_bits: Option<photocraft_io::TgaBits>,
 }
 
 impl SaveOpts {
-    /// `quality` and `tiffLayers` from a command's params.
-    pub(crate) fn from_params(p: &Value) -> Self {
-        SaveOpts { quality: f64_param(p, "quality"), tiff_layers: p.get("tiffLayers").and_then(Value::as_bool).unwrap_or(false) }
+    /// `quality`, `tiffLayers` and `tgaBits` from command `cmd`'s params; a `tgaBits` other than
+    /// 24 or 32 is an error.
+    pub(crate) fn from_params(p: &Value, cmd: &str) -> Result<Self> {
+        Ok(SaveOpts {
+            quality: f64_param(p, "quality"),
+            tiff_layers: p.get("tiffLayers").and_then(Value::as_bool).unwrap_or(false),
+            tga_bits: tga_bits_param(p, cmd)?,
+        })
     }
 
     pub(crate) fn or_quality(mut self, q: f64) -> Self {
@@ -245,11 +253,25 @@ impl From<Option<f64>> for SaveOpts {
     }
 }
 
+/// The Targa bits per pixel in `p` (`"tgaBits": 24 | 32`; absent or null: the automatic choice).
+/// Anything else is a bad parameter of command `cmd`. Shared by every save that takes it (the
+/// engine's commands, the app's Save As and control channel, the headless server).
+pub fn tga_bits_param(p: &Value, cmd: &str) -> Result<Option<photocraft_io::TgaBits>> {
+    match p.get("tgaBits") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_u64()
+            .and_then(photocraft_io::TgaBits::from_bits)
+            .map(Some)
+            .ok_or_else(|| EngineError::BadParams { cmd: cmd.into(), msg: format!("`tgaBits` must be 24 or 32, got {v}") }),
+    }
+}
+
 /// Encodes `doc` for `path`'s extension.
 pub(crate) fn encode(doc: &Document, path: &str, save: impl Into<SaveOpts>) -> Result<(Vec<u8>, Vec<String>)> {
     crate::allocation::checkpoint("saving document")?;
     let save = save.into();
-    let mut opts = photocraft_io::ExportOptions { tiff_layers: save.tiff_layers, ..Default::default() };
+    let mut opts = photocraft_io::ExportOptions { tiff_layers: save.tiff_layers, tga_bits: save.tga_bits, ..Default::default() };
     if let Some(q) = save.quality {
         let q = (q.clamp(0.0, 12.0) / 12.0 * 99.0 + 1.0).round() as u8;
         opts.encode.jpeg_quality = q;
@@ -356,7 +378,7 @@ fn save_a_copy(s: &mut Session, p: &Value) -> Result<Value> {
         let px = flattened(&doc, fmt);
         doc.layers = vec![Layer::new("Background", LayerContent::Raster(px))];
     }
-    let warnings = save_doc(&doc, &path, SaveOpts::from_params(p))?;
+    let warnings = save_doc(&doc, &path, SaveOpts::from_params(p, "file.saveACopy")?)?;
     Ok(json!({"path": path, "warnings": warnings}))
 }
 
@@ -893,13 +915,20 @@ fn batch(s: &mut Session, p: &Value) -> Result<Value> {
     let format = p.get("format").and_then(Value::as_str).unwrap_or("same").to_string();
     // Steps that call another action play it from the caller's actions; the playback stack comes
     // along so an action that batches itself is caught as a recursive call.
-    let actions = crate::actions_cmds::ActionState {
-        list: s.actions.list.clone(),
-        playing: s.actions.playing,
-        playback_stack: s.actions.playback_stack.clone(),
-        ..Default::default()
+    let list = match p.get("calledActions") {
+        None | Some(Value::Null) => s.actions.list.clone(),
+        // A droplet brings the actions it calls (#2794) and runs with those alone.
+        Some(v) => {
+            let list: Vec<crate::actions_cmds::Action> =
+                serde_json::from_value(v.clone()).map_err(|e| EngineError::BadParams { cmd: cmd.into(), msg: format!("\"calledActions\": {e}") })?;
+            if list.len() > 4096 {
+                return Err(EngineError::BadParams { cmd: cmd.into(), msg: "\"calledActions\" holds more than 4096 actions".into() });
+            }
+            list
+        }
     };
-    let r = process_files(&inputs, &output, &format, SaveOpts::from_params(p), "", &|scratch| {
+    let actions = crate::actions_cmds::ActionState { list, playing: s.actions.playing, playback_stack: s.actions.playback_stack.clone(), ..Default::default() };
+    let r = process_files(&inputs, &output, &format, SaveOpts::from_params(p, cmd)?, "", &|scratch| {
         scratch.actions = actions.clone();
         for (id, params) in &steps {
             let r = scratch.execute(id, params.clone())?;
@@ -923,7 +952,7 @@ fn image_processor(_s: &mut Session, p: &Value) -> Result<Value> {
         (w, h) => Some(json!({"width": w.unwrap_or(1e9), "height": h.unwrap_or(1e9), "dontEnlarge": true})),
     };
     let to_srgb = p.get("convertToSrgb").and_then(Value::as_bool).unwrap_or(false);
-    let r = process_files(&inputs, &output, &format, SaveOpts::from_params(p).or_quality(8.0), "", &|scratch| {
+    let r = process_files(&inputs, &output, &format, SaveOpts::from_params(p, cmd)?.or_quality(8.0), "", &|scratch| {
         if to_srgb && scratch.active().is_some_and(|d| d.doc.mode != ColorMode::Rgb) {
             scratch.execute("image.mode.rgb", json!({}))?;
         }
@@ -1064,6 +1093,7 @@ fn layers_to_files(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = str_param(p, "dir", cmd).or_else(|_| str_param(p, "output", cmd))?.to_string();
     let format = p.get("format").and_then(Value::as_str).unwrap_or("png").trim_start_matches('.').to_ascii_lowercase();
     let visible_only = p.get("visibleOnly").and_then(Value::as_bool).unwrap_or(true);
+    let save = SaveOpts::from_params(p, cmd)?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let prefix = p.get("prefix").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| stem(&d.doc.name));
     let doc = d.doc.clone();
@@ -1080,7 +1110,7 @@ fn layers_to_files(s: &mut Session, p: &Value) -> Result<Value> {
         only.clipped = false;
         one.layers = vec![only];
         let path = join(&dir, &format!("{}_{:04}_{}.{format}", sanitize(&prefix), i, sanitize(&l.name)));
-        save_doc(&one, &path, SaveOpts::from_params(p))?;
+        save_doc(&one, &path, save)?;
         files.push(path);
     }
     Ok(json!({"files": files}))
@@ -1237,77 +1267,8 @@ fn push_unique(v: &mut Vec<f32>, x: f64) {
     }
 }
 
-/// Guide positions for `count` columns (or rows) across `[start, end]`, Photoshop-style: both
-/// edges of every column; a fixed `width` packs columns from `start` (or centres them).
-fn layout_lines(start: f64, end: f64, count: u32, width: Option<f64>, gutter: f64, center: bool, out: &mut Vec<f32>) {
-    let avail = (end - start).max(0.0);
-    if count == 0 {
-        return;
-    }
-    let n = count as f64;
-    let w = width.unwrap_or(((avail - (n - 1.0) * gutter) / n).max(0.0));
-    let total = n * w + (n - 1.0) * gutter;
-    let x0 = if center && width.is_some() { start + (avail - total) / 2.0 } else { start };
-    for i in 0..count {
-        let a = x0 + i as f64 * (w + gutter);
-        push_unique(out, a);
-        push_unique(out, a + w);
-    }
-}
-
 fn new_guide_layout(s: &mut Session, p: &Value) -> Result<Value> {
-    let d = s.active().ok_or(EngineError::NoDocument)?;
-    let (cw, ch) = (d.doc.size.width as f64, d.doc.size.height as f64);
-    let m = match p.get("margin") {
-        Some(Value::Array(a)) if a.len() == 4 => [0, 1, 2, 3].map(|i| a[i].as_f64().unwrap_or(0.0)),
-        Some(v) if v.is_number() => [v.as_f64().unwrap_or(0.0); 4],
-        _ => [0.0; 4],
-    };
-    let [top, left, bottom, right] = m;
-    let cols = p.get("columns").and_then(Value::as_u64).unwrap_or(0);
-    let rows = p.get("rows").and_then(Value::as_u64).unwrap_or(0);
-    // Each column/row costs a loop iteration plus a duplicate scan, so an
-    // absurd count from the caller would block the app for minutes (#704).
-    // Photoshop's own dialog caps at 32; 1000 is a generous ceiling that
-    // still finishes instantly.
-    const MAX_GUIDE_LINES: u64 = 1000;
-    for (n, what) in [(cols, "columns"), (rows, "rows")] {
-        if n > MAX_GUIDE_LINES {
-            return Err(EngineError::BadParams { cmd: "view.newGuideLayout".into(), msg: format!("{what} must be {MAX_GUIDE_LINES} or fewer (got {n})") });
-        }
-    }
-    let (cols, rows) = (cols as u32, rows as u32);
-    let mut v: Vec<f32> = Vec::new();
-    let mut h: Vec<f32> = Vec::new();
-    let has_margin = m.iter().any(|x| *x != 0.0);
-    if has_margin {
-        push_unique(&mut v, left);
-        push_unique(&mut v, cw - right);
-        push_unique(&mut h, top);
-        push_unique(&mut h, ch - bottom);
-    }
-    let center = p.get("centerColumns").and_then(Value::as_bool).unwrap_or(false);
-    layout_lines(left, cw - right, cols, size_param(p, "width"), f64_param(p, "gutter").unwrap_or(0.0), center, &mut v);
-    layout_lines(top, ch - bottom, rows, size_param(p, "height"), f64_param(p, "rowGutter").or_else(|| f64_param(p, "gutter")).unwrap_or(0.0), center, &mut h);
-    if v.is_empty() && h.is_empty() {
-        return Err(EngineError::BadParams { cmd: "view.newGuideLayout".into(), msg: "give \"columns\", \"rows\" or a \"margin\"".into() });
-    }
-    let clear = p.get("clearExisting").and_then(Value::as_bool).unwrap_or(false);
-    let (nv, nh) = (v.len(), h.len());
-    s.edit("New Guide Layout", |doc, _| {
-        if clear {
-            doc.guides.vertical.clear();
-            doc.guides.horizontal.clear();
-        }
-        for x in v {
-            push_unique(&mut doc.guides.vertical, x as f64);
-        }
-        for y in h {
-            push_unique(&mut doc.guides.horizontal, y as f64);
-        }
-        Ok(())
-    })?;
-    Ok(json!({"vertical": nv, "horizontal": nh}))
+    crate::guide_layout::apply(s, p)
 }
 
 fn guides_from_shape(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1390,7 +1351,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Save a Copy…",
             &["File"],
             Some("Cmd+Alt+S"),
-            r##"{"path":str (format from the extension),"quality":0..12? (JPEG),"layers":bool=true,"tiffLayers":bool=false (TIFF: keep the layers; flat by default)}"##,
+            r##"{"path":str (format from the extension),"quality":0..12? (JPEG),"layers":bool=true,"tiffLayers":bool=false (TIFF: keep the layers; flat by default),"tgaBits":24|32? (TGA: 32 writes the alpha channel, or else the transparency, as the alpha; unset, 32 with an alpha channel or transparency, else 24)}"##,
             native_doc,
             save_a_copy
         ),
@@ -1435,7 +1396,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Fit Image…",
             &["File", "Automate"],
             None,
-            r##"{"width":px,"height":px,"dontEnlarge":bool=false,"resample":"bicubic|bilinear|nearest|lanczos|preserveDetails"="bicubic"}"##,
+            r##"{"width":px,"height":px,"dontEnlarge":bool=false,"resample":"automatic|preserveDetails|bicubicSmoother|bicubicSharper|bicubicAutomatic|bicubic|nearest|bilinear|lanczos"="bicubic"}"##,
             has_doc,
             fit_image
         ),
@@ -1453,7 +1414,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Batch…",
             &["File", "Automate"],
             None,
-            r##"{"steps":[[commandId,params]|{"command":id,"params":{}}…] (a recorded action),"input":folder|[paths],"output":folder,"format":"same|png|jpg|psd|tiff|…"="same","quality":0..12?,"tiffLayers":bool=false} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
+            r##"{"steps":[[commandId,params]|{"command":id,"params":{}}…] (a recorded action),"input":folder|[paths],"output":folder,"format":"same|png|jpg|psd|tiff|…"="same","quality":0..12?,"tiffLayers":bool=false,"tgaBits":24|32?,"calledActions":[{"name","steps"}…]? (the actions Play Action steps call; default: the session's)} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
             native,
             batch
         ),
@@ -1462,7 +1423,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Image Processor…",
             &["File", "Scripts"],
             None,
-            r##"{"input":folder|[paths],"output":folder,"format":"jpg|png|psd|tiff|…"="jpg","quality":0..12=8,"tiffLayers":bool=false,"width":px?,"height":px? (fit, never enlarge),"convertToSrgb":bool=false} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
+            r##"{"input":folder|[paths],"output":folder,"format":"jpg|png|psd|tiff|…"="jpg","quality":0..12=8,"tiffLayers":bool=false,"tgaBits":24|32?,"width":px?,"height":px? (fit, never enlarge),"convertToSrgb":bool=false} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
             native,
             image_processor
         ),
@@ -1490,7 +1451,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Layers to Files…",
             &["File", "Export"],
             None,
-            r##"{"dir":folder,"format":"png|jpg|psd|tiff|…"="png","prefix":str=document name,"visibleOnly":bool=true,"quality":0..12?,"tiffLayers":bool=false} → {files}"##,
+            r##"{"dir":folder,"format":"png|jpg|psd|tiff|…"="png","prefix":str=document name,"visibleOnly":bool=true,"quality":0..12?,"tiffLayers":bool=false,"tgaBits":24|32?} → {files}"##,
             native_doc,
             layers_to_files
         ),
@@ -1508,7 +1469,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Guide Layout…",
             &["View"],
             None,
-            r##"{"columns":n=0,"width":px?,"gutter":px=0,"rows":n=0,"height":px?,"rowGutter":px=gutter,"margin":px|[top,left,bottom,right]=0,"centerColumns":bool=false,"clearExisting":bool=false}"##,
+            r##"{"columns":n=0,"width":px?,"gutter":px=0,"rows":n=0,"height":px?,"rowGutter":px=gutter,"margin":px|[top,left,bottom,right]=0,"centerColumns":bool=false,"clearExisting":bool=false,"target":"document|selectedArtboards"="document"}"##,
             has_doc,
             new_guide_layout
         ),
