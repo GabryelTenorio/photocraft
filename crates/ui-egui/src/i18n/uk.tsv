@@ -3588,6 +3588,9 @@ cameraData	Lens	Об'єктив
 	Previous Document	Попередній документ
 	W x H x Resolution	Ш x В x Роздільна здатність
 	Front Image	Зображення переднього плану
+	Perspective Crop Tool	Інструмент «Перспективне кадрування»
+	Show Grid	Показати сітку
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Розтягніть рамку або клацніть чотири кути · перетягніть кути на краї похилої фігури · {commit} застосовує · Esc скасовує
 	Artboard Tool	Інструмент «Монтажна область»
 	Make Portrait	Зробити портретною
 	Make Landscape	Зробити альбомною
@@ -3601,6 +3604,7 @@ cameraData	Lens	Об'єктив
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
 	Show rulers	Показати лінійки
+	Include in playback	Включити у відтворення
 	New Crop Preset…	Новий набір параметрів кадрування…
 	Delete Crop Preset…	Видалити набір параметрів кадрування…
 	Select the crop presets to delete:	Виберіть набори параметрів кадрування для видалення:
