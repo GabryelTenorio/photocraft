@@ -3456,6 +3456,19 @@ cameraRaw	Roughness	Chropowatość
 	Continue	Kontynuuj
 	This format saves a flattened image. Use Save a Copy to keep your editable document.	Ten format zapisuje spłaszczony obraz. Użyj polecenia Zapisz kopię, aby zachować dokument do dalszej edycji.
 	Netpbm chooses the subtype from the image depth and channels.	Netpbm wybiera podtyp na podstawie głębi bitowej i kanałów obrazu.
+
+# Shared panel docking
+	Activate Panel	Aktywuj panel
+	Change Panel Group	Zmień grupę paneli
+	Change Panel Layout	Zmień układ paneli
+	Close Panel	Zamknij panel
+	Dock Panel	Dokuj panel
+	Float Panel	Panel pływający
+	Move Panel	Przenieś panel
+	Group with	Grupuj z
+	Panel menu	Menu panelu
+	Resize panel window	Zmień rozmiar okna panelu
+	Resize panels	Zmień rozmiar paneli
 	Use Classic Mode	Użyj trybu klasycznego
 	Auto Center Preview	Automatycznie wyśrodkuj podgląd
 	Next Document	Następny dokument

@@ -2863,6 +2863,19 @@ fontWeight	Italic	Itálico
 	Continue	Continuar
 	This format saves a flattened image. Use Save a Copy to keep your editable document.	Este formato salva uma imagem achatada. Use Salvar uma cópia para manter o documento editável.
 	Netpbm chooses the subtype from the image depth and channels.	Netpbm escolhe o subtipo com base na profundidade de bits e nos canais da imagem.
+
+# Shared panel docking
+	Activate Panel	Ativar painel
+	Change Panel Group	Alterar grupo de painéis
+	Change Panel Layout	Alterar disposição dos painéis
+	Close Panel	Fechar painel
+	Dock Panel	Encaixar painel
+	Float Panel	Painel flutuante
+	Move Panel	Mover painel
+	Group with	Agrupar com
+	Panel menu	Menu do painel
+	Resize panel window	Redimensionar janela do painel
+	Resize panels	Redimensionar painéis
 	Use Classic Mode	Usar modo clássico
 	Auto Center Preview	Centralizar visualização automaticamente
 	Next Document	Próximo documento
