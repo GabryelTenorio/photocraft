@@ -72,6 +72,7 @@ pub mod fill_ui;
 pub mod filter_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod filter_preview_worker;
+pub mod flatten_save_ui;
 mod font_preview;
 pub mod gallery_ui;
 pub mod gpu_canvas;
@@ -215,6 +216,17 @@ impl Default for ExportSettings {
     fn default() -> Self {
         ExportSettings { jpeg_quality: None, webp_lossless: true, webp_quality: None, tiff_layers: true, xmp_all: true }
     }
+}
+
+/// What File › Save does with the active document (see [`PhotocraftApp::in_place_plan`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InPlacePlan {
+    /// Write back to `path` in its own format; `tiff_layers` keeps the layers in a TIFF.
+    Write { path: String, tiff_layers: bool },
+    /// Writing back to `path` flattens layers its format can't hold: confirm first.
+    Flatten { path: String },
+    /// No file a save can write back to: Save As.
+    SaveAs,
 }
 
 /// The document's lone layer when it is a plain raster a flat file keeps: visible, at full
@@ -598,6 +610,9 @@ pub struct PhotocraftApp {
     pub(crate) file_dialog: Option<file_dialog::Pending>,
     /// A Save As to a layered TIFF parked behind the TIFF Options prompt (see `tiff_options_ui`).
     pub(crate) tiff_options: Option<tiff_options_ui::Prompt>,
+    /// A File › Save that would flatten layers into the JPEG, PNG, WebP or TIFF the document was
+    /// opened from, parked behind the confirmation (see `flatten_save_ui`).
+    pub(crate) flatten_save: Option<flatten_save_ui::Prompt>,
     /// Where each document was last saved or exported to through a dialog (#1826): its next Save
     /// As or export dialog starts there rather than beside the document. Session-only.
     pub(crate) save_dirs: HashMap<photocraft_doc::DocId, std::path::PathBuf>,
@@ -714,6 +729,7 @@ impl PhotocraftApp {
             discard: None,
             file_dialog: None,
             tiff_options: None,
+            flatten_save: None,
             save_dirs: HashMap::new(),
             allow_close: false,
             stylus: Default::default(),
@@ -1074,8 +1090,8 @@ impl PhotocraftApp {
     /// continues on a later frame, see `file_dialog`). Returns `{"path", "warnings"}` (the export
     /// warnings are also shown to the user).
     pub fn save_as(&mut self, path: Option<String>) -> Result<Value, String> {
-        if self.tiff_options.is_some() {
-            return Err("Answer TIFF Options before starting another save".into());
+        if self.save_prompt_open() {
+            return Err("Answer the open save prompt before starting another save".into());
         }
         // Edit Contents documents save back into their smart object.
         if path.is_none() && self.session.is_enabled("layer.smartObjects.saveContents") {
@@ -1119,14 +1135,83 @@ impl PhotocraftApp {
         self.save_as_step(path, None)
     }
 
-    /// File › Save back to the document's own layered file, recorded as a `file.save` step.
-    pub(crate) fn save_in_place(&mut self, path: String) -> Result<Value, String> {
-        if self.tiff_options.is_some() {
-            return Err("Answer TIFF Options before starting another save".into());
+    /// Whether TIFF Options or the flatten confirmation is waiting for an answer.
+    pub(crate) fn save_prompt_open(&self) -> bool {
+        self.tiff_options.is_some() || self.flatten_save.is_some()
+    }
+
+    /// What File › Save does with the active document: write back to the file it was opened
+    /// from (in that file's format, keeping its bit depth, ICC profile, EXIF and XMP), ask before
+    /// flattening layers into it, or go through Save As. External editors (`--wait`, a DAM's
+    /// "Edit in") rely on Save writing the file they handed over.
+    pub(crate) fn in_place_plan(&self) -> Result<InPlacePlan, String> {
+        use photocraft_engine::file_cmds::{InPlaceSave, in_place_save, tiff_would_write_layers};
+        let st = self.session.active().ok_or("no document")?;
+        let Some(path) = st.path.clone() else { return Ok(InPlacePlan::SaveAs) };
+        if st.source_read_only {
+            return Ok(InPlacePlan::SaveAs);
         }
-        let r = self.write_save(path, None)?;
+        Ok(match in_place_save(&path) {
+            None => InPlacePlan::SaveAs,
+            Some(InPlaceSave::Layered) => InPlacePlan::Write { path, tiff_layers: false },
+            Some(InPlaceSave::Tiff) => {
+                let layers = tiff_would_write_layers(&st.doc);
+                if !layers || self.session.prefs().file_handling.save_layers_in_tiff {
+                    InPlacePlan::Write { path, tiff_layers: layers }
+                } else {
+                    InPlacePlan::Flatten { path }
+                }
+            }
+            Some(InPlaceSave::Flat) if plain_raster(&st.doc).is_some() => InPlacePlan::Write { path, tiff_layers: false },
+            Some(InPlaceSave::Flat) => InPlacePlan::Flatten { path },
+        })
+    }
+
+    /// File › Save: [`Self::in_place_plan`], with `flatten` standing in for the flatten
+    /// confirmation (`true` flattens without asking, as a recorded or scripted save does).
+    pub(crate) fn save(&mut self, flatten: bool) -> Result<Value, String> {
+        match self.in_place_plan()? {
+            InPlacePlan::SaveAs => self.save_as(None),
+            InPlacePlan::Write { path, tiff_layers } => self.save_in_place(path, tiff_layers),
+            InPlacePlan::Flatten { path } if flatten => self.save_in_place_flattened(path),
+            InPlacePlan::Flatten { path } => {
+                if self.save_prompt_open() {
+                    return Err("Answer the open save prompt before starting another save".into());
+                }
+                flatten_save_ui::park(self, path.clone())?;
+                Ok(serde_json::json!({"path": path, "warnings": [], "prompt": "flatten"}))
+            }
+        }
+    }
+
+    /// File › Save back to the document's own file, recorded as a `file.save` step. `tiff_layers`
+    /// keeps the layers in a TIFF.
+    pub(crate) fn save_in_place(&mut self, path: String, tiff_layers: bool) -> Result<Value, String> {
+        if self.save_prompt_open() {
+            return Err("Answer the open save prompt before starting another save".into());
+        }
+        let settings = ExportSettings { tiff_layers, ..Default::default() };
+        let r = self.write_document_reply(path, &settings, false)?;
         self.session.journal.push(("file.save".into(), Value::Object(Default::default())));
         Ok(r)
+    }
+
+    /// File › Save once flattening was confirmed: the flattened image replaces the file the
+    /// document came from, which stays its file (the layers stay in the window until it closes).
+    /// Recorded as `file.save {flatten: true}`.
+    pub(crate) fn save_in_place_flattened(&mut self, path: String) -> Result<Value, String> {
+        let settings = ExportSettings { tiff_layers: false, ..Default::default() };
+        let r = self.write_document_reply(path, &settings, false)?;
+        self.session.journal.push(("file.save".into(), serde_json::json!({"flatten": true})));
+        Ok(r)
+    }
+
+    /// [`Self::write_document`] as a `{path, warnings}` (or pending job) reply.
+    fn write_document_reply(&mut self, path: String, settings: &ExportSettings, copy: bool) -> Result<Value, String> {
+        match self.write_document(path.clone(), settings, copy)? {
+            Some((path, warnings)) => Ok(serde_json::json!({"path": path, "warnings": warnings})),
+            None => Ok(serde_json::json!({"path": path, "warnings": [], "pending": true, "job": self.jobs.last_started.map(|j| j.0)})),
+        }
     }
 
     /// Writes the Save As and journals it as a `file.saveAs` step with its path (and TIFF
@@ -1144,19 +1229,18 @@ impl PhotocraftApp {
     /// Replays a recorded `file.save` / `file.saveAs` step: no dialog or prompt, and the
     /// recorded TIFF answer (if any) stands in for the TIFF Options prompt.
     pub(crate) fn replay_save(&mut self, id: &str, params: &Value) -> Result<Value, String> {
-        if self.tiff_options.is_some() {
-            return Err("Answer TIFF Options before starting another save".into());
+        if self.save_prompt_open() {
+            return Err("Answer the open save prompt before starting another save".into());
         }
         if id == "file.save" {
-            let path = self
-                .session
-                .active()
-                .ok_or("no document")?
-                .path
-                .clone()
-                .filter(|p| photocraft_engine::file_cmds::saves_in_place(p))
-                .ok_or("Save writes back only to the document's own PSD, PSB or .pcraft file")?;
-            return self.save_in_place(path);
+            let flatten = params.get("flatten").and_then(Value::as_bool).unwrap_or(false);
+            return match self.in_place_plan()? {
+                InPlacePlan::SaveAs => Err("Save writes back only to the document's own file in a format it can write; record Save As instead".into()),
+                InPlacePlan::Flatten { .. } if !flatten => {
+                    Err("Save would flatten the document's layers into its file; record the save after confirming the flatten".into())
+                }
+                _ => self.save(flatten),
+            };
         }
         let path = params.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("Save As needs a `path`")?;
         self.save_as_step(path.to_string(), params.get("tiffLayers").and_then(Value::as_bool))
@@ -1173,10 +1257,7 @@ impl PhotocraftApp {
             |p: &str| photocraft_engine::file_cmds::saves_in_place(p) || matches!(photocraft_engine::file_cmds::extension(p).as_deref(), Some("tif" | "tiff"));
         let copy = tiff_layers == Some(false) || (!layered(&path) && (plain_raster(&st.doc).is_none() || st.path.as_deref().is_some_and(layered)));
         let settings = ExportSettings { tiff_layers: tiff_layers.unwrap_or(ExportSettings::default().tiff_layers), ..Default::default() };
-        match self.write_document(path.clone(), &settings, copy)? {
-            Some((path, warnings)) => Ok(serde_json::json!({"path": path, "warnings": warnings})),
-            None => Ok(serde_json::json!({"path": path, "warnings": [], "pending": true, "job": self.jobs.last_started.map(|j| j.0)})),
-        }
+        self.write_document_reply(path, &settings, copy)
     }
 
     /// Encodes the active document with `settings` and writes it to `path`, which becomes the
@@ -1235,19 +1316,34 @@ impl PhotocraftApp {
     /// Save through the control session's capability-scoped writer. No file
     /// picker or ambient writer is reachable from this path. Returns the path
     /// written and the export warnings (also shown to the user).
-    pub fn save_automation(&mut self, path: Option<String>) -> Result<(String, Vec<String>), String> {
+    pub fn save_automation(&mut self, path: Option<String>, flatten: bool) -> Result<(String, Vec<String>), String> {
+        // As File › Save: without `path` the document's own file is written back in its own
+        // format (#416); flattening layers into a JPEG, PNG, WebP or TIFF needs `flatten: true`,
+        // which stands in for the confirmation.
+        let (target, settings, own_file) = match path {
+            Some(path) => (path, ExportSettings::default(), false),
+            None => match self.in_place_plan()? {
+                InPlacePlan::Write { path, tiff_layers } => (path, ExportSettings { tiff_layers, ..Default::default() }, true),
+                InPlacePlan::Flatten { path } if flatten => (path, ExportSettings { tiff_layers: false, ..Default::default() }, true),
+                InPlacePlan::Flatten { path } => {
+                    return Err(format!(
+                        "saving `{path}` flattens the document's layers into it: pass `flatten: true` to confirm, or `path` to save elsewhere"
+                    ));
+                }
+                InPlacePlan::SaveAs => {
+                    return Err("pass `path`: a save without one writes back only to the document's own file in a format it can write (PSD, PSB, .pcraft, OpenRaster, TIFF, JPEG, PNG, WebP)".into());
+                }
+            },
+        };
         let state = self.session.active().ok_or("no document")?;
-        // As File › Save: without `path` only a layered file is written back (#416).
-        let target = path
-            .or_else(|| state.path.clone().filter(|p| photocraft_engine::file_cmds::saves_in_place(p)))
-            .ok_or("pass `path`: a save without one writes back only to the document's own PSD, PSB or .pcraft file")?;
         let export = self.services.export.as_ref().ok_or("no exporter configured")?;
-        let (bytes, warnings) = export(&state.doc, &target, &ExportSettings::default())?;
+        let (bytes, warnings) = export(&state.doc, &target, &settings)?;
         let write = self.services.automation_write.as_mut().ok_or("automation write authority is not configured")?;
         write(&target, &bytes)?;
-        // Only a layered save becomes the document's file; a flat one is a copy, as in the
-        // headless server (#2579).
-        if photocraft_engine::file_cmds::extension(&target).is_some_and(|e| photocraft_engine::file_cmds::layered_extension(&e))
+        // A layered save, or a write back to the document's own file, becomes the document's
+        // file; any other flat save is a copy, as in the headless server (#2579). Automation
+        // saves fire no script events (no `saved`).
+        if (own_file || photocraft_engine::file_cmds::extension(&target).is_some_and(|e| photocraft_engine::file_cmds::layered_extension(&e)))
             && let Some(state) = self.session.active_mut()
         {
             state.saved_to(target.clone());
@@ -1498,6 +1594,7 @@ impl eframe::App for PhotocraftApp {
         jobs_ui::dialog(self, &ctx);
         discard_ui::show(self, &ctx);
         tiff_options_ui::show(self, &ctx);
+        flatten_save_ui::show(self, &ctx);
         distort_ui::show(self, &ctx);
         camera_raw_ui::show(self, &ctx);
         wide_angle_ui::show(self, &ctx);
@@ -2014,6 +2111,8 @@ mod transform_type_tests;
 
 #[cfg(test)]
 mod save_identity_tests;
+#[cfg(test)]
+mod save_in_place_tests;
 
 #[cfg(test)]
 mod move_auto_select_tests;
