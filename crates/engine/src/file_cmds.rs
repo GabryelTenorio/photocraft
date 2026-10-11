@@ -218,12 +218,14 @@ pub(crate) fn import(name: &str, bytes: &[u8]) -> Result<Document> {
     Ok(r.document)
 }
 
-/// What a headless save writes beyond the format: JPEG quality, TIFF layers, Targa bits and PSD
-/// previews.
+/// What a headless save writes beyond the format: JPEG quality and format, TIFF layers, Targa bits
+/// and PSD previews.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SaveOpts {
     /// Photoshop's 0–12 JPEG scale.
     pub quality: Option<f64>,
+    /// JPEG Options › Format Options (`"jpegFormat"`); unset, Baseline ("Standard").
+    pub jpeg_format: Option<photocraft_codecs::JpegFormat>,
     /// TIFF: keep the layers. Off unless a command's params ask (`"tiffLayers": true`).
     pub tiff_layers: bool,
     /// Targa: 24 or 32 bits per pixel (`"tgaBits"`); unset, 32 with an alpha channel or
@@ -235,18 +237,19 @@ pub(crate) struct SaveOpts {
 
 impl Default for SaveOpts {
     fn default() -> Self {
-        SaveOpts { quality: None, tiff_layers: false, tga_bits: None, image_previews: true }
+        SaveOpts { quality: None, jpeg_format: None, tiff_layers: false, tga_bits: None, image_previews: true }
     }
 }
 
 impl SaveOpts {
-    /// `quality`, `tiffLayers` and `tgaBits` from command `cmd`'s params (a `tgaBits` other than
-    /// 24 or 32 is an error); the image previews from the session's File Handling preferences
+    /// `quality`, `jpegFormat`, `tiffLayers` and `tgaBits` from command `cmd`'s params (a
+    /// `jpegFormat` or `tgaBits` it doesn't name is an error); the image previews from the session's File Handling preferences
     /// (Ask When Saving has no dialog here, so it saves them, as Photoshop's Save As checkbox
     /// starts on).
     pub(crate) fn from_params(s: &Session, p: &Value, cmd: &str) -> Result<Self> {
         Ok(SaveOpts {
             quality: f64_param(p, "quality"),
+            jpeg_format: jpeg_format_param(p, cmd)?,
             tiff_layers: p.get("tiffLayers").and_then(Value::as_bool).unwrap_or(false),
             tga_bits: tga_bits_param(p, cmd)?,
             image_previews: s.prefs().file_handling.image_previews != crate::prefs::Ask::Never,
@@ -279,6 +282,25 @@ pub fn tga_bits_param(p: &Value, cmd: &str) -> Result<Option<photocraft_io::TgaB
     }
 }
 
+/// The JPEG format in `p` (`"jpegFormat": "baseline" | "optimized" | "progressive"`; absent or
+/// null: Baseline). Anything else is a bad parameter of command `cmd`. Shared like
+/// [`tga_bits_param`].
+pub fn jpeg_format_param(p: &Value, cmd: &str) -> Result<Option<photocraft_codecs::JpegFormat>> {
+    match p.get("jpegFormat") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_str().and_then(photocraft_codecs::JpegFormat::parse).map(Some).ok_or_else(|| EngineError::BadParams {
+            cmd: cmd.into(),
+            msg: format!("`jpegFormat` must be \"baseline\", \"optimized\" or \"progressive\", got {v}"),
+        }),
+    }
+}
+
+/// Photoshop's 0–12 JPEG quality as the encoder's 1–100 (0 → 1, 12 → 100, linear between; out of
+/// range or not finite is clamped).
+pub fn jpeg_quality(q: f64) -> u8 {
+    if q.is_finite() { (q.clamp(0.0, 12.0) / 12.0 * 99.0 + 1.0).round() as u8 } else { 100 }
+}
+
 /// Encodes `doc` for `path`'s extension.
 pub(crate) fn encode(doc: &Document, path: &str, save: impl Into<SaveOpts>) -> Result<(Vec<u8>, Vec<String>)> {
     crate::allocation::checkpoint("saving document")?;
@@ -289,11 +311,14 @@ pub(crate) fn encode(doc: &Document, path: &str, save: impl Into<SaveOpts>) -> R
     // lossy or lossless as it was), as Photoshop's Save does.
     photocraft_io::apply_file_encoding(doc, &mut opts.encode);
     if let Some(q) = save.quality {
-        let q = (q.clamp(0.0, 12.0) / 12.0 * 99.0 + 1.0).round() as u8;
+        let q = jpeg_quality(q);
         opts.encode.jpeg_quality = q;
         // A quality on a WebP save asks for the lossy encoder; the default WebP stays lossless.
         opts.encode.webp_quality = q;
         opts.encode.webp_lossless = false;
+    }
+    if let Some(f) = save.jpeg_format {
+        opts.encode.jpeg_format = f;
     }
     photocraft_io::export(doc, path, &opts).map(|r| (r.bytes, r.warnings)).map_err(|e| EngineError::Other(format!("{path}: {e}")))
 }
@@ -1395,7 +1420,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Save a Copy…",
             &["File"],
             Some("Cmd+Alt+S"),
-            r##"{"path":str (format from the extension),"quality":0..12? (JPEG),"layers":bool=true,"tiffLayers":bool=false (TIFF: keep the layers; flat by default),"tgaBits":24|32? (TGA: 32 writes the alpha channel, or else the transparency, as the alpha; unset, 32 with an alpha channel or transparency, else 24)}"##,
+            r##"{"path":str (format from the extension),"quality":0..12? (JPEG),"jpegFormat":"baseline|optimized|progressive"? (JPEG; default baseline),"layers":bool=true,"tiffLayers":bool=false (TIFF: keep the layers; flat by default),"tgaBits":24|32? (TGA: 32 writes the alpha channel, or else the transparency, as the alpha; unset, 32 with an alpha channel or transparency, else 24)}"##,
             native_doc,
             save_a_copy
         ),
@@ -1458,7 +1483,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Batch…",
             &["File", "Automate"],
             None,
-            r##"{"steps":[[commandId,params]|{"command":id,"params":{}}…] (a recorded action),"input":folder|[paths],"output":folder,"format":"same|png|jpg|psd|tiff|…"="same","quality":0..12?,"tiffLayers":bool=false,"tgaBits":24|32?,"calledActions":[{"name","steps"}…]? (the actions Play Action steps call; default: the session's)} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
+            r##"{"steps":[[commandId,params]|{"command":id,"params":{}}…] (a recorded action),"input":folder|[paths],"output":folder,"format":"same|png|jpg|psd|tiff|…"="same","quality":0..12?,"jpegFormat":"baseline|optimized|progressive"?,"tiffLayers":bool=false,"tgaBits":24|32?,"calledActions":[{"name","steps"}…]? (the actions Play Action steps call; default: the session's)} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
             native,
             batch
         ),
@@ -1467,7 +1492,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Image Processor…",
             &["File", "Scripts"],
             None,
-            r##"{"input":folder|[paths],"output":folder,"format":"jpg|png|psd|tiff|…"="jpg","quality":0..12=8,"tiffLayers":bool=false,"tgaBits":24|32?,"width":px?,"height":px? (fit, never enlarge),"convertToSrgb":bool=false} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
+            r##"{"input":folder|[paths],"output":folder,"format":"jpg|png|psd|tiff|…"="jpg","quality":0..12=8,"jpegFormat":"baseline|optimized|progressive"?,"tiffLayers":bool=false,"tgaBits":24|32?,"width":px?,"height":px? (fit, never enlarge),"convertToSrgb":bool=false} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
             native,
             image_processor
         ),
@@ -1495,7 +1520,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Layers to Files…",
             &["File", "Export"],
             None,
-            r##"{"dir":folder,"format":"png|jpg|psd|tiff|…"="png","prefix":str=document name,"visibleOnly":bool=true,"quality":0..12?,"tiffLayers":bool=false,"tgaBits":24|32?} → {files}"##,
+            r##"{"dir":folder,"format":"png|jpg|psd|tiff|…"="png","prefix":str=document name,"visibleOnly":bool=true,"quality":0..12?,"jpegFormat":"baseline|optimized|progressive"?,"tiffLayers":bool=false,"tgaBits":24|32?} → {files}"##,
             native_doc,
             layers_to_files
         ),

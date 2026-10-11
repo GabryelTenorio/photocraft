@@ -110,6 +110,34 @@ pub enum TiffCompression {
     PackBits,
 }
 
+/// JPEG scan layout: Photoshop's JPEG Options › Format Options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JpegFormat {
+    /// Baseline ("Standard"): one sequential scan with the standard Huffman tables.
+    #[default]
+    Baseline,
+    /// Baseline Optimized: one sequential scan with Huffman tables fitted to the image.
+    Optimized,
+    /// Progressive: the image refines over several scans as it loads.
+    Progressive,
+}
+
+impl JpegFormat {
+    /// `"baseline"`, `"optimized"` or `"progressive"`, as parameters and scripts spell it.
+    pub fn name(self) -> &'static str {
+        match self {
+            JpegFormat::Baseline => "baseline",
+            JpegFormat::Optimized => "optimized",
+            JpegFormat::Progressive => "progressive",
+        }
+    }
+
+    /// The inverse of [`Self::name`].
+    pub fn parse(s: &str) -> Option<Self> {
+        [JpegFormat::Baseline, JpegFormat::Optimized, JpegFormat::Progressive].into_iter().find(|f| f.name() == s)
+    }
+}
+
 /// OpenEXR compression (lossless methods only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExrCompression {
@@ -128,6 +156,8 @@ pub struct EncodeOptions {
     pub jpeg_quality: u8,
     /// JPEG 4:2:0 chroma subsampling (`false` = 4:4:4).
     pub jpeg_chroma_subsampling: bool,
+    /// JPEG scan layout (baseline, baseline optimized or progressive).
+    pub jpeg_format: JpegFormat,
     pub png_compression: PngCompression,
     /// Write Adam7-interlaced PNG.
     pub png_interlaced: bool,
@@ -152,6 +182,7 @@ impl Default for EncodeOptions {
         EncodeOptions {
             jpeg_quality: 90,
             jpeg_chroma_subsampling: true,
+            jpeg_format: JpegFormat::Baseline,
             png_compression: PngCompression::Default,
             png_interlaced: false,
             webp_lossless: true,

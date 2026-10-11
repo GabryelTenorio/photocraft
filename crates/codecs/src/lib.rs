@@ -37,7 +37,7 @@ pub use crate::format::{ASYMMETRIC_EXCEPTIONS, Format, FormatCaps, caps, detect,
 pub use crate::image::{
     ChannelLayout, CryptomatteBuffer, CryptomatteLayer, DecodeWarning, DeepChannel, DeepImage, ExrChannelInfo, ExrPartInfo, Image, Metadata, SampleType,
 };
-pub use crate::options::{DecodeOptions, EncodeOptions, ExrCompression, Limits, PngCompression, TiffCompression};
+pub use crate::options::{DecodeOptions, EncodeOptions, ExrCompression, JpegFormat, Limits, PngCompression, TiffCompression};
 pub use crate::orientation::{exif_orientation, upright_exif, upright_xmp};
 pub use crate::resolution::{exif_resolution, export_exif, export_xmp, photoshop_resolution, xmp_resolution};
 pub use crate::source_settings::{WebpEncoding, jpeg_quality, webp_encoding};
