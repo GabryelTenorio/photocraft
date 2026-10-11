@@ -119,7 +119,7 @@ fn shape_transform_preview_damage_and_external_edits_are_cached() {
 }
 
 #[test]
-fn selection_cropped_shape_box_invalidates_its_entire_old_surface() {
+fn selection_does_not_crop_shape_transform_frame_or_old_surface_damage() {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     app.session.edit_prefs(|p| p.performance.low_resolution_previews = false);
     app.session.execute("file.new", json!({"width": 1536, "height": 1536, "background": "transparent"})).unwrap();
@@ -130,17 +130,19 @@ fn selection_cropped_shape_box_invalidates_its_entire_old_surface() {
     app.ui.tool = Tool::Move;
     let ctx = egui::Context::default();
     begin(&mut app, &ctx).unwrap();
-    assert_eq!(app.ui.transform.as_ref().unwrap().rect, [448.0, 448.0, 512.0, 512.0]);
+    assert_eq!(app.ui.transform.as_ref().unwrap().rect, [0.0, 0.0, 512.0, 512.0], "#2630: the frame covers the whole shape despite the selection");
     let idx = app.session.active_index().unwrap();
     let (before, key1) = display_doc(&app, idx).unwrap();
     let old_bounds = before.layer(shape).unwrap().surface().unwrap().tile_bounds();
     app.ui.transform.as_mut().unwrap().quad = app.ui.transform.as_ref().unwrap().quad.map(|p| [p[0] + 1000.0, p[1] + 1000.0]);
     follow_edits(&mut app);
     let (after, key2) = display_doc(&app, idx).unwrap();
+    assert_eq!(after.layer(shape).unwrap().surface().unwrap().content_bounds(), Rect::new(1000, 1000, 1512, 1512), "the entire shape moves");
+    assert_eq!(after.selection, before.selection, "transforming a shape preserves the selection");
     let revision = app.session.active().unwrap().revision;
     for previous_key in [0, key1] {
         let damaged = damage(&app, before.id, revision, previous_key, key2).unwrap();
-        assert!(damaged.contains_rect(&old_bounds), "whole shape moves even when its transform frame is selection-cropped");
+        assert!(damaged.contains_rect(&old_bounds), "moving a shape invalidates its entire old surface despite the selection");
         let mut cached = photocraft_compose::render(&before, before.bounds());
         let update = photocraft_compose::render_reduced_damage(&after, after.size.width, after.size.height, damaged);
         let width = cached.rect.width() as usize;

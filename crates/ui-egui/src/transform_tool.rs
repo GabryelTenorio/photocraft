@@ -267,7 +267,7 @@ pub fn begin(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(), String>
             interpolation: "bicubic".into(),
             active: true,
             key: (1 << 40) + session,
-            // A selection crops the transform box, but the entire shape moves with it.
+            // Shapes move whole despite a selection; invalidate their entire old surface.
             original_area: layer.surface().map_or(photocraft_geom::Rect::EMPTY, |s| s.tile_bounds()),
             areas: VecDeque::from([((1 << 40) + session, layer.surface().map_or(photocraft_geom::Rect::EMPTY, |s| s.tile_bounds()))]),
             proxy: None,
