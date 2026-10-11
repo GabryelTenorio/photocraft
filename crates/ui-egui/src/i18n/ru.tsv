@@ -2690,3 +2690,33 @@ fontWeight	Italic	Курсив
 	Missing delete command	Отсутствует команда удаления
 	Invalid delete command	Недопустимая команда удаления
 	Layer deleted, but confirmation preference could not be saved: {error}	Слой удалён, но не удалось сохранить настройку подтверждения: {error}
+	Align to Canvas	Выровнять по холсту
+	Arrowheads	Наконечники стрелок
+	Bring Shape Forward	Переместить фигуру вперёд
+	Bring Shape to Front	Переместить фигуру на передний план
+	Constrain Proportions	Сохранить пропорции
+	Distribute Horizontally	Распределить по горизонтали
+	Distribute Vertically	Распределить по вертикали
+	End	Конец
+	New Layer	Новый слой
+	Path Alignment	Выравнивание контуров
+	Path Arrangement	Порядок контуров
+	Path Operations	Операции с контурами
+	Path Options	Параметры контура
+	Send Shape Backward	Переместить фигуру назад
+	Send Shape to Back	Переместить фигуру на задний план
+	Show Path	Показать контур
+	Start	Начало
+	Align Edges	Выровнять края
+	Unconstrained	Без ограничений
+	Fixed Size	Фиксированный размер
+	Proportional	Пропорционально
+	Smooth Indents	Сгладить впадины
+	Concavity:	Вогнутость:
+	Link with Layer	Связать со слоем
+	Solid Color	Сплошной цвет
+	Color Picker	Выбор цвета
+	Recent Colors	Недавно использованные цвета
+	No recent colors	Нет недавно использованных цветов
+	Color opacity	Непрозрачность цвета
+	Show Transform Controls	Показать элементы управления трансформацией

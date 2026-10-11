@@ -127,6 +127,15 @@ fn catmull_rom(t: f64) -> [f64; 4] {
 /// The result has the same format as `src`, with alpha added if `src` had none; pixels outside
 /// the warped quad are transparent.
 pub fn warp_surface(src: &Surface, src_rect: Rect, h: &Homography, interp: Interp) -> Surface {
+    warp_surface_impl(src, src_rect, h, interp, None)
+}
+
+/// The same warp restricted to a destination rectangle, before allocating tiles or pixels.
+pub fn warp_surface_clipped(src: &Surface, src_rect: Rect, h: &Homography, interp: Interp, clip: Rect) -> Surface {
+    warp_surface_impl(src, src_rect, h, interp, Some(clip))
+}
+
+fn warp_surface_impl(src: &Surface, src_rect: Rect, h: &Homography, interp: Interp, clip: Option<Rect>) -> Surface {
     let mut fmt = src.format();
     let converted;
     let mut src = if fmt.alpha {
@@ -137,13 +146,13 @@ pub fn warp_surface(src: &Surface, src_rect: Rect, h: &Homography, interp: Inter
         &converted
     };
     let mut out = Surface::new(fmt);
-    if src_rect.is_empty() {
+    if src_rect.is_empty() || clip.is_some_and(|r| r.is_empty()) {
         return out;
     }
     let mut h = *h;
     let mut src_rect = src_rect;
     // Pre-reduce for large downscales (bicubic alone aliases below ~50%).
-    let (cx, cy) = ((src_rect.x0 + src_rect.x1) as f64 / 2.0, (src_rect.y0 + src_rect.y1) as f64 / 2.0);
+    let (cx, cy) = ((f64::from(src_rect.x0) + f64::from(src_rect.x1)) / 2.0, (f64::from(src_rect.y0) + f64::from(src_rect.y1)) / 2.0);
     let scale = h.local_scale(cx, cy);
     let reduced;
     if interp != Interp::Nearest && scale < 0.5 && scale > 0.0 {
@@ -166,6 +175,7 @@ pub fn warp_surface(src: &Surface, src_rect: Rect, h: &Homography, interp: Inter
     let bx1 = corners.iter().map(|c| c.0).fold(f64::MIN, f64::max).ceil().min(lim as f64) as i32 + 1;
     let by1 = corners.iter().map(|c| c.1).fold(f64::MIN, f64::max).ceil().min(lim as f64) as i32 + 1;
     let dst = Rect::new(bx0, by0, bx1, by1);
+    let dst = clip.map_or(dst, |clip| dst.intersect(&clip));
     let n = fmt.channels();
     let a = n - 1;
     let tiles: Vec<Rect> = dst.tiles().map(|tc| tc.rect().intersect(&dst)).filter(|r| !r.is_empty()).collect();
@@ -173,10 +183,10 @@ pub fn warp_surface(src: &Surface, src_rect: Rect, h: &Homography, interp: Inter
     let work = |t: &Rect| -> Option<(Rect, Vec<f32>)> {
         // Source footprint of this tile (inverse-mapped corners), padded for the filter.
         let tc = [(t.x0, t.y0), (t.x1, t.y0), (t.x1, t.y1), (t.x0, t.y1)].map(|(x, y)| inv.apply(x as f64, y as f64));
-        let fx0 = tc.iter().map(|c| c.0).fold(f64::MAX, f64::min).floor() as i32 - 3;
-        let fy0 = tc.iter().map(|c| c.1).fold(f64::MAX, f64::min).floor() as i32 - 3;
-        let fx1 = tc.iter().map(|c| c.0).fold(f64::MIN, f64::max).ceil() as i32 + 3;
-        let fy1 = tc.iter().map(|c| c.1).fold(f64::MIN, f64::max).ceil() as i32 + 3;
+        let fx0 = (tc.iter().map(|c| c.0).fold(f64::MAX, f64::min).floor() as i32).saturating_sub(3);
+        let fy0 = (tc.iter().map(|c| c.1).fold(f64::MAX, f64::min).floor() as i32).saturating_sub(3);
+        let fx1 = (tc.iter().map(|c| c.0).fold(f64::MIN, f64::max).ceil() as i32).saturating_add(3);
+        let fy1 = (tc.iter().map(|c| c.1).fold(f64::MIN, f64::max).ceil() as i32).saturating_add(3);
         let foot = Rect::new(fx0, fy0, fx1, fy1).intersect(&src_rect);
         if foot.is_empty() || !src_ref.has_tiles_in(foot) {
             return None;

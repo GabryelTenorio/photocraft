@@ -349,6 +349,11 @@ pub(crate) const CONTENT_WIDTH: f32 = 624.0;
 
 /// Draw the picker and its top-right actions. `Some(true)` confirms, `Some(false)` cancels.
 pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) -> Option<bool> {
+    body_with_swatches(ui, f, true)
+}
+
+/// Local paint editors do not manage the shared swatch library.
+pub(crate) fn body_with_swatches(ui: &mut egui::Ui, f: &mut Map<String, Value>, add_swatch: bool) -> Option<bool> {
     ui.set_width(CONTENT_WIDTH);
     let mut outcome = None;
     ui.horizontal_top(|ui| {
@@ -385,7 +390,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) -> Option<bool> {
                     }
                     ui.add_space(6.0);
                     // Handled by the dialog host, which has the app (`take_add_swatch`).
-                    if widgets::secondary_button(ui, tl!("Add to Swatches"), button_width).clicked() {
+                    if add_swatch && widgets::secondary_button(ui, tl!("Add to Swatches"), button_width).clicked() {
                         f.insert("__addSwatch".into(), json!(true));
                     }
                 });

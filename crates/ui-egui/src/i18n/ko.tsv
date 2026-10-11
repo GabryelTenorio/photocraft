@@ -2984,3 +2984,32 @@ fontWeight	Italic	기울임
 	Quick Selection found nothing there	빠른 선택으로 해당 위치에서 아무것도 찾지 못했습니다
 	Object Selection found nothing there — try a tighter rectangle	개체 선택으로 해당 위치에서 아무것도 찾지 못했습니다 — 더 좁은 사각형을 사용해 보세요
 	No subject found — try a rectangle around the object	피사체를 찾을 수 없습니다 — 개체 주위에 사각형을 그려 보세요
+	W	W
+	H	H
+	Align to Canvas	캔버스에 정렬
+	Arrowheads	화살촉
+	Bring Shape Forward	모양 앞으로 이동
+	Bring Shape to Front	모양 맨 앞으로 이동
+	Constrain Proportions	비율 유지
+	Distribute Horizontally	가로로 분포
+	Distribute Vertically	세로로 분포
+	End	끝
+	Mask	마스크
+	New Path	새 패스
+	Path Alignment	패스 정렬
+	Path Arrangement	패스 순서
+	Path Operations	패스 작업
+	Path Options	패스 옵션
+	Send Shape Backward	모양 뒤로 이동
+	Send Shape to Back	모양 맨 뒤로 이동
+	Show Path	패스 표시
+	Start	시작
+	Align Edges	가장자리 정렬
+	Unconstrained	제한 없음
+	Proportional	비율 유지
+	Smooth Indents	들여쓰기 부드럽게
+	Concavity:	오목함:
+	Color Picker	색상 선택기
+	Recent Colors	최근 사용한 색상
+	No recent colors	최근 사용한 색상이 없습니다
+	Color opacity	색상 불투명도

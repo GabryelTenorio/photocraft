@@ -119,6 +119,63 @@ fn hostile_scales_get_no_hand_bitmap() {
 }
 
 #[test]
+fn pen_bitmap_keeps_the_svg_nib_at_the_hotspot_at_each_dpi() {
+    for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+        let image = rasterize(Shape::Pen, scale).unwrap();
+        let source_side = (pen::SIZE * scale).ceil();
+        assert_eq!(image.size, [source_side as u16 + 2; 2]);
+        assert_eq!(image.rgba.len(), usize::from(image.size[0]).pow(2) * 4);
+        let nib = 1.0 + source_side * (2.3 / 24.0);
+        for hot in image.hotspot {
+            assert!((f32::from(hot) - nib).abs() <= 0.5, "the hotspot is at the nib, not the box centre");
+        }
+        assert!(alpha(&image, image.hotspot[0], image.hotspot[1]) > 100);
+        for p in 0..image.size[0] {
+            assert_eq!(alpha(&image, p, 0), 0);
+            assert_eq!(alpha(&image, p, image.size[1] - 1), 0);
+            assert_eq!(alpha(&image, 0, p), 0);
+            assert_eq!(alpha(&image, image.size[0] - 1, p), 0);
+        }
+        let pixels = image.rgba.as_chunks::<4>().0;
+        assert!(pixels.iter().any(|p| p[3] > 230 && p[0] > 230), "light ink remains visible on black");
+        assert!(pixels.iter().any(|p| p[3] > 20 && p[0] == 0), "dark outline remains visible on white");
+    }
+    for scale in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.0, f32::MAX, 500.0] {
+        assert!(rasterize(Shape::Pen, scale).is_none(), "reject {scale} before SVG allocation");
+    }
+}
+
+#[test]
+fn pen_bitmap_cache_and_painter_fallback_share_the_same_dpi_and_hotspot() {
+    let ctx = egui::Context::default();
+    let image = cached_image(&ctx, Shape::Pen, 1.0).unwrap();
+    let same = cached_image(&ctx, Shape::Pen, 1.0).unwrap();
+    assert!(Arc::ptr_eq(&image.rgba, &same.rgba));
+    let scaled = cached_image(&ctx, Shape::Pen, 2.0).unwrap();
+    assert!(!Arc::ptr_eq(&image.rgba, &scaled.rgba));
+    assert!(scaled.size[0] > image.size[0]);
+    let at = egui::pos2(100.0, 120.0);
+    let output = frame(&ctx, |ui| assert!(pen::paint(ui.painter(), at)));
+    let image = cached_image(&ctx, Shape::Pen, ctx.pixels_per_point()).unwrap();
+    let meshes: Vec<_> = output
+        .shapes
+        .iter()
+        .filter_map(|s| match &s.shape {
+            egui::Shape::Mesh(m) => Some(m),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(meshes.len(), 1);
+    let min = at - vec2(f32::from(image.hotspot[0]), f32::from(image.hotspot[1])) / ctx.pixels_per_point();
+    let max = min + vec2(f32::from(image.size[0]), f32::from(image.size[1])) / ctx.pixels_per_point();
+    assert!(meshes[0].vertices.iter().any(|v| v.pos == min));
+    assert!(meshes[0].vertices.iter().any(|v| v.pos == max));
+    let texture = meshes[0].texture_id;
+    let moved = frame(&ctx, |ui| assert!(pen::paint(ui.painter(), at + vec2(10.0, 5.0))));
+    assert!(moved.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Mesh(m) if m.texture_id == texture)), "motion reuses the fallback texture");
+}
+
+#[test]
 fn the_hand_is_a_bitmap_only_where_the_os_has_none() {
     let ctx = egui::Context::default();
     ctx.add_plugin(CursorLifecycle);
@@ -200,6 +257,26 @@ fn ordinary_brush_cursor_is_not_part_of_the_canvas_draw_list() {
     assert!(output.shapes.iter().any(|s| matches!(s.shape, egui::Shape::Circle(_))), "the full tip is not silently shrunk");
 }
 
+#[test]
+#[cfg(target_os = "windows")]
+fn pen_bitmap_is_outside_the_canvas_draw_list_and_leaving_clears_it() {
+    let ctx = egui::Context::default();
+    ctx.add_plugin(CursorLifecycle);
+    let output = frame(&ctx, |ui| {
+        ui.ctx().set_cursor_icon(pen(ui.painter(), pos2(100.0, 100.0)));
+    });
+    assert!(output.platform_output.cursor_image.is_some());
+    assert!(output.shapes.iter().all(|s| matches!(s.shape, egui::Shape::Noop)), "the OS moves the Pen without repainting the canvas");
+    let left = frame(&ctx, |_| {});
+    assert!(left.platform_output.cursor_image.is_none());
+    let covered = frame(&ctx, |ui| {
+        ui.ctx().set_cursor_icon(pen(ui.painter(), pos2(100.0, 100.0)));
+        ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+    });
+    assert!(covered.platform_output.cursor_image.is_none());
+    assert_eq!(covered.platform_output.cursor_icon, CursorIcon::ResizeHorizontal);
+}
+
 /// Run explicitly for visual QA: native cursors are absent from GPU screenshots.
 #[test]
 #[ignore = "writes target/tool-cursor-preview.png for visual inspection"]
@@ -214,6 +291,9 @@ fn write_cursor_preview() {
         (Shape::Hand { closed: true }, 1.0),
         (Shape::Hand { closed: false }, 1.5),
         (Shape::Hand { closed: true }, 2.0),
+        (Shape::Pen, 1.0),
+        (Shape::Pen, 1.5),
+        (Shape::Pen, 2.0),
     ];
     let (width, height) = (600_usize, cases.len() * 100);
     let mut rgba = vec![255; width * height * 4];
@@ -323,4 +403,56 @@ fn painting_preference_and_zoom_change_the_native_cursor_without_changing_pointe
     h.event(Event::PointerButton { pos: pos + vec2(20.0, 0.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
     assert!(h.output().platform_output.cursor_image.as_ref().unwrap().size[0] > cross_size);
+}
+
+#[test]
+#[cfg(target_os = "windows")]
+fn pen_hover_moves_with_the_os_and_restores_other_tool_panel_and_precise_cursors() {
+    let mut h = harness();
+    h.state_mut().ui.tool = crate::Tool::Pen;
+    h.run_steps(2);
+    let initial = h.output().platform_output.cursor_image.clone().expect("Pen hover uses the native bitmap");
+    assert_eq!(initial.rgba, rasterize(Shape::Pen, h.ctx.pixels_per_point()).unwrap().rgba);
+    let start = h.state().last_canvas_rect.center();
+    let end = start + vec2(25.0, 12.0);
+    h.event(Event::PointerMoved(end));
+    h.run_steps(2);
+    assert!(Arc::ptr_eq(&initial.rgba, &h.output().platform_output.cursor_image.as_ref().unwrap().rgba));
+    assert_eq!(h.ctx.pointer_latest_pos(), Some(end));
+    h.event(Event::PointerButton { pos: end, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    h.event(Event::PointerMoved(end + vec2(8.0, 6.0)));
+    h.run_steps(2);
+    assert!(
+        Arc::ptr_eq(&initial.rgba, &h.output().platform_output.cursor_image.as_ref().unwrap().rgba),
+        "drawing a path does not move the cursor into the frame draw list"
+    );
+    h.event(Event::PointerButton { pos: end + vec2(8.0, 6.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    h.event(Event::PointerMoved(egui::pos2(20.0, 12.0)));
+    h.run_steps(2);
+    assert!(h.output().platform_output.cursor_image.is_none(), "toolbar restores the pointer");
+    h.event(Event::PointerMoved(start));
+    h.run_steps(2);
+    h.state_mut().run("prefs.set", json!({"path":"cursors.other","value":"precise"})).unwrap();
+    h.run_steps(2);
+    assert_eq!(h.output().platform_output.cursor_icon, CursorIcon::Crosshair);
+    assert_ne!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba);
+    h.state_mut().run("prefs.set", json!({"path":"cursors.other","value":"standard"})).unwrap();
+    h.run_steps(2);
+    assert_eq!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba);
+    h.event(Event::ModifiersChanged(Modifiers { ctrl: true, command: true, ..Default::default() }));
+    h.run_steps(2);
+    assert!(h.output().platform_output.cursor_image.is_none(), "Ctrl temporarily selects paths with an arrow");
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run_steps(2);
+    h.event(Event::Key { key: egui::Key::Space, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert_ne!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba, "Space temporarily shows the Hand cursor");
+    h.event(Event::Key { key: egui::Key::Space, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert_eq!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba);
+    h.state_mut().ui.tool = crate::Tool::Move;
+    h.run_steps(2);
+    assert!(h.output().platform_output.cursor_image.is_none(), "tool change clears the Pen bitmap");
 }

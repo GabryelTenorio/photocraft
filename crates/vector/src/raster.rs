@@ -168,6 +168,17 @@ impl Rasterizer {
     /// Renders `rect` into `out` (`rect.width() * rect.height()` values), sequentially.
     pub fn render_into(&self, rect: Rect, out: &mut [f32]) {
         let w = rect.width() as usize;
+        // Signed f32 cell areas can leave a positive cancellation residue past the last
+        // edge. Outside the polygons' geometric envelope coverage is exactly zero; clip
+        // those columns without discarding legitimate tiny coverage inside it (#2537).
+        // Inverted paths cover the exterior, so their output must remain unrestricted.
+        let columns = if self.inverted {
+            None
+        } else {
+            self.bounds.map(|(x0, _, x1, _)| {
+                ((x0.floor() - f64::from(rect.x0)).clamp(0.0, w as f64) as usize, (x1.ceil() - f64::from(rect.x0)).clamp(0.0, w as f64) as usize)
+            })
+        };
         let mut st = RowState::new(self.comps.len(), w);
         // Edges are sorted by y0; `next` is the first edge not yet activated.
         let top = f64::from(rect.y0);
@@ -217,6 +228,14 @@ impl Rasterizer {
             for (o, a) in row_out.iter_mut().zip(st.acc.iter()) {
                 sum += *a;
                 *o = sum.clamp(0.0, 1.0);
+            }
+            if let Some((left, right)) = columns {
+                if let Some(outside) = row_out.get_mut(..left) {
+                    outside.fill(0.0);
+                }
+                if let Some(outside) = row_out.get_mut(right..) {
+                    outside.fill(0.0);
+                }
             }
         }
     }
@@ -395,6 +414,33 @@ mod tests {
         assert!((c[3 * 10 + 2] - 0.75 * 0.5).abs() < 1e-5);
         assert!((c[5 * 10 + 4] - 1.0).abs() < 1e-6);
         assert_eq!(c[0], 0.0);
+    }
+
+    #[test]
+    fn curved_coverage_is_zero_outside_its_envelope() {
+        for x in [0.0, 10.5] {
+            let path = crate::shapes::ellipse(x, 10.0, 100.0, 100.0);
+            let r = crate::fill_rasterizer(&path, crate::DEFAULT_TOLERANCE);
+            let width = 120;
+            let coverage = r.render(Rect::new(0, 0, width, 120));
+            for y in 0..120 {
+                for col in (x + 100.0).ceil() as i32..width {
+                    assert_eq!(coverage[(y * width + col) as usize], 0.0, "{x}: {col},{y}");
+                }
+            }
+            let inverse = Rasterizer { inverted: true, ..r };
+            assert_eq!(inverse.render(Rect::new(115, 20, 116, 21)), [1.0]);
+        }
+    }
+
+    #[test]
+    fn envelope_clipping_preserves_tiny_real_coverage() {
+        let mut r = Rasterizer::new(false);
+        r.add_component(&[square(1.0, 0.0, 1e-4)], PathOp::Combine, FillRule::NonZero);
+        let coverage = r.render(Rect::new(0, 0, 3, 1));
+        assert!(coverage[1] > 0.0 && coverage[1] < 1e-6);
+        assert_eq!(coverage[0], 0.0);
+        assert_eq!(coverage[2], 0.0);
     }
 
     #[test]

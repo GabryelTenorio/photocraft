@@ -2383,3 +2383,34 @@ fontWeight	Italic	斜體
 	Quick Selection found nothing there	快速選取在該處找不到任何內容
 	Object Selection found nothing there — try a tighter rectangle	物件選取在該處找不到任何內容 — 請嘗試更緊密的矩形
 	No subject found — try a rectangle around the object	找不到主體 — 請嘗試在物件周圍繪製矩形
+	W	寬
+	H	高
+	Align to Canvas	對齊至畫布
+	Arrowheads	箭頭
+	Bring Shape Forward	形狀前移
+	Bring Shape to Front	形狀置於頂層
+	Constrain Proportions	維持比例
+	Distribute Horizontally	水平分佈
+	Distribute Vertically	垂直分佈
+	End	終點
+	Mask	遮色片
+	New Layer	新增圖層
+	New Path	新增路徑
+	Path Alignment	路徑對齊
+	Path Arrangement	路徑排列
+	Path Operations	路徑操作
+	Path Options	路徑選項
+	Send Shape Backward	形狀後移
+	Send Shape to Back	形狀置於底層
+	Show Path	顯示路徑
+	Start	起點
+	Align Edges	對齊邊緣
+	Unconstrained	不受限制
+	Proportional	比例
+	Smooth Indents	平滑凹口
+	Concavity:	凹度：
+	Solid Color	純色
+	Color Picker	色彩選擇器
+	Recent Colors	最近使用的顏色
+	No recent colors	尚無最近使用的顏色
+	Color opacity	顏色不透明度

@@ -858,7 +858,47 @@ fn preset_stop_color(app: &mut PhotocraftApp, i: usize) {
 }
 
 fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: Fill) {
-    let Fill::Gradient { stops, .. } = &f else { return };
+    let pending = match sink {
+        Sink::Layer(id) => app.gradient.panel.clone().filter(|(l, ..)| *l == id).map(|(_, _, p)| p),
+        Sink::Preset => app.gradient.preset_stop.clone(),
+    };
+    let colors = (app.session.tools.foreground, app.session.tools.background);
+    match stop_strip(ui, sink.key(), &f, sink.midpoints(), pending.as_ref(), colors) {
+        Some(StopAction::Preview(p)) => match sink {
+            Sink::Layer(id) => app.gradient.panel = Some((id, cmds::STOP, sink.params(p))),
+            Sink::Preset => app.gradient.preset_stop = Some(p),
+        },
+        Some(StopAction::Commit(p)) => {
+            match sink {
+                Sink::Layer(_) => app.gradient.panel = None,
+                Sink::Preset => app.gradient.preset_stop = None,
+            }
+            let _ = app.run(sink.cmd(), sink.params(p));
+        }
+        Some(StopAction::Color(i)) => match sink {
+            Sink::Layer(id) => edit_stop_color(app, id, i),
+            Sink::Preset => preset_stop_color(app, i),
+        },
+        None => {}
+    }
+}
+
+/// A shared stop strip keeps previews local; its caller chooses the command or paint target.
+pub(crate) enum StopAction {
+    Preview(Value),
+    Commit(Value),
+    Color(usize),
+}
+
+pub(crate) fn stop_strip(
+    ui: &mut egui::Ui,
+    key: egui::Id,
+    f: &Fill,
+    midpoints: bool,
+    pending: Option<&Value>,
+    colors: ([f32; 4], [f32; 4]),
+) -> Option<StopAction> {
+    let Fill::Gradient { stops, .. } = f else { return None };
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width().max(120.0);
     let (outer, resp) = ui.allocate_exact_size(vec2(w, 58.0), Sense::click_and_drag());
@@ -868,12 +908,8 @@ fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: F
     let x_of = |loc: f32| bar.left() + loc.clamp(0.0, 1.0) * bar.width();
     let loc_of = |x: f32| ((x - bar.left()) / bar.width().max(1.0)).clamp(0.0, 1.0);
     // The ramp being shown (with a pending drag's edit applied).
-    let pending: Option<Value> = match sink {
-        Sink::Layer(id) => app.gradient.panel.clone().filter(|(l, ..)| *l == id).map(|(_, _, p)| p),
-        Sink::Preset => app.gradient.preset_stop.clone(),
-    };
-    let (fg, bg) = (app.session.tools.foreground, app.session.tools.background);
-    let shown = pending.as_ref().and_then(|p| cmds::apply_stop(&f, p, fg, bg).ok()).unwrap_or_else(|| f.clone());
+    let (fg, bg) = colors;
+    let shown = pending.and_then(|p| cmds::apply_stop(f, p, fg, bg).ok()).unwrap_or_else(|| f.clone());
     if let Some(ramp) = gf::Ramp::new(&shown) {
         paint_ramp(ui.painter(), bar, |u| ramp.sample(u));
     }
@@ -885,7 +921,6 @@ fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: F
     let mut sorted = ss.clone();
     sorted.sort_by(|a, b| a.0.total_cmp(&b.0));
     let ops: Vec<(f32, f32)> = if os.is_empty() { vec![(0.0, 1.0), (1.0, 1.0)] } else { os.clone() };
-    let key = sink.key();
     let dragging: Option<Marker> = ui.data(|d| d.get_temp(key));
     // Markers.
     let p = ui.painter();
@@ -909,7 +944,7 @@ fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: F
         );
         p.rect_stroke(body, 1.0, Stroke::new(1.0, if sel { t.accent } else { t.text_dim }), StrokeKind::Outside);
     }
-    if sink.midpoints() {
+    if midpoints {
         for i in 0..sorted.len().saturating_sub(1) {
             let (a, b) = (sorted[i].0, sorted[i + 1].0);
             if b - a > 1e-3 {
@@ -937,7 +972,7 @@ fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: F
             if let Some(i) = sorted.iter().position(|(l, _)| (x_of(*l) - pos.x).abs() <= 6.0 && pos.y >= bar.bottom() + 3.0) {
                 return Some(Marker::Color(i));
             }
-            if !sink.midpoints() {
+            if !midpoints {
                 return None;
             }
             return (0..sorted.len().saturating_sub(1))
@@ -959,6 +994,7 @@ fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: F
         ui.data_mut(|d| d.insert_temp(key, m));
     }
     let dragging: Option<Marker> = ui.data(|d| d.get_temp(key));
+    let mut preview = None;
     if let (Some(m), Some(pos)) = (dragging, resp.interact_pointer_pos()) {
         let off = if pos.y > bar.bottom() + 28.0 || pos.y < bar.top() - 26.0 { 1.0 } else { 0.0 };
         let loc = loc_of(pos.x);
@@ -973,50 +1009,28 @@ fn stops_editor_for(app: &mut PhotocraftApp, ui: &mut egui::Ui, sink: Sink, f: F
             }
         };
         if resp.dragged() {
-            match sink {
-                Sink::Layer(id) => app.gradient.panel = Some((id, cmds::STOP, sink.params(edit))),
-                Sink::Preset => app.gradient.preset_stop = Some(edit),
-            }
+            preview = Some(edit);
         }
     }
     if resp.drag_stopped() {
         ui.data_mut(|d| d.remove::<Marker>(key));
-        match sink {
-            Sink::Layer(_) => {
-                if let Some((_, cmd, p)) = app.gradient.panel.take() {
-                    let _ = app.run(cmd, p);
-                }
-            }
-            Sink::Preset => {
-                if let Some(p) = app.gradient.preset_stop.take() {
-                    let _ = app.run(sink.cmd(), p);
-                }
-            }
-        }
-        return;
+        return preview.or_else(|| pending.cloned()).map(StopAction::Commit);
     }
     if resp.double_clicked()
         && let Some(pos) = resp.interact_pointer_pos()
         && let Some(Marker::Color(i)) = hit(pos)
     {
-        match sink {
-            Sink::Layer(id) => edit_stop_color(app, id, i),
-            Sink::Preset => preset_stop_color(app, i),
-        }
-        return;
+        return Some(StopAction::Color(i));
     }
     if resp.clicked()
         && let Some(pos) = resp.interact_pointer_pos()
         && hit(pos).is_none()
     {
         let loc = loc_of(pos.x);
-        let p = if pos.y < bar.center().y {
-            sink.params(json!({"action": "add", "kind": "opacity", "location": loc}))
-        } else {
-            sink.params(json!({"action": "add", "location": loc}))
-        };
-        let _ = app.run(sink.cmd(), p);
+        let p = if pos.y < bar.center().y { json!({"action": "add", "kind": "opacity", "location": loc}) } else { json!({"action": "add", "location": loc}) };
+        return Some(StopAction::Commit(p));
     }
+    preview.map(StopAction::Preview)
 }
 
 #[cfg(test)]

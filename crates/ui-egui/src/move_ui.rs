@@ -212,6 +212,24 @@ pub(crate) fn showing(app: &PhotocraftApp) -> bool {
     app.move_preview.as_ref().is_some_and(|p| p.shown.is_some())
 }
 
+/// Geometry of the Move image already drawn this frame, before newer pointer events.
+/// Overlay drawing must use this snapshot; hit testing still uses the committed document.
+fn shown_preview(app: &PhotocraftApp) -> Option<&MovePreview> {
+    if app.session.prefs().interface.show_bounding_box_when_dragging_layer || app.drag.as_ref()?.tool != Tool::Move {
+        return None;
+    }
+    let st = app.session.active()?;
+    app.move_preview.as_ref().filter(|p| p.doc == st.doc.id && p.revision == st.revision && !p.floating && p.shown.is_some())
+}
+
+pub(crate) fn shown_doc(app: &PhotocraftApp) -> Option<&Document> {
+    shown_preview(app)?.shown.as_deref()
+}
+
+pub(crate) fn shown_offset(app: &PhotocraftApp) -> Option<(i32, i32)> {
+    shown_preview(app)?.offsets.last().copied()
+}
+
 /// Whether `key` is a Move drag preview key.
 pub(crate) fn is_preview_key(key: u64) -> bool {
     key > BASE && key < BASE << 1

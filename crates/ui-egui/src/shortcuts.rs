@@ -242,6 +242,11 @@ pub fn clipboard_keys(ctx: &egui::Context, typing: bool, raw: &mut egui::RawInpu
 }
 
 pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    crate::shape_paint_ui::prune(app, ctx);
+    // The independent shape colour dialog owns keys until it is confirmed or cancelled.
+    if crate::shape_paint_ui::color_dialog_open(ctx) {
+        return;
+    }
     // Camera Raw is modal like Photoshop's filter dialog: no application shortcut (Save, Undo,
     // tools) runs beneath it, and it handles its own keys (Y, U, O, S). Unlike the other dialogs
     // below it covers the canvas, so canvas zoom keys are blocked too.
@@ -282,6 +287,9 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     // Liquify / Puppet Warp / Perspective Warp: ↩ commits, Esc cancels.
     if crate::distort_ui::keys(app, ctx) {
+        return;
+    }
+    if crate::shape_canvas::keys(app, ctx) {
         return;
     }
     // Free Transform: ↩ commits, Esc cancels.

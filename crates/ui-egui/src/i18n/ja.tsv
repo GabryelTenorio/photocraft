@@ -3426,3 +3426,28 @@ fontWeight	Italic	斜体
 	Quick Selection found nothing there	クイック選択ではそこに何も見つかりませんでした
 	Object Selection found nothing there — try a tighter rectangle	オブジェクト選択ではそこに何も見つかりませんでした — より狭い長方形で試してください
 	No subject found — try a rectangle around the object	被写体が見つかりません — オブジェクトを囲む長方形を試してください
+	Align to Canvas	カンバスに整列
+	Arrowheads	矢印の先端
+	Bring Shape Forward	シェイプを前面へ
+	Bring Shape to Front	シェイプを最前面へ
+	Constrain Proportions	縦横比を固定
+	Distribute Horizontally	水平方向に分布
+	Distribute Vertically	垂直方向に分布
+	End	終点
+	Path Alignment	パスの整列
+	Path Arrangement	パスの順序
+	Path Operations	パス操作
+	Path Options	パスオプション
+	Send Shape Backward	シェイプを背面へ
+	Send Shape to Back	シェイプを最背面へ
+	Show Path	パスを表示
+	Start	始点
+	Align Edges	エッジを整列
+	Unconstrained	制約なし
+	Proportional	縦横比を指定
+	Smooth Indents	くぼみを滑らかに
+	Concavity:	凹み:
+	Color Picker	カラーピッカー
+	Recent Colors	最近使った色
+	No recent colors	最近使った色はありません
+	Color opacity	色の不透明度
