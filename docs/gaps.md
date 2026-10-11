@@ -86,8 +86,8 @@ what an agent can't finish alone.
 
 ### G11. Actions and scripting
 - **Missing:** document-independent action recording (AUTO-219-1), a full Actions panel with
-  step toggles and .atn import (AUTO-219-2), replay tests (AUTO-219-4), Batch recursion and
-  naming (AUTO-219-5), ExtendScript/UXP compatibility.
+  step toggles and .atn import (AUTO-219-2), Batch recursion and naming (AUTO-219-5),
+  ExtendScript/UXP compatibility.
 - **Ahead of Photoshop:** CLI, MCP and the JSON control channel drive every command.
 - **Estimate:** 120–200 h. **Human:** whether to support a JavaScript scripting dialect at all
   (AGENTS.md forbids JS in the app).
@@ -211,5 +211,6 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | G11: replay tests for crop, filters, selections and styled text on a second document landed (AUTO-219-4, #3410) |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |

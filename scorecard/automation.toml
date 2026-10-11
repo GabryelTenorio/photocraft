@@ -35,9 +35,9 @@ note = "actions.list/get/record/stop/play/delete in actions_cmds.rs; the panel, 
 [[item]]
 id = "AUTO-219-4"
 target = "Replay tests for crop, filters, selections and styled text on a second document"
-status = "missing"
+status = "done"
 issue = 219
-note = "One replay test (actions.rs:171: new layer, rect select, fill)"
+note = "#3410: crates/engine/tests/action_replay.rs: replayed_crop_matches_direct_crop_at_each_depth, replayed_gaussian_blur_matches_direct_blur_at_each_depth, replayed_selection_operations_and_fill_match_direct_at_each_depth, replayed_styled_type_layer_matches_direct_at_each_depth (8/16/32-bit; played == run directly)"
 
 [[item]]
 id = "AUTO-219-5"
