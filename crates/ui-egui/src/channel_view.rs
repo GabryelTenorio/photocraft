@@ -325,12 +325,12 @@ mod tests {
             }
             s.execute("select.editInQuickMaskMode", json!({})).unwrap();
             let st = s.active().unwrap();
-            let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false).unwrap();
+            let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap();
             assert!(px.iter().all(|p| *p == Color32::TRANSPARENT), "{before:?}");
             if let Some(i) = after {
                 s.execute("channel.options", json!({"channel": "quickMask", "indicates": i})).unwrap();
                 let st = s.active().unwrap();
-                let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false).unwrap();
+                let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap();
                 assert!(px.iter().all(|p| *p == Color32::TRANSPARENT), "{before:?} → {i}");
             }
         }
@@ -340,7 +340,7 @@ mod tests {
         s.execute("select.all", json!({})).unwrap();
         s.execute("select.editInQuickMaskMode", json!({})).unwrap();
         let st = s.active().unwrap();
-        let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false).unwrap();
+        let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap();
         assert!(px.iter().all(|p| *p == Color32::from_rgba_premultiplied(128, 0, 0, 128)));
     }
 
