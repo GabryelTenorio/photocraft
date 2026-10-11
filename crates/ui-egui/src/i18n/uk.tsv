@@ -9,6 +9,24 @@
 # Licensed MIT OR Apache-2.0. See LICENSE-translations.txt and ATTRIBUTION.md.
 
 # Menus
+
+# Guide layout dialog
+	Rows	Рядки
+	Number	Кількість
+	Top:	Зверху:
+	Left:	Ліворуч:
+	Bottom:	Знизу:
+	Right:	Праворуч:
+	Target:	Ціль:
+	Selected Artboards	Вибрані монтажні області
+	Center Columns	Центрувати стовпці
+	Clear Existing Guides	Видалити наявні напрямні
+	Invalid guide layout	Неприпустимий макет напрямних
+	Leave empty for automatic size	Залиште порожнім для автоматичного розміру
+	5 Columns, 3 Rows	5 стовпців, 3 рядки
+	8 Columns	8 стовпців
+	12 Columns	12 стовпців
+
 	File	Файл
 	Edit	Редагування
 	Image	Зображення
@@ -1940,6 +1958,9 @@
 	Baseline	Базова лінія
 	Bicubic	Бікубічна
 	Bicubic (smooth gradients)	Бікубічна (плавні градієнти)
+	Automatic	Автоматично
+	Bicubic Smoother (enlargement)	Бікубічна, гладкіша (збільшення)
+	Bicubic Sharper (reduction)	Бікубічна, чіткіша (зменшення)
 	Bilinear	Білінійна
 	Black, White	Чорний, білий
 	Blue, Red, Yellow	Синій, червоний, жовтий
@@ -2365,6 +2386,7 @@
 	Developing {name}	Обробка {name}
 	Cancelled {label}	Скасовано: {label}
 	Esc to cancel	Esc для скасування
+	Opened {name}	Відкрито: {name}
 	Opening {name}	Відкриття {name}
 	Saved {name}	Збережено: {name}
 	Saving {name}	Збереження {name}
@@ -2541,6 +2563,19 @@ cameraRaw	Roughness	Шорсткість
 	Domed	Купол
 	Domed (Inverted)	Купол (інвертований)
 	Diagonal (Descending)	Діагональ (спадна)
+	Contour Editor	Редактор контуру
+	Anti-aliased	Згладжування
+	Corner	Кут
+	Gloss Contour	Контур глянцю
+	Contour	Контур
+	Cone - Inverted	Конус - інвертований
+	Cove - Deep	Бухта - глибока
+	Cove - Shallow	Бухта - мілка
+	Half Round	Півколо
+	Ring - Double	Кільце - подвійне
+	Rolling Slope - Descending	Хвилястий схил - низхідний
+	Rounded Steps	Заокруглені сходинки
+	Sawtooth 1	Пилка 1
 	Linear	Лінійний
 
 	Red Eye Tool	Інструмент «Червоні очі»
@@ -3609,6 +3644,9 @@ cameraData	Lens	Об'єктив
 	Search settings…	Пошук налаштувань…
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
+	Frame Tool	Інструмент «Рамка»
+	Create a new rectangular frame	Створити прямокутну рамку
+	Create a new elliptical frame	Створити еліптичну рамку
 	Include in playback	Включити у відтворення
 	New Crop Preset…	Новий набір параметрів кадрування…
 	Delete Crop Preset…	Видалити набір параметрів кадрування…
@@ -3616,3 +3654,5 @@ cameraData	Lens	Об'єктив
 	Select the crop presets to delete	Виберіть набори параметрів кадрування для видалення
 	Enter a name for the crop preset	Введіть назву набору параметрів кадрування
 	There is no crop size or ratio to save	Немає розміру чи співвідношення сторін кадрування для збереження
+	Scale:	Масштаб:
+	Snap to Origin	Прив'язати до початку координат
