@@ -808,7 +808,7 @@ mod tests {
         for (pointer, expected) in [
             (egui::pos2(70.0, 50.0), 0.0),
             (egui::pos2(50.0, 30.0), 90.0),
-            (egui::pos2(30.0, 50.0), 180.0),
+            (egui::pos2(30.0, 50.0), -180.0),
             (egui::pos2(50.0, 70.0), -90.0),
         ] {
             let actual = motion_blur_angle_at(centre, pointer).unwrap();
