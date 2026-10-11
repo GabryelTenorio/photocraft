@@ -27,7 +27,7 @@ fn all_seven_languages_render_camera_raw_and_switch_without_resetting_view_or_fi
         h.run_steps(4);
         let tr = |s| i18n::tr_ctx(lang, "cameraRaw", s);
         let before = control::inspect(h.state(), &ctx)["cameraRaw"].clone();
-        for section in ["Light", "Color", "Effects", "Curve", "Color Mixer", "Color Grading", "Detail", "Optics", "Lens Blur", "Geometry", "Calibration"] {
+        for section in ["Light", "Color", "Effects", "Curve", "Color Mixer", "Color Grading", "Detail", "Optics", "Geometry", "Calibration"] {
             assert!(h.query_by_role_and_label(Role::Button, tr(section)).is_some(), "{}: {section}", lang.code());
         }
         assert!(h.query_by_label(tr("Blacks")).is_some());

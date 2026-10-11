@@ -3761,7 +3761,6 @@ cameraRaw	B&W Soft	Ч/Б, м'який
 cameraRaw	Back	Назад
 cameraRaw	Blue Channel	Синій канал
 cameraRaw	Blue Primary	Основний синій
-cameraRaw	Blur Amount	Сила розмиття
 cameraRaw	Browse...	Огляд...
 cameraRaw	Calibration	Калібрування
 cameraRaw	Camera Raw Cache	Кеш Camera Raw
@@ -3774,12 +3773,10 @@ cameraRaw	Create Preset...	Створити набір...
 cameraRaw	Creative	Творчі
 cameraRaw	Default image click zooms to:	Клацання по зображенню масштабує до:
 cameraRaw	Disable Upright	Вимкнути випрямлення
-cameraRaw	Early Access	Ранній доступ
 cameraRaw	Edit (E)	Редагування (E)
 cameraRaw	Edit panel behavior:	Поведінка панелей редагування:
 cameraRaw	Faded	Вицвілий
 cameraRaw	Favorites	Обране
-cameraRaw	Focal Range	Діапазон фокуса
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Повне: горизонт, горизонтальна й вертикальна перспектива
 cameraRaw	Geometry	Геометрія
 cameraRaw	Green Amount	Сила зеленого
@@ -3839,7 +3836,6 @@ cameraRaw	Version 6 (Current)	Версія 6 (поточна)
 cameraRaw	Vertical: apply level and vertical perspective correction	Вертикаль: горизонт і вертикальна перспектива
 cameraRaw	Vignette	Віньєтування
 cameraRaw	Vintage	Вінтажні
-cameraRaw	Visualize Depth	Показати глибину
 cameraRaw	Visualize Spots	Показати плями
 cameraRaw	Vivid	Яскравий
 cameraRaw	White balance	Баланс білого
@@ -3865,7 +3861,6 @@ cameraRaw	Zoom and Pan	Масштаб і прокрутка
 	For best results, apply lens corrections first.	Для кращого результату спершу застосуйте корекцію об'єктива.
 	HDR editing needs an HDR display	Для редагування HDR потрібен HDR-дисплей
 	Hand Tool (H)	Інструмент «Рука» (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	Для розмиття об'єктива потрібна карта глибини, а PhotoCraft поки не вміє її будувати.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	Для масок потрібні локальні корекції та моделі сегментації; у Camera Raw PhotoCraft їх поки немає.
 	More image settings	Інші налаштування зображення
 	Multiple: Edit panels will stay open until you close them.	Кілька: панелі редагування залишаються відкритими, доки ви їх не закриєте.

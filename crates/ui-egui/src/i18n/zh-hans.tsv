@@ -2669,7 +2669,6 @@ cameraRaw	B&W Soft	黑白柔和
 cameraRaw	Back	返回
 cameraRaw	Blue Channel	蓝色通道
 cameraRaw	Blue Primary	蓝原色
-cameraRaw	Blur Amount	模糊量
 cameraRaw	Browse...	浏览...
 cameraRaw	Calibration	校准
 cameraRaw	Camera Raw Cache	Camera Raw 缓存
@@ -2687,12 +2686,10 @@ cameraRaw	Default image click zooms to:	单击图像默认缩放到：
 cameraRaw	Defringe	去边
 cameraRaw	Disable Upright	停用透视校正
 cameraRaw	Distortion	畸变
-cameraRaw	Early Access	抢先体验
 cameraRaw	Edit (E)	编辑 (E)
 cameraRaw	Edit panel behavior:	编辑面板行为：
 cameraRaw	Faded	褪色
 cameraRaw	Favorites	收藏
-cameraRaw	Focal Range	焦点范围
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	完全：应用水平校正以及水平和垂直透视校正
 cameraRaw	Geometry	几何
 cameraRaw	Green Amount	绿色强度
@@ -2705,7 +2702,6 @@ cameraRaw	HSL	HSL
 cameraRaw	Haze Cut	减雾
 cameraRaw	Heal	修复
 cameraRaw	Healing	修复
-cameraRaw	Lens Blur	镜头模糊
 cameraRaw	Level: apply only level correction	水平：仅应用水平校正
 cameraRaw	Load Settings...	载入设置...
 cameraRaw	Manual Transformations	手动变换
@@ -2758,7 +2754,6 @@ cameraRaw	Version 6 (Current)	版本 6（当前）
 cameraRaw	Vertical: apply level and vertical perspective correction	垂直：应用水平校正和垂直透视校正
 cameraRaw	Vignette	晕影
 cameraRaw	Vintage	复古
-cameraRaw	Visualize Depth	可视化深度
 cameraRaw	Visualize Spots	可视化污点
 cameraRaw	Vivid	鲜艳
 cameraRaw	Warm	暖色调
@@ -2785,7 +2780,6 @@ cameraRaw	Zoom and Pan	缩放和平移
 	For best results, apply lens corrections first.	为获得最佳效果，请先应用镜头校正。
 	HDR editing needs an HDR display	HDR 编辑需要 HDR 显示器
 	Hand Tool (H)	抓手工具 (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	镜头模糊需要深度图，而 PhotoCraft 目前还无法估算深度图。
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	蒙版需要局部调整和分割模型；PhotoCraft 的 Camera Raw 尚未提供这些功能。
 	More image settings	更多图像设置
 	Multiple: Edit panels will stay open until you close them.	多个：编辑面板会保持打开，直到您将其关闭。

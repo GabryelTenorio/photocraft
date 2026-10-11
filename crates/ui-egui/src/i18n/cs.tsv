@@ -3677,7 +3677,6 @@ cameraRaw	B&W Soft	ČB jemné
 cameraRaw	Back	Zpět
 cameraRaw	Blue Channel	Modrý kanál
 cameraRaw	Blue Primary	Modrá primární
-cameraRaw	Blur Amount	Míra rozostření
 cameraRaw	Browse...	Procházet...
 cameraRaw	Calibration	Kalibrace
 cameraRaw	Camera Raw Cache	Mezipaměť Camera Raw
@@ -3695,12 +3694,10 @@ cameraRaw	Default image click zooms to:	Kliknutí do obrazu přiblíží na:
 cameraRaw	Defringe	Odstranit třásně
 cameraRaw	Disable Upright	Vypnout vyrovnání
 cameraRaw	Distortion	Zkreslení
-cameraRaw	Early Access	Předběžný přístup
 cameraRaw	Edit (E)	Úpravy (E)
 cameraRaw	Edit panel behavior:	Chování panelů úprav:
 cameraRaw	Faded	Vybledlé
 cameraRaw	Favorites	Oblíbené
-cameraRaw	Focal Range	Rozsah ostrosti
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Úplné: použít vyrovnání horizontu a korekci vodorovné i svislé perspektivy
 cameraRaw	Geometry	Geometrie
 cameraRaw	Green Amount	Míra zelené
@@ -3713,7 +3710,6 @@ cameraRaw	HSL	HSL
 cameraRaw	Haze Cut	Méně oparu
 cameraRaw	Heal	Retušovat
 cameraRaw	Healing	Retušování
-cameraRaw	Lens Blur	Rozostření objektivu
 cameraRaw	Level: apply only level correction	Horizont: použít pouze vyrovnání horizontu
 cameraRaw	Load Settings...	Načíst nastavení...
 cameraRaw	Manual Transformations	Ruční transformace
@@ -3766,7 +3762,6 @@ cameraRaw	Version 6 (Current)	Verze 6 (aktuální)
 cameraRaw	Vertical: apply level and vertical perspective correction	Svisle: použít vyrovnání horizontu a korekci svislé perspektivy
 cameraRaw	Vignette	Vinětace
 cameraRaw	Vintage	Retro
-cameraRaw	Visualize Depth	Zobrazit hloubku
 cameraRaw	Visualize Spots	Zobrazit skvrny
 cameraRaw	Vivid	Živé
 cameraRaw	Warm	Teplé
@@ -3791,7 +3786,6 @@ cameraRaw	Zoom and Pan	Přibližování a posun
 	For best results, apply lens corrections first.	Nejlepších výsledků dosáhnete, když nejprve použijete korekce objektivu.
 	HDR editing needs an HDR display	Úpravy HDR vyžadují displej HDR
 	Hand Tool (H)	Nástroj ruka (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	Rozostření objektivu potřebuje hloubkovou mapu, kterou aplikace PhotoCraft zatím neumí odhadnout.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	Masky vyžadují lokální úpravy a segmentační modely; PhotoCraft je v Camera Raw zatím nemá.
 	More image settings	Další nastavení obrazu
 	Multiple: Edit panels will stay open until you close them.	Více: panely úprav zůstanou otevřené, dokud je nezavřete.

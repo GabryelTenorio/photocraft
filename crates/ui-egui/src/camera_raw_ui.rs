@@ -1,7 +1,7 @@
 //! Filter › Camera Raw Filter…: a large dialog laid out as Photoshop 25.4's Camera Raw 16.1.1
 //! (measured at 100 %): a top bar with the file name, the preview on the left with its zoom and
 //! Before/After bar, on the right the histogram, the active tool's panels (Edit: Light, Color,
-//! Effects, Curve, Color Mixer, Color Grading, Detail, Optics, Lens Blur, Geometry,
+//! Effects, Curve, Color Mixer, Color Grading, Detail, Optics, Geometry,
 //! Calibration; Remove, Masking, Red Eye, Presets) and Camera Raw's tool strip, OK / Cancel below.
 //! The panels are in [`crate::camera_raw_panels`], the other tools in
 //! [`crate::camera_raw_tools_ui`], the look in [`crate::camera_raw_style`].
@@ -306,6 +306,7 @@ fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Resul
     };
     if let Some(d) = app.camera_raw.as_mut() {
         d.layer_name = raw.name.clone();
+        d.detail.raw_curve = curve.clone().map(std::sync::Arc::new);
         d.raw_curve = curve;
         d.raw_open = Some(raw);
     }
@@ -1098,8 +1099,8 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
             widgets::checker(preview.painter(), r.intersect(after_view), 8.0);
             preview.painter().with_clip_rect(after_view).image(tex.id(), r, uv, Color32::WHITE);
             if mode == BeforeAfter::Off {
-                let raw_tone = d.raw_curve.is_some() && !raw_stage(&shown).is_neutral();
-                let detail_needed = !raw_tone && (r.width() * ctx.pixels_per_point() > d.pw as f32 || r.height() * ctx.pixels_per_point() > d.ph as f32);
+                // Raw-stage sliders included: the worker retones the full frame as Open does.
+                let detail_needed = r.width() * ctx.pixels_per_point() > d.pw as f32 || r.height() * ctx.pixels_per_point() > d.ph as f32;
                 d.detail.paint(&preview, r, d.preview_revision, d.show_before, &shown, detail_needed, &d.display);
                 if d.detail.pending() {
                     ctx.request_repaint_after(std::time::Duration::from_millis(50));

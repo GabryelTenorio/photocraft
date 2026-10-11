@@ -160,7 +160,7 @@ fn every_panel_and_tool_draws_without_editing_the_document() {
     let doc = h.state().session.active().unwrap().doc.clone();
     let before = inspect(&h)["params"].clone();
     let groups = ["vignette", "grain", "sharpening", "noiseReduction", "colorNoiseReduction", "lensVignette", "defringe", "manualTransformations"];
-    for panel in ["light", "color", "effects", "curve", "mixer", "grading", "detail", "optics", "lensBlur", "geometry", "calibration"] {
+    for panel in ["light", "color", "effects", "curve", "mixer", "grading", "detail", "optics", "geometry", "calibration"] {
         ui(&mut h, json!({"layout":{"tool":"edit","open":[panel],"groups":groups}})).unwrap();
         h.run_steps(3);
     }

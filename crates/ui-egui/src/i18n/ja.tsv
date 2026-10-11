@@ -3673,7 +3673,6 @@ cameraRaw	B&W Soft	白黒(ソフト)
 cameraRaw	Back	戻る
 cameraRaw	Blue Channel	ブルーチャンネル
 cameraRaw	Blue Primary	ブルー原色
-cameraRaw	Blur Amount	ぼかしの量
 cameraRaw	Browse...	参照...
 cameraRaw	Calibration	キャリブレーション
 cameraRaw	Camera Raw Cache	Camera Raw キャッシュ
@@ -3686,12 +3685,10 @@ cameraRaw	Create Preset...	プリセットを作成...
 cameraRaw	Creative	クリエイティブ
 cameraRaw	Default image click zooms to:	画像クリック時のズーム:
 cameraRaw	Disable Upright	アップライトを無効化
-cameraRaw	Early Access	早期アクセス
 cameraRaw	Edit (E)	編集(E)
 cameraRaw	Edit panel behavior:	編集パネルの動作:
 cameraRaw	Faded	色あせ
 cameraRaw	Favorites	お気に入り
-cameraRaw	Focal Range	焦点範囲
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	フル: 傾き補正と水平・垂直方向の遠近補正を適用
 cameraRaw	Geometry	ジオメトリ
 cameraRaw	Green Amount	グリーンの量
@@ -3751,7 +3748,6 @@ cameraRaw	Version 6 (Current)	バージョン 6(現行)
 cameraRaw	Vertical: apply level and vertical perspective correction	垂直: 傾き補正と垂直方向の遠近補正を適用
 cameraRaw	Vignette	周辺光量
 cameraRaw	Vintage	ビンテージ
-cameraRaw	Visualize Depth	深度を視覚化
 cameraRaw	Visualize Spots	スポットを視覚化
 cameraRaw	Vivid	ビビッド
 cameraRaw	White balance	ホワイトバランス
@@ -3777,7 +3773,6 @@ cameraRaw	Zoom and Pan	ズームとパン
 	For best results, apply lens corrections first.	最良の結果を得るには、先にレンズ補正を適用してください。
 	HDR editing needs an HDR display	HDR 編集には HDR ディスプレイが必要です
 	Hand Tool (H)	手のひらツール(H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	ぼかし(レンズ)には深度マップが必要ですが、PhotoCraft はまだ推定できません。
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	マスクには部分補正とセグメンテーションモデルが必要ですが、PhotoCraft の Camera Raw にはまだありません。
 	More image settings	その他の画像設定
 	Multiple: Edit panels will stay open until you close them.	複数: 編集パネルは閉じるまで開いたままになります。

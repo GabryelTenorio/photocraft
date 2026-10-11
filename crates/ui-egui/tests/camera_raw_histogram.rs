@@ -100,7 +100,7 @@ fn settings_sections_group_existing_controls_without_rendering_or_document_edits
         let tr = |s| photocraft_ui_egui::i18n::tr_ctx(lang, "cameraRaw", s);
         let mut y = 0.0;
         // Camera Raw 16.1.1's panels, in its order.
-        let panels = ["Color", "Effects", "Curve", "Color Mixer", "Color Grading", "Detail", "Optics", "Lens Blur", "Geometry", "Calibration"];
+        let panels = ["Color", "Effects", "Curve", "Color Mixer", "Color Grading", "Detail", "Optics", "Geometry", "Calibration"];
         for label in std::iter::once(light).chain(panels.iter().map(|p| tr(p))) {
             let next = h.get_by_role_and_label(Role::Button, label).rect().top();
             assert!(next > y, "section order: {label}");

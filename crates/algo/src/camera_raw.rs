@@ -56,8 +56,7 @@
 //! 9. **Effects**: post-crop vignette (amount, midpoint, roundness, feather, highlights,
 //!    style) and grain (amount, size, roughness; position-hashed, deterministic).
 //!
-//! Stored and round-tripped but not rendered yet: Lens Blur (needs a depth map), the automatic
-//! Upright modes, the White Balance menu (Temperature and Tint hold the balance) and the
+//! Stored and round-tripped but not rendered yet: the automatic Upright modes, the White Balance menu (Temperature and Tint hold the balance) and the
 //! process version. [`CameraRaw::is_identity`] ignores them, since they change no pixels.
 
 #![allow(clippy::needless_range_loop)] // index loops mirror the maths (pixels × channels)
@@ -242,11 +241,6 @@ pub struct CameraRaw {
     /// Optics › Defringe › Green Hue range, 0..=100 (at least 10 apart), spanning hues 60°
     /// (yellow) to 180° (cyan).
     pub defringe_green_hue: [f32; 2],
-    // Lens Blur (Early Access in Camera Raw; needs a depth map)
-    /// Placeholder: stored, no effect yet (the blur needs depth estimation).
-    pub lens_blur_apply: bool,
-    /// 0..=100. Placeholder, like `lens_blur_apply`.
-    pub lens_blur_amount: f32,
     // Geometry
     /// Upright: `off | auto | level | vertical | full | guided`. Only the manual sliders below
     /// render; the automatic modes are placeholders (they need line detection).
@@ -353,8 +347,6 @@ impl Default for CameraRaw {
             defringe_purple_hue: [30.0, 70.0],
             defringe_green_amount: 0.0,
             defringe_green_hue: [40.0, 60.0],
-            lens_blur_apply: false,
-            lens_blur_amount: 50.0,
             upright: "off".into(),
             transform_vertical: 0.0,
             transform_horizontal: 0.0,
@@ -684,7 +676,7 @@ impl CameraRaw {
     }
     /// Clamps the controls whose stages derive radii, angles, sizes or hue windows from them into
     /// their documented ranges: Optics, Geometry, Calibration, the B&W Mix, Refine Saturation,
-    /// Lens Blur, the noise reduction amounts and their Detail / Contrast / Smoothness. A
+    /// the noise reduction amounts and their Detail / Contrast / Smoothness. A
     /// non-finite value becomes the control's default, inverted Defringe hue ranges are put in
     /// order and a non-finite `pixel_scale` becomes 1. In-range values are left exactly as they
     /// are. [`develop`] applies it itself; commands apply it to untrusted params too.
@@ -708,7 +700,6 @@ impl CameraRaw {
         self.defringe_green_amount = f(self.defringe_green_amount, 0.0, 20.0, d.defringe_green_amount);
         self.defringe_purple_hue = hue_range(self.defringe_purple_hue, d.defringe_purple_hue);
         self.defringe_green_hue = hue_range(self.defringe_green_hue, d.defringe_green_hue);
-        self.lens_blur_amount = f(self.lens_blur_amount, 0.0, 100.0, d.lens_blur_amount);
         for v in [
             &mut self.transform_vertical,
             &mut self.transform_horizontal,
@@ -806,7 +797,7 @@ impl CameraRaw {
             && [&self.point_curve, &self.point_curve_red, &self.point_curve_green, &self.point_curve_blue].iter().all(|c| is_linear(c))
     }
     /// True when every control is neutral (the filter is an identity). Settings that are stored
-    /// but don't render yet (Lens Blur, the automatic Upright modes, the White Balance menu, the
+    /// but don't render yet (the automatic Upright modes, the White Balance menu, the
     /// process version) and modifiers whose control is off (B&W Mix without Monochrome, Refine
     /// Saturation without a point curve, noise Contrast / Smoothness without noise reduction,
     /// Vignette Midpoint, Defringe hue ranges) don't count.
@@ -1792,7 +1783,6 @@ mod tests {
         let base = img(w, h);
         for p in [
             CameraRaw { upright: "auto".into(), ..Default::default() },
-            CameraRaw { lens_blur_apply: true, lens_blur_amount: 90.0, ..Default::default() },
             CameraRaw { white_balance: "custom".into(), process_version: 5, ..Default::default() },
             CameraRaw { curve_refine_saturation: 0.0, noise_luminance_contrast: 80.0, noise_color_smoothness: 100.0, ..Default::default() },
             CameraRaw {
@@ -1817,7 +1807,6 @@ mod tests {
         };
         let placeholders = CameraRaw {
             upright: "full".into(),
-            lens_blur_apply: true,
             transform_scale: 100.0,
             gray_mixer: [-30.0; 8],
             curve_refine_saturation: 100.0,
@@ -2120,8 +2109,6 @@ mod tests {
                 defringe_purple_hue: [v, -v],
                 defringe_green_amount: -v,
                 defringe_green_hue: [100.0, 0.0],
-                lens_blur_apply: true,
-                lens_blur_amount: v,
                 upright: "sideways".into(),
                 white_balance: String::new(),
                 transform_vertical: v,

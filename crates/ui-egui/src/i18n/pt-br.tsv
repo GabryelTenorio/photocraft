@@ -3854,7 +3854,6 @@ cameraRaw	B&W Soft	P&B suave
 cameraRaw	Back	Voltar
 cameraRaw	Blue Channel	Canal azul
 cameraRaw	Blue Primary	Primária azul
-cameraRaw	Blur Amount	Quantidade de desfoque
 cameraRaw	Browse...	Procurar...
 cameraRaw	Calibration	Calibração
 cameraRaw	Camera Raw Cache	Cache do Camera Raw
@@ -3871,12 +3870,10 @@ cameraRaw	Default image click zooms to:	Zoom padrão ao clicar na imagem:
 cameraRaw	Defringe	Remover franja
 cameraRaw	Disable Upright	Desativar endireitamento
 cameraRaw	Distortion	Distorção
-cameraRaw	Early Access	Acesso antecipado
 cameraRaw	Edit (E)	Editar (E)
 cameraRaw	Edit panel behavior:	Comportamento dos painéis de edição:
 cameraRaw	Faded	Desbotado
 cameraRaw	Favorites	Favoritos
-cameraRaw	Focal Range	Faixa focal
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Completo: aplica nivelamento e correções de perspectiva horizontal e vertical
 cameraRaw	Geometry	Geometria
 cameraRaw	Green Amount	Quantidade de verde
@@ -3887,7 +3884,6 @@ cameraRaw	Guided: draw two or more guides to customize perspective corrections	G
 cameraRaw	HDR	HDR
 cameraRaw	HSL	HSL
 cameraRaw	Haze Cut	Menos névoa
-cameraRaw	Lens Blur	Desfoque de lente
 cameraRaw	Level: apply only level correction	Nível: aplica apenas o nivelamento
 cameraRaw	Load Settings...	Carregar configurações...
 cameraRaw	Manual Transformations	Transformações manuais
@@ -3940,7 +3936,6 @@ cameraRaw	Version 6 (Current)	Versão 6 (atual)
 cameraRaw	Vertical: apply level and vertical perspective correction	Vertical: aplica nivelamento e correção de perspectiva vertical
 cameraRaw	Vignette	Vinheta
 cameraRaw	Vintage	Vintage
-cameraRaw	Visualize Depth	Visualizar profundidade
 cameraRaw	Visualize Spots	Visualizar manchas
 cameraRaw	Vivid	Vívido
 cameraRaw	Warm	Quente
@@ -3965,7 +3960,6 @@ cameraRaw	Zoom and Pan	Zoom e panorâmica
 	For best results, apply lens corrections first.	Para melhores resultados, aplique primeiro as correções de lente.
 	HDR editing needs an HDR display	A edição HDR requer uma tela HDR
 	Hand Tool (H)	Ferramenta Mão (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	O Desfoque de lente requer um mapa de profundidade, que o PhotoCraft ainda não consegue estimar.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	As máscaras exigem ajustes locais e modelos de segmentação; o PhotoCraft ainda não os tem no Camera Raw.
 	More image settings	Mais configurações da imagem
 	Multiple: Edit panels will stay open until you close them.	Múltiplos: os painéis de edição ficam abertos até você fechá-los.

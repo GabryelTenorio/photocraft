@@ -1,6 +1,7 @@
-//! Camera Raw's Edit tool: the Edit header (Auto, B&W, HDR), Profile, and the eleven panels in
-//! Camera Raw 16.1.1's order (Light, Color, Effects, Curve, Color Mixer, Color Grading, Detail,
-//! Optics, Lens Blur, Geometry, Calibration), laid out as measured in Photoshop 25.4. Controls
+//! Camera Raw's Edit tool: the Edit header (Auto, B&W, HDR), Profile, and the panels in Camera
+//! Raw 16.1.1's order (Light, Color, Effects, Curve, Color Mixer, Color Grading, Detail, Optics,
+//! Geometry, Calibration; its Early Access Lens Blur is left out), laid out as measured in
+//! Photoshop 25.4. Controls
 //! whose processing PhotoCraft does not have yet are shown, stored and round-tripped like the
 //! rest; `photocraft_algo::camera_raw` documents which ones are placeholders.
 
@@ -13,7 +14,7 @@ use crate::camera_raw_ui::CameraRawDialog;
 use crate::state::CameraRawLayoutState;
 
 /// Panel ids (layout state, control channel) and their titles.
-pub(crate) const PANELS: [(&str, &str); 11] = [
+pub(crate) const PANELS: [(&str, &str); 10] = [
     ("light", "Light"),
     ("color", "Color"),
     ("effects", "Effects"),
@@ -22,14 +23,13 @@ pub(crate) const PANELS: [(&str, &str); 11] = [
     ("grading", "Color Grading"),
     ("detail", "Detail"),
     ("optics", "Optics"),
-    ("lensBlur", "Lens Blur"),
     ("geometry", "Geometry"),
     ("calibration", "Calibration"),
 ];
 
 /// Sub-groups that open with a triangle (layout state ids).
-pub(crate) const GROUPS: [&str; 9] =
-    ["vignette", "grain", "sharpening", "noiseReduction", "colorNoiseReduction", "lensVignette", "defringe", "manualTransformations", "lensBlurRefine"];
+pub(crate) const GROUPS: [&str; 8] =
+    ["vignette", "grain", "sharpening", "noiseReduction", "colorNoiseReduction", "lensVignette", "defringe", "manualTransformations"];
 
 const BANDS: [&str; 8] = ["Reds", "Oranges", "Yellows", "Greens", "Aquas", "Blues", "Purples", "Magentas"];
 
@@ -82,9 +82,6 @@ pub(crate) fn without(p: &CameraRaw, id: &str) -> CameraRaw {
             (q.lens_distortion, q.lens_vignette, q.lens_vignette_midpoint) = (d.lens_distortion, d.lens_vignette, d.lens_vignette_midpoint);
             (q.defringe_purple_amount, q.defringe_purple_hue, q.defringe_green_amount, q.defringe_green_hue) =
                 (d.defringe_purple_amount, d.defringe_purple_hue, d.defringe_green_amount, d.defringe_green_hue);
-        }
-        "lensBlur" => {
-            (q.lens_blur_apply, q.lens_blur_amount) = (d.lens_blur_apply, d.lens_blur_amount);
         }
         "geometry" => {
             q.upright = d.upright;
@@ -158,8 +155,7 @@ pub(crate) fn edit(ui: &mut Ui, d: &mut CameraRawDialog, layout: &mut CameraRawL
     for (id, title) in PANELS {
         let open = layout.open.iter().any(|o| o == id);
         let eye = if d.hidden.iter().any(|h| h == id) { Eye::Hidden } else { Eye::Shown { edited: edited(&d.params, id) } };
-        let badge = (id == "lensBlur").then(|| tr("Early Access"));
-        let h = st::panel_header(ui, id, tr(title), open, badge, eye);
+        let h = st::panel_header(ui, id, tr(title), open, None, eye);
         if h.eye_clicked {
             if eye == Eye::Hidden {
                 d.hidden.retain(|x| x != id);
@@ -190,7 +186,6 @@ pub(crate) fn edit(ui: &mut Ui, d: &mut CameraRawDialog, layout: &mut CameraRawL
                 "grading" => grading(ui, &mut e),
                 "detail" => detail(ui, &mut e),
                 "optics" => optics(ui, &mut e),
-                "lensBlur" => lens_blur(ui, &mut e),
                 "geometry" => geometry(ui, &mut e),
                 "calibration" => calibration(ui, &mut e),
                 _ => {}
@@ -1096,29 +1091,6 @@ fn hue_range(ui: &mut Ui, id: &str, label: &str, v: &mut [f32; 2], hues: [f32; 2
     changed
 }
 
-/// Lens Blur (Early Access in Camera Raw 16): needs a depth map from a local model; the panel is
-/// laid out and stores its settings, the blur itself is not available yet.
-fn lens_blur(ui: &mut Ui, e: &mut Edit) {
-    let mut apply = e.p.lens_blur_apply;
-    if st::check_row(ui, tr("Apply"), &mut apply, true) {
-        e.p.lens_blur_apply = apply;
-        e.dirty = true;
-    }
-    let on = e.p.lens_blur_apply;
-    slider(ui, &mut e.dirty, "lensBlurAmount", "Blur Amount", &mut e.p.lens_blur_amount, &Spec::amount(100.0, 50.0).enabled(on));
-    let c = Acr::get(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.add_space(st::INSET_L);
-        ui.label(egui::RichText::new(tr("Focal Range")).font(st::label_font()).color(if on { c.label } else { c.faint }));
-    });
-    let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
-    let well = Rect::from_min_max(pos2(row.left() + st::INSET_L, row.top() + 4.0), pos2(row.right() - st::INSET_R, row.bottom()));
-    ui.painter().rect_filled(well, 0.0, c.rule);
-    let mut visualize = false;
-    st::check_row(ui, tr("Visualize Depth"), &mut visualize, false);
-    st::note(ui, tl!("Lens Blur needs a depth map, which PhotoCraft cannot estimate yet."), true);
-}
-
 fn geometry(ui: &mut Ui, e: &mut Edit) {
     st::caption(ui, tr("Upright"));
     const MODES: [&str; 6] = ["off", "auto", "level", "vertical", "full", "guided"];
@@ -1239,7 +1211,6 @@ mod tests {
             grade_balance: 20.0,
             sharpen_amount: 40.0,
             lens_distortion: 10.0,
-            lens_blur_apply: true,
             transform_rotate: 2.0,
             calibration_red_hue: 10.0,
             ..Default::default()

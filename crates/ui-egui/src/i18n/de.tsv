@@ -2704,7 +2704,6 @@ cameraRaw	B&W Soft	S/W weich
 cameraRaw	Back	Zurück
 cameraRaw	Blue Channel	Blaukanal
 cameraRaw	Blue Primary	Blau-Grundfarbe
-cameraRaw	Blur Amount	Weichzeichnungsstärke
 cameraRaw	Browse...	Durchsuchen...
 cameraRaw	Calibration	Kalibrierung
 cameraRaw	Camera Raw Cache	Camera-Raw-Cache
@@ -2722,12 +2721,10 @@ cameraRaw	Default image click zooms to:	Klick ins Bild zoomt standardmäßig auf
 cameraRaw	Defringe	Farbsäume entfernen
 cameraRaw	Disable Upright	Upright deaktivieren
 cameraRaw	Distortion	Verzerrung
-cameraRaw	Early Access	Vorabversion
 cameraRaw	Edit (E)	Bearbeiten (E)
 cameraRaw	Edit panel behavior:	Verhalten der Bearbeitungsbedienfelder:
 cameraRaw	Faded	Verblasst
 cameraRaw	Favorites	Favoriten
-cameraRaw	Focal Range	Fokusbereich
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Vollständig: Ausrichtung sowie horizontale und vertikale Perspektivkorrekturen anwenden
 cameraRaw	Geometry	Geometrie
 cameraRaw	Green Amount	Grün-Stärke
@@ -2740,7 +2737,6 @@ cameraRaw	HSL	HSL
 cameraRaw	Haze Cut	Dunstfrei
 cameraRaw	Heal	Reparieren
 cameraRaw	Healing	Reparatur
-cameraRaw	Lens Blur	Objektivunschärfe
 cameraRaw	Level: apply only level correction	Waagerecht: nur die Ausrichtungskorrektur anwenden
 cameraRaw	Load Settings...	Einstellungen laden...
 cameraRaw	Manual Transformations	Manuelle Transformationen
@@ -2793,7 +2789,6 @@ cameraRaw	Version 6 (Current)	Version 6 (aktuell)
 cameraRaw	Vertical: apply level and vertical perspective correction	Vertikal: Ausrichtung und vertikale Perspektivkorrektur anwenden
 cameraRaw	Vignette	Vignette
 cameraRaw	Vintage	Vintage
-cameraRaw	Visualize Depth	Tiefe visualisieren
 cameraRaw	Visualize Spots	Flecken visualisieren
 cameraRaw	Vivid	Lebendig
 cameraRaw	Warm	Warm
@@ -2820,7 +2815,6 @@ cameraRaw	Zoom and Pan	Zoomen und Schwenken
 	For best results, apply lens corrections first.	Die besten Ergebnisse erzielen Sie, wenn Sie zuerst die Objektivkorrekturen anwenden.
 	HDR editing needs an HDR display	HDR-Bearbeitung erfordert ein HDR-Display
 	Hand Tool (H)	Hand-Werkzeug (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	Objektivunschärfe benötigt eine Tiefenkarte, die PhotoCraft noch nicht ermitteln kann.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	Masken benötigen lokale Korrekturen und Segmentierungsmodelle; diese gibt es in PhotoCraft für Camera Raw noch nicht.
 	More image settings	Weitere Bildeinstellungen
 	Multiple: Edit panels will stay open until you close them.	Mehrere: Bearbeitungsbedienfelder bleiben geöffnet, bis Sie sie schließen.

@@ -3233,7 +3233,6 @@ cameraRaw	B&W Soft	흑백 부드럽게
 cameraRaw	Back	뒤로
 cameraRaw	Blue Channel	파랑 채널
 cameraRaw	Blue Primary	파랑 원색
-cameraRaw	Blur Amount	흐림 양
 cameraRaw	Browse...	찾아보기...
 cameraRaw	Calibration	캘리브레이션
 cameraRaw	Camera Raw Cache	Camera Raw 캐시
@@ -3247,12 +3246,10 @@ cameraRaw	Create Preset...	사전 설정 만들기...
 cameraRaw	Creative	크리에이티브
 cameraRaw	Default image click zooms to:	이미지 클릭 시 확대 배율:
 cameraRaw	Disable Upright	바로 세우기 끄기
-cameraRaw	Early Access	얼리 액세스
 cameraRaw	Edit (E)	편집 (E)
 cameraRaw	Edit panel behavior:	편집 패널 동작:
 cameraRaw	Faded	바랜 색감
 cameraRaw	Favorites	즐겨찾기
-cameraRaw	Focal Range	초점 범위
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	전체: 수평 맞춤과 가로·세로 원근 보정 적용
 cameraRaw	Geometry	기하
 cameraRaw	Green Amount	초록 양
@@ -3314,7 +3311,6 @@ cameraRaw	Version 6 (Current)	버전 6 (현재)
 cameraRaw	Vertical: apply level and vertical perspective correction	세로: 수평 맞춤과 세로 원근 보정 적용
 cameraRaw	Vignette	비네팅
 cameraRaw	Vintage	빈티지
-cameraRaw	Visualize Depth	깊이 시각화
 cameraRaw	Visualize Spots	얼룩 시각화
 cameraRaw	Vivid	선명한 색감
 cameraRaw	White balance	화이트 밸런스
@@ -3340,7 +3336,6 @@ cameraRaw	Zoom and Pan	확대/축소 및 이동
 	For best results, apply lens corrections first.	최상의 결과를 얻으려면 렌즈 보정을 먼저 적용하세요.
 	HDR editing needs an HDR display	HDR 편집에는 HDR 디스플레이가 필요합니다
 	Hand Tool (H)	손 도구 (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	렌즈 흐림 효과에는 깊이 맵이 필요하지만 PhotoCraft는 아직 깊이를 추정할 수 없습니다.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	마스크에는 부분 조정과 영역 분할 모델이 필요하지만 PhotoCraft의 Camera Raw에는 아직 없습니다.
 	More image settings	추가 이미지 설정
 	Multiple: Edit panels will stay open until you close them.	여러 개: 편집 패널은 직접 닫을 때까지 열려 있습니다.
@@ -3378,8 +3373,6 @@ cameraRaw	Type	유형
 	Defringe Purple Amount	가장자리 색상 제거 보라 양
 	Full	전체
 	Guided	안내선
-	Lens Blur Amount	렌즈 흐림 효과 양
-	Lens Blur Apply	렌즈 흐림 효과 적용
 	Lens Distortion	렌즈 왜곡
 	Lens Vignette	렌즈 비네팅
 	Lens Vignette Midpoint	렌즈 비네팅 중간점

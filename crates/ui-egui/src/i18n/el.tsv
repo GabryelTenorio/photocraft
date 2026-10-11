@@ -3760,7 +3760,6 @@ cameraRaw	B&W Neutral	Α/Μ ουδέτερο
 cameraRaw	B&W Soft	Α/Μ απαλό
 cameraRaw	Blue Channel	Μπλε κανάλι
 cameraRaw	Blue Primary	Βασικό μπλε
-cameraRaw	Blur Amount	Ποσότητα θόλωσης
 cameraRaw	Browse...	Περιήγηση...
 cameraRaw	Calibration	Βαθμονόμηση
 cameraRaw	Camera Raw Cache	Κρυφή μνήμη Camera Raw
@@ -3773,12 +3772,10 @@ cameraRaw	Create Preset...	Δημιουργία προεπιλογής...
 cameraRaw	Creative	Δημιουργικό
 cameraRaw	Default image click zooms to:	Κλικ στην εικόνα μεγεθύνει σε:
 cameraRaw	Disable Upright	Απενεργοποίηση ευθυγράμμισης
-cameraRaw	Early Access	Πρώιμη πρόσβαση
 cameraRaw	Edit (E)	Επεξεργασία (E)
 cameraRaw	Edit panel behavior:	Συμπεριφορά πλαισίων επεξεργασίας:
 cameraRaw	Faded	Ξεθωριασμένο
 cameraRaw	Favorites	Αγαπημένα
-cameraRaw	Focal Range	Εύρος εστίασης
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Πλήρες: διόρθωση οριζοντίωσης, οριζόντιας και κατακόρυφης προοπτικής
 cameraRaw	Geometry	Γεωμετρία
 cameraRaw	Green Amount	Ποσότητα πράσινου
@@ -3838,7 +3835,6 @@ cameraRaw	Version 6 (Current)	Έκδοση 6 (τρέχουσα)
 cameraRaw	Vertical: apply level and vertical perspective correction	Κατακόρυφα: διόρθωση οριζοντίωσης και κατακόρυφης προοπτικής
 cameraRaw	Vignette	Βινιέτα
 cameraRaw	Vintage	Ρετρό
-cameraRaw	Visualize Depth	Απεικόνιση βάθους
 cameraRaw	Visualize Spots	Απεικόνιση κηλίδων
 cameraRaw	Vivid	Ζωντανό
 cameraRaw	White balance	Ισορροπία λευκού
@@ -3862,7 +3858,6 @@ cameraRaw	Zoom and Pan	Μεγέθυνση και μετακίνηση
 	For best results, apply lens corrections first.	Για καλύτερα αποτελέσματα, εφαρμόστε πρώτα τις διορθώσεις φακού.
 	HDR editing needs an HDR display	Η επεξεργασία HDR απαιτεί οθόνη HDR
 	Hand Tool (H)	Χέρι (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	Η θόλωση φακού χρειάζεται χάρτη βάθους, τον οποίο το PhotoCraft δεν μπορεί ακόμη να εκτιμήσει.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	Οι μάσκες χρειάζονται τοπικές ρυθμίσεις και μοντέλα τμηματοποίησης· το PhotoCraft δεν τα διαθέτει ακόμη στο Camera Raw.
 	More image settings	Περισσότερες ρυθμίσεις εικόνας
 	Multiple: Edit panels will stay open until you close them.	Πολλαπλά: τα πλαίσια επεξεργασίας μένουν ανοιχτά μέχρι να τα κλείσετε.

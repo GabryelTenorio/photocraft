@@ -52,7 +52,7 @@ pub struct CameraRawLayoutState {
     /// `edit | remove | masking | redEye | presets`.
     pub tool: String,
     /// Open Edit panels (`light`, `color`, `effects`, `curve`, `mixer`, `grading`, `detail`,
-    /// `optics`, `lensBlur`, `geometry`, `calibration`).
+    /// `optics`, `geometry`, `calibration`).
     pub open: Vec<String>,
     /// Open sub-groups (`vignette`, `grain`, `sharpening`, …).
     pub groups: Vec<String>,

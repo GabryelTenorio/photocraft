@@ -2736,7 +2736,6 @@ cameraRaw	B&W Soft	B/N morbido
 cameraRaw	Back	Indietro
 cameraRaw	Blue Channel	Canale blu
 cameraRaw	Blue Primary	Primario blu
-cameraRaw	Blur Amount	Quantità sfocatura
 cameraRaw	Browse...	Sfoglia...
 cameraRaw	Calibration	Calibrazione
 cameraRaw	Camera Raw Cache	Cache Camera Raw
@@ -2754,12 +2753,10 @@ cameraRaw	Default image click zooms to:	Zoom predefinito al clic sull'immagine:
 cameraRaw	Defringe	Elimina frange
 cameraRaw	Disable Upright	Disattiva raddrizzamento
 cameraRaw	Distortion	Distorsione
-cameraRaw	Early Access	Accesso anticipato
 cameraRaw	Edit (E)	Modifica (E)
 cameraRaw	Edit panel behavior:	Comportamento pannelli Modifica:
 cameraRaw	Faded	Sbiadito
 cameraRaw	Favorites	Preferiti
-cameraRaw	Focal Range	Intervallo focale
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Completo: applica livellamento e correzioni prospettiche orizzontali e verticali
 cameraRaw	Geometry	Geometria
 cameraRaw	Green Amount	Quantità verde
@@ -2772,7 +2769,6 @@ cameraRaw	HSL	HSL
 cameraRaw	Haze Cut	Meno foschia
 cameraRaw	Heal	Correggi
 cameraRaw	Healing	Correzione
-cameraRaw	Lens Blur	Sfocatura lente
 cameraRaw	Level: apply only level correction	Livella: applica solo il livellamento
 cameraRaw	Load Settings...	Carica impostazioni...
 cameraRaw	Manual Transformations	Trasformazioni manuali
@@ -2825,7 +2821,6 @@ cameraRaw	Version 6 (Current)	Versione 6 (attuale)
 cameraRaw	Vertical: apply level and vertical perspective correction	Verticale: applica livellamento e correzione prospettica verticale
 cameraRaw	Vignette	Vignettatura
 cameraRaw	Vintage	Vintage
-cameraRaw	Visualize Depth	Visualizza profondità
 cameraRaw	Visualize Spots	Visualizza macchie
 cameraRaw	Vivid	Vivace
 cameraRaw	Warm	Caldo
@@ -2852,7 +2847,6 @@ cameraRaw	Zoom and Pan	Zoom e panoramica
 	For best results, apply lens corrections first.	Per risultati migliori, applica prima le correzioni lente.
 	HDR editing needs an HDR display	La modifica HDR richiede un display HDR
 	Hand Tool (H)	Strumento Mano (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	Sfocatura lente richiede una mappa di profondità, che PhotoCraft non sa ancora stimare.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	Le maschere richiedono regolazioni locali e modelli di segmentazione; PhotoCraft non li ha ancora in Camera Raw.
 	More image settings	Altre impostazioni immagine
 	Multiple: Edit panels will stay open until you close them.	Multiplo: i pannelli Modifica restano aperti finché non li chiudi.

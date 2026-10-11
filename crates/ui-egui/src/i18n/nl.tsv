@@ -3822,7 +3822,6 @@ cameraRaw	B&W Neutral	Z&W neutraal
 cameraRaw	B&W Soft	Z&W zacht
 cameraRaw	Blue Channel	Blauwkanaal
 cameraRaw	Blue Primary	Primair blauw
-cameraRaw	Blur Amount	Vervagingssterkte
 cameraRaw	Browse...	Bladeren...
 cameraRaw	Calibration	Kalibratie
 cameraRaw	Camera Raw Cache	Camera Raw-cache
@@ -3835,12 +3834,10 @@ cameraRaw	Create Preset...	Voorinstelling maken...
 cameraRaw	Creative	Creatief
 cameraRaw	Default image click zooms to:	Klik in afbeelding zoomt standaard naar:
 cameraRaw	Disable Upright	Upright uitschakelen
-cameraRaw	Early Access	Vroege toegang
 cameraRaw	Edit (E)	Bewerken (E)
 cameraRaw	Edit panel behavior:	Gedrag bewerkingspanelen:
 cameraRaw	Faded	Vervaagd
 cameraRaw	Favorites	Favorieten
-cameraRaw	Focal Range	Scherptebereik
 cameraRaw	Full: apply level, horizontal, and vertical perspective corrections	Volledig: waterpas plus horizontale en verticale perspectiefcorrecties toepassen
 cameraRaw	Geometry	Geometrie
 cameraRaw	Green Amount	Hoeveelheid groen
@@ -3900,7 +3897,6 @@ cameraRaw	Version 6 (Current)	Versie 6 (huidig)
 cameraRaw	Vertical: apply level and vertical perspective correction	Verticaal: waterpas en verticale perspectiefcorrectie toepassen
 cameraRaw	Vignette	Vignet
 cameraRaw	Vintage	Vintage
-cameraRaw	Visualize Depth	Diepte visualiseren
 cameraRaw	Visualize Spots	Vlekken visualiseren
 cameraRaw	Vivid	Levendig
 cameraRaw	White balance	Witbalans
@@ -3924,7 +3920,6 @@ cameraRaw	Zoom and Pan	Zoomen en pannen
 	For best results, apply lens corrections first.	Pas voor het beste resultaat eerst lenscorrecties toe.
 	HDR editing needs an HDR display	HDR-bewerking vereist een HDR-scherm
 	Hand Tool (H)	Handgereedschap (H)
-	Lens Blur needs a depth map, which PhotoCraft cannot estimate yet.	Lensvervaging vereist een dieptekaart, die PhotoCraft nog niet kan bepalen.
 	Masks need local adjustments and segmentation models; PhotoCraft does not have them in Camera Raw yet.	Maskers vereisen lokale aanpassingen en segmentatiemodellen; PhotoCraft heeft die nog niet in Camera Raw.
 	More image settings	Meer afbeeldingsinstellingen
 	Multiple: Edit panels will stay open until you close them.	Meerdere: bewerkingspanelen blijven open tot u ze sluit.
