@@ -225,11 +225,20 @@ pub fn finish_drag(app: &mut PhotocraftApp, d: GuideDrag) {
 
 /// The mapping the rulers measure with. Rulers are screen chrome that stays level while
 /// View › Rotate View turns the canvas, so they use the view without its rotation: the same zoom,
-/// flip and pixel aspect, and the same document point under the centre of the canvas. Measuring
-/// along the rotated axes instead squeezed the ticks into a few pixels (or none at 90°) and left
-/// the rest of the ruler empty (#3233).
+/// flip and pixel aspect (ticks never stretch), anchored so that 0 sits at the screen position of
+/// the document origin as the rotated view draws it, as in Photoshop. Tilted guides then meet the
+/// rulers near their numbers. Measuring along the rotated axes instead squeezed the ticks into a
+/// few pixels (or none at 90°) and left the rest of the ruler empty (#3233).
 fn ruler_xform(xf: &ViewXform) -> ViewXform {
-    ViewXform { rotation: 0.0, ..*xf }
+    let level = ViewXform { rotation: 0.0, ..*xf };
+    // The level view is an axis-aligned scale, so moving the origin by `shift` on screen moves
+    // every point by it: re-centre on the document point that sat `shift` before the centre.
+    let shift = xf.to_screen(0.0, 0.0) - level.to_screen(0.0, 0.0);
+    let center = level.to_doc(xf.rect.center() - shift);
+    if !(center[0].is_finite() && center[1].is_finite()) {
+        return level;
+    }
+    ViewXform { center: [center[0] as f32, center[1] as f32], ..level }
 }
 
 /// Visible ruler range in ruler units, normalised to `(min, max)` so the tick loop runs for
@@ -492,20 +501,30 @@ mod tests {
         }
     }
 
-    /// #3233: a rotated view keeps the rulers level and fully ticked. The top ruler spans the
-    /// same number of document pixels as the unrotated view, the ticks map back onto its ends,
-    /// and the reading under the canvas centre is the document point at the centre.
+    /// #3233: a rotated view keeps the rulers level and fully ticked at zoom scale. The top ruler
+    /// spans the same number of document pixels as the unrotated view, the ticks map back onto
+    /// its ends, and both rulers read 0 at the screen position of the (rotated) document origin,
+    /// as Photoshop does.
     #[test]
     fn rotated_view_keeps_full_rulers() {
         let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
         let (a, b) = (rect.left_top(), rect.right_top());
-        for rotation in [0.0f32, 45.0, 90.0, -119.0, 180.0] {
-            let xf = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip: false, rotation, aspect: 1.0 };
-            let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0);
-            assert!((u1 - u0 - 1600.0).abs() < 1e-2, "rotation {rotation}: top ruler covers {u0}..{u1}");
-            assert!((ruler_pos(&xf, false, u0, 1.0) - a.x).abs() < 1e-2, "rotation {rotation}: first tick");
-            assert!((ruler_pos(&xf, false, u1, 1.0) - b.x).abs() < 1e-2, "rotation {rotation}: last tick");
-            assert!((ruler_pos(&xf, true, 700.0, 1.0) - rect.center().y).abs() < 1e-2, "rotation {rotation}: left ruler centre");
+        for rotation in [0.0f32, 30.0, 45.0, 90.0, -119.0, 180.0] {
+            for flip in [false, true] {
+                let xf = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip, rotation, aspect: 1.0 };
+                let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0);
+                assert!((u1 - u0 - 1600.0).abs() < 1e-2, "rotation {rotation}: top ruler covers {u0}..{u1}");
+                let (first, last) = if flip { (u1, u0) } else { (u0, u1) };
+                assert!((ruler_pos(&xf, false, first, 1.0) - a.x).abs() < 1e-2, "rotation {rotation}: first tick");
+                assert!((ruler_pos(&xf, false, last, 1.0) - b.x).abs() < 1e-2, "rotation {rotation}: last tick");
+                // 0 at the projected origin, 500 document px = 500 × zoom screen px further on.
+                let origin = xf.to_screen(0.0, 0.0);
+                assert!((ruler_pos(&xf, false, 0.0, 1.0) - origin.x).abs() < 1e-2, "rotation {rotation}: top ruler 0");
+                assert!((ruler_pos(&xf, true, 0.0, 1.0) - origin.y).abs() < 1e-2, "rotation {rotation}: left ruler 0");
+                let dir = if flip { -1.0 } else { 1.0 };
+                assert!((ruler_pos(&xf, false, 500.0, 1.0) - origin.x - dir * 250.0).abs() < 1e-2, "rotation {rotation}: top scale");
+                assert!((ruler_pos(&xf, true, 500.0, 1.0) - origin.y - 250.0).abs() < 1e-2, "rotation {rotation}: left scale");
+            }
         }
     }
 
