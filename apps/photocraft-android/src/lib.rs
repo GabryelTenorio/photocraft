@@ -132,7 +132,30 @@ impl eframe::App for AndroidShell {
         if native_touch && self.java_pen_start.is_some() {
             self.java_native_seen = true;
         }
+        // Diagnostic: compare the egui input stream against Java S Pen pixels.
+        // Log transitions only to avoid flooding logcat on stylus movement.
+        for event in &raw.events {
+            match event {
+                egui::Event::Touch { phase, pos, .. }
+                    if matches!(phase, egui::TouchPhase::Start | egui::TouchPhase::End | egui::TouchPhase::Cancel) =>
+                {
+                    log::info!("SPEN_DIAG native touch phase={phase:?} egui=({:.1},{:.1}) scale={:.3}",
+                        pos.x, pos.y, ctx.pixels_per_point());
+                }
+                egui::Event::PointerButton { pos, pressed, .. } => {
+                    log::info!("SPEN_DIAG native pointer pressed={pressed} egui=({:.1},{:.1})",
+                        pos.x, pos.y);
+                }
+                _ => {}
+            }
+        }
         for sample in spen::drain_touch_events() {
+            if matches!(sample.action, 0 | 1 | 3) {
+                log::info!("SPEN_DIAG java action={} id={} px=({:.1},{:.1}) egui=({:.1},{:.1}) scale={:.3}",
+                    sample.action, sample.pointer_id, sample.x, sample.y,
+                    sample.x / ctx.pixels_per_point().max(0.001),
+                    sample.y / ctx.pixels_per_point().max(0.001), ctx.pixels_per_point());
+            }
             match sample.action {
                 0 => {
                     self.java_pen_start = Some(sample);
