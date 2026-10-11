@@ -223,10 +223,13 @@ fn reapplying_unchanged_live_rectangle_keeps_nonuniformly_scaled_corners() {
         let id = s.execute("shape.create", json!({"kind":"roundedRect","rect":[10,10,20,20],"radius":4})).unwrap()["layer"].as_u64().unwrap();
         s.execute("shape.edit", json!({"layer":id,"transform":[2,0,0,1,0,0]})).unwrap();
         let scaled = shape(&s, id);
-        assert_eq!(scaled.live.as_ref().and_then(|l| match l {
-            LiveShape::Rect { rect, .. } => Some(*rect),
-            _ => None,
-        }), Some([20.0, 10.0, 40.0, 20.0]));
+        assert_eq!(
+            scaled.live.as_ref().and_then(|l| match l {
+                LiveShape::Rect { rect, .. } => Some(*rect),
+                _ => None,
+            }),
+            Some([20.0, 10.0, 40.0, 20.0])
+        );
         // The transformed path has an anisotropic top-left corner.
         let path = scaled.path.clone();
         s.execute("shape.edit", json!({"layer":id,"rect":[20,10,40,20]})).unwrap();
