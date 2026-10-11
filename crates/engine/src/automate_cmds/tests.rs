@@ -59,9 +59,7 @@ fn recording_browse_script_captures_each_effect_once() {
     let mut s = Session::new();
     s.execute("file.new", json!({"width": 12, "height": 8})).unwrap();
     s.execute("actions.record", json!({"name": "Rotate script"})).unwrap();
-    let run = s
-        .execute("file.scripts.browse", json!({"steps": [["image.imageRotation.90cw", {}]]}))
-        .unwrap();
+    let run = s.execute("file.scripts.browse", json!({"steps": [["image.imageRotation.90cw", {}]]})).unwrap();
     assert_eq!(run["ok"], true);
     assert_eq!((s.active().unwrap().doc.size.width, s.active().unwrap().doc.size.height), (8, 12));
     let done = s.execute("actions.stop", json!({})).unwrap();
@@ -81,10 +79,7 @@ fn standalone_browse_script_still_runs_and_journals_concrete_commands() {
     let mut s = Session::new();
     s.execute("file.new", json!({"width": 12, "height": 8})).unwrap();
     let start = s.journal.len();
-    let result = s.execute(
-        "file.scripts.browse",
-        json!({"steps": [["image.imageRotation.90cw", {}]]}),
-    ).unwrap();
+    let result = s.execute("file.scripts.browse", json!({"steps": [["image.imageRotation.90cw", {}]]})).unwrap();
     assert_eq!(result["ok"], true);
     assert_eq!(s.journal.len(), start + 2, "the child and Browse retain their diagnostic journal entries");
     assert_eq!(s.journal[start].0, "image.imageRotation.90cw");
