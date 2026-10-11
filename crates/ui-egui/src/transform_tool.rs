@@ -936,21 +936,58 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
     match id {
         "edit.undo" => Some(steps.is_some_and(|s| s.can_undo(&Step::of(t)))),
         "edit.redo" => Some(steps.is_some_and(|s| !s.redo.is_empty())),
-        "edit.toggleLastState" => Some(false),
+        "edit.toggleLastState" | "edit.contentAwareScale" | "edit.puppetWarp" => Some(false),
+        // Rotate and Flip turn the box (not while warping, where the mesh is the box).
+        _ if box_preset(id).is_some() => Some(t.warp.is_none()),
+        // Editable type can't be distorted (#2630, as #2701 rules for the menus outside a box).
+        "edit.transform.distort" | "edit.transform.perspective" if moves_type(app, t) => Some(false),
         _ => None,
     }
 }
 
+/// Does the box move an editable type layer (not its selection outline, a lone mask or a path)?
+fn moves_type(app: &PhotocraftApp, t: &TransformSession) -> bool {
+    !t.selection
+        && t.target.is_none()
+        && t.path.is_none()
+        && app.session.active().and_then(|st| st.doc.layer(LayerId(t.layer))).is_some_and(|l| matches!(l.content, LayerContent::Text(_)))
+}
+
+/// Edit › Transform's Rotate and Flip presets while a box is open: what they do to the box, as
+/// `(kx, ky, angle)`: a scale along the box's own axes, then a rotation (radians, clockwise on
+/// screen), both about the reference point.
+fn box_preset(id: &str) -> Option<(f64, f64, f64)> {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    Some(match id {
+        "edit.transform.rotate180" => (1.0, 1.0, PI),
+        "edit.transform.rotate90Cw" => (1.0, 1.0, FRAC_PI_2),
+        "edit.transform.rotate90Ccw" => (1.0, 1.0, -FRAC_PI_2),
+        "edit.transform.flipHorizontal" => (-1.0, 1.0, 0.0),
+        "edit.transform.flipVertical" => (1.0, -1.0, 0.0),
+        _ => return None,
+    })
+}
+
 /// While transforming, the box owns the history for every caller (menus, shortcuts, the control
 /// channel, MCP): Undo and Redo step through it, and Toggle Last State, which would change the
-/// document under the box, is refused. `None` for other commands or when not transforming.
+/// document under the box, is refused. Edit › Transform's Rotate and Flip turn the box itself, as
+/// in Photoshop, instead of the layer under it; committing stays with ↩ and the options bar.
+/// `None` for other commands or when not transforming.
 pub fn intercept(app: &mut PhotocraftApp, id: &str) -> Option<Result<serde_json::Value, String>> {
-    app.ui.transform.as_ref()?;
+    let warping = app.ui.transform.as_ref()?.warp.is_some();
     match id {
         "edit.undo" => Some(Ok(step(app, false))),
         "edit.redo" => Some(Ok(step(app, true))),
-        "edit.toggleLastState" => Some(Err("Commit or cancel the transform first".into())),
-        _ => None,
+        "edit.toggleLastState" | "edit.contentAwareScale" | "edit.puppetWarp" => Some(Err("Commit or cancel the transform first".into())),
+        _ => {
+            let (kx, ky, angle) = box_preset(id)?;
+            if warping {
+                return Some(Err("Commit or cancel the transform first".into()));
+            }
+            scale_about_pivot(app, kx, ky);
+            rotate_about_pivot(app, angle);
+            Some(Ok(json!({"transform": app.ui.transform})))
+        }
     }
 }
 
@@ -1017,6 +1054,13 @@ pub(crate) struct Gesture {
     pub(crate) pivot0: [f64; 2],
 }
 
+/// A click outside the box accepts the transform; a drag outside still rotates it.
+/// Decide on release, so the rotation zone keeps working for drags. The screen-sized
+/// click tolerance absorbs pointer jitter without accepting a real rotation gesture.
+fn accepts_outside_click(g: Gesture, end: [f64; 2], tol: f64) -> bool {
+    g.hit == Hit::Outside && (end[0] - g.start[0]).hypot(end[1] - g.start[1]) <= 2.0 * tol / HANDLE_PX
+}
+
 /// Pointer input while transforming. Returns false when no transform is active.
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) -> bool {
     let Some(t) = app.ui.transform.clone() else { return false };
@@ -1038,15 +1082,26 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
                 h = Hit::Pivot;
             }
             // Distort only moves corners (and the whole box from inside): no rotating, no edges.
-            pv.gesture = distort_allows(t.mode, h).then_some(Gesture { hit: h, start: [x, y], quad0: t.quad, pivot0: t.pivot });
+            // Even in Distort mode, remember an outside press so a plain click can
+            // accept the transform. A drag outside remains inert in that mode.
+            pv.gesture = (distort_allows(t.mode, h) || h == Hit::Outside).then_some(Gesture { hit: h, start: [x, y], quad0: t.quad, pivot0: t.pivot });
         }
         ToolEvent::Move { x, y, .. } | ToolEvent::Up { x, y } => {
             let g = pv.gesture;
             if matches!(ev, ToolEvent::Up { .. }) {
                 pv.gesture = None;
             }
+            // Clicking an empty spot commits instead of silently arming rotation (#2851).
+            // Dragging the rotation zone and Option-clicking to move the pivot
+            // keep their existing behavior.
+            if matches!(ev, ToolEvent::Up { .. }) && g.is_some_and(|g| accepts_outside_click(g, [x, y], tol)) {
+                commit(app);
+                return true;
+            }
             let legacy = app.session.prefs().general.use_legacy_free_transform;
-            if let (Some(g), Some(s)) = (g, app.ui.transform.as_mut()) {
+            if let (Some(g), Some(s)) = (g, app.ui.transform.as_mut())
+                && distort_allows(t.mode, g.hit)
+            {
                 apply_drag(s, g, [x, y], mode_mods(t.mode, g.hit, legacy_mods(legacy, g.hit, mods)));
             }
         }
@@ -1110,7 +1165,7 @@ fn keep_convex(from: [[f64; 2]; 4], to: [[f64; 2]; 4]) -> [[f64; 2]; 4] {
     let sign = t0[0].signum();
     // A sliver: a thousandth of the starting box's smallest turn, so the stop is short of flat.
     let min_turn = t0.iter().map(|t| t.abs()).fold(f64::INFINITY, f64::min) * 1e-3;
-    if !(min_turn.is_finite() && min_turn > 0.0) || !convex(&from, sign, 0.0) || convex(&to, sign, min_turn) {
+    if !(min_turn.is_finite() && min_turn > 0.0 && convex(&from, sign, 0.0)) || convex(&to, sign, min_turn) {
         return to;
     }
     let lerp = |t: f64| -> [[f64; 2]; 4] { std::array::from_fn(|k| [from[k][0] + (to[k][0] - from[k][0]) * t, from[k][1] + (to[k][1] - from[k][1]) * t]) };
@@ -2195,6 +2250,59 @@ mod tests {
             made: None,
             mode: Default::default(),
         }
+    }
+
+    #[test]
+    fn a_plain_click_far_outside_accepts_transform_but_a_rotation_drag_does_not() {
+        let context = egui::Context::default();
+        let mut app = app_with_square(64, photocraft_geom::Rect::new(8, 8, 24, 24));
+        begin(&mut app, &context).unwrap();
+        let before = app.session.active().unwrap().history.past_len();
+        let t = app.ui.transform.as_mut().unwrap();
+        t.quad = t.quad.map(|[x, y]| [x + 6.0, y]);
+        let outside = [44.0, 44.0];
+        let none = egui::Modifiers::NONE;
+        assert!(pointer(&mut app, ToolEvent::Down { x: outside[0], y: outside[1], pressure: 1.0 }, none));
+        assert!(app.ui.transform.is_some(), "press alone does not accept");
+        assert!(pointer(&mut app, ToolEvent::Up { x: outside[0], y: outside[1] }, none));
+        assert!(app.ui.transform.is_none(), "a release without a drag commits");
+        assert_eq!(app.session.active().unwrap().history.past_len(), before + 1, "one undo step for the transform");
+        let st = app.session.active().unwrap();
+        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        assert_eq!(layer.surface().unwrap().content_bounds(), photocraft_geom::Rect::new(14, 8, 30, 24));
+
+        // An outside drag remains a rotation gesture; releasing it does not commit.
+        let mut app = app_with_square(64, photocraft_geom::Rect::new(8, 8, 24, 24));
+        begin(&mut app, &context).unwrap();
+        let start = [44.0, 44.0];
+        let end = [44.0, 54.0];
+        let original = app.ui.transform.as_ref().unwrap().quad;
+        pointer(&mut app, ToolEvent::Down { x: start[0], y: start[1], pressure: 1.0 }, none);
+        pointer(&mut app, ToolEvent::Move { x: end[0], y: end[1], pressure: 1.0 }, none);
+        pointer(&mut app, ToolEvent::Up { x: end[0], y: end[1] }, none);
+        assert!(app.ui.transform.is_some(), "rotation stays active after an outside drag");
+        assert_ne!(app.ui.transform.as_ref().unwrap().quad, original);
+    }
+
+    #[test]
+    fn a_click_near_rotation_handles_accepts_but_drags_and_option_pivot_do_not() {
+        let t = session();
+        let tol = 12.0;
+        let near = Gesture { hit: Hit::Outside, start: [-18.0, -18.0], quad0: t.quad, pivot0: t.pivot };
+        assert!(accepts_outside_click(near, near.start, tol), "a click in the rotation zone accepts; a drag still rotates");
+        let far = Gesture { start: [500.0, 500.0], ..near };
+        assert!(accepts_outside_click(far, far.start, tol));
+        assert!(!accepts_outside_click(far, [512.0, 500.0], tol), "drag does not commit");
+        let handle = Gesture { hit: Hit::Corner(0), ..near };
+        assert!(!accepts_outside_click(handle, handle.start, tol), "resize handles stay interactive");
+
+        let mut app = app_with_square(64, photocraft_geom::Rect::new(8, 8, 24, 24));
+        begin(&mut app, &egui::Context::default()).unwrap();
+        let p = [44.0, 44.0];
+        pointer(&mut app, ToolEvent::Down { x: p[0], y: p[1], pressure: 1.0 }, egui::Modifiers::ALT);
+        pointer(&mut app, ToolEvent::Up { x: p[0], y: p[1] }, egui::Modifiers::ALT);
+        assert!(app.ui.transform.is_some(), "Option-click moves the pivot, never accepts");
+        assert_eq!(app.ui.transform.as_ref().unwrap().pivot, p);
     }
 
     #[test]
