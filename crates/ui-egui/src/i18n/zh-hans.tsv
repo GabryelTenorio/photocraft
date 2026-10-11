@@ -2448,3 +2448,5 @@ fontWeight	Italic	斜体
 	Front Image	前面的图像
 	Search settings…	搜索设置…
 	No matching settings	没有匹配的设置
+	Apply mask to layer before removing?	移去之前将蒙版应用到图层吗？
+	The layer or its mask changed. Drag the mask onto the Trash again.	图层或其蒙版已更改。请再次将蒙版拖到垃圾桶。

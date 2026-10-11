@@ -2725,3 +2725,5 @@ fontWeight	Italic	Курсив
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
+	Apply mask to layer before removing?	Применить маску к слою перед удалением?
+	The layer or its mask changed. Drag the mask onto the Trash again.	Слой или его маска изменились. Перетащите маску в корзину ещё раз.
