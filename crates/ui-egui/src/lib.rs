@@ -148,6 +148,7 @@ pub mod rasterize_prompt;
 pub mod retouch_ui;
 mod rgb_histogram;
 pub mod rotate_view;
+pub mod rtl_label;
 pub mod rulers;
 pub mod screen_picker;
 pub mod scrollbars;

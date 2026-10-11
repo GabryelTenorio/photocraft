@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G13: right-to-left layer names in the Layers and Properties panels, #1408) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -201,8 +201,9 @@ what an agent can't finish alone.
 - **Missing:** catalogs for Hindi, Arabic and Vietnamese (3 of the 12 key languages); right-to-
   left UI layout; Devanagari/Thai/Khmer fallback fonts; engine error and status messages in
   English in every language; browser-locale detection and CJK fonts on the web; Japanese IME on
-  Windows (#590); installed Japanese fonts missing from the font list (#2330); Arabic layer names
-  as tofu (#1408, #1693).
+  Windows (#590); installed Japanese fonts missing from the font list (#2330); right-to-left
+  layer names in menus and tab titles in LTR word order (the Layers and Properties panels lay
+  them out with the text engine since 2026-10-12, #1408).
 - **Evidence (2026-10-11):** Czech dynamic UI wrappers, hardware labels and composed messages
   translate at display sites; engine errors remain English. This does not close G13.
 - **Detail:** [`localization-parity.md`](localization-parity.md).
@@ -221,6 +222,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | G13: right-to-left layer names laid out by the text engine in the Layers and Properties panels (#1408); menus and tab titles remain |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |

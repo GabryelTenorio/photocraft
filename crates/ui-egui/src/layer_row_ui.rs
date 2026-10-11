@@ -5,15 +5,16 @@
 //! laid out first, from the row's right edge inward; the name gets the width that is left and
 //! is cut with an ellipsis, so a long name never runs under an indicator at any panel width or
 //! UI scale. The blend-mode label is optional: it is dropped before the name gets too narrow.
+//! Names with right-to-left text are laid out by the text engine ([`crate::rtl_label`]).
 //! The rects drawn each frame are recorded ([`recorded`]) for tests and automation.
 
-use egui::{Align2, FontId, Galley, Painter, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
+use egui::{Align2, FontId, Painter, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
 use photocraft_color::BlendMode;
 use photocraft_doc::Layer;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 use crate::icons;
+use crate::rtl_label::Line;
 use crate::theme::{self, Tokens};
 
 /// Space kept free at a row's right edge: the overlay scrollbar sits there.
@@ -89,15 +90,21 @@ pub fn indent(depth: usize, row_width: f32, fixed: f32) -> f32 {
     (depth as f32 * 14.0).min((row_width - fixed - MIN_NAME_W).max(0.0))
 }
 
-/// A single-line galley cut with "…" to `max_width` (nothing when there's no room).
-pub fn truncated(painter: &Painter, text: &str, font: FontId, color: egui::Color32, italics: bool, max_width: f32) -> Option<Arc<Galley>> {
+/// A single line cut with "…" to `max_width` (nothing when there's no room). Right-to-left
+/// text comes from the text engine, in bidi order and cut at its logical end.
+pub fn truncated(painter: &Painter, text: &str, font: FontId, color: egui::Color32, italics: bool, max_width: f32) -> Option<Line> {
     if max_width < 8.0 {
         return None;
+    }
+    if crate::rtl_label::needs_engine(text)
+        && let Some(line) = crate::rtl_label::line(painter, text, &font, italics, max_width)
+    {
+        return Some(line);
     }
     let mut job = egui::text::LayoutJob::default();
     job.append(text, 0.0, egui::TextFormat { font_id: font, color, italics, ..Default::default() });
     job.wrap = egui::text::TextWrapping { max_width, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
-    Some(painter.layout_job(job))
+    Some(Line::Galley(painter.layout_job(job)))
 }
 
 /// Paint `l`'s right-hand indicators in `row` and handle the effects triangle. Returns the
@@ -187,9 +194,9 @@ pub fn paint_triangle(painter: &Painter, c: Pos2, open: bool, color: egui::Color
 /// Paint `text` left-aligned at `x`, vertically centred on `cy`, cut to end before `right`.
 /// Returns the painted rect.
 pub fn label(painter: &Painter, x: f32, cy: f32, right: f32, text: &str, font: FontId, color: egui::Color32) -> Option<Rect> {
-    let g = truncated(painter, text, font, color, false, right - x)?;
-    let r = Align2::LEFT_CENTER.anchor_size(pos2(x, cy), g.size());
-    painter.galley(r.min, g, color);
+    let line = truncated(painter, text, font, color, false, right - x)?;
+    let r = Align2::LEFT_CENTER.anchor_size(pos2(x, cy), line.size());
+    line.paint(painter, r.min, color);
     Some(r)
 }
 

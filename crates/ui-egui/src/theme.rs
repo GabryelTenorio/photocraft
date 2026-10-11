@@ -781,6 +781,11 @@ fn ui_font_size(ctx: &egui::Context) -> UiFontSize {
     ctx.data(|d| d.get_temp::<UiFontSize>(ui_fonts_id())).unwrap_or_default()
 }
 
+/// How much Interface › UI Font Size scales the UI faces (1 at Small).
+pub(crate) fn ui_font_scale(ctx: &egui::Context) -> f32 {
+    font_scale(ui_font_size(ctx))
+}
+
 fn font_scale(size: UiFontSize) -> f32 {
     match size {
         UiFontSize::Tiny => 10.0 / 12.0,
