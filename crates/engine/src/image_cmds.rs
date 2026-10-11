@@ -179,7 +179,7 @@ fn image_size(s: &mut Session, p: &Value) -> Result<Value> {
         check_resample_budget("image.imageSize", &d.doc, nw, nh, ", or turn Resample off to change only the resolution")?;
     }
     let dpi = p.get("resolution").and_then(Value::as_f64).map(|v| v as f32);
-    if resample.is_some() && (nw, nh) != (ow, oh) {
+    if !matches!(resample, Method::None) && (nw, nh) != (ow, oh) {
         // Color Sampler points scale with the pixels (same map `transform_geometry` applies).
         let (sx, sy) = (f64::from(nw) / f64::from(ow.max(1)), f64::from(nh) / f64::from(oh.max(1)));
         s.set_sampler_map(photocraft_geom::Affine { m: [sx, 0.0, 0.0, sy, 0.0, 0.0] });

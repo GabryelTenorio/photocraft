@@ -375,12 +375,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
 
 /// The nearest Color Sampler point within `tol` document pixels, or `None`.
 fn nearest_sampler(points: &[[f64; 2]], at: [f64; 2], tol: f64) -> Option<usize> {
-    points
-        .iter()
-        .enumerate()
-        .filter(|(_, q)| dist(**q, at) <= tol)
-        .min_by(|a, b| dist(*a.1, at).total_cmp(&dist(*b.1, at)))
-        .map(|(i, _)| i)
+    points.iter().enumerate().filter(|(_, q)| dist(**q, at) <= tol).min_by(|a, b| dist(*a.1, at).total_cmp(&dist(*b.1, at))).map(|(i, _)| i)
 }
 
 /// Show a command error in the status bar without treating the sample-limit message as a fault.
@@ -597,9 +592,12 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             let t = Tokens::get(ui.ctx());
             let n = app.session.active().map_or(0, |d| d.color_samplers.len());
             ui.label(
-                RichText::new(crate::i18n::fmt(tl!("{n} of {max} sample points"), &[("n", &n.to_string()), ("max", &photocraft_engine::sampler_cmds::MAX_SAMPLERS.to_string())]))
-                    .color(t.text)
-                    .size(11.0),
+                RichText::new(crate::i18n::fmt(
+                    tl!("{n} of {max} sample points"),
+                    &[("n", &n.to_string()), ("max", &photocraft_engine::sampler_cmds::MAX_SAMPLERS.to_string())],
+                ))
+                .color(t.text)
+                .size(11.0),
             );
             crate::widgets::vline(ui, 22.0);
             if ui.add_enabled_ui(n > 0, |ui| crate::widgets::secondary_button(ui, tl!("Clear All"), 0.0)).inner.clicked() {
@@ -1167,7 +1165,14 @@ pub(crate) mod tests {
         down(&mut app, 10.0, 10.0, egui::Modifiers::NONE);
         up(&mut app, 10.0, 10.0);
         render(&mut app, &ctx, windows);
-        let xf = ViewXform { rect: egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)), zoom: 1.0, center: [100.0, 50.0], flip: false, rotation: 0.0 };
+        let xf = ViewXform {
+            rect: egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)),
+            zoom: 1.0,
+            center: [100.0, 50.0],
+            flip: false,
+            rotation: 0.0,
+            aspect: 1.0,
+        };
         let mut o = ctx.run_ui(Default::default(), |ui| draw_overlay(&app, ui.painter(), &xf));
         o.textures_delta.clear();
     }

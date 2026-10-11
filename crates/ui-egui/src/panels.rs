@@ -1776,9 +1776,9 @@ fn info_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         };
         for s in &samplers {
             let n = s["number"].as_i64().unwrap_or(0);
-            let at = s["position"].as_array().map_or((0.0, 0.0), |a| {
-                (a.first().and_then(Value::as_f64).unwrap_or(0.0), a.get(1).and_then(Value::as_f64).unwrap_or(0.0))
-            });
+            let at = s["position"]
+                .as_array()
+                .map_or((0.0, 0.0), |a| (a.first().and_then(Value::as_f64).unwrap_or(0.0), a.get(1).and_then(Value::as_f64).unwrap_or(0.0)));
             let num = |v: &Value, i: usize| v.get(i).and_then(Value::as_i64).map_or_else(|| "—".to_string(), |n| n.to_string());
             let (rgb, cmyk) = (&s["rgb"], &s["cmyk"]);
             ui.horizontal(|ui| {
