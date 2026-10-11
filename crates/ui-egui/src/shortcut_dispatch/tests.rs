@@ -545,7 +545,6 @@ fn delete_shortcuts_refuse_lock_all_atomically() {
             put_focus(&mut h, Place::Canvas);
             let s = &mut h.state_mut().session;
             s.execute("select.deselect", json!({})).unwrap();
-            let locked = s.active().unwrap().active_layer.unwrap();
             s.execute("layer.setProps", json!({"locked": true})).unwrap();
             if multi {
                 let background = s.active().unwrap().doc.layers[0].id;
