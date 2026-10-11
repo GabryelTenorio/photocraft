@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use egui::{Rect, Sense, Stroke, pos2, vec2};
+use egui::{Pos2, Rect, Sense, Stroke, pos2, vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -428,6 +428,8 @@ fn rects_id() -> egui::Id {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StripRects {
     pub group: Group,
+    /// The area accepting a tab drop, excluding the group menu.
+    pub area: Rect,
     /// `(tab index, rect)` of the tabs on the strip (the others are in the chevron menu).
     pub tabs: Vec<(usize, Rect)>,
     /// The panel menu button.
@@ -456,6 +458,7 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
     let locked = app.session.prefs().workspace_locked;
     let rects = rects_after_layout(&heights, area);
     let mut actions: Vec<Action> = Vec::new();
+    let mut tab_drops: Vec<(Group, usize, Pos2)> = Vec::new();
     let mut dragging: Option<Group> = None;
     let mut strips: Vec<StripRects> = Vec::with_capacity(rects.len());
     for (i, (g, rect)) in rects.iter().copied().enumerate() {
@@ -499,6 +502,7 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
         }
         strips.push(StripRects {
             group: g,
+            area: Rect::from_min_max(pos2(rect.left(), resp.menu.rect.top()), pos2(resp.menu.rect.left(), resp.menu.rect.bottom())),
             tabs: resp.tabs.iter().filter_map(|(i, r)| indices.get(*i).map(|original| (*original, *r))).collect(),
             menu: resp.menu.rect,
             chevron: resp.chevron,
@@ -530,15 +534,22 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
             actions.push(Action::MoveTab(g, tab, before.and_then(|b| indices.get(b).copied())));
         }
         // A tab dragged off its strip moves the whole group, as the strip itself does.
-        if !locked && app.ui.docking.is_none() && (resp.strip.dragged() || resp.tab_dragging_out) {
+        if !locked && app.ui.docking.is_none() && (resp.strip.dragged() || resp.tab_dragging_out.is_some()) {
             dragging = Some(g);
         }
         if !locked
             && app.ui.docking.is_none()
-            && (resp.strip.drag_stopped() || resp.tab_dropped_out)
+            && resp.strip.drag_stopped()
             && let Some(p) = ui.ctx().pointer_interact_pos().or_else(|| ui.ctx().pointer_latest_pos())
         {
             actions.push(Action::Move(g, drop_before(&order, &rects, g, p.y)));
+        }
+        if !locked
+            && app.ui.docking.is_none()
+            && let Some(tab) = resp.tab_dropped_out
+            && let Some(p) = ui.ctx().pointer_interact_pos().or_else(|| ui.ctx().pointer_latest_pos())
+        {
+            tab_drops.push((g, tab, p));
         }
         if dragging == Some(g) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -589,6 +600,23 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
             }
         }
     }
+    let mut panel_moves = Vec::new();
+    for (from, tab, position) in tab_drops {
+        let target = strips.iter().find(|strip| strip.group != from && strip.area.contains(position));
+        if let Some(target) = target {
+            let pro = t.pro;
+            let source = from.tabs(pro).get(tab).and_then(|label| crate::panel_docking::normalize(label));
+            let slot = crate::tab_strip::drop_slot(&target.tabs, target.area, position);
+            let before = slot.and_then(|slot| target.tabs.get(slot).map(|(index, _)| *index));
+            let anchor = before.or_else(|| target.tabs.first().map(|(index, _)| *index));
+            let destination = anchor.and_then(|index| target.group.tabs(pro).get(index).and_then(|label| crate::panel_docking::normalize(label)));
+            if let (Some(source), Some(destination)) = (source, destination) {
+                panel_moves.push((source, destination, before.is_some()));
+            }
+        } else {
+            actions.push(Action::Move(from, drop_before(&order, &rects, from, position.y)));
+        }
+    }
     // Drop indicator while a group is dragged by its tab strip.
     if let (Some(g), Some(p)) = (dragging, ui.ctx().pointer_interact_pos()) {
         let before = drop_before(&order, &rects, g, p.y);
@@ -631,6 +659,12 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
                     app.ui.dock.move_group(g, before);
                 }
             }
+        }
+    }
+    for (panel, anchor, before) in panel_moves {
+        let params = if before { json!({"panel":panel,"anchor":anchor,"before":anchor}) } else { json!({"panel":panel,"anchor":anchor}) };
+        if let Err(error) = app.run("window.panel.move", params) {
+            app.ui.status = error;
         }
     }
 }
