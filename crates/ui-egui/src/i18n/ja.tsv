@@ -1784,7 +1784,7 @@
 	Animated zoom	アニメーションズーム
 	Apply auto tone	自動トーン補正を適用
 	Ask	確認する
-	Ask before saving layered tiff	レイヤー付き TIFF の保存前に確認
+	Ask before saving layered TIFF	レイヤー付き TIFF の保存前に確認
 	Auto collapse icon panels	アイコンパネルを自動で折りたたむ
 	Auto show hidden panels	隠れたパネルを自動で表示
 	Auto show home screen	ホーム画面を自動で表示
@@ -3459,3 +3459,8 @@ fontWeight	Italic	斜体
 	Front Image	前面の画像
 	Search settings…	設定を検索…
 	No matching settings	一致する設定はありません
+	Save layers in TIFF	TIFF にレイヤーを保存
+	Save Flattened?	統合して保存しますか？
+	Flatten and Save	統合して保存
+	Use Save As to keep the layers in a PSD or TIFF.	レイヤーを残すには、別名で保存で PSD または TIFF に保存してください。
+	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	「{name}」は {format} ファイルのため、レイヤーを保持できません。保存するとファイル内の画像は統合されます。レイヤーはこのウィンドウを閉じるまで残ります。

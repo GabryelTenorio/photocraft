@@ -270,13 +270,12 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
         }
         "file.save" => {
-            // Writes back only to a layered file; a flat one goes through Save As.
+            // Writes back to the file the document was opened from (asking before flattening
+            // layers into a JPEG, PNG, WebP or TIFF); without one, Save As. `flatten: true`
+            // answers the flatten confirmation in advance.
             match params.get("path").and_then(Value::as_str) {
                 Some(path) => app.save_as(Some(path.to_string())),
-                None => match app.session.active().and_then(|d| d.path.clone()).filter(|p| photocraft_engine::file_cmds::saves_in_place(p)) {
-                    Some(path) => app.save_in_place(path),
-                    None => app.save_as(None),
-                },
+                None => app.save(params.get("flatten").and_then(Value::as_bool).unwrap_or(false)),
             }
         }
         "file.exit" => {
