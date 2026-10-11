@@ -1,7 +1,7 @@
 //! Print Photoshop menu parity and optionally write or check the Markdown report.
 //!
 //! ```sh
-//! cargo run -p photocraft-ui-egui --example parity -- [--write docs/parity.md] [--check docs/parity.md] [--json]
+//! cargo run -p photocraft-ui-egui --example parity -- [--write docs/parity-checklist.md] [--check docs/parity-checklist.md] [--json]
 //! ```
 //! Usually run through `cargo xtask parity [--check]`.
 

@@ -36,7 +36,7 @@ commands:
                   --pixls (or -p raw) also fetches corpus/pixls and runs the raw corpus tests;
                   --local takes corpus/photoshop from the photocraft-corpus authoring clone
   stats [--exact] count tests and lines per crate (--exact: ask the test harness via `-- --list`)
-  parity [--check] Photoshop menu parity; --check verifies docs/parity.md, otherwise rewrites it
+  parity [--check] Photoshop menu parity; --check verifies docs/parity-checklist.md, otherwise rewrites it
   i18n-coverage   report stable UI translation coverage for registered languages
   perf [--quick] [--update-baseline] [--threshold PCT] [--bench NAME]... [--skip-build] [--reuse]
                   run the release benches, merge them by scenario id into target/perf/results.json,
@@ -189,11 +189,11 @@ fn cmd_parity(rest: &[&str]) -> Result<(), String> {
     if let Some(bad) = rest.iter().find(|a| **a != "--check") {
         return Err(format!("parity: unknown option `{bad}`"));
     }
-    // `--check` verifies docs/parity.md is current without writing it, so CI and the forge MCP can
-    // gate on it; the default still regenerates the file.
+    // `--check` verifies docs/parity-checklist.md is current without writing it, so CI and the forge
+    // MCP can gate on it; the default still regenerates the file.
     let mode = if check { "--check" } else { "--write" };
     let mut c = cargo();
-    c.args(["run", "-q", "-p", "photocraft-ui-egui", "--example", "parity", "--", mode, "docs/parity.md"]);
+    c.args(["run", "-q", "-p", "photocraft-ui-egui", "--example", "parity", "--", mode, "docs/parity-checklist.md"]);
     run(c, "cargo run -p photocraft-ui-egui --example parity")
 }
 

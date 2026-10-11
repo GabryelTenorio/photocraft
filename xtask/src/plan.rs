@@ -35,7 +35,7 @@ const WASM: Gate = Gate { id: "wasm", command: "cargo xtask wasm", reason: "a wa
 const PARITY: Gate = Gate {
     id: "parity",
     command: "cargo xtask parity --check",
-    reason: "engine menu/command coverage; if stale, run `cargo xtask parity` and commit docs/parity.md",
+    reason: "engine menu/command coverage; if stale, run `cargo xtask parity` and commit docs/parity-checklist.md",
 };
 const PANIC_HUNT: Gate = Gate {
     id: "panic_hunt",
