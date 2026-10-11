@@ -43,8 +43,8 @@ min_sdk_version = 29
 target_sdk_version = 34
 [package.metadata.android.application]
 label = "PhotoCraft"
-# No action bar: the default theme shows a title bar over the menu bar.
-theme = "@android:style/Theme.DeviceDefault.NoActionBar"
+# No action bar, and fullscreen: the status bar would cover the menu bar.
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
 [package.metadata.android.application.activity]
 config_changes = "orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|density|uiMode"
 # File dialogs browse shared storage directly (src/browser.rs), which needs "All files access".
