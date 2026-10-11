@@ -460,10 +460,7 @@ fn motion_blur_angle_dial(ui: &mut egui::Ui, angle: &mut f32) {
     let (sin, cos) = angle.to_radians().sin_cos();
     let direction = egui::vec2(cos, -sin);
     let tip = center + direction * (radius - 5.0);
-    painter.line_segment(
-        [center - direction * (radius - 5.0), tip],
-        egui::Stroke::new(2.0, visuals.selection.stroke.color),
-    );
+    painter.line_segment([center - direction * (radius - 5.0), tip], egui::Stroke::new(2.0, visuals.selection.stroke.color));
     painter.circle_filled(tip, 3.0, visuals.selection.stroke.color);
     if (response.dragged() || response.clicked())
         && let Some(pointer) = response.interact_pointer_pos()
@@ -805,12 +802,9 @@ mod tests {
     #[test]
     fn motion_blur_direction_wheel_matches_the_filter_coordinate_system() {
         let centre = egui::pos2(50.0, 50.0);
-        for (pointer, expected) in [
-            (egui::pos2(70.0, 50.0), 0.0),
-            (egui::pos2(50.0, 30.0), 90.0),
-            (egui::pos2(30.0, 50.0), -180.0),
-            (egui::pos2(50.0, 70.0), -90.0),
-        ] {
+        for (pointer, expected) in
+            [(egui::pos2(70.0, 50.0), 0.0), (egui::pos2(50.0, 30.0), 90.0), (egui::pos2(30.0, 50.0), -180.0), (egui::pos2(50.0, 70.0), -90.0)]
+        {
             let actual = motion_blur_angle_at(centre, pointer).unwrap();
             assert!((actual - expected).abs() < 0.01, "{pointer:?}: {actual} != {expected}");
         }
