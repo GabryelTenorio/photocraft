@@ -118,7 +118,7 @@ pub struct CameraRawDialog {
     pub(crate) raw_open: Option<RawOpen>,
     /// The open-time dialog's camera tone curve: Shadows / Highlights act on the raw data there,
     /// in linear light before this curve, and the preview undoes it to show the same.
-    raw_curve: Option<Vec<[f32; 2]>>,
+    raw_curve: Option<std::sync::Arc<photocraft_io::raw::RawPreview>>,
     /// The proxy after the raw-stage sliders and [`photocraft_algo::camera_raw::develop_tonal`],
     /// for the settings it was made with ([`photocraft_algo::camera_raw::tonal_part`]): a change
     /// of colour, Detail or Effects settings starts from it.
@@ -287,6 +287,16 @@ pub fn wants_open_dialog(app: &PhotocraftApp, warnings: &[String]) -> bool {
     app.session.prefs().raw_defaults.open_in_camera_raw && warnings.iter().any(|w| w.contains(photocraft_io::raw::DEVELOPED_NOTE))
 }
 
+/// Should an open whose colour-policy report is `color` (see `Session::open_document`) and whose
+/// import notes are `warnings` ask about the profile (Color Settings › Ask When Opening)? Not for a
+/// raw developed from its sensor data: its space is Camera Raw's output space, which Photoshop
+/// does not ask about either (and the open-time Camera Raw dialog would hide the prompt).
+pub fn asks_about_profile(color: &Value, warnings: &[String]) -> bool {
+    let ask = color.get("ask").and_then(Value::as_bool) == Some(true);
+    let developed_raw = warnings.iter().any(|w| w.contains(photocraft_io::raw::DEVELOPED_NOTE));
+    ask && !developed_raw && (color.get("mismatch").and_then(Value::as_bool) == Some(true) || color.get("missing").is_some())
+}
+
 /// `warnings` without the "developed with default settings" note: the open-time dialog shows
 /// how the raw is developed.
 pub fn without_develop_note(warnings: &[String]) -> Vec<String> {
@@ -316,14 +326,15 @@ fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Resul
     let (layer, surf, _) = crate::distort_ui::active_pixels(app)?;
     open_pixels(app, ctx, layer, surf, CameraRaw::default(), Coverage::None, Target::OpenRaw)?;
     let curve = match (&raw.bytes, &raw.path) {
-        (Some(b), _) => Some(photocraft_io::raw::tone_curve(b)),
+        (Some(b), _) => Some(photocraft_io::raw::raw_preview(b)),
         #[cfg(not(target_arch = "wasm32"))]
-        (None, Some(p)) => std::fs::read(p).ok().map(|b| photocraft_io::raw::tone_curve(&b)),
+        (None, Some(p)) => std::fs::read(p).ok().map(|b| photocraft_io::raw::raw_preview(&b)),
         _ => None,
     };
     if let Some(d) = app.camera_raw.as_mut() {
         d.layer_name = raw.name.clone();
-        d.detail.raw_curve = curve.clone().map(std::sync::Arc::new);
+        let curve = curve.map(std::sync::Arc::new);
+        d.detail.raw = curve.clone();
         d.raw_curve = curve;
         d.tonal = Default::default();
         d.raw_open = Some(raw);
@@ -1775,6 +1786,43 @@ mod tests {
         assert!(app.camera_raw.is_none());
     }
 
+    /// Opening a raw developed from its sensor data does not ask about its ProPhoto profile
+    /// (Photoshop does not either); other mismatches still ask when the settings say so.
+    #[test]
+    fn a_developed_raw_does_not_ask_about_its_profile() {
+        let mismatch = json!({"ask": true, "mismatch": true, "embedded": "ProPhoto RGB-compatible", "working": "sRGB IEC61966-2.1"});
+        let raw = vec![format!("NEF from NIKON D4 {} (ahd demosaic, as-shot white balance) into 16-bit ProPhoto RGB", photocraft_io::raw::DEVELOPED_NOTE)];
+        assert!(!asks_about_profile(&mismatch, &raw));
+        assert!(asks_about_profile(&mismatch, &[]));
+        assert!(!asks_about_profile(&json!({"ask": false, "mismatch": true}), &[]));
+        assert!(asks_about_profile(&json!({"ask": true, "missing": true}), &[]));
+        // A raw opened as its embedded JPEG (not developed) is an ordinary file.
+        let preview = vec!["NEF: lossy compression is not supported yet; opened the camera's embedded 640x424 JPEG preview instead".to_string()];
+        assert!(asks_about_profile(&mismatch, &preview));
+    }
+
+    /// The open-time preview shows what Open makes: Exposure acts with the raw stage before the
+    /// camera curve (as the re-develop applies it to the sensor data), not on the developed
+    /// pixels after it.
+    #[test]
+    fn the_raw_open_preview_matches_what_open_makes() {
+        let (mut app, dng) = raw_app();
+        let ctx = egui::Context::default();
+        app.open_bytes("IMG_0005.dng", &dng).unwrap();
+        let raw = app.pending_raw_open.take().unwrap();
+        open_raw(&mut app, &ctx, raw).unwrap();
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": {"exposure": 1.2, "shadows": 40}}})).unwrap().unwrap();
+        let d = app.camera_raw.as_ref().unwrap();
+        assert_eq!((d.pw, d.ph), (d.full_w, d.full_h), "the proxy is the whole frame");
+        let preview = d.processed.clone();
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
+        let opened = pixels(&app);
+        let err =
+            preview.iter().flat_map(|p| [p[0], p[1], p[2]]).zip(opened.chunks(4).flat_map(|p| [p[0], p[1], p[2]])).map(|(a, b)| (a - b).abs()).sum::<f32>()
+                / (preview.len() * 3) as f32;
+        assert!(err < 0.02, "preview vs Open: mean difference {err}");
+    }
+
     #[test]
     fn colour_changes_reuse_the_tonal_stages_with_the_same_preview() {
         let tonal = json!({"exposure": 0.4, "shadows": 40, "clarity": 25, "dehaze": 10, "whites": 10});
@@ -1964,7 +2012,7 @@ mod tests {
         }
         // Stage by stage, on the proxy and on the full frame.
         let d = app.camera_raw.as_ref().unwrap();
-        let curve: Vec<[f32; 2]> = d.raw_curve.clone().unwrap_or_default();
+        let curve: Vec<[f32; 2]> = d.raw_curve.as_ref().map(|r| r.curve.clone()).unwrap_or_default();
         let full: Vec<[f32; 4]> = {
             let st = app.session.active().unwrap();
             let s = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
@@ -2027,6 +2075,57 @@ mod tests {
             menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": set}})).unwrap().unwrap();
             eprintln!("{name:26} proxy {:7.1} ms", ms(t));
         }
+    }
+
+    /// Fidelity check, not a test: the open-time preview against what Open makes for a real raw
+    /// (`PHOTOCRAFT_BENCH_RAW`, `PHOTOCRAFT_BENCH_SET` the settings as JSON).
+    #[test]
+    #[ignore]
+    fn bench_raw_open_fidelity() {
+        let Ok(path) = std::env::var("PHOTOCRAFT_BENCH_RAW") else { return };
+        let set: Value = std::env::var("PHOTOCRAFT_BENCH_SET").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({"exposure": 1.5}));
+        let bytes = std::fs::read(&path).unwrap();
+        let (mut app, _) = raw_app();
+        let ctx = egui::Context::default();
+        app.background_jobs = false;
+        app.open_bytes("bench.NEF", &bytes).unwrap();
+        let raw = app.pending_raw_open.take().unwrap();
+        let mut raw = raw;
+        raw.path = Some(path.clone());
+        open_raw(&mut app, &ctx, raw).unwrap();
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": set}})).unwrap().unwrap();
+        let d = app.camera_raw.as_ref().unwrap();
+        let (pw, ph, fw, fh) = (d.pw, d.ph, d.full_w, d.full_h);
+        let preview = d.processed.clone();
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
+        // The opened document box-reduced as the proxy is.
+        let st = app.session.active().unwrap();
+        let s = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
+        let k = fw.max(fh).div_ceil(PROXY_SIDE).max(1);
+        let mut row = vec![[0.0f32; 4]; fw];
+        let mut opened = vec![[0.0f32; 4]; pw * ph];
+        for py in 0..ph {
+            let mut acc = vec![[0.0f32; 5]; pw];
+            for dy in 0..k {
+                let y = (py * k + dy).min(fh - 1) as i32;
+                s.read_rgba_into(photocraft_geom::Rect::new(0, y, fw as i32, y + 1), &mut row);
+                for (x, q) in row.iter().enumerate() {
+                    let a = &mut acc[x / k];
+                    for c in 0..4 {
+                        a[c] += q[c];
+                    }
+                    a[4] += 1.0;
+                }
+            }
+            for (x, a) in acc.iter().enumerate() {
+                opened[py * pw + x] = [a[0] / a[4], a[1] / a[4], a[2] / a[4], 1.0];
+            }
+        }
+        let diffs: Vec<f32> = preview.iter().zip(&opened).flat_map(|(a, b)| (0..3).map(move |c| (a[c] - b[c]).abs())).collect();
+        let mean = diffs.iter().sum::<f32>() / diffs.len() as f32;
+        let mut sorted = diffs.clone();
+        sorted.sort_by(f32::total_cmp);
+        eprintln!("preview vs Open: mean {:.4} ({:.1} of 255), p95 {:.4}, settings {set}", mean, mean * 255.0, sorted[sorted.len() * 95 / 100]);
     }
 
     fn pixels(app: &PhotocraftApp) -> Vec<f32> {

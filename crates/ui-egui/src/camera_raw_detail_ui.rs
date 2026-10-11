@@ -30,11 +30,31 @@ struct ScreenKey {
 
 type ScreenResult = Result<(ScreenKey, Arc<Vec<[f32; 4]>>), String>;
 
+/// The raw stage of a raw open: its five sliders, and Exposure / Temperature / Tint as a linear
+/// matrix applied before them (see [`raw_stage_split`]).
+type RawStage = (photocraft_io::raw::Tone, Option<[[f32; 3]; 3]>);
+
+/// Splits `p` for a raw being opened (`raw`): the raw stage, which Open applies to the sensor data
+/// (Shadows, Highlights, Clarity, Texture, Dehaze, Exposure, and Temperature / Tint when the file
+/// has an as-shot white balance), and the settings left for the pipeline after it. Without `raw`
+/// everything is left for the pipeline.
+pub(crate) fn raw_stage_split(p: &CameraRaw, raw: Option<&photocraft_io::raw::RawPreview>) -> (CameraRaw, Option<RawStage>) {
+    let Some(raw) = raw else { return (p.clone(), None) };
+    let tone = photocraft_io::raw::Tone { shadows: p.shadows, highlights: p.highlights, clarity: p.clarity, texture: p.texture, dehaze: p.dehaze };
+    let (pre, white_balance) = raw.stage_matrix(p.exposure, p.temperature, p.tint);
+    let mut rest = p.clone();
+    (rest.shadows, rest.highlights, rest.clarity, rest.texture, rest.dehaze, rest.exposure) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    if white_balance {
+        (rest.temperature, rest.tint) = (0.0, 0.0);
+    }
+    (rest, Some((tone, pre)))
+}
+
 /// Results of [`tonal_stage`] kept for the settings they were made with: the raw stage's (for
 /// its five sliders) and the tonal stages' after it.
 #[derive(Clone, Default)]
 pub(crate) struct TonalCache {
-    raw: Option<(photocraft_io::raw::Tone, Arc<Vec<[f32; 4]>>)>,
+    raw: Option<(RawStage, Arc<Vec<[f32; 4]>>)>,
     tonal: Option<(CameraRaw, Arc<Vec<[f32; 4]>>)>,
     /// The raw stage's slider-independent part, so dragging one of its sliders is cheap.
     retone: Arc<std::sync::Mutex<Option<photocraft_io::raw::RetoneCache>>>,
@@ -58,7 +78,7 @@ pub(crate) struct DetailPreview {
     source: Surface,
     /// The open-time dialog's camera tone curve: Shadows, Highlights, Clarity, Texture and Dehaze
     /// then act on the raw data, in linear light before it (see [`develop`]).
-    pub(crate) raw_curve: Option<Arc<Vec<[f32; 2]>>>,
+    pub(crate) raw: Option<Arc<photocraft_io::raw::RawPreview>>,
     area: PixelRect,
     coverage: Coverage,
     result: Option<(u64, Surface)>,
@@ -90,7 +110,7 @@ impl DetailPreview {
     pub(crate) fn new(source: Surface, area: PixelRect, coverage: Coverage) -> Self {
         Self {
             source,
-            raw_curve: None,
+            raw: None,
             area,
             coverage,
             result: None,
@@ -117,7 +137,7 @@ impl DetailPreview {
         let mut params = params.clone();
         params.pixel_scale = (size.0 as f32 / self.area.width().max(1) as f32).min(1.0);
         let key = ScreenKey { revision, size, original: false };
-        develop_screen(&self.source, self.area, self.raw_curve.as_deref().map(Vec::as_slice), &self.screen_cache, key, &params, false)
+        develop_screen(&self.source, self.area, self.raw.as_deref(), &self.screen_cache, key, &params, false)
     }
 
     /// Bench only: what the background worker develops for `params`, now.
@@ -125,7 +145,7 @@ impl DetailPreview {
     pub(crate) fn develop_now(&self, params: &CameraRaw) -> Surface {
         let mut params = params.clone();
         params.pixel_scale = 1.0;
-        develop(&self.source, self.raw_curve.as_deref().map(Vec::as_slice), self.area, &params, &self.coverage)
+        develop(&self.source, self.raw.as_deref(), self.area, &params, &self.coverage)
     }
 
     /// The size of the screen-size develop the preview shows (`None`: the proxy or 1:1 pixels).
@@ -158,7 +178,7 @@ impl DetailPreview {
             return;
         }
         let (source, area, curve, cache, cancel, ctx) =
-            (self.source.clone(), self.area, self.raw_curve.clone(), self.screen_cache.clone(), self.cancel.clone(), ctx.clone());
+            (self.source.clone(), self.area, self.raw.clone(), self.screen_cache.clone(), self.cancel.clone(), ctx.clone());
         let mut params = params.clone();
         params.pixel_scale = (key.size.0 as f32 / area.width().max(1) as f32).min(1.0);
         let float = source.format().sample == photocraft_color::SampleType::F32;
@@ -167,11 +187,10 @@ impl DetailPreview {
             if cancel.load(Ordering::Relaxed) {
                 return;
             }
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                develop_screen(&source, area, curve.as_deref().map(Vec::as_slice), &cache, key, &params, float)
-            }))
-            .map(|px| (key, px))
-            .map_err(|_| "Camera Raw preview failed; the proxy remains available".to_string());
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| develop_screen(&source, area, curve.as_deref(), &cache, key, &params, float)))
+                    .map(|px| (key, px))
+                    .map_err(|_| "Camera Raw preview failed; the proxy remains available".to_string());
             if !cancel.load(Ordering::Relaxed) {
                 let _ = tx.send(result);
                 ctx.request_repaint();
@@ -275,7 +294,7 @@ impl DetailPreview {
             return;
         }
         let source = self.source.clone();
-        let raw_curve = self.raw_curve.clone();
+        let raw = self.raw.clone();
         let area = self.area;
         let coverage = self.coverage.clone();
         let mut params = params.clone();
@@ -287,10 +306,9 @@ impl DetailPreview {
             if cancel.load(Ordering::Relaxed) {
                 return;
             }
-            let result =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| develop(&source, raw_curve.as_deref().map(Vec::as_slice), area, &params, &coverage)))
-                    .map(|surface| (revision, surface))
-                    .map_err(|_| "Camera Raw detail preview failed; the proxy remains available".into());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| develop(&source, raw.as_deref(), area, &params, &coverage)))
+                .map(|surface| (revision, surface))
+                .map_err(|_| "Camera Raw detail preview failed; the proxy remains available".into());
             if !cancel.load(Ordering::Relaxed) {
                 let _ = tx.send(result);
                 ctx.request_repaint();
@@ -470,49 +488,44 @@ impl DetailPreview {
     }
 }
 
-/// The raw stage (with a raw file's tone `curve`: Shadows, Highlights, Clarity, Texture and
-/// Dehaze on the raw data, see [`photocraft_io::raw::retone`]) and the tonal stages of `p` on
-/// `source`, or `cache` when it holds them for the same settings. Returns the settings left for
+/// The raw stage of a raw open (see [`raw_stage_split`]; on developed pixels through
+/// [`photocraft_io::raw::retone_with`]) and the tonal stages of `p` on `source`, or `cache` when it
+/// holds them for the same settings. Returns the settings left for
 /// [`photocraft_algo::camera_raw::develop_colour`] and the tonal result.
 pub(crate) fn tonal_stage(
     source: &[[f32; 4]],
     w: usize,
     h: usize,
     p: &CameraRaw,
-    curve: Option<&[[f32; 2]]>,
+    raw: Option<&photocraft_io::raw::RawPreview>,
     cache: &mut TonalCache,
 ) -> (CameraRaw, Arc<Vec<[f32; 4]>>) {
     let key = photocraft_algo::camera_raw::tonal_part(p);
-    let mut colour = p.clone();
-    if curve.is_some() {
-        (colour.shadows, colour.highlights, colour.clarity, colour.texture, colour.dehaze) = (0.0, 0.0, 0.0, 0.0, 0.0);
-    }
+    let (colour, stage) = raw_stage_split(p, raw);
     if let Some((k, px)) = cache.tonal.as_ref()
         && *k == key
     {
         return (colour, px.clone());
     }
-    // The raw stage only changes with its own five sliders.
-    let raw = match curve {
-        Some(curve) => {
-            let tone = photocraft_io::raw::Tone { shadows: p.shadows, highlights: p.highlights, clarity: p.clarity, texture: p.texture, dehaze: p.dehaze };
-            match cache.raw.as_ref() {
-                Some((t, px)) if *t == tone => Some(px.clone()),
-                _ => {
-                    let mut px = source.to_vec();
-                    match cache.retone.lock() {
-                        Ok(mut kept) => photocraft_io::raw::retone_with(&mut px, w, h, curve, tone, &mut kept),
-                        Err(_) => photocraft_io::raw::retone(&mut px, w, h, curve, tone),
-                    }
-                    let px = Arc::new(px);
-                    cache.raw = Some((tone, px.clone()));
-                    Some(px)
+    // The raw stage only changes with its own settings.
+    let staged = match (raw, stage) {
+        (Some(raw), Some(stage)) => match cache.raw.as_ref() {
+            Some((s, px)) if *s == stage => Some(px.clone()),
+            _ => {
+                let mut px = source.to_vec();
+                let (tone, pre) = stage;
+                match cache.retone.lock() {
+                    Ok(mut kept) => photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, &mut kept),
+                    Err(_) => photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, &mut None),
                 }
+                let px = Arc::new(px);
+                cache.raw = Some((stage, px.clone()));
+                Some(px)
             }
-        }
-        None => None,
+        },
+        _ => None,
     };
-    let mut px = raw.map_or_else(|| source.to_vec(), |r| r.to_vec());
+    let mut px = staged.map_or_else(|| source.to_vec(), |r| r.to_vec());
     let tonal = photocraft_algo::camera_raw::tonal_part(&colour);
     match cache.develop.lock() {
         Ok(mut kept) => photocraft_algo::camera_raw::develop_tonal_with(&mut px, w, h, &tonal, &mut kept),
@@ -528,7 +541,7 @@ pub(crate) fn tonal_stage(
 fn develop_screen(
     source: &Surface,
     area: PixelRect,
-    curve: Option<&[[f32; 2]]>,
+    raw: Option<&photocraft_io::raw::RawPreview>,
     cache: &std::sync::Mutex<ScreenCache>,
     key: ScreenKey,
     params: &CameraRaw,
@@ -547,7 +560,7 @@ fn develop_screen(
         return reduced;
     }
     let mut tonal = cache.lock().ok().and_then(|c| c.tonal.as_ref().filter(|(s, _)| *s == key.size).map(|(_, t)| t.clone())).unwrap_or_default();
-    let (colour, base) = tonal_stage(&reduced, w, h, params, curve, &mut tonal);
+    let (colour, base) = tonal_stage(&reduced, w, h, params, raw, &mut tonal);
     if let Ok(mut c) = cache.lock() {
         c.tonal = Some((key.size, tonal));
     }
@@ -603,20 +616,14 @@ fn reduce(source: &Surface, area: PixelRect, tw: usize, th: usize) -> Vec<[f32; 
 /// sliders are applied first to the whole area, from the whole frame's maps as Open computes them
 /// ([`photocraft_io::raw::retone`]), then the rest of the pipeline: at 1:1 the preview shows what
 /// Open will make.
-pub(crate) fn develop(source: &Surface, curve: Option<&[[f32; 2]]>, area: PixelRect, params: &CameraRaw, coverage: &Coverage) -> Surface {
-    let tone = photocraft_io::raw::Tone {
-        shadows: params.shadows,
-        highlights: params.highlights,
-        clarity: params.clarity,
-        texture: params.texture,
-        dehaze: params.dehaze,
-    };
-    let (retoned, params) = match curve {
-        Some(curve) if !tone.is_neutral() => {
+pub(crate) fn develop(source: &Surface, raw: Option<&photocraft_io::raw::RawPreview>, area: PixelRect, params: &CameraRaw, coverage: &Coverage) -> Surface {
+    let (rest, stage) = raw_stage_split(params, raw);
+    let (retoned, params) = match (raw, stage) {
+        (Some(raw), Some((tone, pre))) if !tone.is_neutral() || pre.is_some() => {
             let (w, h) = (area.width() as usize, area.height() as usize);
             let mut px = vec![[0.0f32; 4]; w * h];
             source.read_rgba_into(area, &mut px);
-            photocraft_io::raw::retone(&mut px, w, h, curve, tone);
+            photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, &mut None);
             let fmt = source.format();
             let n = fmt.channels();
             let mut data = source.read_region(area);
@@ -629,10 +636,9 @@ pub(crate) fn develop(source: &Surface, curve: Option<&[[f32; 2]]>, area: PixelR
             }
             let mut out = source.clone();
             out.write_region(area, &data);
-            let rest = CameraRaw { shadows: 0.0, highlights: 0.0, clarity: 0.0, texture: 0.0, dehaze: 0.0, ..params.clone() };
             (Some(out), rest)
         }
-        _ => (None, params.clone()),
+        _ => (None, rest),
     };
     let base = retoned.as_ref().unwrap_or(source);
     let mut result = photocraft_engine::lens_cmds::camera_raw_surface(base, area, &params);
@@ -718,8 +724,9 @@ mod tests {
     }
     #[test]
     fn a_raw_open_refines_raw_stage_sliders_from_the_whole_frame() {
-        // Shadows on a raw being opened: the full-size refinement retones the whole frame (as
-        // Open does) and runs the rest of the pipeline after, instead of the filter's Shadows.
+        // Shadows and Exposure on a raw being opened: the full-size refinement retones the whole
+        // frame (as Open does, the exposure gain first) and runs the rest of the pipeline after,
+        // instead of the filter's Shadows and Exposure.
         let area = PixelRect::new(0, 0, 96, 64);
         let mut source = Surface::new(PixelFormat::RGBA16);
         let mut values = vec![0.0; 96 * 64 * 4];
@@ -730,15 +737,18 @@ mod tests {
         source.write_region(area, &values);
         let curve = [[0.0, 0.0], [0.05, 0.12], [0.3, 0.6], [1.0, 1.0]];
         let params = CameraRaw { shadows: 80.0, exposure: 0.25, ..Default::default() };
-        let refined = develop(&source, Some(&curve), area, &params, &Coverage::None);
+        let raw = photocraft_io::raw::RawPreview::with_curve(curve.to_vec());
+        let refined = develop(&source, Some(&raw), area, &params, &Coverage::None);
         let mut px = vec![[0.0f32; 4]; 96 * 64];
         source.read_rgba_into(area, &mut px);
         let tone = photocraft_io::raw::Tone { shadows: 80.0, ..Default::default() };
-        photocraft_io::raw::retone(&mut px, 96, 64, &curve, tone);
+        let gain = 2f32.powf(0.25);
+        let pre = [[gain, 0.0, 0.0], [0.0, gain, 0.0], [0.0, 0.0, gain]];
+        photocraft_io::raw::retone_with(&mut px, 96, 64, &curve, tone, Some(pre), &mut None);
         let mut retoned = source.clone();
         let flat: Vec<f32> = px.iter().flatten().copied().collect();
         retoned.write_region(area, &flat);
-        let expected = photocraft_engine::lens_cmds::camera_raw_surface(&retoned, area, &CameraRaw { exposure: 0.25, ..Default::default() });
+        let expected = photocraft_engine::lens_cmds::camera_raw_surface(&retoned, area, &CameraRaw::default());
         let (a, b) = (refined.rgba(10, 30), expected.rgba(10, 30));
         assert!(a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 2e-4), "{a:?} vs {b:?}");
         assert!(

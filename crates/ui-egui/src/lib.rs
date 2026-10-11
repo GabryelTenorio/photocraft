@@ -1131,8 +1131,7 @@ impl PhotocraftApp {
         // Script events bound to "Open Document".
         photocraft_engine::automate_cmds::document_opened(&mut self.session);
         self.sync_views();
-        let ask = color.get("ask").and_then(Value::as_bool) == Some(true);
-        if ask && (color.get("mismatch").and_then(Value::as_bool) == Some(true) || color.get("missing").is_some()) {
+        if camera_raw_ui::asks_about_profile(&color, &warnings) {
             prefs_ui::open_mismatch(self, &color);
         }
         Ok(warnings)
