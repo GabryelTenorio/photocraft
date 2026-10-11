@@ -2423,3 +2423,4 @@ fontWeight	Italic	斜體
 	Flatten and Save	平面化並儲存
 	Use Save As to keep the layers in a PSD or TIFF.	若要保留圖層，請使用「另存新檔」儲存為 PSD 或 TIFF。
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	「{name}」是 {format} 檔案，無法保留圖層。儲存時檔案中的影像會平面化；在關閉此視窗之前，圖層仍保留在視窗中。
+	Single instance	單一執行個體

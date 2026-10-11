@@ -4,7 +4,7 @@
 use std::io::{BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -16,16 +16,34 @@ use photocraft_ui_egui::ControlRequest;
 use photocraft_ui_egui::control::{REPLY_DEADLINE, timeout_error};
 use serde_json::{Value, json};
 
-pub fn start(port: u16, token: String, ctx: egui::Context) -> Receiver<ControlRequest> {
-    let (tx, rx) = channel::<ControlRequest>();
+/// Which listener a connection came in on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Channel {
+    /// `--control`: the full control protocol, file access through the automation roots.
+    Control,
+    /// The single-instance socket (`single_instance`): only [`INSTANCE_METHODS`], so a second
+    /// launch can hand its files over (and wait for them) and nothing else.
+    Instance,
+}
+
+/// What the single-instance socket accepts.
+pub const INSTANCE_METHODS: &[&str] = &["app.openFiles", "app.capabilities", "events.subscribe", "ui.focus"];
+
+/// Binds `127.0.0.1:port` for the control channel and serves it, sending requests to `tx`.
+pub fn start(port: u16, token: String, ctx: egui::Context, tx: Sender<ControlRequest>) {
     let listener = match TcpListener::bind(("127.0.0.1", port)) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("photocraft: control server failed to bind 127.0.0.1:{port}: {e}");
-            return rx;
+            return;
         }
     };
     eprintln!("photocraft: control server listening on 127.0.0.1:{port}");
+    listen(listener, token, ctx, tx, Channel::Control);
+}
+
+/// Serves `listener` on a background thread: authenticated JSON lines, one thread per connection.
+pub fn listen(listener: TcpListener, token: String, ctx: egui::Context, tx: Sender<ControlRequest>, channel: Channel) {
     std::thread::spawn(move || {
         let limiter = ConnectionLimiter::new(MAX_CONNECTIONS);
         let token = Arc::new(token);
@@ -40,14 +58,19 @@ pub fn start(port: u16, token: String, ctx: egui::Context) -> Receiver<ControlRe
             let token = Arc::clone(&token);
             std::thread::spawn(move || {
                 let _permit = permit;
-                serve(stream, &token, tx, ctx);
+                serve(stream, &token, tx, ctx, channel);
             });
         }
     });
-    rx
 }
 
-fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::Context) {
+/// Whether `method` with `params` streams lines after its reply: `events.subscribe`, and
+/// `app.openFiles` that waits (its `wait.done`).
+fn pushes(method: &str, params: &Value) -> bool {
+    method == "events.subscribe" || (method == "app.openFiles" && params.get("wait").and_then(Value::as_bool) == Some(true))
+}
+
+fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::Context, channel: Channel) {
     if configure_stream(&stream).is_err() {
         return;
     }
@@ -89,9 +112,18 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
                 let method = msg.get("method").and_then(Value::as_str).unwrap_or("").to_string();
                 let params = msg.get("params").cloned().unwrap_or(json!({}));
                 let deadline = Instant::now() + REPLY_DEADLINE;
+                if channel == Channel::Instance && !INSTANCE_METHODS.contains(&method.as_str()) {
+                    let reply = json!({"id": id, "ok": false, "error": format!("`{method}` is not available on the single-instance socket")});
+                    if send_line(&out, &reply).is_err() {
+                        break;
+                    }
+                    continue;
+                }
+                let push = pushes(&method, &params);
                 let (mut req, rrx) = ControlRequest::new(method, params);
                 req.deadline = Some(deadline);
-                if req.method == "events.subscribe" {
+                req.instance = channel == Channel::Instance;
+                if push {
                     if events.is_some() {
                         let reply = json!({"id": id, "ok": false, "error": "this connection is already subscribed"});
                         if send_line(&out, &reply).is_err() {
@@ -99,7 +131,7 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
                         }
                         continue;
                     }
-                    let (etx, erx) = channel::<Value>();
+                    let (etx, erx) = std::sync::mpsc::channel::<Value>();
                     req.events = Some(etx);
                     subscription = Some(erx);
                 }
@@ -164,6 +196,7 @@ fn forward_events(rx: &Receiver<Value>, out: &Mutex<TcpStream>, stop: &AtomicBoo
 mod tests {
     use super::*;
     use std::io::BufRead;
+    use std::sync::mpsc::channel;
     use std::time::Duration;
 
     #[test]
@@ -175,7 +208,7 @@ mod tests {
         let (tx, rx) = channel::<ControlRequest>();
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            serve(stream, TOKEN, tx, egui::Context::default());
+            serve(stream, TOKEN, tx, egui::Context::default(), Channel::Control);
         });
         let handler = std::thread::spawn(move || {
             let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -220,7 +253,7 @@ mod tests {
         let (tx, rx) = channel::<ControlRequest>();
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            serve(stream, TOKEN, tx, egui::Context::default());
+            serve(stream, TOKEN, tx, egui::Context::default(), Channel::Control);
         });
         let handler = std::thread::spawn(move || {
             let sub = rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -268,7 +301,7 @@ mod tests {
         let (tx, rx) = channel::<ControlRequest>();
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            serve(stream, TOKEN, tx, egui::Context::default());
+            serve(stream, TOKEN, tx, egui::Context::default(), Channel::Control);
         });
         let handler = std::thread::spawn(move || {
             let req = rx.recv_timeout(Duration::from_secs(5)).unwrap();

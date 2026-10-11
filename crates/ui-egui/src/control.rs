@@ -65,12 +65,15 @@ pub struct ControlRequest {
     /// `events.subscribe`: where the connection wants its event lines (see `doc_events`). The
     /// transport sets it; a subscribe request without one is refused.
     pub events: Option<Sender<Value>>,
+    /// Came in on the single-instance socket (a second launch handing over its files): the only
+    /// source allowed to call `app.openFiles`, which opens absolute paths.
+    pub instance: bool,
 }
 
 impl ControlRequest {
     pub fn new(method: impl Into<String>, params: Value) -> (Self, std::sync::mpsc::Receiver<ControlResponse>) {
         let (tx, rx) = std::sync::mpsc::channel();
-        (Self { method: method.into(), params, reply: tx, deadline: None, events: None }, rx)
+        (Self { method: method.into(), params, reply: tx, deadline: None, events: None, instance: false }, rx)
     }
 }
 
@@ -1026,6 +1029,35 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             }
         }
         "app.capabilities" => ok(capabilities()),
+        // A second launch forwarding its command-line files (single instance). Absolute paths,
+        // opened like command-line files; only the instance socket may ask (the control
+        // channel's file access stays inside the automation roots).
+        "app.openFiles" => {
+            if !req.instance {
+                return err("app.openFiles is only available to a second launch (single instance); use app.open");
+            }
+            let Some(list) = p.get("paths").and_then(Value::as_array) else { return err("missing `paths`") };
+            let Some(paths) = list.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>() else {
+                return err("`paths` must be an array of strings");
+            };
+            if paths.is_empty() || paths.len() > 1024 {
+                return err("`paths` must hold 1 to 1024 files");
+            }
+            if let Some(bad) = paths.iter().find(|p| !std::path::Path::new(p.as_str()).is_absolute()) {
+                return err(format!("`{bad}` is not an absolute path"));
+            }
+            let opened = app.open_paths(&paths);
+            let wait = p.get("wait").and_then(Value::as_bool).unwrap_or(false);
+            if wait {
+                let Some(tx) = req.events.clone() else { return err("waiting needs a connection that can receive events") };
+                app.wait_for(paths.clone(), crate::wait::WaitNotify::Channel(tx));
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            ctx.request_repaint();
+            ok(json!({"opened": opened, "paths": paths, "wait": wait}))
+        }
         "app.quit" => {
             app.allow_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1039,6 +1071,8 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
 /// in `features` names a behaviour a caller may rely on:
 /// - `saveInPlace`: Save writes back to an opened TIFF, JPEG, PNG or WebP (`flatten` confirms).
 /// - `events`: `events.subscribe` pushes the `events` listed.
+/// - `wait`: `--wait` blocks until the files it opened are closed (0 saved, 1 not).
+/// - `singleInstance`: `--single-instance` (or the preference) hands files to a running window.
 pub fn capabilities() -> Value {
     json!({
         "app": "photocraft",
@@ -1050,7 +1084,7 @@ pub fn capabilities() -> Value {
 }
 
 /// `app.capabilities` → `features`.
-pub const FEATURES: &[&str] = &["saveInPlace", "events", "wait"];
+pub const FEATURES: &[&str] = &["saveInPlace", "events", "wait", "singleInstance"];
 
 /// Snapshot of everything on screen, addressable by id.
 pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {

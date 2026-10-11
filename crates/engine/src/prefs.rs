@@ -190,6 +190,10 @@ pub struct General {
     pub zoom_resizes_windows: bool,
     pub use_legacy_free_transform: bool,
     pub auto_show_home_screen: bool,
+    /// Opening files while PhotoCraft runs (from a file manager, a script, another app's
+    /// "Edit in") hands them to the running window instead of starting a second one. Off by
+    /// default; `--single-instance` / `--new-instance` override it for one launch.
+    pub single_instance: bool,
 }
 
 impl Default for General {
@@ -206,6 +210,7 @@ impl Default for General {
             zoom_resizes_windows: false,
             use_legacy_free_transform: false,
             auto_show_home_screen: true,
+            single_instance: false,
         }
     }
 }

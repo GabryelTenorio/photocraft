@@ -3551,3 +3551,4 @@ cameraRaw	Masking	Маскування
 	Flatten and Save	Звести й зберегти
 	Use Save As to keep the layers in a PSD or TIFF.	Щоб зберегти шари, скористайтеся «Зберегти як» у форматі PSD або TIFF.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	«{name}» — файл {format}, який не може зберігати шари. Під час збереження зображення у файлі буде зведено; шари залишаться в цьому вікні, доки ви його не закриєте.
+	Single instance	Один екземпляр

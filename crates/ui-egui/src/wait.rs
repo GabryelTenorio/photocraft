@@ -171,6 +171,33 @@ mod tests {
     }
 
     #[test]
+    fn open_files_is_only_for_the_instance_socket_and_checks_its_params() {
+        use crate::control::{ControlRequest, Outcome, handle};
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let mut call = |params: serde_json::Value, instance: bool, events: Option<Sender<Value>>| {
+            let (mut req, _rx) = ControlRequest::new("app.openFiles", params);
+            req.instance = instance;
+            req.events = events;
+            match handle(&mut app, &ctx, &req) {
+                Outcome::Done(v) => v,
+                _ => panic!("expected a reply"),
+            }
+        };
+        let missing = if cfg!(windows) { "C:\\nowhere\\missing.png" } else { "/nowhere/missing.png" };
+        assert!(call(json!({"paths": [missing]}), false, None)["error"].as_str().unwrap().contains("single instance"));
+        for bad in [json!({}), json!({"paths": "x"}), json!({"paths": [1]}), json!({"paths": []}), json!({"paths": ["relative.png"]})] {
+            assert_eq!(call(bad.clone(), true, None)["ok"], false, "{bad}");
+        }
+        assert_eq!(call(json!({"paths": [missing], "wait": true}), true, None)["ok"], false, "waiting needs a push channel");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let r = call(json!({"paths": [missing], "wait": true}), true, Some(tx));
+        assert_eq!(r["result"]["opened"], 0, "{r}");
+        app.tick_waits();
+        assert_eq!(rx.try_recv().unwrap()["params"]["exitCode"], 1, "a file that can't open ends the wait unsaved");
+    }
+
+    #[test]
     fn a_file_that_never_opens_ends_the_wait_and_channels_get_wait_done() {
         let mut app = app();
         let (tx, rx) = std::sync::mpsc::channel();

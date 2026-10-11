@@ -2453,3 +2453,4 @@ fontWeight	Italic	斜体
 	Flatten and Save	拼合并存储
 	Use Save As to keep the layers in a PSD or TIFF.	若要保留图层，请使用“存储为”保存为 PSD 或 TIFF。
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	“{name}”是 {format} 文件，无法保留图层。存储时文件中的图像将被拼合；在关闭此窗口之前，图层仍保留在窗口中。
+	Single instance	单实例

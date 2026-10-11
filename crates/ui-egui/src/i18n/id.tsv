@@ -2850,3 +2850,4 @@ fontWeight	Italic	Miring
 	Flatten and Save	Ratakan dan Simpan
 	Use Save As to keep the layers in a PSD or TIFF.	Gunakan Simpan Sebagai untuk mempertahankan layer dalam PSD atau TIFF.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	“{name}” adalah file {format}, yang tidak dapat menyimpan layer. Menyimpan akan meratakan gambar di file; layer tetap ada di jendela ini sampai Anda menutupnya.
+	Single instance	Satu instans

@@ -2484,3 +2484,4 @@ fontWeight	Italic	Kursiv
 	Flatten and Save	Reduzieren und speichern
 	Use Save As to keep the layers in a PSD or TIFF.	Mit „Speichern unter“ bleiben die Ebenen in einer PSD- oder TIFF-Datei erhalten.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	„{name}“ ist eine {format}-Datei, die keine Ebenen enthalten kann. Beim Speichern wird das Bild in der Datei auf eine Ebene reduziert; die Ebenen bleiben in diesem Fenster, bis Sie es schließen.
+	Single instance	Nur eine Instanz

@@ -2,12 +2,17 @@
 //!
 //! Usage: `photocraft [--control <port>] [--control-token <64-hex> |
 //! --control-token-file <path>] [--automation-read-root <dir>]
-//! [--automation-write-root <dir>] [--safe-gpu] [--in-window-menus] [files…]`
+//! [--automation-write-root <dir>] [--safe-gpu] [--in-window-menus] [--wait]
+//! [--single-instance | --new-instance] [files…]`
 //!
 //! `--wait` blocks until every file named on the command line has been closed, for tools that
 //! launch an editor and wait for it (git's `core.editor`, a photo manager's "Edit in", scripts):
 //! exit status 0 when any of them was saved at least once, 1 when all were closed unsaved. The
 //! window closes by itself once those files are closed and no other document is open.
+//!
+//! `--single-instance` hands the files to an already running PhotoCraft (and exits, or waits with
+//! `--wait`) instead of opening a second window; Preferences › General › Single Instance makes that
+//! the default, and `--new-instance` starts a separate process anyway (`single_instance`).
 //!
 //! `--safe-gpu` starts with the CPU renderer (no GPU canvas; a software adapter for the window
 //! where the platform has one) for this launch, e.g. after a graphics driver crash. A start that
@@ -47,6 +52,7 @@ mod monitor_profile;
 mod photoshop_settings;
 mod screen_color;
 mod services;
+mod single_instance;
 // Windows gets pen pressure from winit (WM_POINTER); the web runner has its own listener.
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
 mod tablet;
@@ -163,6 +169,8 @@ fn main() -> eframe::Result {
     let mut unreadable_paths: Vec<String> = Vec::new();
     let mut safe_gpu = false;
     let mut wait = false;
+    let mut single_instance_flag: Option<bool> = None;
+    let mut new_instance = false;
     let mut in_window_menus = std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0");
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
@@ -184,6 +192,8 @@ fn main() -> eframe::Result {
             Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
             Some("--safe-gpu") => safe_gpu = true,
             Some("--wait") => wait = true,
+            Some("--single-instance") => single_instance_flag = Some(true),
+            Some("--new-instance") => new_instance = true,
             Some("--in-window-menus") => in_window_menus = true,
             // `--version --json` prints `app.capabilities` instead, so a launcher can feature-detect
             // without starting a window. Builds without it stop at `--version` and print the plain
@@ -215,6 +225,26 @@ fn main() -> eframe::Result {
         }
         std::process::exit(code);
     }
+
+    // Single instance: hand the files to the running window and leave (or wait for them there).
+    let single_instance = single_instance::enabled(if new_instance { Some(false) } else { single_instance_flag }, services::prefs_file().as_deref());
+    let instance = match services::config_dir().filter(|_| single_instance) {
+        Some(dir) => {
+            let absolute: Vec<String> = files.iter().map(|f| photocraft_ui_egui::file_open::absolute(f)).collect();
+            if let single_instance::Forwarded::Exit(code) = single_instance::forward(&dir, &absolute, wait) {
+                std::process::exit(code);
+            }
+            match single_instance::claim(&dir) {
+                Ok(instance) => Some(instance),
+                Err(e) => {
+                    eprintln!("photocraft: single instance unavailable: {e}");
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+    let instance_socket = instance.as_ref().and_then(|i| i.listener.try_clone().ok().map(|l| (l, i.token.clone())));
 
     // The log file lives under the settings directory; opened after the arguments, so `--version`
     // and usage errors leave no file behind. Records logged until now are written to it first.
@@ -450,8 +480,15 @@ fn main() -> eframe::Result {
                     log::warn!("couldn't remember GPU backend {}: {e}", b.name());
                 }
             });
-            if let Some((port, token, _)) = control {
-                let rx = control_server::start(port, token, cc.egui_ctx.clone());
+            // The control channel and the single-instance socket feed the same request queue.
+            if control.is_some() || instance_socket.is_some() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                if let Some((port, token, _)) = control {
+                    control_server::start(port, token, cc.egui_ctx.clone(), tx.clone());
+                }
+                if let Some((listener, token)) = instance_socket {
+                    control_server::listen(listener, token, cc.egui_ctx.clone(), tx, control_server::Channel::Instance);
+                }
                 app = app.with_control(rx);
             }
             #[cfg(target_os = "macos")]
@@ -544,6 +581,9 @@ fn main() -> eframe::Result {
                 Err(error) => log::error!("could not start CPU compatibility mode: {error}"),
             }
         }
+    }
+    if let Some(instance) = &instance {
+        instance.release();
     }
     if let Some(outcome) = wait_outcome {
         let code = outcome.lock().unwrap_or_else(std::sync::PoisonError::into_inner).exit_code();

@@ -3553,3 +3553,4 @@ fontWeight	Thin	Πολύ λεπτά
 	Flatten and Save	Ισοπέδωση και αποθήκευση
 	Use Save As to keep the layers in a PSD or TIFF.	Χρησιμοποιήστε την Αποθήκευση ως για να διατηρήσετε τα επίπεδα σε PSD ή TIFF.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	Το «{name}» είναι αρχείο {format}, το οποίο δεν μπορεί να διατηρήσει επίπεδα. Η αποθήκευση ισοπεδώνει την εικόνα στο αρχείο· τα επίπεδα παραμένουν σε αυτό το παράθυρο μέχρι να το κλείσετε.
+	Single instance	Μία παρουσία

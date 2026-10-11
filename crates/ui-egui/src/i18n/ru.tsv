@@ -2730,3 +2730,4 @@ fontWeight	Italic	Курсив
 	Flatten and Save	Свести и сохранить
 	Use Save As to keep the layers in a PSD or TIFF.	Чтобы сохранить слои, используйте «Сохранить как» с форматом PSD или TIFF.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	«{name}» — файл {format}, в котором нельзя хранить слои. При сохранении изображение в файле будет сведено; слои останутся в этом окне, пока вы его не закроете.
+	Single instance	Один экземпляр

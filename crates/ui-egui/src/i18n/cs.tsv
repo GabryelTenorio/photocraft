@@ -2446,3 +2446,4 @@ fontWeight	Italic	Kurzíva
 	Flatten and Save	Sloučit a uložit
 	Use Save As to keep the layers in a PSD or TIFF.	Chcete-li vrstvy zachovat, použijte Uložit jako a formát PSD nebo TIFF.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	„{name}“ je soubor {format}, který neumí uchovat vrstvy. Uložením se obraz v souboru sloučí; vrstvy zůstanou v tomto okně, dokud ho nezavřete.
+	Single instance	Jedna instance

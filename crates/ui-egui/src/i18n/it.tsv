@@ -2515,3 +2515,4 @@ fontWeight	Italic	Corsivo
 	Flatten and Save	Unisci e salva
 	Use Save As to keep the layers in a PSD or TIFF.	Usa Salva con nome per conservare i livelli in un PSD o TIFF.
 	“{name}” is a {format} file, which can't keep layers. Saving flattens the image in the file; the layers stay in this window until you close it.	«{name}» è un file {format}, che non può conservare i livelli. Il salvataggio unisce l'immagine nel file; i livelli restano in questa finestra finché non la chiudi.
+	Single instance	Istanza singola
