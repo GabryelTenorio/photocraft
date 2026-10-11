@@ -2479,3 +2479,8 @@ fontWeight	Italic	Kursiv
 	Front Image	Vorderes Bild
 	Search settings…	Einstellungen durchsuchen…
 	No matching settings	Keine passenden Einstellungen
+	Edit points to modify the curve	Punkte bearbeiten, um die Kurve zu ändern
+	Draw to modify the curve	Zeichnen, um die Kurve zu ändern
+curves	Smooth	Glätten
+	Smooth the curve values	Kurvenwerte glätten
+	Drag to draw the curve · {key}-click draws a straight line	Ziehen, um die Kurve zu zeichnen · {key}-Klick zeichnet eine gerade Linie

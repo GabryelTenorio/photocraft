@@ -3546,3 +3546,8 @@ cameraRaw	Masking	Маскування
 	Search settings…	Пошук налаштувань…
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
+	Edit points to modify the curve	Змінювати криву за точками
+	Draw to modify the curve	Малювати криву
+curves	Smooth	Згладити
+	Smooth the curve values	Згладити значення кривої
+	Drag to draw the curve · {key}-click draws a straight line	Перетягніть, щоб намалювати криву · {key}-клацання малює пряму лінію

@@ -2866,3 +2866,8 @@ fontWeight	Italic	Itálico
 	Front Image	Imagem frontal
 	Search settings…	Pesquisar configurações…
 	No matching settings	Nenhuma configuração encontrada
+	Edit points to modify the curve	Editar pontos para modificar a curva
+	Draw to modify the curve	Desenhar para modificar a curva
+curves	Smooth	Suavizar
+	Smooth the curve values	Suavizar os valores da curva
+	Drag to draw the curve · {key}-click draws a straight line	Arraste para desenhar a curva · {key}-clique traça uma linha reta

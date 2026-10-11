@@ -2858,3 +2858,8 @@ fontWeight	Italic	Italique
 	Front Image	Image de premier plan
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
+	Edit points to modify the curve	Modifier les points pour changer la courbe
+	Draw to modify the curve	Dessiner pour changer la courbe
+curves	Smooth	Lisser
+	Smooth the curve values	Lisser les valeurs de la courbe
+	Drag to draw the curve · {key}-click draws a straight line	Faites glisser pour dessiner la courbe · {key}-clic trace une ligne droite

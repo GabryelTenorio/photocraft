@@ -3548,3 +3548,8 @@ fontWeight	Thin	Πολύ λεπτά
 	Front Image	Μπροστινή εικόνα
 	Search settings…	Αναζήτηση ρυθμίσεων…
 	No matching settings	Δεν βρέθηκαν ρυθμίσεις
+	Edit points to modify the curve	Επεξεργασία σημείων για αλλαγή της καμπύλης
+	Draw to modify the curve	Σχεδίαση για αλλαγή της καμπύλης
+curves	Smooth	Εξομάλυνση
+	Smooth the curve values	Εξομάλυνση των τιμών της καμπύλης
+	Drag to draw the curve · {key}-click draws a straight line	Σύρετε για να σχεδιάσετε την καμπύλη · {key}-κλικ σχεδιάζει ευθεία γραμμή

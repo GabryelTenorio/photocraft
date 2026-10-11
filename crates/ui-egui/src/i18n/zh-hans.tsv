@@ -2448,3 +2448,8 @@ fontWeight	Italic	斜体
 	Front Image	前面的图像
 	Search settings…	搜索设置…
 	No matching settings	没有匹配的设置
+	Edit points to modify the curve	编辑点以修改曲线
+	Draw to modify the curve	绘制以修改曲线
+curves	Smooth	平滑
+	Smooth the curve values	平滑曲线值
+	Drag to draw the curve · {key}-click draws a straight line	拖动以绘制曲线 · 按住 {key} 单击可绘制直线
