@@ -306,8 +306,9 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if app.camera_raw.is_some() {
         return;
     }
-    // An open menu owns the keyboard (arrows, ↩, Esc), like a native menu.
-    if crate::menu_nav::is_open(ctx) {
+    // An open menu owns the keyboard (arrows, ↩, Esc), like a native menu; so does an open
+    // dropdown list, whose letters pick an option rather than a tool (#1481).
+    if crate::menu_nav::is_open(ctx) || crate::widgets::dropdown_list_open(ctx) {
         return;
     }
     let symmetry_editing = app.ui.symmetry_transform.is_some();
@@ -356,6 +357,10 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // Crop tool with a pending frame: arrows nudge it (⇧ ×10) and X swaps its orientation, before
     // the selection / layer nudge and the X colour swap (#1919).
     if focus == Focus::None && crate::crop_ui::keys(app, ctx) {
+        return;
+    }
+    // Perspective Crop with a pending quad: ↵ commits, Esc cancels.
+    if focus == Focus::None && crate::perspective_crop_ui::keys(app, ctx) {
         return;
     }
     // Move tool / Free Transform: arrows nudge (⇧ ×10, ⌥ duplicates first).

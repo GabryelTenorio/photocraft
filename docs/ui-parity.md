@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (Crop resize stability, immediate ratio previews, and options-bar overflow regression coverage) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Hand-tool flick panning) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -12,8 +12,8 @@ Status: **done** (behaves as in Photoshop, with a test), **partial** (exists, di
 **missing**. Evidence is a file under `crates/ui-egui/src/` unless another path is given, a
 scorecard id, or an issue. Modifier names are macOS first (⌘ ⌥ ⇧); Windows/Linux use Ctrl and Alt.
 
-**Summary (estimated, weights = how often the gesture is used):** ~40% ready. Tools 53/68
-present (78%, measured). Free Transform modifiers and Crop are close to Photoshop; the gaps are
+**Summary (estimated, weights = how often the gesture is used):** ~40% ready. Tools 56/68
+present (82%, measured). Free Transform modifiers and Crop are close to Photoshop; the gaps are
 in the long tail of modifiers, in-transform UI, spring-loaded tools, panels and preferences.
 Remaining: 60–110 h for transforms and modifiers (gap G5), 60–100 h for tools (G6), 150–250 h
 for panels and workspace (G9).
@@ -26,12 +26,12 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 
 | Group | Present | Missing |
 |---|---|---|
-| Move, artboard | Move | Artboard (commands `layer.new.artboard*` exist) |
+| Move, artboard | Move, Artboard | |
 | Marquee | Rectangular, Elliptical, Single Row, Single Column | |
 | Lasso | Lasso, Polygonal, Magnetic | |
 | Selection | Object Selection, Quick Selection, Magic Wand | |
-| Crop and slice | Crop, Slice, Slice Select | Perspective Crop |
-| Frame | | Frame (`layer.new.frameFromLayers` exists) |
+| Crop and slice | Crop, Perspective Crop, Slice, Slice Select | |
+| Frame | Frame (frames are groups clipped by a rectangular or elliptical mask) | |
 | Eyedropper | Eyedropper, Ruler, Note, Count | Color Sampler (#1046) |
 | Retouch | Remove, Spot Healing, Healing, Patch, Content-Aware Move, Red Eye | |
 | Brush | Brush, Pencil, Mixer Brush | Color Replacement (`paint.colorReplacement` exists) |
@@ -40,8 +40,8 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Eraser | Eraser, Background Eraser, Magic Eraser | |
 | Fill | Gradient, Paint Bucket | |
 | Focus, toning | Blur, Sharpen, Smudge, Dodge, Burn, Sponge | |
-| Pen | Pen | Freeform Pen, Curvature Pen (#1054), Add Anchor Point, Delete Anchor Point, Convert Point (⌥ with Pen only) |
-| Type | Horizontal, Vertical | Horizontal Type Mask, Vertical Type Mask |
+| Pen | Pen, Freeform Pen, Curvature Pen (#1054) | Add Anchor Point, Delete Anchor Point, Convert Point (⌥ with Pen only) |
+| Type | Horizontal, Vertical, Vertical Type Mask, Horizontal Type Mask | |
 | Path selection | Path Selection, Direct Selection | |
 | Shapes | Rectangle, Ellipse, Triangle, Polygon, Line, Custom Shape | (Star is a Polygon option in Photoshop) |
 | View | Hand, Rotate View, Zoom | |
@@ -161,7 +161,7 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Space = Hand, ⌘Space / ⌘⌥Space = zoom in/out, spring-loaded while held | done | `hold_keys.rs` |
 | Hold any tool letter for a temporary tool | missing | #2672 |
 | Scrubby zoom | done | `zoom_tool.rs` |
-| Flick panning | missing | `tools.enable_flick_panning` unread |
+| Flick panning | done | `flick_pan.rs` (Preferences › Tools › Enable Flick Panning) |
 | Animated zoom | missing | unread pref; #566 |
 | Double-click Zoom tool = 100%, double-click Hand = fit | partial | Zoom missing (#2508) |
 | ⌥-wheel zoom in gentle steps | missing | UI-217-18 |
@@ -208,3 +208,4 @@ Paragraph; the rest open as in-app floating windows.
 |---|---|---|
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
+| 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |

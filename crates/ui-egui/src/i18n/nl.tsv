@@ -8,6 +8,23 @@
 # stay as they are; the trailing "…" of dialog commands is kept. UI text addresses the user
 # informally ("je") and uses sentence case.
 
+# Guide layout dialog
+	Rows	Rijen
+	Number	Aantal
+	Top:	Boven:
+	Left:	Links:
+	Bottom:	Onder:
+	Right:	Rechts:
+	Target:	Doel:
+	Selected Artboards	Geselecteerde tekengebieden
+	Center Columns	Kolommen centreren
+	Clear Existing Guides	Bestaande hulplijnen wissen
+	Invalid guide layout	Ongeldige hulplijnindeling
+	Leave empty for automatic size	Leeg laten voor automatische grootte
+	5 Columns, 3 Rows	5 kolommen, 3 rijen
+	8 Columns	8 kolommen
+	12 Columns	12 kolommen
+
 	File	Bestand
 	Edit	Bewerken
 	Image	Afbeelding
@@ -671,6 +688,8 @@
 	Theme	Thema
 	Pro Theme	Pro-thema
 	Pro Medium Gray Theme	Pro-thema middelgrijs
+	Pro Light Gray Theme	Pro-thema lichtgrijs
+	Pro Light Theme	Pro-thema licht
 	Studio Theme	Studio-thema
 	Studio Light Theme	Studio-thema licht
 	Classic Theme	Klassiek thema
@@ -805,6 +824,8 @@
 	Bend:	Buiging:
 	Bicubic	Bicubisch
 	Bicubic (smooth gradients)	Bicubisch (vloeiende verlopen)
+	Bicubic Smoother (enlargement)	Bicubisch vloeiender (vergroten)
+	Bicubic Sharper (reduction)	Bicubisch scherper (verkleinen)
 	Bilinear	Bilineair
 	Black	Zwart
 	Black & White	Zwart-wit
@@ -1597,6 +1618,8 @@
 	Highlights from:	Hooglichten van:
 	History Brush Tool	Historiepenseel
 	Horizontal Type Tool	Horizontaal tekstgereedschap
+	Horizontal Type Mask Tool	Horizontaal tekstmaskergereedschap
+	Vertical Type Mask Tool	Verticaal tekstmaskergereedschap
 	Image Size:	Afbeeldingsgrootte:
 	Inches	Inch
 	Indexed	Geïndexeerd
@@ -1674,6 +1697,8 @@
 	Postcard	Ansichtkaart
 	Poster	Poster
 	Pro (Dark)	Pro (donker)
+	Pro (Light)	Pro (licht)
+	Pro (Light Gray)	Pro (lichtgrijs)
 	Pro (Medium Gray)	Pro (middelgrijs)
 	Protect Texture	Textuur beschermen
 	Purple	Paars
@@ -1870,6 +1895,8 @@
 	Preserve details	Details behouden
 	Print resolution	Afdrukresolutie
 	Pro	Pro
+	Pro light	Pro licht
+	Pro light gray	Pro lichtgrijs
 	Pro medium	Pro middel
 	Pro photo	Pro Photo
 	Quick export format	Formaat snel exporteren
@@ -2073,6 +2100,7 @@
 	Developing {name}	{name} wordt ontwikkeld
 	Cancelled {label}	{label} geannuleerd
 	Esc to cancel	Esc om te annuleren
+	Opened {name}	{name} geopend
 	Opening {name}	{name} openen
 	Saved {name}	{name} opgeslagen
 	Saving {name}	{name} opslaan
@@ -2301,6 +2329,19 @@
 	Domed	Koepel
 	Domed (Inverted)	Koepel (omgekeerd)
 	Diagonal (Descending)	Diagonaal (aflopend)
+	Contour Editor	Contoureditor
+	Anti-aliased	Anti-aliasing
+	Corner	Hoek
+	Gloss Contour	Glanscontour
+	Contour	Contour
+	Cone - Inverted	Kegel - omgekeerd
+	Cove - Deep	Inham - diep
+	Cove - Shallow	Inham - ondiep
+	Half Round	Halfrond
+	Ring - Double	Ring - dubbel
+	Rolling Slope - Descending	Glooiende helling - aflopend
+	Rounded Steps	Afgeronde treden
+	Sawtooth 1	Zaagtand 1
 	Red Eye Tool	Rode-ogengereedschap
 	Red Eye	Rode ogen
 	Pupil Size	Pupilgrootte
@@ -3653,6 +3694,17 @@ cameraData	Lens	Lens
 	Previous Document	Vorig document
 	W x H x Resolution	B x H x Resolutie
 	Front Image	Voorste afbeelding
+	Perspective Crop Tool	Gereedschap Perspectief bijsnijden
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Sleep een kader of klik op vier hoeken · sleep de hoeken naar de randen van een scheve vorm · {commit} past toe · Esc annuleert
+	Artboard Tool	Tekengebiedgereedschap
+	Make Portrait	Staand maken
+	Make Landscape	Liggend maken
+	Add New Artboard	Nieuw tekengebied toevoegen
+	Freeform Pen Tool	Pengereedschap Vrije vorm
+	Curvature Pen Tool	Pengereedschap Kromming
+	Curve Fit:	Curve aanpassen:
+	Drag: draw freehand · Release on the start point: close	Slepen: uit de vrije hand tekenen · Loslaten op beginpunt: sluiten
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: vloeiend punt · Dubbelklik: hoek · Punt slepen: verplaatsen · Klik op eerste punt: sluiten · {key} voltooien
 	New Crop Preset…	Nieuwe uitsnijvoorinstelling…
 	Delete Crop Preset…	Uitsnijvoorinstelling verwijderen…
 	Select the crop presets to delete:	Selecteer de uitsnijvoorinstellingen die u wilt verwijderen:
@@ -3662,3 +3714,9 @@ cameraData	Lens	Lens
 	Search settings…	Instellingen zoeken…
 	No matching settings	Geen overeenkomende instellingen
 	PhotoCraft — Screen Color Picker	PhotoCraft — Schermkleurkiezer
+	Frame Tool	Kadergereedschap
+	Create a new rectangular frame	Nieuw rechthoekig kader maken
+	Create a new elliptical frame	Nieuw ovaal kader maken
+	Include in playback	Opnemen in afspelen
+	Scale:	Schaal:
+	Snap to Origin	Uitlijnen op oorsprong
