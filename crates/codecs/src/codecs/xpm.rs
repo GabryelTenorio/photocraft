@@ -1,0 +1,194 @@
+//! XPM3 reader for C-source icon arrays. Supports transparency (None), RGB hex
+//! at 4/8/16 bits per channel, and common X11 colour names. Does not run C code.
+
+use std::collections::HashMap;
+
+use crate::error::CodecError;
+use crate::format::Format;
+use crate::image::{ChannelLayout, Image};
+use crate::options::Limits;
+use crate::SampleType;
+
+const MAX_SOURCE: usize = 256 << 20;
+const MAX_COLOURS: usize = 65_536;
+const MAX_CPP: usize = 8;
+
+fn bad(msg: impl std::fmt::Display) -> CodecError {
+    CodecError::malformed(Format::Xpm, msg)
+}
+
+/// Extract C string literals without treating quoted text or // in a string as a comment.
+/// XPM uses one literal for the header, each palette entry and each row.
+fn c_strings(bytes: &[u8]) -> Result<Vec<Vec<u8>>, CodecError> {
+    let mut lines = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(b"/*") {
+            let tail = &bytes[i + 2..];
+            let Some(end) = tail.windows(2).position(|p| p == b"*/") else { return Err(bad("unterminated C comment")) };
+            i += end + 4;
+        } else if bytes[i..].starts_with(b"//") {
+            i += bytes[i..].iter().position(|&c| c == b'\n').unwrap_or(bytes.len() - i);
+        } else if bytes[i] == b'"' {
+            i += 1;
+            let mut s = Vec::new();
+            let mut closed = false;
+            while i < bytes.len() {
+                let c = bytes[i];
+                i += 1;
+                match c {
+                    b'"' => {
+                        closed = true;
+                        break;
+                    }
+                    b'\\' => {
+                        let next = *bytes.get(i).ok_or_else(|| bad("truncated C escape"))?;
+                        i += 1;
+                        s.push(match next {
+                            b'n' => b'\n',
+                            b'r' => b'\r',
+                            b't' => b'\t',
+                            b'0' => 0,
+                            _ => next, // quoted backslash or quote
+                        });
+                    }
+                    _ => s.push(c),
+                }
+            }
+            if !closed {
+                return Err(bad("unterminated XPM string"));
+            }
+            lines.push(s);
+        } else {
+            i += 1;
+        }
+    }
+    Ok(lines)
+}
+
+fn channel(hex: &str) -> Option<u8> {
+    let v = u32::from_str_radix(hex, 16).ok()?;
+    let max = (1u32 << (hex.len() * 4)) - 1;
+    Some(((v * 255 + max / 2) / max) as u8)
+}
+
+fn named(name: &str) -> Option<[u8; 3]> {
+    let s = name.to_ascii_lowercase().replace([' ', '-', '_'], "");
+    if let Some(percent) = s.strip_prefix("gray").or_else(|| s.strip_prefix("grey"))
+        && let Ok(pct) = percent.parse::<u32>()
+        && pct <= 100
+    {
+        let v = ((pct * 255 + 50) / 100) as u8;
+        return Some([v, v, v]);
+    }
+    Some(match s.as_str() {
+        "black" => [0, 0, 0],
+        "white" => [255, 255, 255],
+        "red" => [255, 0, 0],
+        "green" => [0, 255, 0],
+        "blue" => [0, 0, 255],
+        "yellow" => [255, 255, 0],
+        "cyan" | "aqua" => [0, 255, 255],
+        "magenta" | "fuchsia" => [255, 0, 255],
+        "gray" | "grey" => [128, 128, 128],
+        "silver" => [192, 192, 192],
+        "maroon" => [128, 0, 0],
+        "olive" => [128, 128, 0],
+        "purple" => [128, 0, 128],
+        "teal" => [0, 128, 128],
+        "navy" => [0, 0, 128],
+        "lime" => [0, 255, 0],
+        "orange" => [255, 165, 0],
+        "pink" => [255, 192, 203],
+        "brown" => [165, 42, 42],
+        _ => return None,
+    })
+}
+
+fn color(name: &str) -> Option<[u8; 4]> {
+    if name.eq_ignore_ascii_case("none") {
+        return Some([0, 0, 0, 0]);
+    }
+    let rgb = if let Some(hex) = name.strip_prefix('#') {
+        let digits = match hex.len() {
+            3 => 1,
+            6 => 2,
+            12 => 4,
+            _ => return None,
+        };
+        let rgb = (0..3)
+            .map(|i| channel(&hex[i * digits..(i + 1) * digits]))
+            .collect::<Option<Vec<_>>>()?;
+        [rgb[0], rgb[1], rgb[2]]
+    } else {
+        named(name)?
+    };
+    Some([rgb[0], rgb[1], rgb[2], 255])
+}
+
+pub(crate) fn decode(bytes: &[u8], limits: &Limits) -> Result<Image, CodecError> {
+    if !bytes.starts_with(b"/* XPM */") {
+        return Err(bad("not an XPM3 image"));
+    }
+    if bytes.len() > MAX_SOURCE {
+        return Err(CodecError::LimitExceeded("XPM source exceeds 256 MiB".into()));
+    }
+    let lines = c_strings(bytes)?;
+    let header = lines.first().ok_or_else(|| bad("missing image header"))?;
+    let parts = std::str::from_utf8(header).map_err(|_| bad("non-UTF-8 XPM header"))?;
+    let mut parts = parts.split_ascii_whitespace();
+    let number = |key: &str, s: Option<&str>| -> Result<usize, CodecError> {
+        s.ok_or_else(|| bad(format!("missing {key}")))?.parse::<usize>().map_err(|_| bad(format!("invalid {key}")))
+    };
+    let width = number("width", parts.next())?;
+    let height = number("height", parts.next())?;
+    let colours = number("palette size", parts.next())?;
+    let cpp = number("chars per pixel", parts.next())?;
+    if width == 0 || height == 0 || colours == 0 || colours > MAX_COLOURS || !(1..=MAX_CPP).contains(&cpp) {
+        return Err(bad("invalid XPM dimensions, palette size or chars per pixel"));
+    }
+    let (w, h) = (u32::try_from(width).map_err(|_| bad("width overflow"))?, u32::try_from(height).map_err(|_| bad("height overflow"))?);
+    limits.check(w, h, ChannelLayout::Rgba, SampleType::U8)?;
+    let required = 1usize.checked_add(colours).and_then(|n| n.checked_add(height)).ok_or_else(|| bad("row count overflow"))?;
+    if lines.len() < required {
+        return Err(bad("truncated palette or image rows"));
+    }
+    let mut palette = HashMap::<Vec<u8>, [u8; 4]>::with_capacity(colours);
+    for line in &lines[1..1 + colours] {
+        if line.len() < cpp {
+            return Err(bad("truncated colour key"));
+        }
+        let fields = std::str::from_utf8(&line[cpp..]).map_err(|_| bad("invalid colour name"))?;
+        let mut terms = fields.split_ascii_whitespace();
+        let mut picked = None;
+        while let Some(tag) = terms.next() {
+            if matches!(tag, "c" | "g" | "g4" | "m")
+                && let Some(value) = terms.next()
+            {
+                if tag == "c" || picked.is_none() {
+                    picked = Some(value);
+                }
+                if tag == "c" {
+                    break;
+                }
+            }
+        }
+        let value = picked.and_then(color).ok_or_else(|| bad("unsupported or missing XPM colour"))?;
+        if palette.insert(line[..cpp].to_vec(), value).is_some() {
+            return Err(bad("duplicate XPM palette key"));
+        }
+    }
+    let row_len = width.checked_mul(cpp).ok_or_else(|| bad("row byte count overflow"))?;
+    let mut pixels = vec![0u8; width.checked_mul(height).and_then(|n| n.checked_mul(4)).ok_or_else(|| bad("pixel size overflow"))?];
+    for (y, line) in lines[1 + colours..required].iter().enumerate() {
+        if line.len() != row_len {
+            return Err(bad("XPM row has the wrong width"));
+        }
+        for x in 0..width {
+            let key = &line[x * cpp..(x + 1) * cpp];
+            let rgba = palette.get(key).ok_or_else(|| bad("unknown palette key"))?;
+            pixels[(y * width + x) * 4..(y * width + x + 1) * 4].copy_from_slice(rgba);
+        }
+    }
+    Image::from_u8(w, h, ChannelLayout::Rgba, pixels)
+}

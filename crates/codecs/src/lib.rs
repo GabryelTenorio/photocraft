@@ -38,7 +38,7 @@ pub use crate::orientation::{exif_orientation, upright_exif, upright_xmp};
 pub use crate::resolution::{exif_resolution, export_exif, export_xmp, photoshop_resolution, xmp_resolution};
 pub use half::f16;
 
-use crate::codecs::{exr, fits, heif, jpeg, png, pnm, tiff, via_image, webp};
+use crate::codecs::{exr, fits, heif, jpeg, png, pnm, tiff, via_image, webp, xpm};
 
 /// Detect the format and decode with default [`Limits`].
 pub fn decode(bytes: &[u8]) -> Result<Image, CodecError> {
@@ -69,6 +69,7 @@ pub fn decode_as_with(format: Format, bytes: &[u8], opts: &DecodeOptions) -> Res
         Format::Tiff => tiff::decode(bytes, l),
         Format::WebP => webp::decode(bytes, l),
         Format::Pnm => pnm::decode(bytes, l),
+        Format::Xpm => xpm::decode(bytes, l),
         Format::Fits => fits::decode(bytes, l),
         Format::OpenExr => exr::decode(bytes, l),
         Format::Heif => heif::decode(bytes, l, opts.keep_orientation),
@@ -204,6 +205,7 @@ pub fn encode(image: &Image, format: Format, opts: &EncodeOptions) -> Result<Vec
         Format::Tiff => tiff::encode(image, plan, opts),
         Format::WebP => webp::encode(image, plan, opts),
         Format::Pnm => pnm::encode(image, plan, opts),
+        Format::Xpm => Err(CodecError::unsupported(format, "XPM is import-only; save as PNG instead")),
         Format::Fits => fits::encode(image, plan, opts),
         Format::OpenExr => exr::encode(image, plan, opts),
         Format::Heif => Err(CodecError::unsupported(format, "encoding is not available in this build")),
