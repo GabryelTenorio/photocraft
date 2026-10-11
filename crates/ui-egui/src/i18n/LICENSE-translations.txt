@@ -19,3 +19,6 @@ PhotoCraft's English labels; no proprietary translation resources were used.
 
 Dutch translations: PhotoCraft contributors, original translations of
 PhotoCraft's English labels; no proprietary translation resources were used.
+
+Bengali translations: PhotoCraft contributors, original translations of
+PhotoCraft's English labels; no proprietary translation resources were used.

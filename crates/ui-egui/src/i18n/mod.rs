@@ -83,6 +83,11 @@ fn plural_pt(n: u64) -> usize {
     usize::from(n > 1)
 }
 
+/// Bengali (CLDR): 0 and 1 take the singular, everything else the plural.
+fn plural_bengali(n: u64) -> usize {
+    usize::from(n > 1)
+}
+
 /// Polish: 1 → one; 2–4, except 12–14 → few; everything else → many.
 fn plural_polish(n: u64) -> usize {
     let last = n % 10;
@@ -122,7 +127,7 @@ fn inflate(source: &[u8]) -> Result<String, String> {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 17] = [
+pub static LANGUAGES: [LangInfo; 18] = [
     LangInfo { code: "en", name: "English", source: b"", plural: plural_one_other, complete_menus: false, catalog: OnceLock::new() },
     LangInfo { code: "ja", name: "日本語", source: catalog!("ja"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "zh-hans", name: "简体中文", source: catalog!("zh-hans"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
@@ -145,6 +150,8 @@ pub static LANGUAGES: [LangInfo; 17] = [
     // Dutch; `nl-NL` and `nl-BE` locales both resolve here.
     LangInfo { code: "nl", name: "Nederlands", source: catalog!("nl"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "it", name: "Italiano", source: catalog!("it"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
+    // Bengali; `bn`, `bn-BD` and `bn-IN` locales all resolve here (see `candidates`).
+    LangInfo { code: "bn", name: "বাংলা", source: catalog!("bn"), plural: plural_bengali, complete_menus: true, catalog: OnceLock::new() },
 ];
 
 impl LangInfo {
