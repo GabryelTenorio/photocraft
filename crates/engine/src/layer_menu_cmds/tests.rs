@@ -83,6 +83,33 @@ fn mask_apply_from_transparency_hide_selection() {
     }
 }
 
+/// Applying a feathered pixel mask must bake the rendered soft coverage (#3044).
+#[test]
+fn applying_feathered_layer_mask_preserves_rendered_alpha() {
+    for depth in DEPTHS {
+        let mut s = session(depth, "rgb");
+        paint(&mut s, |_, _| [1.0, 0.0, 0.0, 1.0]);
+        select_left_half(&mut s);
+        s.execute("layer.layerMask.revealSelection", json!({})).unwrap();
+        s.execute("layer.layerMask.edit", json!({"feather":2.0})).unwrap();
+        let before = photocraft_compose::flatten(doc(&s)).px;
+        assert!(before.iter().any(|q| q[3] > 0.1 && q[3] < 0.9), "depth {depth}: fixture has a soft edge");
+
+        s.execute("layer.layerMask.apply", json!({})).unwrap();
+        assert!(active(&s).mask.is_none());
+        let after = photocraft_compose::flatten(doc(&s)).px;
+        assert_eq!(after.len(), before.len());
+        for (i, (a, b)) in before.iter().zip(&after).enumerate() {
+            for channel in 0..4 {
+                assert!((a[channel] - b[channel]).abs() <= 2.0 / 255.0, "depth {depth}: pixel {i} channel {channel}: {a:?} vs {b:?}");
+            }
+        }
+        s.execute("edit.undo", json!({})).unwrap();
+        assert!(active(&s).mask.is_some());
+        assert_eq!(photocraft_compose::flatten(doc(&s)).px, before);
+    }
+}
+
 #[test]
 fn matting_commands_fix_dark_fringes() {
     for depth in DEPTHS {
