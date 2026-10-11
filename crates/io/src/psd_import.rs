@@ -547,6 +547,21 @@ fn parse_guides(data: &[u8], doc: &mut Document) {
 }
 
 /// Converts a parsed PSD into a document. Never fails: problems become warnings.
+/// Photoshop opens a file's bottom layer as its Background when that layer's record has no
+/// transparency (`-1`) channel, whatever its name and lock flags say: it is then locked and shown
+/// as "Background" (measured on Photoshop 27.11 with files from psd-tools and ag-psd whose bottom
+/// layer is called "Фон", "bg" or "Layer 1" and carries no locks).
+fn mark_background(file: &PsdFile, layers: &mut [Layer]) {
+    let Some(rec) = file.layers().first() else { return };
+    let Some(bottom) = layers.first_mut() else { return };
+    let opaque_record = !rec.channels.is_empty() && rec.channels.iter().all(|c| c.id >= 0);
+    if opaque_record && matches!(bottom.content, LayerContent::Raster(_)) && !bottom.clipped {
+        bottom.name = "Background".into();
+        bottom.locks.transparency = true;
+        bottom.locks.position = true;
+    }
+}
+
 pub fn psd_to_document(file: &PsdFile) -> (Document, Vec<String>) {
     // Never cancelled, so always `Some`; the fallback is unreachable.
     psd_to_document_with(file, &photocraft_raster::Interrupt::NONE)
@@ -703,6 +718,7 @@ pub fn psd_to_document_with(file: &PsdFile, ctl: &photocraft_raster::Interrupt) 
         // so no file can make this tree, or anything walking or dropping it, recurse deeper.
         let tree = file.layer_tree_max_depth(photocraft_doc::MAX_GROUP_DEPTH);
         doc.layers = cx.build(&tree, 0);
+        mark_background(file, &mut doc.layers);
         // Layer › Link Layers: resource 1026 holds one group id per layer record (0 = unlinked).
         if let Some(Ok(photocraft_psd::resources::ResourceData::LayerGroupInfo(groups))) =
             file.resources.iter().find(|r| r.id == ids::LAYER_GROUP_INFO).and_then(photocraft_psd::resources::ImageResource::parsed)
