@@ -36,8 +36,15 @@
 	New from Clipboard	Neu aus Zwischenablage
 	Open…	Öffnen…
 	Open As…	Öffnen als…
+	Open EXR Parts…	EXR-Teile öffnen…
+	Add beauty precomp from the AOVs	Schönheits-Vorkomposition aus den AOVs hinzufügen
+	Both	Beide
+	Left	Links
+	Right	Rechts
 	Open Recent	Zuletzt geöffnete Dateien
 	Clear Recent Files	Zuletzt geöffnete Dateien leeren
+	Remove from Recent	Aus zuletzt geöffneten Dateien entfernen
+	Remove {name} from Recent	{name} aus zuletzt geöffneten Dateien entfernen
 	Close	Schließen
 	Minimize	Minimieren
 	Maximize	Maximieren
@@ -85,6 +92,8 @@
 	Import	Importieren
 	Browse…	Durchsuchen…
 	Reveal in Finder	Im Finder anzeigen
+	Show in Explorer	Im Explorer anzeigen
+	Show in Folder	Im Ordner anzeigen
 	File Info…	Dateiinformationen…
 	Print…	Drucken…
 	Print One Copy	Eine Kopie drucken
@@ -260,6 +269,8 @@
 	Layer via Cut	Ebene durch Ausschneiden
 	Layer From Background…	Ebene aus Hintergrund…
 	Layer from Background…	Ebene aus Hintergrund…
+	Background from Layer	Hintergrund aus Ebene
+	Background From Layer	Hintergrund aus Ebene
 	New Shape Layer	Neue Formebene
 	New Type Layer	Neue Textebene
 	New Fill Layer	Neue Füllebene
@@ -673,6 +684,10 @@
 	Classic Theme	Klassisches Design
 	Solarized dark	Solarized dunkel
 	Solarized Dark Theme	Solarized-Design (Dunkel)
+	Breeze dark	Breeze dunkel
+	Breeze Dark Theme	Breeze-Design (Dunkel)
+	Breeze light	Breeze hell
+	Breeze Light Theme	Breeze-Design (Hell)
 	Next Theme	Nächstes Design
 	Actions	Aktionen
 	Brush Settings	Pinseleinstellungen
@@ -804,7 +819,6 @@
 	Blending Options	Fusionsoptionen
 	Blue	Blau
 	Blue, Red, Yellow	Blau, Rot, Gelb
-	Both	Beide
 	Both Axes	Beide Achsen
 	Bottom	Unten
 	Brightness	Helligkeit
@@ -1126,7 +1140,6 @@
 	Leading	Zeilenabstand
 	Leading (set to the font size × auto-leading when Auto)	Zeilenabstand (bei „Automatisch“ auf Schriftgröße × automatischer Zeilenabstand gesetzt)
 	Leave as is (don't color manage)	Unverändert lassen (keine Farbverwaltung)
-	Left	Links
 	Left align text	Text links ausrichten
 	Length:	Länge:
 	Level	Stufe
@@ -1298,6 +1311,7 @@
 	Record ● a sequence of edits, then play ▶ it on any document.	Zeichne ● eine Folge von Bearbeitungen auf und gib sie ▶ auf jedem Dokument wieder.
 	Red	Rot
 	Redefine style by current selection	Stil anhand der aktuellen Auswahl neu definieren
+	Refine	Verfeinern
 	Reflected Gradient	Reflektierter Verlauf
 	Registration Marks	Passmarken
 	Regular	Regulär
@@ -1307,6 +1321,7 @@
 	Remove All Pins	Alle Pins entfernen
 	Remove Background	Hintergrund entfernen
 	Remove Planes	Flächen entfernen
+	Remove Tool	Entfernen-Werkzeug
 	Remove stop	Farbstopp entfernen
 	Remove variable	Variable entfernen
 	Rename	Umbenennen
@@ -1322,6 +1337,11 @@
 	{n} commands are not in PhotoCraft.	{n} Befehle gibt es in PhotoCraft nicht.
 	Keyboard shortcuts imported	Tastaturbefehle importiert
 	Your keyboard shortcut set {set} is in use here: {n} shortcuts differ from the defaults. Edit › Keyboard Shortcuts shows them; Reset All to Defaults undoes this.	Dein Tastaturbefehlssatz {set} wird hier verwendet: {n} Tastaturbefehle weichen von den Standardwerten ab. Bearbeiten › Tastaturbefehle zeigt sie; Alles auf Standardwerte zurücksetzen macht es rückgängig.
+	Import keyboard shortcuts?	Tastaturbefehle importieren?
+	PhotoCraft found your keyboard shortcut set {set} from another image editor on this computer: {n} of its shortcuts differ from PhotoCraft's. Import it?	PhotoCraft hat auf diesem Computer deinen Tastaturbefehlssatz {set} aus einem anderen Bildbearbeitungsprogramm gefunden: {n} seiner Tastaturbefehle weichen von denen in PhotoCraft ab. Importieren?
+	Edit › Keyboard Shortcuts › Reset All to Defaults undoes an import.	Bearbeiten › Tastaturbefehle › Alles auf Standardwerte zurücksetzen macht einen Import rückgängig.
+	Don't Import	Nicht importieren
+	The keyboard shortcut set was not imported: {error}	Der Tastaturbefehlssatz wurde nicht importiert: {error}
 	Reset Section	Abschnitt zurücksetzen
 	Reset Transform	Transformation zurücksetzen
 	Reset to defaults	Auf Standardwerte zurücksetzen
@@ -1330,7 +1350,6 @@
 	Restore All	Alle wiederherstellen
 	Restore Defaults	Standardwerte wiederherstellen
 	Restrictive (Web)	Restriktiv (Web)
-	Right	Rechts
 	Right align text	Text rechts ausrichten
 	Rigid	Starr
 	Rotate:	Drehen:
@@ -1512,6 +1531,7 @@
 	Blur Tool	Weichzeichner-Werkzeug
 	Bold	Fett
 	Brush	Pinsel
+	Block	Block
 	Brush Pose	Pinselhaltung
 	Brush Tip Shape	Pinselspitzenform
 	Brush Tool	Pinsel-Werkzeug
@@ -1560,6 +1580,8 @@
 	Efficiency: 100%	Effizienz: 100 %
 	Ellipse Tool	Ellipsen-Werkzeug
 	Elliptical Marquee Tool	Ellipsenauswahl-Werkzeug
+	Single Row Marquee Tool	Auswahlwerkzeug (einzelne Zeile)
+	Single Column Marquee Tool	Auswahlwerkzeug (einzelne Spalte)
 	Emboss	Relief
 	Eraser	Radiergummi
 	Eraser Tool	Radiergummi-Werkzeug
@@ -1617,6 +1639,7 @@
 	Mobile	Mobil
 	Move Tool	Verschieben-Werkzeug
 	Could not use the move tool because the layer is locked.	Das Verschieben-Werkzeug konnte nicht verwendet werden, weil die Ebene gesperrt ist.
+	Could not complete the Free Transform command because the layer is locked.	Der Befehl „Frei transformieren“ konnte nicht ausgeführt werden, weil die Ebene gesperrt ist.
 	Multiply	Multiplizieren
 	My Brushes	Meine Pinsel
 	Neutrals	Neutrale
@@ -1725,6 +1748,7 @@
 	Invalid {mode} profile	Ungültiges {mode}-Profil
 	Unnamed {mode} profile	Unbenanntes {mode}-Profil
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Auflösung: {dpi} Pixel/Zoll
 	Doc: {w} × {h} px	Dok: {w} × {h} px
 	Frame {current} / {total}	Frame {current} / {total}
@@ -1761,6 +1785,7 @@
 	Cache tile size	Cache-Kachelgröße
 	Camera Raw Defaults	Camera-Raw-Standardeinstellungen
 	Canvas border	Zeichenflächenrand
+	Show canvas dots	Punkte der Zeichenfläche anzeigen
 	Canvas color	Zeichenflächenfarbe
 	Canvas custom color	Benutzerdefinierte Zeichenflächenfarbe
 	Color picker	Farbwähler
@@ -1875,6 +1900,7 @@
 	Show only crosshair while painting	Beim Malen nur Fadenkreuz zeigen
 	Show slice numbers	Slice-Nummern anzeigen
 	Show tooltips	Tooltips anzeigen
+	Show highlight on rollover	Hervorhebung bei Rollover anzeigen
 	Show bounding box when dragging layer	Begrenzungsrahmen beim Ziehen einer Ebene anzeigen
 	System title bar	System-Titelleiste
 	Show transformation values	Transformationswerte anzeigen
@@ -1978,6 +2004,7 @@
 	Create Warped Text	Verkrümmten Text erstellen
 	Rasterize Smart Object	Smart-Objekt rasterisieren
 	Rasterize Fill Content	Füllinhalt rasterisieren
+	Rasterize Layer Style	Ebenenstil rasterisieren
 	Unlock: picking a preset replaces these settings	Entsperren: das Wählen einer Vorgabe ersetzt diese Einstellungen
 	Lock: keep these settings when picking another preset	Sperren: diese Einstellungen beim Wählen einer anderen Vorgabe behalten
 	Diameter:	Durchmesser:
@@ -1992,14 +2019,16 @@
 	Brush Preset Options	Pinselvorgaben-Optionen
 	Group name	Gruppenname
 	Brush name	Pinselname
-	Grid view	Rasteransicht
-	List view	Listenansicht
+	Brush Name	Pinselname
+	Brush Stroke	Pinselstrich
+	Brush Tip	Pinselspitze
 	Off: the speed of the pointer sets the spacing	Aus: die Zeigergeschwindigkeit setzt den Abstand
 	Tilt Scale	Neigungsskala
 	Brush Projection	Pinselprojektion
 	Apply the pen's tilt and rotation to the tip shape	Neigung und Drehung des Stifts auf die Spitzenform anwenden
 	Mixer Brush	Mischer-Pinsel
 	Mixer Brush Tool	Mischer-Pinsel-Werkzeug
+	Color Replacement Tool	Farbersatz-Werkzeug
 	Wet	Feucht
 	Mix	Mischen
 	Wetness Jitter	Feuchtigkeitsschwankung
@@ -2052,6 +2081,7 @@
 	Cancelled {label}	{label} abgebrochen
 	Esc to cancel	Esc zum Abbrechen
 	Opening {name}	Öffne {name}
+	Saved {name}	Gespeichert: {name}
 	Saving {name}	Speichere {name}
 	A save to {name} is still running; try again when it finishes	{name} wird noch gespeichert; versuchen Sie es erneut, wenn der Vorgang abgeschlossen ist
 	{label} is writing the file and can no longer be cancelled	{label} schreibt die Datei und kann nicht mehr abgebrochen werden
@@ -2177,6 +2207,10 @@
 	Show Vectorscope	Vektorskop anzeigen
 	Tone Histogram	Tonwerthistogramm
 	75%	75 %
+	80%	80 %
+	85%	85 %
+	90%	90 %
+	95%	95 %
 	125%	125 %
 	150%	150 %
 	175%	175 %
@@ -2256,6 +2290,7 @@
 
 # Shared screen eyedropper and text Color Picker (#1128).
 	Color Picker (Text Color)	Farbwähler (Textfarbe)
+	Color Picker ({name})	Farbwähler ({name})
 	Color Picker (Fill Color)	Farbwähler (Füllfarbe)
 	Fill color	Füllfarbe
 	Color Picker (Stroke Color)	Farbwähler (Konturfarbe)
@@ -2356,6 +2391,7 @@ fontWeight	Italic	Kursiv
 	Color to Alpha…	Farbe zu Alpha…
 	Transparency Threshold	Transparenz-Schwellenwert
 	Opacity Threshold	Deckkraft-Schwellenwert
+	PhotoCraft — Screen Color Picker	PhotoCraft — Bildschirmfarbenauswahl
 
 	Rasterize svg groups deeper than	SVG-Gruppen ab dieser Tiefe rastern
 	0 turns this threshold off; SVG groups nested deeper than 100 levels are always rasterized.	0 schaltet diese Schwelle aus; SVG-Gruppen, die tiefer als 100 Ebenen verschachtelt sind, werden immer gerastert.
@@ -2413,7 +2449,73 @@ fontWeight	Italic	Kursiv
 	XOR	XOR
 	Color Burn (Paint.NET)	Farbig nachbelichten (Paint.NET)
 	Color Dodge (Paint.NET)	Farbig abwedeln (Paint.NET)
+	Stroke Options	Konturoptionen
+	Solid	Durchgezogen
+	Dashed	Gestrichelt
+	Dotted	Gepunktet
+	Alignment	Ausrichtung
+	Caps	Enden
+	Butt / Flat	Stumpf / Flach
+	Corners	Ecken
+	Miter	Gehrung
+	Round	Rund
+	Bevel	Abgeschrägt
+	Miter limit	Gehrungsgrenze
+	Dashed line	Gestrichelte Linie
+	Dash	Strich
+	Gap	Lücke
+	Dash / gap lengths × stroke width	Strich- / Lückenlängen × Konturbreite
+	Add pair	Paar hinzufügen
+	Remove pair	Paar entfernen
+	Dash offset	Strichversatz
+	Open paths use centered strokes	Offene Pfade verwenden zentrierte Konturen
+	Use finite lengths and a positive pattern total	Endliche Längen und eine positive Mustersumme verwenden
 	No subject found — try Object Selection or the Lasso	Kein Motiv gefunden — versuchen Sie das Objektauswahlwerkzeug oder das Lasso
 	Quick Selection found nothing there	Die Schnellauswahl hat dort nichts gefunden
 	Object Selection found nothing there — try a tighter rectangle	Die Objektauswahl hat dort nichts gefunden — versuchen Sie ein engeres Rechteck
 	No subject found — try a rectangle around the object	Kein Motiv gefunden — versuchen Sie ein Rechteck um das Objekt
+	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Klicke auf den ersten Punkt oder drücke {key} zum Schließen · {del} entfernt einen Punkt · Esc bricht ab
+	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Klicke und bewege dich entlang einer Kante · Klicken setzt einen Ankerpunkt · {alt}-Klick für ein gerades Segment · Doppelklick schließt
+	Follows only edges this close to the pointer ([ and ] change it)	Folgt nur Kanten so nah am Zeiger ([ und ] ändern den Wert)
+	Higher values follow only edges that contrast sharply with their surroundings	Höhere Werte folgen nur Kanten mit starkem Kontrast zur Umgebung
+	How often fastening points are placed by themselves	Wie oft Ankerpunkte automatisch gesetzt werden
+	Appearance Settings…	Erscheinungsbild-Einstellungen…
+	Add to favorites	Zu Favoriten hinzufügen
+	Remove from favorites	Aus Favoriten entfernen
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+	Camera Data	Kameradaten
+cameraData	Make	Hersteller
+cameraData	Model	Modell
+cameraData	Date Taken	Aufnahmedatum
+cameraData	Exposure	Belichtungszeit
+cameraData	F-Stop	Blende
+cameraData	ISO Speed	ISO-Empfindlichkeit
+cameraData	Focal Length	Brennweite
+cameraData	Focal Length (35 mm)	Brennweite (35 mm)
+cameraData	Lens	Objektiv
+# Shared panel docking
+	Activate Panel	Bedienfeld aktivieren
+	Change Panel Group	Bedienfeldgruppe ändern
+	Change Panel Layout	Bedienfeldlayout ändern
+	Close Panel	Bedienfeld schließen
+	Dock Panel	Bedienfeld andocken
+	Float Panel	Schwebendes Bedienfeld
+	Move Panel	Bedienfeld verschieben
+	Group with	Gruppieren mit
+	Panel menu	Bedienfeldmenü
+	Resize panel window	Bedienfeldfenstergröße ändern
+	Resize panels	Bedienfeldgröße ändern
+	Use Classic Mode	Classic-Modus verwenden
+	Auto Center Preview	Automatische zentrierte Vorschau
+	Next Document	Nächstes Dokument
+	Previous Document	Vorheriges Dokument
+	W x H x Resolution	B x H x Auflösung
+	Front Image	Vorderes Bild
+	New Crop Preset…	Neue Freistellungsvorgabe…
+	Delete Crop Preset…	Freistellungsvorgabe löschen…
+	Select the crop presets to delete:	Wählen Sie die zu löschenden Freistellungsvorgaben:
+	Select the crop presets to delete	Wählen Sie die zu löschenden Freistellungsvorgaben
+	Enter a name for the crop preset	Geben Sie einen Namen für die Freistellungsvorgabe ein
+	There is no crop size or ratio to save	Es gibt keine Freistellungsgröße und kein Seitenverhältnis zum Speichern
+	Search settings…	Einstellungen durchsuchen…
+	No matching settings	Keine passenden Einstellungen

@@ -357,15 +357,24 @@ pub fn style_paragraphs(t: &mut TextLayer, a: usize, b: usize, f: &dyn Fn(&mut P
         .collect();
     let style_at = |off: usize| old[starts.iter().rposition(|&s| s <= off).unwrap_or(0)].style.clone();
     let mut out: Vec<(usize, ParagraphStyle)> = Vec::new();
+    let trailing_break = t.text.ends_with(['\r', '\n']);
     for pr in photocraft_text::layout::split_paragraphs(&t.text) {
         let mut st = style_at(pr.start);
-        let touches = (pr.start < b && pr.end > a) || (a == b && a >= pr.start && (a < pr.end || pr.end == t.text.len()));
+        let terminal_empty = pr.start == pr.end;
+        let touches =
+            (pr.start < b && pr.end > a) || (a == b && a >= pr.start && (a < pr.end || terminal_empty || (pr.end == t.text.len() && !trailing_break)));
         if touches {
             f(&mut st);
         }
-        push_merge(&mut out, pr.len(), st.clone());
-        if out.is_empty() {
+        if terminal_empty && trailing_break {
+            // This paragraph has no bytes but must retain its own style for the
+            // next typed character and for the PSD's final paragraph marker.
             out.push((0, st));
+        } else {
+            push_merge(&mut out, pr.len(), st.clone());
+            if out.is_empty() {
+                out.push((0, st));
+            }
         }
     }
     t.paragraphs = out.into_iter().map(|(len, style)| ParagraphRun { len, style }).collect();
@@ -374,18 +383,23 @@ pub fn style_paragraphs(t: &mut TextLayer, a: usize, b: usize, f: &dyn Fn(&mut P
 /// Replaces bytes `a..b` with `new`, keeping styles: inserted text takes the style of the
 /// character before it (or after it at the start).
 pub fn replace_text(t: &mut TextLayer, a: usize, b: usize, new: &str) {
-    fn adjust<S: Clone + PartialEq>(runs: Vec<(usize, S)>, a: usize, b: usize, ins: usize) -> Vec<(usize, S)> {
+    fn adjust<S: Clone + PartialEq>(runs: Vec<(usize, S)>, a: usize, b: usize, ins: usize, trailing_paragraph: bool) -> Vec<(usize, S)> {
         let mut out: Vec<(usize, S)> = Vec::new();
         let mut at = 0;
-        let host = runs
-            .iter()
-            .scan(0, |acc, r| {
-                let s = *acc;
-                *acc += r.0;
-                Some((s, s + r.0))
-            })
-            .position(|(s, e)| if a == 0 { e > 0 || s == 0 } else { a > s && a <= e })
-            .unwrap_or(0);
+        let host = if trailing_paragraph && a == b && runs.last().is_some_and(|r| r.0 == 0) && a == runs.iter().map(|r| r.0).sum::<usize>() {
+            // Inserted text belongs to a styled final empty paragraph, not to
+            // the preceding paragraph whose break ends at this byte offset.
+            runs.len() - 1
+        } else {
+            runs.iter()
+                .scan(0, |acc, r| {
+                    let s = *acc;
+                    *acc += r.0;
+                    Some((s, s + r.0))
+                })
+                .position(|(s, e)| if a == 0 { e > 0 || s == 0 } else { a > s && a <= e })
+                .unwrap_or(0)
+        };
         for (i, (len, st)) in runs.into_iter().enumerate() {
             let (rs, re) = (at, at + len);
             at = re;
@@ -401,9 +415,15 @@ pub fn replace_text(t: &mut TextLayer, a: usize, b: usize, new: &str) {
     let pr: Vec<(usize, ParagraphStyle)> = t.paragraph_runs().into_iter().map(|r| (r.len, r.style)).collect();
     let first_c = cr.first().map(|r| r.1.clone()).unwrap_or_default();
     let first_p = pr.first().map(|r| r.1.clone()).unwrap_or_default();
-    let mut cr = adjust(cr, a, b, new.len());
-    let mut pr = adjust(pr, a, b, new.len());
+    let trailing_style = t.text.ends_with(['\r', '\n']).then(|| pr.last().filter(|r| r.0 == 0).map(|r| r.1.clone())).flatten();
+    let mut cr = adjust(cr, a, b, new.len(), false);
+    let mut pr = adjust(pr, a, b, new.len(), true);
     t.text.replace_range(a..b, &new);
+    if t.text.ends_with(['\r', '\n'])
+        && let Some(style) = trailing_style
+    {
+        pr.push((0, style));
+    }
     if cr.is_empty() {
         cr.push((t.text.len(), first_c));
     }
@@ -452,6 +472,93 @@ fn with_text_layer<R>(s: &mut Session, p: &Value, label: &str, f: impl FnOnce(&m
         st.last_damage = damage;
     }
     Ok(r)
+}
+
+/// Direct formatting follows the selected Type layers, while an explicit layer or character
+/// range keeps its single-layer scope. Selected groups are not expanded.
+pub(crate) fn format_targets(s: &Session, p: &Value) -> Result<Vec<LayerId>> {
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    let single = p.get("layer").is_some() || (p.get("range").is_some() && p.get("layers").is_none());
+    let ids = if single {
+        vec![layer_id(s, p)?]
+    } else if let Some(value) = p.get("layers") {
+        value
+            .as_array()
+            .ok_or_else(|| EngineError::Other("layers must be an array of layer IDs".into()))?
+            .iter()
+            .map(|v| v.as_u64().map(LayerId).ok_or_else(|| EngineError::Other("layers must contain layer IDs".into())))
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        st.selected_layers()
+    };
+    let mut targets = Vec::new();
+    for id in ids {
+        let l = st.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+        if matches!(l.content, LayerContent::Text(_)) {
+            if !targets.contains(&id) {
+                targets.push(id);
+            }
+        } else if single {
+            return Err(EngineError::Other(format!("layer {} is {} {} layer, not a type layer", id.0, l.content.article(), l.content.kind_name())));
+        }
+    }
+    if targets.is_empty() {
+        return Err(EngineError::Other("select a type layer".into()));
+    }
+    Ok(targets)
+}
+
+pub(crate) fn has_format_target(s: &Session) -> std::result::Result<(), String> {
+    format_targets(s, &Value::Null).map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// One history step for a formatting batch. Structural text edits keep their singular helper.
+pub(crate) fn with_text_targets(
+    s: &mut Session,
+    p: &Value,
+    label: &str,
+    mut f: impl FnMut(&mut TextLayer, (usize, usize)) -> Result<()>,
+) -> Result<Vec<LayerId>> {
+    let ids = format_targets(s, p)?;
+    let damage = s.edit(label, |doc, _| {
+        let snapshot = doc.clone();
+        let mut damage = Some(photocraft_geom::Rect::EMPTY);
+        for id in &ids {
+            let Some(LayerContent::Text(t)) = doc.layer_mut(*id).map(|l| &mut l.content) else { return Err(EngineError::NoLayer(*id)) };
+            let before = t.cache.as_ref().map(|c| c.tile_bounds());
+            let range = if p.get("layers").is_none() || p.get("layer").is_some() { range_param(&t.text, p) } else { (0, t.text.len()) };
+            f(t, range)?;
+            refresh(&snapshot, t);
+            // An unknown old/new cache retains Session.edit's full-refresh fallback.
+            damage = damage.zip(before).zip(t.cache.as_ref().map(|c| c.tile_bounds())).map(|((all, a), b)| all.union(&a).union(&b));
+        }
+        Ok(damage)
+    })?;
+    if let Some(st) = s.active_mut() {
+        st.last_damage = damage;
+    }
+    Ok(ids)
+}
+
+/// UI size/leading are measured after the layer transform; command callers otherwise use points.
+fn shown_style_params<'a>(t: &TextLayer, p: &'a Value) -> Result<std::borrow::Cow<'a, Value>> {
+    if p.get("metricsAsShown").and_then(Value::as_bool) != Some(true) {
+        return Ok(std::borrow::Cow::Borrowed(p));
+    }
+    let m = t.transform.m;
+    let scale = (m[0] * m[3] - m[1] * m[2]).abs().sqrt() as f32;
+    let scale = if scale.is_finite() && scale > 1e-3 { f64::from(scale) } else { 1.0 };
+    let mut params = p.clone();
+    for key in ["size", "leading"] {
+        if let Some(value) = p.get(key).and_then(Value::as_f64) {
+            let value = value / scale;
+            if !value.is_finite() || value.abs() > f64::from(f32::MAX) {
+                return Err(bad("type.setStyle", "shown size and leading must convert to finite point values"));
+            }
+            params[key] = json!(value);
+        }
+    }
+    Ok(std::borrow::Cow::Owned(params))
 }
 
 /// Whether a type layer still has the name it got from its text, so the name follows edits to
@@ -705,21 +812,20 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: Box::leak(
-                format!(r##"{{"layer":id?,"range":[startChar,endChar]? (default all), {CHAR_PARAMS}, paragraph keys: "align":"left|center|right|justify|justifyCenter|justifyRight|justifyAll","firstLineIndent":pt,"startIndent":pt,"endIndent":pt,"spaceBefore":pt,"spaceAfter":pt,"autoLeading":%,"direction":"auto|ltr|rtl","hyphenate":bool}}"##)
+                format!(r##"{{"layer":id? or "layers":[id,…]? (default selected Type layers),"range":[startChar,endChar]? (single layer; default all),"metricsAsShown":bool=false (size/leading include each layer's transform scale), {CHAR_PARAMS}, paragraph keys: "align":"left|center|right|justify|justifyCenter|justifyRight|justifyAll","firstLineIndent":pt,"startIndent":pt,"endIndent":pt,"spaceBefore":pt,"spaceAfter":pt,"autoLeading":%,"direction":"auto|ltr|rtl","hyphenate":bool}}"##)
                     .into_boxed_str(),
             ),
             enabled: has_doc,
             journal: true,
             run: |s, p| {
-                let id = layer_id(s, p)?;
                 check_kerning(p).map_err(|m| bad("type.setStyle", m))?;
-                check_size_tracking(p).map_err(|m| bad("type.setStyle", m))?;
-                with_text_layer(s, p, "Set Type Style", |t, _, _| {
-                    let (a, b) = range_param(&t.text, p);
+                let ids = with_text_targets(s, p, "Set Type Style", |t, (a, b)| {
+                    let props = shown_style_params(t, p)?;
+                    check_size_tracking(&props).map_err(|m| bad("type.setStyle", m))?;
                     let mut probe = CharStyle::default();
-                    if apply_char_props(&mut probe, p) {
+                    if apply_char_props(&mut probe, &props) {
                         style_range(t, a, b, &|st| {
-                            apply_char_props(st, p);
+                            apply_char_props(st, &props);
                         });
                     }
                     let mut pprobe = ParagraphStyle::default();
@@ -730,6 +836,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     }
                     Ok(())
                 })?;
+                let id = ids.first().ok_or_else(|| EngineError::Other("select a type layer".into()))?;
                 info(s, &json!({ "layer": id.0 }))
             },
         },
@@ -1083,6 +1190,37 @@ mod tests {
         assert_eq!(info["lines"].as_array().unwrap().len(), 2);
         let t = text_layer(&s, id);
         assert_eq!(t.runs.iter().map(|r| r.len).sum::<usize>(), t.text.len());
+    }
+
+    #[test]
+    fn trailing_empty_paragraph_styles_without_changing_previous_lines() {
+        let mut s = session();
+        let id = s.execute("type.create", json!({"text":"a\nb\n","x":20,"y":20,"size":12,"font":"Inter","align":"left"})).unwrap()["layer"].as_u64().unwrap();
+        let before = s.execute("type.info", json!({"layer":id})).unwrap();
+        let previous_line = before["lines"][1].clone();
+
+        let styled = s.execute("type.setStyle", json!({"layer":id,"range":[4,4],"align":"right"})).unwrap();
+        assert_eq!(styled["paragraphs"].as_array().unwrap().len(), 2);
+        assert_eq!(styled["paragraphs"][0]["start"], 0);
+        assert_eq!(styled["paragraphs"][0]["end"], 4);
+        assert_eq!(styled["paragraphs"][0]["style"]["align"], "Left");
+        assert_eq!(styled["paragraphs"][1]["start"], 4);
+        assert_eq!(styled["paragraphs"][1]["end"], 4);
+        assert_eq!(styled["paragraphs"][1]["style"]["align"], "Right");
+        assert_eq!(styled["lines"][1], previous_line, "the preceding paragraph must not move");
+        let raw = text_layer(&s, id).psd_raw.clone().unwrap();
+        let round_trip = photocraft_text::psd::text_layer_from_tysh(&raw, 72.0).unwrap();
+        assert_eq!(round_trip.paragraph_runs().last().unwrap().style.align, TextAlign::Right);
+
+        // Typing directly into the previously empty final paragraph retains its style.
+        let edited = s.execute("type.edit", json!({"layer":id,"replace":{"start":4,"end":4,"text":"c"}})).unwrap();
+        assert_eq!(edited["text"], "a\nb\nc");
+        assert_eq!(edited["paragraphs"][0]["end"], 4);
+        assert_eq!(edited["paragraphs"][0]["style"]["align"], "Left");
+        assert_eq!(edited["paragraphs"][1]["start"], 4);
+        assert_eq!(edited["paragraphs"][1]["end"], 5);
+        assert_eq!(edited["paragraphs"][1]["style"]["align"], "Right");
+        assert_eq!(edited["lines"][1], previous_line, "typing in the final paragraph does not move b");
     }
 
     #[test]
