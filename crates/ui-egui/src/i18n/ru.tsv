@@ -2720,6 +2720,19 @@ fontWeight	Italic	Курсив
 	Continue	Продолжить
 	This format saves a flattened image. Use Save a Copy to keep your editable document.	Этот формат сохраняет сведённое изображение. Используйте «Сохранить копию», чтобы сохранить редактируемый документ.
 	Netpbm chooses the subtype from the image depth and channels.	Netpbm выбирает подтип по глубине цвета и каналам изображения.
+
+# Shared panel docking
+	Activate Panel	Активировать панель
+	Change Panel Group	Изменить группу панелей
+	Change Panel Layout	Изменить расположение панелей
+	Close Panel	Закрыть панель
+	Dock Panel	Закрепить панель
+	Float Panel	Сделать панель плавающей
+	Move Panel	Переместить панель
+	Group with	Сгруппировать с
+	Panel menu	Меню панели
+	Resize panel window	Изменить размер окна панели
+	Resize panels	Изменить размер панелей
 	Use Classic Mode	Использовать классический режим
 	Auto Center Preview	Автоматически центрировать просмотр
 	Next Document	Следующий документ

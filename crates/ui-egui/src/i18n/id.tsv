@@ -2842,6 +2842,19 @@ fontWeight	Italic	Miring
 	Continue	Lanjutkan
 	This format saves a flattened image. Use Save a Copy to keep your editable document.	Format ini menyimpan gambar yang diratakan. Gunakan Simpan Salinan untuk mempertahankan dokumen yang dapat diedit.
 	Netpbm chooses the subtype from the image depth and channels.	Netpbm memilih subtipe berdasarkan kedalaman bit dan kanal gambar.
+
+# Shared panel docking
+	Activate Panel	Aktifkan Panel
+	Change Panel Group	Ubah Grup Panel
+	Change Panel Layout	Ubah Tata Letak Panel
+	Close Panel	Tutup Panel
+	Dock Panel	Tambatkan Panel
+	Float Panel	Panel Mengambang
+	Move Panel	Pindahkan Panel
+	Group with	Kelompokkan dengan
+	Panel menu	Menu panel
+	Resize panel window	Ubah ukuran jendela panel
+	Resize panels	Ubah ukuran panel
 	Use Classic Mode	Gunakan Mode Klasik
 	Auto Center Preview	Pusatkan Pratinjau Otomatis
 	Next Document	Dokumen Berikutnya

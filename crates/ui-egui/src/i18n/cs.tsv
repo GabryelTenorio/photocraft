@@ -2438,6 +2438,19 @@ fontWeight	Italic	Kurzíva
 	Continue	Pokračovat
 	This format saves a flattened image. Use Save a Copy to keep your editable document.	Tento formát uloží sloučený obrázek. Chcete-li zachovat upravitelný dokument, použijte Uložit kopii.
 	Netpbm chooses the subtype from the image depth and channels.	Netpbm vybírá podtyp podle bitové hloubky a kanálů obrázku.
+
+# Shared panel docking
+	Activate Panel	Aktivovat panel
+	Change Panel Group	Změnit skupinu panelů
+	Change Panel Layout	Změnit rozložení panelů
+	Close Panel	Zavřít panel
+	Dock Panel	Ukotvit panel
+	Float Panel	Plovoucí panel
+	Move Panel	Přesunout panel
+	Group with	Seskupit s
+	Panel menu	Nabídka panelu
+	Resize panel window	Změnit velikost okna panelu
+	Resize panels	Změnit velikost panelů
 	Use Classic Mode	Použít klasický režim
 	Auto Center Preview	Automaticky vystředit náhled
 	Next Document	Další dokument
