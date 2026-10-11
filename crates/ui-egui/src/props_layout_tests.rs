@@ -177,7 +177,9 @@ fn type_controls_fill_the_panel_at_every_width_and_scale() {
             // (Both rows have a unit suffix: compare with the size/leading row.)
             let top = fields.iter().map(|r| r.top()).fold(f32::MAX, f32::min);
             let lead = fields.iter().filter(|r| (r.top() - top).abs() < 0.5).map(|r| r.right()).fold(f32::MIN, f32::max);
-            assert!((t_right - lead).abs() < 0.5, "{what}: Transform fields end at {t_right}, Character at {lead}");
+            // Transform's fields have no preset chevron; the Size/Leading number ends one chevron
+            // short of the panel edge because Photoshop's chevron sits inside the field (#3508).
+            assert!((t_right - lead - crate::widgets::POPUP_ARROW_W).abs() < 0.5, "{what}: Transform fields end at {t_right}, Character at {lead}");
             // Quick Actions buttons span the panel too.
             let qa = h.get_by_label("Rasterize Type").rect();
             assert!(qa.right() >= header.right() - 2.0 && qa.right() <= header.right() + 1.0, "{what}: {qa:?}");

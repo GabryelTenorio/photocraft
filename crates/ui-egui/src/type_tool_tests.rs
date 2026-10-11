@@ -14,6 +14,25 @@ use super::{layout, text_layer};
 use crate::PhotocraftApp;
 use crate::canvas::ViewXform;
 
+/// #3508: the Character panel's Size/Leading/Tracking fields offer Photoshop's preset values, each
+/// inside the field's own range.
+#[test]
+fn character_metric_presets_are_sane() {
+    let size = super::SIZE_PRESETS;
+    let tracking = super::TRACKING_PRESETS;
+    for p in size {
+        assert!((0.1..=1296.0).contains(&p), "size preset {p} is out of the field's range");
+    }
+    for p in tracking {
+        assert!((-1000.0..=10000.0).contains(&p), "tracking preset {p} is out of the field's range");
+    }
+    for presets in [&size[..], &tracking[..]] {
+        assert!(presets.windows(2).all(|w| w[0] < w[1]), "presets ascend: {presets:?}");
+    }
+    assert!(size.contains(&12.0) && size.contains(&72.0) && size.contains(&1296.0), "{size:?}");
+    assert!(tracking.contains(&0.0) && tracking.contains(&-200.0), "{tracking:?}");
+}
+
 fn harness(ppp: f32, app: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
     make_harness(ppp, app, false)
 }

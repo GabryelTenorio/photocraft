@@ -458,6 +458,38 @@ pub fn popup_value_field(ui: &mut Ui, name: &str, value: &mut f32, range: std::o
     out
 }
 
+/// A [`value_field`] with Photoshop's preset chevron inside its right edge: the popup lists
+/// `presets`, and picking one writes it to `value`. `name` (already translated) names the chevron
+/// for its tooltip and for accessibility. Returns true when the value changed (typed or picked).
+pub fn preset_value_field(ui: &mut Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, suffix: &str, width: f32, name: &str, presets: &[f32]) -> bool {
+    let t = Tokens::get(ui.ctx());
+    let (field, rect) = value_field_in(ui, value, range, suffix, width, POPUP_ARROW_W, None);
+    let arrow = Rect::from_min_max(pos2(rect.right() - POPUP_ARROW_W - 2.0, rect.top() + 2.0), rect.max - vec2(2.0, 2.0));
+    let resp = ui.interact(arrow, field.id.with("preset"), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
+    let resp = resp.on_hover_text(name);
+    let mut changed = field.changed();
+    let popup = egui::Popup::from_toggle_button_response(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .anchor(rect)
+        .align(egui::RectAlign::BOTTOM_END)
+        .align_alternatives(&[egui::RectAlign::TOP_END]);
+    let open = popup.is_open();
+    if resp.hovered() || open {
+        ui.painter().rect_filled(arrow, t.radius_sm, t.field_border.gamma_multiply(0.6));
+    }
+    chevron_icon(ui, arrow, ui.style().interact(&resp), open);
+    popup.show(|ui| {
+        for p in presets {
+            if ui.selectable_label((*p - *value).abs() < 1e-3, format!("{p}")).clicked() {
+                *value = *p;
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
 fn first_field_id() -> egui::Id {
     egui::Id::new("pc-focus-first-field")
 }
