@@ -44,6 +44,37 @@ esac
 export PHOTOCRAFT_MAINTAINER="${PHOTOCRAFT_MAINTAINER:-PhotoCraft maintainers <photocraft@storyteller.ai>}"
 BASENAME="photocraft-$VERSION-linux-$ARCH"
 
+# AppImage tooling: github.com/AppImage/appimagetool and github.com/AppImage/type2-runtime
+# releases, SHA-256 from each release's asset metadata. Bump both together.
+APPIMAGETOOL_VERSION=1.9.1
+APPIMAGE_RUNTIME_VERSION=20251108
+# The pinned SHA-256 of `appimagetool`/`runtime` ($1) for architecture $2; empty when unpinned.
+pinned_sha256() {
+  case "$1-$2" in
+    appimagetool-x86_64) echo ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0 ;;
+    appimagetool-aarch64) echo f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158 ;;
+    runtime-x86_64) echo 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d ;;
+    runtime-aarch64) echo 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444 ;;
+    *) echo "" ;;
+  esac
+}
+# Keep $1 if it already has SHA-256 $3, else download $2 there; anything else is an error.
+verified_download() {
+  local out=$1 url=$2 sha=$3
+  if [ -z "$sha" ]; then
+    echo "no pinned download for $(basename "$out"); set APPIMAGETOOL to a tool you trust" >&2
+    exit 1
+  fi
+  if [ -f "$out" ] && printf '%s  %s\n' "$sha" "$out" | sha256sum -c --status -; then return; fi
+  curl -fsSL -o "$out.part" "$url"
+  if ! printf '%s  %s\n' "$sha" "$out.part" | sha256sum -c --status -; then
+    rm -f "$out.part"
+    echo "$url: SHA-256 mismatch (expected $sha)" >&2
+    exit 1
+  fi
+  mv "$out.part" "$out"
+}
+
 echo "==> PhotoCraft $VERSION for Linux $ARCH ($FORMATS)"
 
 if [ "$SKIP_BUILD" = 0 ]; then
@@ -115,13 +146,18 @@ if has appimage; then
   cp "$ROOT/assets/app-icon/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"
   ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
 
+  # The tool and the runtime it embeds are pinned releases, checked against the SHA-256 the
+  # release assets published; a mutable `continuous` build could ship anything into the AppImage.
+  # A tool from $APPIMAGETOOL or $PATH is the caller's own, so it fetches whichever runtime it likes.
+  RUNTIME_ARGS=()
   TOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
   if [ -z "$TOOL" ]; then
-    TOOL="$CARGO_TARGET_DIR/appimagetool-$ARCH.AppImage"
-    if [ ! -x "$TOOL" ]; then
-      curl -fsSL -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
-      chmod +x "$TOOL"
-    fi
+    TOOL="$CARGO_TARGET_DIR/appimagetool-$APPIMAGETOOL_VERSION-$ARCH.AppImage"
+    verified_download "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-$ARCH.AppImage" "$(pinned_sha256 appimagetool "$ARCH")"
+    chmod +x "$TOOL"
+    RUNTIME="$CARGO_TARGET_DIR/appimage-runtime-$APPIMAGE_RUNTIME_VERSION-$ARCH"
+    verified_download "$RUNTIME" "https://github.com/AppImage/type2-runtime/releases/download/$APPIMAGE_RUNTIME_VERSION/runtime-$ARCH" "$(pinned_sha256 runtime "$ARCH")"
+    RUNTIME_ARGS=(--runtime-file "$RUNTIME")
   fi
   # Absolute, because appimagetool runs in $DIST below (CARGO_TARGET_DIR or APPIMAGETOOL may be
   # relative, e.g. target/agent-<name>).
@@ -139,7 +175,7 @@ if has appimage; then
   # Extract-and-run: works without FUSE (containers, CI). The output embeds the static runtime,
   # so users don't need libfuse2 either. With zsyncmake on the host (CI installs the zsync
   # package) appimagetool also writes the .zsync, into its working directory, hence the cd.
-  (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream -u "$UPDATE_INFO" "$APPDIR" "$OUT")
+  (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream "${RUNTIME_ARGS[@]}" -u "$UPDATE_INFO" "$APPDIR" "$OUT")
   echo "wrote $OUT"
   if [ -s "$OUT.zsync" ]; then
     echo "wrote $OUT.zsync"
