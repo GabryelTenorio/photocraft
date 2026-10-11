@@ -166,7 +166,8 @@ fn copying_linked_layers_does_not_join_an_unrelated_destination_group() {
         d.layer_mut(src_a).unwrap().link_group = Some(1);
         d.layer_mut(src_b).unwrap().link_group = Some(1);
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
     s.execute("file.new", json!({"width": 16, "height": 16})).unwrap();
     let dst_a = LayerId(s.execute("layer.new.layer", json!({"name": "Destination A"})).unwrap()["layer"].as_u64().unwrap());
@@ -175,7 +176,8 @@ fn copying_linked_layers_does_not_join_an_unrelated_destination_group() {
         d.layer_mut(dst_a).unwrap().link_group = Some(1);
         d.layer_mut(dst_b).unwrap().link_group = Some(1);
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
     s.set_active(0);
     let result = s.execute("layer.copyToDocument", json!({"document": 1, "layers": [src_a.0, src_b.0]})).unwrap();
     let ids: Vec<LayerId> = result["layers"].as_array().unwrap().iter().map(|id| LayerId(id.as_u64().unwrap())).collect();
@@ -204,7 +206,8 @@ fn copied_link_groups_are_distinct_from_each_other_and_destination() {
         d.layer_mut(a).unwrap().link_group = Some(1);
         d.layer_mut(b).unwrap().link_group = Some(2);
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
     s.execute("file.new", json!({"width": 16, "height": 16})).unwrap();
     s.set_active(0);
     let copied = s.execute("layer.copyToDocument", json!({"document": 1, "layers": [a.0, b.0]})).unwrap();
