@@ -94,8 +94,8 @@ impl ByteSource for DirSource {
 /// (files can change while open, and a FIFO reports 0), so the bound is enforced on the read
 /// itself, never on the hint.
 pub fn read_entry(file: &mut impl std::io::Read, len: u64, max: usize, path: &str) -> Result<Vec<u8>> {
-    let mut limited = file.take(max as u64 + 1);
-    let hint = len.min(max as u64 + 1);
+    let mut limited = file.take((max as u64).saturating_add(1));
+    let hint = len.min((max as u64).saturating_add(1));
     let bytes = crate::read::read_all(&mut limited, hint)?;
     if bytes.len() > max {
         return Err(FormatError::LimitExceeded(format!("`{path}` exceeds {max} bytes")));
