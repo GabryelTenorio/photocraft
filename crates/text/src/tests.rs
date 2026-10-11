@@ -433,7 +433,7 @@ fn wrapped_and_forced_line_starts_use_the_following_line() {
     assert_eq!(line_edge(&layout, &wrapped.text, index, false), index);
     assert_eq!(line_edge(&layout, &wrapped.text, index, true), wrapped.text[..layout.lines[1].range.end].chars().count());
 
-    let text = "a\\u{3}b";
+    let text = "a\u{3}b";
     let forced = engine.layout(&point(text, 12.0), 72.0);
     assert_eq!(forced.lines.len(), 2);
     let start = forced.lines[1].range.start;
@@ -443,7 +443,7 @@ fn wrapped_and_forced_line_starts_use_the_following_line() {
     assert_eq!(line_edge(&forced, text, index, true), text.chars().count());
 
     // A normal paragraph break has distinct boundaries and retains its line.
-    let text = "a\\nb";
+    let text = "a\nb";
     let paragraph = engine.layout(&point(text, 12.0), 72.0);
     assert_eq!(line_index(&paragraph, paragraph.lines[0].range.end), 0);
     assert_eq!(line_index(&paragraph, paragraph.lines[1].range.start), 1);

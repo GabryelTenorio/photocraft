@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(go(&mut s, id, index, "lineStart", None), index as u64);
         assert_eq!(go(&mut s, id, index, "lineEnd", None), lines[1]["end"].as_u64().unwrap());
 
-        let hard = create(&mut s, json!({"text": "ab\\ncd", "x": 30, "y": 100, "size": 12, "font": "Inter"}));
+        let hard = create(&mut s, json!({"text": "ab\ncd", "x": 30, "y": 100, "size": 12, "font": "Inter"}));
         assert_eq!(s.execute("type.caret", json!({"layer": hard, "index": 3})).unwrap()["line"], 1);
         assert_eq!(go(&mut s, hard, 3, "lineStart", None), 3);
         assert_eq!(go(&mut s, hard, 3, "lineEnd", None), 5);
