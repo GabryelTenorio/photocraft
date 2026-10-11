@@ -580,17 +580,41 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
     let mut mode = "shape".to_string();
     crate::widgets::dropdown(ui, "shape-mode", &mut mode, &[("shape".to_string(), tl!("Shape"))], 80.0);
     crate::widgets::vline(ui, 22.0);
+    // Fill and Stroke edit the selected shape layer too.
+    let target = selected_shape(&app.session);
+    let (fg, bg) = (app.session.tools.foreground, app.session.tools.background);
+    let solid = |c: [f32; 4]| photocraft_doc::Fill::Solid(photocraft_doc::Color::rgba(c[0], c[1], c[2], c[3]));
+    let (mut has_fill, fill, stroke) = match &target {
+        Some(s) => (s.fill.is_some(), s.fill.clone().unwrap_or_else(|| solid(fg)), s.stroke.clone()),
+        None => (o.shape_fill, solid(fg), (o.stroke_width > 0.0).then(|| o.shape_stroke.stroke(o.stroke_width, solid(bg)))),
+    };
+    let mut width = stroke.as_ref().map_or(0.0, |s| s.width);
+    let style = stroke.as_ref().map_or_else(|| o.shape_stroke.clone(), crate::shape_stroke_ui::StrokeOptions::from);
+    let key = |k: &str| target.as_ref().map(|s| format!("shape-options-{:?}-{}-{k}", s.doc, s.layer.0));
+    let mut edit: Option<Value> = None;
     lbl(ui, tl!("Fill:"));
-    crate::widgets::checkbox(ui, &mut o.shape_fill, "");
-    let (r, _) = ui.allocate_exact_size(vec2(22.0, 16.0), Sense::hover());
-    ui.painter().rect_filled(r, 2.0, rgb32(app.session.tools.foreground));
-    ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, t.field_border), egui::StrokeKind::Outside);
+    if crate::widgets::checkbox(ui, &mut has_fill, "").changed() {
+        o.shape_fill = has_fill;
+        edit = Some(json!({"fill": if has_fill { json!(hex(fg)) } else { Value::Null }}));
+    }
+    let fill_color = swatch(ui, Some(&fill), tl!("Fill color"));
     lbl(ui, tl!("Stroke:"));
-    let bg = app.session.tools.background;
-    let stroke_color = swatch(ui, Some(&photocraft_doc::Fill::Solid(photocraft_doc::Color::rgba(bg[0], bg[1], bg[2], bg[3]))), tl!("Stroke color"));
-    crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
-    if let Some(style) = crate::shape_stroke_ui::button(ui, "tool-stroke", &o.shape_stroke, &mut app.ui.stroke_editor, true, tool != Tool::EllipseShape, None) {
-        o.shape_stroke = style;
+    let stroke_color = swatch(ui, Some(stroke.as_ref().map_or(&solid(bg), |s| &s.paint)), tl!("Stroke color"));
+    if crate::widgets::value_field(ui, &mut width, 0.0..=288.0, "px", 58.0).changed() {
+        o.stroke_width = width;
+        let mut p = style.params();
+        p["width"] = json!(width);
+        if stroke.is_none() {
+            p["color"] = json!(hex(bg));
+        }
+        edit = Some(if width <= 0.0 { json!({"stroke": null}) } else { json!({"stroke": p, "coalesce": key("stroke-w")}) });
+    }
+    let preview = target.as_ref().filter(|s| s.stroke.is_some()).map(|s| (s.doc, s.layer));
+    if let Some(next) = crate::shape_stroke_ui::button(ui, "tool-stroke", &style, &mut app.ui.stroke_editor, true, tool != Tool::EllipseShape, preview) {
+        if stroke.is_some() {
+            edit = Some(json!({"stroke": next.params()}));
+        }
+        o.shape_stroke = next;
     }
     match tool {
         Tool::Rectangle => {
@@ -617,15 +641,59 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         }
         _ => {}
     }
+    if let Some(color) = fill_color {
+        if color == "none" {
+            app.ui.tool_options.shape_fill = false;
+            edit = Some(json!({"fill": null}));
+        } else {
+            app.ui.tool_options.shape_fill = true;
+            edit = Some(json!({"fill": color, "coalesce": key("fill")}));
+            if let Err(e) = app.run("tools.setColors", json!({"foreground": color})) {
+                app.ui.status = e;
+                app.ui.status_error = true;
+            }
+        }
+    }
     if let Some(color) = stroke_color {
         if color == "none" {
             app.ui.tool_options.stroke_width = 0.0;
-        } else if let Err(e) = app.run("tools.setColors", json!({"background": color})) {
+            edit = Some(json!({"stroke": null}));
+        } else {
+            let mut p = style.params();
+            p["color"] = json!(color);
+            p["width"] = json!(if width > 0.0 { width } else { 3.0 });
+            edit = Some(json!({"stroke": p, "coalesce": key("stroke")}));
+            if let Err(e) = app.run("tools.setColors", json!({"background": color})) {
+                app.ui.status = e;
+                app.ui.status_error = true;
+            }
+        }
+    }
+    if let (Some(mut p), Some(s)) = (edit, &target) {
+        p["layer"] = json!(s.layer.0);
+        if let Err(e) = app.run("shape.edit", p) {
             app.ui.status = e;
             app.ui.status_error = true;
         }
     }
     true
+}
+
+/// The shape layer the options bar edits.
+struct SelectedShape {
+    doc: photocraft_doc::DocId,
+    layer: photocraft_doc::LayerId,
+    fill: Option<photocraft_doc::Fill>,
+    stroke: Option<photocraft_doc::ShapeStroke>,
+}
+
+fn selected_shape(session: &photocraft_engine::Session) -> Option<SelectedShape> {
+    let st = session.active()?;
+    let layer = st.active_layer?;
+    match &st.doc.layer(layer)?.content {
+        LayerContent::Shape(sh) => Some(SelectedShape { doc: st.doc.id, layer, fill: sh.fill.clone(), stroke: sh.stroke.clone() }),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1567,6 +1635,69 @@ mod tests {
         }
         press(&mut h, start, false);
         assert_ne!(fill(&h), before, "the drag picked a colour");
+    }
+
+    /// The options bar edits the selected shape's fill and stroke.
+    #[test]
+    fn shape_options_bar_edits_the_selected_shape() {
+        use egui::accesskit::Role;
+        use egui_kittest::kittest::Queryable;
+        let mut app = app();
+        app.run("tools.setColors", json!({"foreground": "#ff0000", "background": "#0000ff"})).unwrap();
+        finish_shape(&mut app, Tool::Rectangle, [20.0, 20.0], [120.0, 100.0], Default::default());
+        let shape = |app: &PhotocraftApp| {
+            let st = app.session.active().unwrap();
+            match &st.doc.layer(st.active_layer.unwrap()).unwrap().content {
+                LayerContent::Shape(sh) => (sh.fill.clone(), sh.stroke.clone()),
+                _ => panic!("not a shape layer"),
+            }
+        };
+        assert!(shape(&app).0.is_some() && shape(&app).1.is_none());
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1100.0, 48.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    ui.horizontal_centered(|ui| options_bar(app, ui, Tool::Rectangle));
+                }
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+        h.run_steps(4);
+        let click_fill = |h: &mut egui_kittest::Harness<'_, PhotocraftApp>| {
+            let label = h.query_all(egui_kittest::kittest::by().label("Fill:").include_labels()).next().expect("the Fill label").rect();
+            let at = egui::pos2(label.right() + h.ctx.global_style().spacing.item_spacing.x + 7.0, label.center().y);
+            h.hover_at(at);
+            h.step();
+            for pressed in [true, false] {
+                h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+                h.step();
+            }
+            h.run_steps(2);
+        };
+        // Stroke width.
+        h.get_all_by_role(Role::SpinButton).next().expect("the stroke width").click();
+        h.run();
+        for c in "6".chars() {
+            h.event(egui::Event::Text(c.to_string()));
+            h.run();
+        }
+        h.key_press(egui::Key::Enter);
+        h.run_steps(2);
+        let stroke = shape(h.state()).1.expect("the width field stroked the shape");
+        assert_eq!(stroke.width, 6.0);
+        assert_eq!(stroke.paint, photocraft_doc::Fill::Solid(photocraft_doc::Color::rgba(0.0, 0.0, 1.0, 1.0)));
+        // Fill off.
+        click_fill(&mut h);
+        assert_eq!(shape(h.state()).0, None, "unchecking Fill removed the shape's fill");
+        assert!(!h.state().ui.tool_options.shape_fill, "and the next shape has none either");
+        h.state_mut().run("edit.undo", json!({})).unwrap();
+        assert!(shape(h.state()).0.is_some());
+        // No shape selected: no edit.
+        h.state_mut().run("layer.new.layer", json!({})).unwrap();
+        let history = h.state().session.active().unwrap().history.past_len();
+        h.run_steps(2);
+        click_fill(&mut h);
+        assert_eq!(h.state().session.active().unwrap().history.past_len(), history);
     }
 }
 
