@@ -815,3 +815,20 @@ fn an_offer_that_does_not_match_the_commit_is_ignored() {
     let r = s.execute("paint.stroke", other).unwrap();
     assert!(r.get("fromLive").is_none());
 }
+
+#[test]
+fn set_brush_takes_a_per_dynamic_curve_and_a_patch_resets_it() {
+    let mut s = session(20, 20);
+    let curve = json!([[0.0, 0.0], [0.5, 0.2], [1.0, 1.0]]);
+    s.execute("tools.setBrush", json!({"shapeDynamics": {"enabled": true, "size": {"control": "penPressure", "curve": curve}}})).unwrap();
+    let with = s.tools.brush.clone();
+    assert_eq!(with.shape_dynamics.size.curve.points(), vec![[0.0, 0.0], [0.5, 0.2], [1.0, 1.0]]);
+    assert!(with.transfer.opacity.curve.is_linear(), "other dynamics keep their own curve");
+    // The panel's diff back to linear is a real patch, and applying it restores the linear curve.
+    let mut linear = with.clone();
+    linear.shape_dynamics.size.curve = photocraft_paint::ResponseCurve::LINEAR;
+    let patch = brush_patch(&with, &linear);
+    assert_eq!(patch["shapeDynamics"]["size"]["curve"], json!([[0.0, 0.0], [1.0, 1.0]]));
+    s.execute("tools.setBrush", patch).unwrap();
+    assert!(s.tools.brush.shape_dynamics.size.curve.is_linear());
+}
