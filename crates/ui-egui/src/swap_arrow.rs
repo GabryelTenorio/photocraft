@@ -87,6 +87,6 @@ mod tests {
         let (t0, t1) = (tangent(false).normalized(), tangent(true).normalized());
         assert!(t0.x > 0.99 && t0.y.abs() < 0.01, "the left head must point left: {t0:?}");
         assert!(t1.y > 0.99 && t1.x.abs() < 0.01, "the lower head must point down: {t1:?}");
-        assert!(START.x < END.x && START.y < END.y, "the curve must turn toward the bottom-right");
+        const { assert!(START.x < END.x && START.y < END.y, "the curve must turn toward the bottom-right") };
     }
 }
