@@ -22,6 +22,8 @@ pub struct ActionsUi {
     pub selected_step: Option<usize>,
     pub expanded: Vec<bool>,
     #[serde(skip)]
+    pub(crate) focused: bool,
+    #[serde(skip)]
     reveal_recording: Option<(usize, usize)>,
     /// The action whose name is being edited in place (double-click on its name).
     #[serde(skip)]
@@ -88,6 +90,7 @@ pub(crate) fn assign_shortcut(app: &mut PhotocraftApp, name: &str, shortcut: &st
 /// Replay edits synchronously, with view steps handled by the shell in the same order.
 /// Engine steps keep the headless action semantics (no dialogs or background jobs).
 pub(crate) fn play(app: &mut PhotocraftApp, params: &Value) -> Result<Value, String> {
+    app.ui.actions.focused = false;
     let (action, from) = actions_cmds::playback_plan(&app.session, params).map_err(|e| e.to_string())?;
     let recording = actions_cmds::begin_playback(&mut app.session, &action).map_err(|e| e.to_string())?;
     let mut ran = 0u64;
@@ -317,8 +320,22 @@ fn rename_action(app: &mut PhotocraftApp, index: usize, name: String) {
     }
 }
 
+pub(crate) fn undo_command(app: &PhotocraftApp, id: &str) -> Option<&'static str> {
+    if !app.ui.actions.focused {
+        return None;
+    }
+    match id {
+        "edit.undo" => Some("actions.undo"),
+        "edit.redo" => Some("actions.redo"),
+        _ => None,
+    }
+}
+
 pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
+    if ui.input(|i| i.pointer.any_pressed()) {
+        app.ui.actions.focused = ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| ui.max_rect().contains(p));
+    }
     let recording = app.session.actions.recording;
     let rows: Vec<_> = app.session.actions.list.iter().enumerate().map(|(i, a)| (a.name.clone(), visible_steps(app, i), a.disabled.clone())).collect();
     if app
@@ -540,6 +557,31 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actions_shortcut_undo_and_redo_edit_script_without_undoing_pixels() {
+        use egui_kittest::{Harness, kittest::Queryable};
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.session.actions.list.push(Action { name: "A".into(), steps: vec![("select.all".into(), json!({}))], disabled: Default::default() });
+        let doc = app.session.active().unwrap().doc.clone();
+        let mut h = Harness::builder().with_size(vec2(320.0, 260.0)).build_ui_state(|ui, app| panel(app, ui), app);
+        h.run_steps(3);
+        h.get_by_label("A").click();
+        h.run_steps(3);
+        assert!(h.state().ui.actions.focused);
+        h.state_mut().run("actions.delete", json!({"action": "A", "step": 0})).unwrap();
+        let ctx = egui::Context::default();
+        crate::shortcut_dispatch::dispatch(h.state_mut(), &ctx, "edit.undo");
+        assert_eq!(h.state().session.actions.list[0].steps.len(), 1);
+        assert_eq!(h.state().session.active().unwrap().doc, doc);
+        crate::shortcut_dispatch::dispatch(h.state_mut(), &ctx, "edit.redo");
+        assert!(h.state().session.actions.list[0].steps.is_empty());
+        h.state_mut().ui.actions.focused = false;
+        crate::shortcut_dispatch::dispatch(h.state_mut(), &ctx, "edit.undo");
+        assert_eq!(h.state().session.active().unwrap().doc.layers.len(), 1);
+    }
 
     #[test]
     fn double_clicking_an_action_name_renames_it_in_place() {

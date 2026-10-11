@@ -75,6 +75,84 @@ pub struct ActionState {
     /// Bumped whenever `list` changes, so the preset store can skip unchanged writes.
     #[serde(skip)]
     pub rev: u64,
+    #[serde(skip)]
+    pub(crate) undo: Vec<ActionEdit>,
+    #[serde(skip)]
+    pub(crate) redo: Vec<ActionEdit>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ActionEdit {
+    list: Vec<Action>,
+    recording: Option<(usize, usize)>,
+    shortcuts: std::collections::BTreeMap<String, String>,
+}
+
+fn snapshot(s: &Session) -> ActionEdit {
+    let mut list = s.actions.list.clone();
+    if let Some((_, idx)) = s.actions.recording {
+        let pending: Vec<_> = pending_steps(s, idx).cloned().collect();
+        if let Some(action) = list.get_mut(idx) {
+            action.steps.extend(pending);
+        }
+    }
+    ActionEdit {
+        list,
+        recording: s.actions.recording.map(|(_, idx)| (s.journal.len(), idx)),
+        shortcuts: s.prefs().shortcuts.iter().filter(|(key, _)| key.starts_with(PLAY_SHORTCUT_PREFIX)).map(|(k, v)| (k.clone(), v.clone())).collect(),
+    }
+}
+
+fn edit_action(s: &mut Session, p: &Value, run: fn(&mut Session, &Value) -> Result<Value>, include_pending: bool) -> Result<Value> {
+    let mut before = snapshot(s);
+    if !include_pending {
+        before.list = s.actions.list.clone();
+    }
+    let result = run(s, p)?;
+    if before.list != snapshot(s).list {
+        s.actions.undo.push(before);
+        if s.actions.undo.len() > 100 {
+            s.actions.undo.remove(0);
+        }
+        s.actions.redo.clear();
+    }
+    Ok(result)
+}
+
+pub fn can_undo(s: &Session) -> bool {
+    s.actions.playing == 0 && !s.actions.undo.is_empty()
+}
+pub fn can_redo(s: &Session) -> bool {
+    s.actions.playing == 0 && !s.actions.redo.is_empty()
+}
+
+fn undo_edit(s: &mut Session, redo: bool) -> Result<Value> {
+    not_playing(s, if redo { "actions.redo" } else { "actions.undo" })?;
+    let current = snapshot(s);
+    let prior = if redo { s.actions.redo.pop() } else { s.actions.undo.pop() };
+    let Some(prior) = prior else { return Ok(json!(false)) };
+    if redo {
+        s.actions.undo.push(current);
+    } else {
+        s.actions.redo.push(current);
+    }
+    let old_names: std::collections::BTreeSet<_> = s.actions.list.iter().map(|a| a.name.as_str()).collect();
+    let new_names: std::collections::BTreeSet<_> = prior.list.iter().map(|a| a.name.as_str()).collect();
+    let changed_bindings: Vec<_> = old_names.symmetric_difference(&new_names).map(|name| format!("{PLAY_SHORTCUT_PREFIX}{name}")).collect();
+    s.actions.list = prior.list;
+    s.actions.recording = s.actions.recording.and(prior.recording).map(|(_, idx)| (s.journal.len(), idx));
+    if !changed_bindings.is_empty() {
+        s.edit_prefs(|prefs| {
+            for key in changed_bindings {
+                prefs.shortcuts.remove(&key);
+                if let Some(value) = prior.shortcuts.get(&key) {
+                    prefs.shortcuts.insert(key, value.clone());
+                }
+            }
+        });
+    }
+    s.actions.touch();
+    Ok(json!(true))
 }
 
 impl ActionState {
@@ -529,13 +607,33 @@ fn rename(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec {
+            id: "actions.undo",
+            label: "Undo Action Edit",
+            menu: &[],
+            shortcut: None,
+            params: "{} → bool. Undo an action definition edit without changing the document.",
+            enabled: |s| if can_undo(s) { Ok(()) } else { Err("nothing to undo".into()) },
+            run: |s, _| undo_edit(s, false),
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.redo",
+            label: "Redo Action Edit",
+            menu: &[],
+            shortcut: None,
+            params: "{} → bool. Redo an action definition edit without changing the document.",
+            enabled: |s| if can_redo(s) { Ok(()) } else { Err("nothing to redo".into()) },
+            run: |s, _| undo_edit(s, true),
+            journal: false,
+        },
+        CommandSpec {
             id: "actions.move",
             label: "Move Action or Step",
             menu: &[],
             shortcut: None,
             params: r##"{"action":name|index, "step":index?, "to":index}. Move a step within its action, or the action itself. to is the final zero-based index. Pending recorded steps can be moved."##,
             enabled: always,
-            run: move_item,
+            run: |s, p| edit_action(s, p, move_item, true),
             journal: false,
         },
         CommandSpec {
@@ -565,7 +663,7 @@ pub fn specs() -> Vec<CommandSpec> {
             shortcut: None,
             params: r##"{"name":str? (new action, default "Action N")} or {"action":name|index} (append) → {action, index}"##,
             enabled: always,
-            run: record,
+            run: |s, p| edit_action(s, p, record, true),
             journal: false,
         },
         CommandSpec {
@@ -575,7 +673,7 @@ pub fn specs() -> Vec<CommandSpec> {
             shortcut: None,
             params: "{} → {action, steps:count} (steps recorded since actions.record, queries and action-editing commands omitted)",
             enabled: always,
-            run: stop,
+            run: |s, p| edit_action(s, p, stop, false),
             journal: false,
         },
         CommandSpec {
@@ -595,7 +693,7 @@ pub fn specs() -> Vec<CommandSpec> {
             shortcut: None,
             params: r##"{"action":name|index, "step":index?} → {deleted:name} or {action, deletedStep, steps:count}. step is 0-based, including pending recorded steps. Whole-action deletion is refused while recording."##,
             enabled: always,
-            run: delete,
+            run: |s, p| edit_action(s, p, delete, true),
             journal: false,
         },
         CommandSpec {
@@ -605,7 +703,7 @@ pub fn specs() -> Vec<CommandSpec> {
             shortcut: None,
             params: r##"{"action":name|index, "step":index?, "enabled":bool?} → {action, disabled:[step…]}. Switch one 0-based step (including pending recorded steps) on or off for playback, Batch and droplets; omitted enabled flips it. Without step, switch every step: on unless all already are, or as enabled says."##,
             enabled: always,
-            run: toggle,
+            run: |s, p| edit_action(s, p, toggle, true),
             journal: false,
         },
         CommandSpec {
@@ -615,7 +713,7 @@ pub fn specs() -> Vec<CommandSpec> {
             shortcut: None,
             params: r##"{"action":name|index, "name":str} → {action, index}. The name must not be empty or whitespace-only and must be unique. Nested Play Action steps and the action's function key follow the rename."##,
             enabled: always,
-            run: rename,
+            run: |s, p| edit_action(s, p, rename, true),
             journal: false,
         },
     ]
@@ -671,6 +769,92 @@ mod tests {
             assert!(s.execute("actions.toggle", bad.clone()).is_err(), "{bad}");
         }
         assert_eq!(s.actions.list[0].disabled.iter().copied().collect::<Vec<_>>(), [1], "rejected toggles change nothing");
+    }
+
+    #[test]
+    fn recording_and_appending_steps_can_be_undone_without_restarting_recording() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("actions.record", json!({"name": "A"})).unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("actions.record", json!({"action": "A"})).unwrap();
+        s.execute("select.all", json!({})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        let doc = s.active().unwrap().doc.clone();
+        assert_eq!(s.actions.list[0].steps.len(), 2);
+        s.execute("actions.undo", json!({})).unwrap();
+        assert_eq!(s.actions.list[0].steps.len(), 1);
+        assert!(s.actions.recording.is_none());
+        s.execute("actions.redo", json!({})).unwrap();
+        assert_eq!(s.actions.list[0].steps.len(), 2);
+        assert!(s.actions.recording.is_none());
+        assert_eq!(s.active().unwrap().doc, doc);
+    }
+
+    #[test]
+    fn definition_edits_undo_redo_without_touching_document_or_journal() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.actions.list.push(Action {
+            name: "A".into(),
+            steps: vec![("layer.new.layer".into(), json!({})), ("select.all".into(), json!({}))],
+            disabled: Default::default(),
+        });
+        s.actions.list.push(Action { name: "Caller".into(), steps: vec![("actions.play".into(), json!({"action": "A"}))], disabled: Default::default() });
+        s.edit_prefs(|p| {
+            p.shortcuts.insert("actions.play:A".into(), "F6".into());
+        });
+        let before = s.actions.list.clone();
+        let doc = s.active().unwrap().doc.clone();
+        let journal = s.journal.clone();
+        s.execute("actions.move", json!({"action": "A", "step": 0, "to": 1})).unwrap();
+        s.execute("actions.delete", json!({"action": "A", "step": 0})).unwrap();
+        s.execute("actions.rename", json!({"action": "A", "name": "B"})).unwrap();
+        let after = s.actions.list.clone();
+        for _ in 0..3 {
+            s.execute("actions.undo", json!({})).unwrap();
+        }
+        assert_eq!(s.actions.list, before);
+        assert_eq!(s.prefs().shortcuts.get("actions.play:A").map(String::as_str), Some("F6"));
+        assert!(!s.prefs().shortcuts.contains_key("actions.play:B"));
+        for _ in 0..3 {
+            s.execute("actions.redo", json!({})).unwrap();
+        }
+        assert_eq!(s.actions.list, after);
+        assert_eq!(s.active().unwrap().doc, doc);
+        assert_eq!(s.journal, journal);
+        s.execute("actions.undo", json!({})).unwrap();
+        s.execute("actions.delete", json!({"action": "Caller"})).unwrap();
+        assert!(!can_redo(&s));
+    }
+
+    #[test]
+    fn enabled_step_edits_undo_and_invalidate_redo() {
+        let mut s = Session::new();
+        s.actions.list.push(Action::new("A", vec![("select.all".into(), json!({}))]));
+        s.execute("actions.toggle", json!({"action": "A", "step": 0})).unwrap();
+        assert!(s.actions.list[0].disabled.contains(&0));
+        s.execute("actions.undo", json!({})).unwrap();
+        assert!(s.actions.list[0].disabled.is_empty());
+        s.execute("actions.redo", json!({})).unwrap();
+        assert!(s.actions.list[0].disabled.contains(&0));
+        s.execute("actions.undo", json!({})).unwrap();
+        s.execute("actions.toggle", json!({"action": "A"})).unwrap();
+        assert!(!can_redo(&s));
+    }
+
+    #[test]
+    fn undo_pending_step_deletion_does_not_duplicate_recording() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("actions.record", json!({"name": "A"})).unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("actions.delete", json!({"action": "A", "step": 0})).unwrap();
+        s.execute("actions.undo", json!({})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(s.actions.list[0].steps.len(), 1);
+        assert_eq!(s.active().unwrap().doc.layers.len(), 2);
     }
 
     #[test]
