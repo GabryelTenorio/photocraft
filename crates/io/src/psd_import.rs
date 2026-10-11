@@ -547,6 +547,21 @@ fn parse_guides(data: &[u8], doc: &mut Document) {
 }
 
 /// Converts a parsed PSD into a document. Never fails: problems become warnings.
+/// A flattened file's merged image as its layer: like Photoshop, an opaque one is the locked
+/// Background (Photoshop 27.11 opens psd-tools' flat Bitmap and Indexed files that way), so it is
+/// written back as one.
+fn flat_background(s: Surface) -> Layer {
+    let opaque = {
+        let r = s.content_bounds();
+        let n = s.channels();
+        !r.is_empty() && s.read_region(r).chunks_exact(n).all(|p| p.last().is_some_and(|a| *a >= 1.0))
+    };
+    let mut l = Layer::new("Background", LayerContent::Raster(s));
+    l.locks.transparency = opaque;
+    l.locks.position = opaque;
+    l
+}
+
 /// Photoshop opens a file's bottom layer as its Background when that layer's record has no
 /// transparency (`-1`) channel, whatever its name and lock flags say: it is then locked and shown
 /// as "Background" (measured on Photoshop 27.11 with files from psd-tools and ag-psd whose bottom
@@ -815,7 +830,7 @@ pub fn psd_to_document_with(file: &PsdFile, ctl: &photocraft_raster::Interrupt) 
                 .collect();
             s.write_region(canvas, &vals);
             s.prune();
-            doc.layers.push(Layer::new("Background", LayerContent::Raster(s)));
+            doc.layers.push(flat_background(s));
         }
     }
 

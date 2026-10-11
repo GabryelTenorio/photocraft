@@ -1655,6 +1655,18 @@ mod tests {
         assert!(document_to_psd(&unlocked).layer_info.unwrap().layers[0].channels.iter().any(|c| c.id == -1));
     }
 
+    /// A flat 1-bit Bitmap file (no layers) opens in Photoshop as its Background; so does it in
+    /// PhotoCraft, and it is written back as one (no transparency channel).
+    #[test]
+    fn a_flat_bitmap_file_opens_and_saves_as_a_background() {
+        let file = photocraft_psd::testgen::merged_only(Version::Psd, PsdMode::Bitmap, 1, Compression::Raw, 8, 4);
+        let doc = crate::import("flat.psd", &file.to_bytes().unwrap()).unwrap().document;
+        let bg = &doc.layers[0];
+        assert!(bg.name == "Background" && bg.locks.transparency && bg.locks.position, "{:?}", bg.locks);
+        let out = document_to_psd(&doc);
+        assert!(out.layer_info.unwrap().layers[0].channels.iter().all(|c| c.id >= 0));
+    }
+
     #[test]
     fn unreadable_lr16_warns_on_import_and_is_not_saved_twice() {
         // #2700: a 16-bit file whose Lr16 block claims five layers but holds none.
