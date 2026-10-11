@@ -2178,7 +2178,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
 
     // Top of the stack first, groups above their contents, closed groups' contents hidden (#126).
-    let rows = crate::layer_tree_ui::display_rows(&doc, !app.ui.layer_filter.is_empty());
+    let rows = crate::layer_tree_ui::panel_rows(app, &doc);
     let ctx = ui.ctx().clone();
     let footer = widgets::footer_height(ui) + ui.spacing().item_spacing.y;
     let fill = ui.available_height() > footer + 60.0;
@@ -2294,7 +2294,9 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         trash.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!(label)));
         let new_layer = icons::button(ui, "square-plus", 26.0, false, &crate::shortcuts::tip_label(app, "Create a new layer", "layer.new.layer"));
         if new_layer.clicked() {
-            actions.push(("layer.new.layer".into(), json!({})));
+            // A click makes the layer; ⌥-click asks first (the New Layer dialog), as in Photoshop.
+            let alt = ui.input(|i| i.modifiers.alt);
+            actions.push(("layer.new.layer".into(), if alt { Value::Null } else { json!({}) }));
         }
         actions.extend(footer_drop(ui, &new_layer, footer_drag, "layer.duplicate"));
         let group = icons::button(ui, "folder", 26.0, false, tl!("Create a new group"));

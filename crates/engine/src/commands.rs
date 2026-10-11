@@ -520,16 +520,15 @@ fn build() -> Vec<CommandSpec> {
             }
         ),
         // Layer
-        cmd!("layer.new.layer", "Layer…", ["Layer", "New"], Some("Cmd+Shift+N"), r##"{"name":str?}"##, has_doc, |s, p| {
-            let id = s.edit("New Layer", |doc, active| {
-                let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
-                let id = doc.insert_above(*active, Layer::raster(name, doc.pixel_format()));
-                *active = Some(id);
-                Ok(id)
-            })?;
-            crate::layer_multi_cmds::note_inert_insert(s, id);
-            Ok(json!({ "layer": id.0 }))
-        }),
+        cmd!(
+            "layer.new.layer",
+            "Layer…",
+            ["Layer", "New"],
+            Some("Cmd+Shift+N"),
+            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error)}"##,
+            has_doc,
+            crate::new_layer::run
+        ),
         cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
             let id = s.edit("New Group", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
@@ -583,7 +582,9 @@ fn build() -> Vec<CommandSpec> {
             let id = layer_param(s, p)?;
             s.edit("Delete Layer", |doc, active| {
                 let neighbours = crate::layer_multi_cmds::deletion_neighbours(doc, id);
+                let before = crate::clip_group::Before::read(doc, &[id]);
                 doc.remove(id).ok_or(EngineError::NoLayer(id))?;
+                crate::clip_group::settle(doc, &[], &before, false);
                 if doc.layers.is_empty() {
                     return Err(EngineError::Other("a document must keep at least one layer".into()));
                 }
@@ -1291,6 +1292,7 @@ fn arrange(s: &mut Session, p: &Value, delta: i32) -> Result<Value> {
             d => d,
         };
         let dir = steps.signum();
+        let before = crate::clip_group::Before::read(doc, &[id]);
         let mut moved = false;
         for _ in 0..steps.abs() {
             if !doc.shift(id, dir) {
@@ -1302,7 +1304,11 @@ fn arrange(s: &mut Session, p: &Value, delta: i32) -> Result<Value> {
             }
             moved = true;
         }
-        if moved { Ok(()) } else { Err(EngineError::Other("layer can't move further".into())) }
+        if !moved {
+            return Err(EngineError::Other("layer can't move further".into()));
+        }
+        crate::clip_group::settle(doc, &[id], &before, false);
+        Ok(())
     })?;
     Ok(Value::Null)
 }
