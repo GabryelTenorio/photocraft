@@ -340,3 +340,25 @@ fn painting_preference_and_zoom_change_the_native_cursor_without_changing_pointe
     h.run_steps(2);
     assert!(h.output().platform_output.cursor_image.as_ref().unwrap().size[0] > cross_size);
 }
+
+/// An elliptical tip's cursor is its outline, not the circle: the bitmap reaches across the long
+/// axis but not as far along the short one.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn elliptical_tip_hover_shows_its_outline() {
+    let mut h = harness();
+    h.state_mut().run("tools.setBrush", json!({"brush": {"roundness": 0.5}})).unwrap();
+    let p = h.state().last_canvas_rect.center();
+    h.event(Event::PointerMoved(p + vec2(3.0, 0.0)));
+    h.run_steps(3);
+    let image = h.output().platform_output.cursor_image.clone().expect("a bitmap cursor");
+    let [hx, hy] = image.hotspot;
+    let side = usize::from(image.size[0]);
+    let opaque = |dx: i32, dy: i32| {
+        let (x, y) = ((i32::from(hx) + dx) as usize, (i32::from(hy) + dy) as usize);
+        image.rgba.get((y * side + x) * 4 + 3).copied().unwrap_or(0) > 128
+    };
+    let r = (0..i32::from(hx)).rev().find(|d| opaque(*d, 0)).expect("an outline on the long axis");
+    let short = (0..i32::from(hy)).rev().find(|d| opaque(0, *d)).expect("an outline on the short axis");
+    assert!((short as f32) < r as f32 * 0.7, "long {r} px, short {short} px: still a circle");
+}
