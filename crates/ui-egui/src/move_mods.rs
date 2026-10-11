@@ -172,6 +172,9 @@ pub fn abandon(app: &mut PhotocraftApp) {
 /// where ⌘ is the temporary Move tool (`hold_keys::cmd_nudges`, #2474). Returns true when a key
 /// was used.
 pub fn arrow_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
+    if app.ui.tool == Tool::Crop && app.ui.transform.is_none() {
+        return crop_arrow_keys(app, ctx);
+    }
     use egui::{Key, Modifiers};
     let cmd = ctx.input(|i| i.modifiers.command) && crate::hold_keys::cmd_nudges(app);
     if app.ui.tool != Tool::Move && app.ui.transform.is_none() && !cmd {
@@ -188,6 +191,37 @@ pub fn arrow_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
                 nudge(app, ux * k, uy * k, mods.alt);
                 return true;
             }
+        }
+    }
+    false
+}
+
+/// Nudge an in-progress Crop frame in document coordinates, without moving image pixels.
+/// A default full-canvas frame becomes an editable crop once nudged. Like the marquee,
+/// arrow keys use 1 document pixel or 10 with Shift, independently of canvas zoom.
+fn crop_arrow_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
+    if app.crop.drag.is_some() || app.drag.is_some() || app.session.active().is_none() || app.ui.crop_rect.is_none() {
+        return false;
+    }
+    let mods = ctx.input(|i| i.modifiers);
+    // Do not steal OS shortcuts or other modifier-controlled gestures.
+    if mods.alt || mods.command || mods.ctrl {
+        return false;
+    }
+    use egui::Key;
+    let keys = [(Key::ArrowLeft, -1.0, 0.0), (Key::ArrowRight, 1.0, 0.0), (Key::ArrowUp, 0.0, -1.0), (Key::ArrowDown, 0.0, 1.0)];
+    for (key, dx, dy) in keys {
+        if ctx.input_mut(|i| i.consume_key(mods, key)) {
+            let step = if mods.shift { 10.0 } else { 1.0 };
+            if let Some(r) = app.ui.crop_rect.as_mut() {
+                r[0] += dx * step;
+                r[1] += dy * step;
+                r[2] += dx * step;
+                r[3] += dy * step;
+            }
+            app.crop.default_frame = false;
+            app.crop.editing = true;
+            return true;
         }
     }
     false
