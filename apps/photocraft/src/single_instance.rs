@@ -18,7 +18,8 @@
 //! - **Never in the way:** a socket nobody accepts on is stale and replaced; no answer within
 //!   [`ANSWER_TIMEOUT`] (a hung instance) or any error starts this launch normally.
 //!   `--new-instance` or `PHOTOCRAFT_NEW_INSTANCE=1` always starts a new window, and so does
-//!   `--control` (automation drives its own instance).
+//!   `--control` (automation drives its own instance). Each connection is served on its own
+//!   thread (at most [`MAX_CLIENTS`] at once), so a stalled client can't hold up a launch.
 //!
 //! Only std: no new dependency and no `unsafe`.
 
@@ -27,6 +28,7 @@ use std::io::{Read, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -38,6 +40,8 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(2);
 pub const MAX_BYTES: usize = 1 << 20;
 /// Most paths a server takes from one request.
 pub const MAX_PATHS: usize = 4096;
+/// Most connections served at once, each on its own thread; past that they wait their turn.
+pub const MAX_CLIENTS: usize = 8;
 const ANSWER: &[u8] = b"ok\n";
 /// Starts every request (protocol version 1).
 pub const MAGIC: &[u8] = b"photocraft-open-1\0";
@@ -177,9 +181,24 @@ pub fn listen(socket: &Path) -> Option<Server> {
     let inbox = Inbox::default();
     let queue = inbox.clone();
     let spawned = std::thread::Builder::new().name("single instance".into()).spawn(move || {
+        // Each connection on its own thread, so a client that connects and stalls doesn't hold
+        // the next launch for ANSWER_TIMEOUT; at most MAX_CLIENTS at once (review on #2358).
+        let active = Arc::new(AtomicUsize::new(0));
         for stream in listener.incoming() {
             match stream {
-                Ok(s) => serve(s, &queue),
+                Ok(s) if active.load(Ordering::Acquire) >= MAX_CLIENTS => serve(s, &queue),
+                Ok(s) => {
+                    let slot = Slot::take(&active);
+                    let queue = queue.clone();
+                    let spawned = std::thread::Builder::new().name("single instance client".into()).spawn(move || {
+                        let _slot = slot;
+                        serve(s, &queue);
+                    });
+                    // The stream went with the closure: that client times out and starts normally.
+                    if let Err(e) = spawned {
+                        log::warn!("single instance: couldn't serve a connection: {e}");
+                    }
+                }
                 Err(e) => log::warn!("single instance: {e}"),
             }
         }
@@ -190,6 +209,22 @@ pub fn listen(socket: &Path) -> Option<Server> {
         return None;
     }
     Some(Server { path: socket.to_path_buf(), inbox })
+}
+
+/// One of the [`MAX_CLIENTS`] connection threads, given back when dropped (also on a panic).
+struct Slot(Arc<AtomicUsize>);
+
+impl Slot {
+    fn take(active: &Arc<AtomicUsize>) -> Slot {
+        active.fetch_add(1, Ordering::AcqRel);
+        Slot(active.clone())
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// Read one request and queue its paths. A slow or broken client can't hold the listener.
@@ -325,6 +360,28 @@ mod tests {
         let t = std::time::Instant::now();
         assert_eq!(forward(&sock, &[PathBuf::from("/x.png")]), Forward::NoInstance);
         assert!(t.elapsed() < ANSWER_TIMEOUT + Duration::from_secs(2), "{:?}", t.elapsed());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stalled_client_does_not_hold_the_next_launch() {
+        let dir = temp_dir("stalled");
+        let sock = dir.join("s.sock");
+        let server = listen(&sock).unwrap();
+        // Connects, sends half a header and then nothing: served on its own thread, it times out
+        // there instead of in front of the launch below.
+        let mut stalled = UnixStream::connect(&sock).unwrap();
+        stalled.write_all(&MAGIC[..4]).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let t = std::time::Instant::now();
+        assert_eq!(forward(&sock, &[PathBuf::from("/a.png")]), Forward::Delivered);
+        assert!(t.elapsed() < ANSWER_TIMEOUT / 2, "waited behind the stalled client: {:?}", t.elapsed());
+        assert!(matches!(&drain(&server.inbox)[..], [OsEvent::Open(p)] if p == &["/a.png".to_string()]));
+        // A flood past MAX_CLIENTS is still served, in turn.
+        let flood: Vec<_> = (0..MAX_CLIENTS + 2).map(|_| UnixStream::connect(&sock).unwrap()).collect();
+        drop(flood);
+        assert_eq!(forward(&sock, &[PathBuf::from("/b.png")]), Forward::Delivered);
+        drop(stalled);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
