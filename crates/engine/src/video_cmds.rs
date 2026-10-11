@@ -367,9 +367,20 @@ pub fn render_video_with(
             let surf = crate::file_cmds::flattened(&doc, fmt);
             let mut px = vec![[0.0f32; 4]; w * h];
             surf.read_rgba_into(bounds, &mut px);
-            let pal = quantize::build_palette(&px, PaletteKind::Adaptive, 256, Forced::None).map_err(EngineError::Other)?;
-            let idx = quantize::quantize(&mut px, w, &pal, Dither::None, 1.0, None);
-            gframes.push(photocraft_codecs::web::GifFrame { indices: idx, palette: pal, transparent: None, delay_cs: delay });
+            // Reserve a palette index for transparent pixels. Without the GIF transparency
+            // index, alpha-zero areas are encoded as opaque black (#3061).
+            let has_transparency = px.iter().any(|p| p[3] < 0.5);
+            let mut pal = quantize::build_palette(&px, PaletteKind::Adaptive, if has_transparency { 255 } else { 256 }, Forced::None)
+                .map_err(EngineError::Other)?;
+            let transparent = if has_transparency {
+                let index = pal.len() as u8;
+                pal.push([0, 0, 0]);
+                Some(index)
+            } else {
+                None
+            };
+            let idx = quantize::quantize(&mut px, w, &pal, Dither::None, 1.0, transparent.map(usize::from));
+            gframes.push(photocraft_codecs::web::GifFrame { indices: idx, palette: pal, transparent, delay_cs: delay });
             // The final report follows encoding/writing, so total means the output exists.
             if !progress((f + 1).min(frames.saturating_sub(1)), frames) {
                 return Err(cancelled());

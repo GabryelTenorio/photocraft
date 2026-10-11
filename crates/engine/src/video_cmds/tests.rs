@@ -231,3 +231,49 @@ fn tga_sequence_frames_keep_their_transparency() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn animated_gif_export_preserves_transparent_frames() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 8, "height": 8, "background": "transparent"})).unwrap();
+    s.execute("timeline.create", json!({"duration": 2, "fps": 2})).unwrap();
+
+    let mut gif = Vec::new();
+    let result = render_video_with(
+        &s,
+        &json!({"format": "gif"}),
+        |name, bytes| {
+            assert!(name.ends_with(".gif"));
+            gif = bytes.to_vec();
+            Ok(())
+        },
+        |_, _| true,
+    )
+    .unwrap();
+    assert_eq!(result["frames"], 2);
+    // Every frame carries a GCE with the transparency flag. The decoded first frame
+    // must remain transparent rather than become opaque black.
+    assert_eq!(gif.windows(4).filter(|chunk| *chunk == [0x21, 0xf9, 0x04, 0x05]).count(), 2);
+    let image = photocraft_codecs::decode(&gif).unwrap();
+    let rgba = image.convert(photocraft_codecs::ChannelLayout::Rgba, photocraft_codecs::SampleType::U8);
+    assert!(rgba.data().chunks_exact(4).all(|pixel| pixel[3] == 0));
+}
+
+#[test]
+fn animated_gif_opaque_frames_do_not_add_an_unneeded_transparency_index() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 8, "height": 8, "background": "#ff0000"})).unwrap();
+    s.execute("timeline.create", json!({"duration": 2, "fps": 2})).unwrap();
+    let mut gif = Vec::new();
+    render_video_with(
+        &s,
+        &json!({"format": "gif"}),
+        |_, bytes| {
+            gif = bytes.to_vec();
+            Ok(())
+        },
+        |_, _| true,
+    )
+    .unwrap();
+    assert_eq!(gif.windows(4).filter(|chunk| *chunk == [0x21, 0xf9, 0x04, 0x04]).count(), 2);
+}
