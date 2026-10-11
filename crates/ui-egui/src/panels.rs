@@ -2308,10 +2308,13 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         actions.extend(footer_drop(ui, &new_layer, footer_drag, "layer.duplicate"));
         let group = icons::button(ui, "folder", 26.0, false, tl!("Create a new group"));
         if group.clicked() {
-            // Like Photoshop a plain click adds an empty group; Shift-click groups the selected
-            // layers, the same as Layer › Group Layers (#2561).
+            // Like Photoshop CC 2014 and later, a click with two or more layers selected puts them
+            // in the new group (Layer › Group Layers); with one layer or none it adds an empty
+            // group above the active layer. Shift-click, the older way, groups the selection too
+            // (#2561).
             let shift = ui.input(|i| i.modifiers.shift);
-            let cmd = if shift && active_layer.is_some() { "layer.groupLayers" } else { "layer.new.group" };
+            let groups = selection.len() >= 2 || (shift && active_layer.is_some());
+            let cmd = if groups { "layer.groupLayers" } else { "layer.new.group" };
             actions.push((cmd.into(), json!({})));
         }
         actions.extend(footer_drop(ui, &group, footer_drag, "layer.groupLayers"));

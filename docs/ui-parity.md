@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Hand-tool flick panning) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (New Group button groups the selected layers) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -202,11 +202,13 @@ Paragraph; the rest open as in-app floating windows.
 | Themes: Photoshop's four greys | partial | five themes; #2661 |
 | Document tabs: overflow, context menu, reorder | done | UI-217-6; middle-click close #2570 |
 | Layers panel: wheel steps blend modes, drop on New/Trash | partial | UI-217-14 |
+| Layers panel New Group button: click with 2+ layers selected groups them (CC 2014+), ⇧-click groups, one layer gives an empty group; ⌥-click (dialog) and ⌘-click (group below) missing | partial | #2561, `new_group_button_tests.rs` |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
+| 2026-10-11 | minor | New Group button: a click with two or more layers selected groups them, as in Photoshop CC 2014 and later (#2561) |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |

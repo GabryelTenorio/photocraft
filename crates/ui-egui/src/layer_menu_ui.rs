@@ -56,9 +56,8 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
     v.push(None);
     v.push(Some((if multi { tl!("Duplicate Layers…") } else { tl!("Duplicate Layer…") }, "layer.duplicate")));
     v.push(Some((if multi { tl!("Delete Layers") } else { tl!("Delete Layer") }, "layer.delete")));
-    if !multi {
-        v.push(Some((tl!("Group from Layers…"), "layer.groupLayers")));
-    }
+    // Groups the clicked layer, or the whole selection when several layers are selected.
+    v.push(Some((tl!("Group from Layers…"), "layer.groupLayers")));
     v.push(None);
     v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
     v.push(Some((tl!("Export As…"), "layer.exportAs")));
@@ -560,6 +559,23 @@ mod tests {
         assert_eq!(h.state().session.active().unwrap().selected_layers().len(), 2, "the selection survives");
     }
 
+    /// Group from Layers is offered for a multi-layer selection too (it used to be dropped from
+    /// the menu then) and puts every selected layer in one new group, leaving the rest alone.
+    #[test]
+    fn group_from_layers_groups_every_selected_layer() {
+        use egui_kittest::kittest::Queryable;
+        use photocraft_doc::LayerId;
+        let (mut h, [text, shape, other]) = open_multi_selection_menu();
+        let at = h.get_by_label("Group from Layers…").rect().center();
+        click(&mut h, at, egui::PointerButton::Primary);
+        let doc = &h.state().session.active().unwrap().doc;
+        let groups: Vec<_> = doc.walk().into_iter().map(|(_, _, l)| l).filter(|l| l.is_group()).collect();
+        assert_eq!(groups.len(), 1);
+        let children: Vec<LayerId> = groups[0].children().unwrap().iter().map(|l| l.id).collect();
+        assert_eq!(children, vec![LayerId(text), LayerId(shape)], "both selected layers, in order");
+        assert!(doc.layers.iter().any(|l| l.id == LayerId(other)), "an unselected layer stays at the top level");
+    }
+
     /// Items with no single target are greyed for a multi-layer selection (they used to run on
     /// whichever layer happened to be active, not the one right-clicked); the ones that act on the
     /// whole selection, including adding a mask, stay available.
@@ -570,7 +586,7 @@ mod tests {
         for label in ["Blending Options…", "Copy Layer Style", "Quick Export As PNG", "Export As…"] {
             assert!(h.get_by_label(label).accesskit_node().is_disabled(), "{label} works on one layer only");
         }
-        for label in ["Add Layer Mask", "Duplicate Layers…", "Delete Layers", "Convert to Smart Object", "Rasterize Layers", "Link Layers", "Merge Layers"] {
+        for label in ["Add Layer Mask", "Duplicate Layers…", "Delete Layers", "Group from Layers…", "Convert to Smart Object", "Rasterize Layers", "Link Layers", "Merge Layers"] {
             assert!(!h.get_by_label(label).accesskit_node().is_disabled(), "{label} acts on the selection");
         }
         // Greyed here only for lack of something to act on: no style on the clipboard, no style to clear.
@@ -601,6 +617,7 @@ mod tests {
         for id in [
             "layer.duplicate",
             "layer.delete",
+            "layer.groupLayers",
             "layer.rasterize.layer",
             "layer.smartObjects.convertToSmartObject",
             "layer.createClippingMask",
