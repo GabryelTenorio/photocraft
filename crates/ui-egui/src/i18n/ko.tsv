@@ -1498,6 +1498,7 @@
 	White Balance: As Shot	화이트 밸런스: 촬영 시 설정
 	Whites	흰색 계열
 	Width	너비
+	Slant	기울기
 	Width:	너비:
 	Work Path	작업 패스
 	Yellow	노랑
@@ -1515,6 +1516,8 @@
 	↑↓ navigate   {key} run   esc close	↑↓ 이동   {key} 실행   esc 닫기
 	Version {version}	버전 {version}
 	New Document	새 문서
+	New Document With Mask	새 문서(마스크 포함)
+	New Layer With Mask	새 레이어(마스크 포함)
 	Saved	저장됨
 	Save Preset…	사전 설정 저장…
 	Preset Name	사전 설정 이름
@@ -1673,6 +1676,7 @@
 	Pen Pressure	펜 압력
 	Pen Tilt	펜 기울기
 	Pen Tool	펜 도구
+	Convert Point Tool	기준점 변환 도구
 	Photo	사진
 	PhotoCraft website	PhotoCraft 웹사이트
 	Picas	파이카
@@ -3151,4 +3155,15 @@ curves	Smooth	매끄럽게
 	Show Edge	가장자리 표시
 	Show Original	원본 표시
 	F cycles the views; hold X to see the image	F로 보기 전환, X를 누르고 있으면 이미지 표시
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	가장자리 다듬기 브러시 (R)
+	Expand Detection Area	감지 영역 확장
+	Restore Original Edge	원래 가장자리 복원
+	Paint over hair or fur on the image; Alt paints the other mode	이미지의 머리카락이나 털 위를 칠합니다. Alt는 다른 모드로 칠합니다
+	Clear Brush Strokes	브러시 획 지우기
 	Show rulers	눈금자 표시
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	클릭하여 배치 · Alt-클릭 또는 캔버스 밖으로 드래그하여 제거
+	No document open	열린 문서 없음
+	{n} of {max} sample points	{max}개 중 {n}개의 샘플 지점
