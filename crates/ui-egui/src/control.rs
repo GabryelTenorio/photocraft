@@ -9,7 +9,7 @@
 //! - `ui.inspect`: full UI state (tool, panels, views, dialogs, windows, window size); the menu
 //!   tree is `ui.menu.list`
 //! - `ui.set {tool?, panels?, dock?, dockTabs?, dockWidth?, colorPanel?, maskTarget?, vectorMaskTarget?, selectionMode?, zoom?, center?, rotation?, fit?, theme?, brushSection?, brushTab?, brushesView?, brushPicker?, brushPickerName?, brushPickerStroke?, brushPickerTip?, brushPickerScale?, brushSize?}`:
-//!   change UI state; any other field is an error ([`UI_SET_FIELDS`])
+//!   change UI state; any other field is an error ([`ui_set_fields`])
 //! - `ui.dialog.open {kind, fields?}` (kinds: newDocument, about, layerStyle {effect?}, colorPicker {target: foreground|background}, command {command}) / `ui.dialog.set {dialog, field, value}` / `ui.dialog.confirm {dialog, wait?}` / `ui.dialog.cancel {dialog}`
 //! - `ui.dialog.apply {dialog}`: commit Preferences changes without closing the dialog
 //! - `ui.window.open {document?}` / `ui.window.close {window}`: extra document windows
@@ -85,11 +85,12 @@ pub enum Outcome {
     AfterJob(photocraft_engine::jobs::JobId),
 }
 
-/// The fields `ui.set` reads. Anything else is rejected before a field is applied, and every
+/// The core fields `ui.set` reads; [`ui_set_fields`] also includes Shape tool fields.
+/// Anything else is rejected before a field is applied, and every
 /// field's value is validated before the first one is applied, so a typo, an unknown field, a
 /// bad value or a bad nested key can't reply with success while nothing — or only half of it —
 /// changed (#412).
-pub const UI_SET_FIELDS: [&str; 37] = [
+pub const UI_SET_FIELDS: [&str; 34] = [
     "tool",
     "panels",
     "dock",
@@ -123,9 +124,6 @@ pub const UI_SET_FIELDS: [&str; 37] = [
     "cropOverlayOrientation",
     "cropShield",
     "shapeStroke",
-    "shapeOptions",
-    "shapeFillPaint",
-    "shapeStrokePaint",
     "camTransformOnDrop",
 ];
 
@@ -133,6 +131,13 @@ pub const UI_SET_FIELDS: [&str; 37] = [
 /// feeds in its own frame before replying, so `count` sizes both the input queue and the wait;
 /// the same ceiling as the steps of one batch request.
 pub const MAX_CLICKS: u64 = 256;
+
+const SHAPE_UI_SET_FIELDS: [&str; 3] = ["shapeOptions", "shapeFillPaint", "shapeStrokePaint"];
+
+/// Every accepted field, including independent Shape defaults and the core controls.
+pub fn ui_set_fields() -> impl Iterator<Item = &'static str> {
+    UI_SET_FIELDS.into_iter().chain(SHAPE_UI_SET_FIELDS)
+}
 
 fn ok(v: Value) -> Outcome {
     Outcome::Done(json!({"ok": true, "result": v}))
@@ -401,8 +406,8 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
         "ui.menu.list" => ok(serde_json::to_value(crate::menus::menu_items(app)).unwrap_or_default()),
         "ui.inspect" => ok(inspect(app, ctx)),
         "ui.set" => {
-            if let Some(field) = p.as_object().and_then(|o| o.keys().find(|k| !UI_SET_FIELDS.contains(&k.as_str()))) {
-                return err(format!("unknown field `{field}` (fields: {})", UI_SET_FIELDS.join(", ")));
+            if let Some(field) = p.as_object().and_then(|o| o.keys().find(|k| !ui_set_fields().any(|allowed| allowed == k.as_str()))) {
+                return err(format!("unknown field `{field}` (fields: {})", ui_set_fields().collect::<Vec<_>>().join(", ")));
             }
             let gradient_blend = if let Some(value) = p.get("gradientBlendMode") {
                 let Some(name) = value.as_str() else { return err("gradientBlendMode must be a blend mode name") };
@@ -1796,7 +1801,7 @@ mod tests {
         assert_eq!(app.ui.theme, ThemeKind::StudioLight);
         assert_eq!(app.ui.tool, Tool::Brush, "a rejected call applies none of its fields");
         // Every field the method reads gets past the check (a bad value is its own error).
-        for field in UI_SET_FIELDS {
+        for field in ui_set_fields() {
             let r = call(&mut app, &ctx, "ui.set", json!({ field: null }));
             assert!(!r.to_string().contains("unknown field"), "{field}: {r}");
         }

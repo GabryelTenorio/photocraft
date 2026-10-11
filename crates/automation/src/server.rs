@@ -230,6 +230,13 @@ pub struct MenuParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UiSetParams {
+    /// Shape defaults additionally accept shapeOptions (mode, operation, pixel drawing, sizing,
+    /// path display, alignment, stars and arrowheads), shapeFillPaint and shapeStrokePaint
+    /// (independent Solid / Gradient / Pattern JSON as in `shape.create`, or null for No Color).
+    /// These fields change tool defaults without editing the document or foreground/background
+    /// colours. A stored stroke paint takes priority over the legacy colour source below;
+    /// shapeStroke metadata retains that paint default.
+    ///
     /// Fields for the control method `ui.set`: tool, panels, dock, dockTabs, dockWidth, colorPanel
     /// ({background: bool} picks which swatch the Color panel edits), maskTarget,
     /// vectorMaskTarget, selectionMode, zoom, center, rotation (view angle in degrees), fit, theme (pro, proMedium, studio,
@@ -245,12 +252,8 @@ pub struct UiSetParams {
     /// cropOverlayOrientation (0..3), cropShield (an object patching show_cropped_area, enabled,
     /// color ("matchCanvas" or "custom"), custom_color ([r, g, b]), opacity (0..100),
     /// auto_adjust, classic_mode and auto_center_preview), shapeStroke (an object patching width, align, cap, join, miterLimit,
-    /// dashes, dashOffset and opacity; null disables the stroke), shapeOptions (an object patching
-    /// Shape tool mode, operation, pixel drawing, sizing, path display, alignment, stars and arrowheads),
-    /// shapeFillPaint and shapeStrokePaint (independent Solid / Gradient / Pattern paint JSON as in
-    /// `shape.create`, or null for No Color). These shape fields set tool defaults, without editing
-    /// the document or foreground/background colours. Shape stroke fields use `shape.edit` names
-    /// and units and retain the existing stroke paint default. camTransformOnDrop (bool,
+    /// dashes, dashOffset and opacity; null disables the stroke). Shape stroke fields use
+    /// `shape.edit` names and units; colour comes from `tools.setColors`. camTransformOnDrop (bool,
     /// the Content-Aware Move tool's Transform On Drop). Other fields are an error.
     pub fields: Value,
 }
