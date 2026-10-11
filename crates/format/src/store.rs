@@ -239,6 +239,7 @@ pub(crate) fn load(src: &dyn Source, opts: &LoadOptions) -> Result<Document> {
         id_map: HashMap::new(),
         contents_id_map: HashMap::new(),
         legacy_linked_contents: HashMap::new(),
+        tiles: HashMap::new(),
     };
     loader.document(&m.document)
 }
