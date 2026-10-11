@@ -1084,7 +1084,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
             // Distort only moves corners (and the whole box from inside): no rotating, no edges.
             // Even in Distort mode, remember an outside press so a plain click can
             // accept the transform. A drag outside remains inert in that mode.
-            pv.gesture = (distort_allows(t.mode, h) || h == Hit::Outside).then_some(Gesture { hit: h, start: [x, y], quad0: t.quad, pivot0: t.pivot });
+            pv.gesture = (mode_allows(t.mode, h) || h == Hit::Outside).then_some(Gesture { hit: h, start: [x, y], quad0: t.quad, pivot0: t.pivot });
         }
         ToolEvent::Move { x, y, .. } | ToolEvent::Up { x, y } => {
             let g = pv.gesture;
@@ -1101,7 +1101,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
             let legacy = app.session.prefs().general.use_legacy_free_transform;
             let type_layer = moves_type(app, &t);
             if let (Some(g), Some(s)) = (g, app.ui.transform.as_mut())
-                && distort_allows(t.mode, g.hit)
+                && mode_allows(t.mode, g.hit)
             {
                 apply_mode_drag(s, g, [x, y], t.mode, type_layer, legacy_mods(legacy, g.hit, mods));
             }
@@ -1142,6 +1142,9 @@ fn mode_mods(mode: TransformMode, hit: Hit, mut mods: egui::Modifiers) -> egui::
 /// A handle drag in Edit › Transform `mode` (`Free` for Free Transform). `type_layer`: the box
 /// moves editable type, which only takes affine transforms.
 pub(crate) fn apply_mode_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2], mode: TransformMode, type_layer: bool, mut mods: egui::Modifiers) {
+    if !mode_allows(mode, g.hit) {
+        return;
+    }
     match (mode, g.hit) {
         // Skew, as in Photoshop (#3437): a corner moves alone along one of its two edges,
         // whichever the drag mostly follows; ⌥ moves the opposite corner the other way.
@@ -1188,9 +1191,15 @@ pub(crate) fn apply_mode_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2],
     }
 }
 
-/// In Distort mode only corner drags (and moving the box from inside) do anything.
-fn distort_allows(mode: TransformMode, h: Hit) -> bool {
-    mode != TransformMode::Distort || !matches!(h, Hit::Outside | Hit::Edge(_))
+/// What a drag can do in each Edit › Transform mode: in Distort only the corners (and moving the
+/// box from inside); in Skew everything but rotating from outside the box (#3437). A click
+/// outside still commits.
+fn mode_allows(mode: TransformMode, h: Hit) -> bool {
+    match mode {
+        TransformMode::Distort => !matches!(h, Hit::Outside | Hit::Edge(_)),
+        TransformMode::Skew => h != Hit::Outside,
+        _ => true,
+    }
 }
 
 /// The turn at each corner of a quad (cross products of consecutive edges): all the same sign
@@ -1618,7 +1627,7 @@ pub(crate) fn rotate_cursor_dir(app: &PhotocraftApp, p: [f64; 2]) -> Option<[f64
 }
 
 fn rotate_dir(t: &TransformSession, pv: Option<&TransformPreview>, p: [f64; 2], tol: f64) -> Option<[f64; 2]> {
-    if !(p[0].is_finite() && p[1].is_finite()) || t.warp.is_some() || t.mode == TransformMode::Distort {
+    if !(p[0].is_finite() && p[1].is_finite()) || t.warp.is_some() || matches!(t.mode, TransformMode::Distort | TransformMode::Skew) {
         return None;
     }
     let rotating = pv.is_some_and(|pv| pv.gesture.is_some_and(|g| g.hit == Hit::Outside));
@@ -1656,7 +1665,7 @@ pub fn cursor(app: &PhotocraftApp, p: [f64; 2], quick_split: bool) -> Option<Cur
         return Some(if w.mesh.as_ref().and_then(|m| surface_at(m, p)).is_some() { CursorIcon::Grab } else { CursorIcon::Default });
     }
     let h = hit(t, p, tol);
-    if !distort_allows(t.mode, h) {
+    if !mode_allows(t.mode, h) {
         return Some(CursorIcon::Default);
     }
     if rotate_cursor_dir(app, p).is_some() {
@@ -2656,6 +2665,12 @@ mod tests {
         let alt = egui::Modifiers::ALT;
         assert_eq!(drag_in(skew, [100.0, 0.0], [110.0, 3.0], alt), [[0.0, 0.0], [110.0, 0.0], [100.0, 50.0], [-10.0, 50.0]]);
         assert_eq!(drag_in(skew, [50.0, 0.0], [62.0, 7.0], alt), [[12.0, 0.0], [112.0, 0.0], [88.0, 50.0], [-12.0, 50.0]]);
+        // ⇧ changes nothing in Skew mode.
+        let shift = egui::Modifiers::SHIFT;
+        assert_eq!(drag_in(skew, [100.0, 0.0], [110.0, 3.0], shift), drag_in(skew, [100.0, 0.0], [110.0, 3.0], none));
+        assert_eq!(drag_in(skew, [50.0, 0.0], [62.0, 7.0], shift), drag_in(skew, [50.0, 0.0], [62.0, 7.0], none));
+        // A drag outside the box doesn't rotate it in Skew mode.
+        assert_eq!(drag_in(skew, [130.0, 25.0], [120.0, 60.0], none), corners([0.0, 0.0, 100.0, 50.0]));
         // Free Transform is unchanged: a corner scales.
         assert_ne!(drag_in(TransformMode::Free, [100.0, 0.0], [110.0, 3.0], none)[2], [100.0, 50.0]);
     }
