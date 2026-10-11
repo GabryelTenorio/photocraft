@@ -14,7 +14,7 @@ Parser safety is broader than “does not crash.” A parser must also bound mem
 
 ### Native format
 
-`photocraft-format` bounds manifest, blob, and total decompressed bytes; validates ZIP structure and decompressed size; verifies CRCs and content hashes; rejects unsupported versions; and property-tests random bundles/manifests.
+`photocraft-format` bounds manifest, blob, and total decompressed bytes; admits the declared canvas (at most 300000 pixels per side and 4 gigapixels, `LoadOptions::max_canvas_side` / `max_canvas_pixels`) before decoding anything for it; validates ZIP structure and decompressed size; verifies CRCs and content hashes; rejects unsupported versions; and property-tests random bundles/manifests.
 
 ## Review checklist
 
