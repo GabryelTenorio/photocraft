@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Hand-tool flick panning) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (tool keys) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -181,6 +181,7 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Shortcut audit | 214 → 0 failures (2026-10-07) | measured then; not re-run here |
 | `.kys` import | done (`engine/src/kys.rs`) | |
 | Shortcut glyphs per platform | done (UI-217-19) | |
+| Tool keys: ← / → turn the brush tip (1°, ⇧ 15°), ⇧-click with Type starts new text over old, Space+F / ⇧Space+F cycle the pasteboard colour | done (2026-10-11) | |
 
 ## Panels and workspace
 
@@ -210,3 +211,4 @@ Paragraph; the rest open as in-app floating windows.
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |
+| 2026-10-11 | minor | Tool keys from Photoshop's shortcut set: ← / → rotate the brush tip, ⇧-click for new type, Space+F canvas colour |
