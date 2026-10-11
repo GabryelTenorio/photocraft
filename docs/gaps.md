@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G7: Field and Iris Blur edited on the image, #3373; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G7: Blur Gallery edited on the image except Path Blur, #3373; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -70,9 +70,9 @@ what an agent can't finish alone.
   (TOOL-214-15); Vanishing Point plane editor (TOOL-214-14); Content-Aware Scale through the
   transform box (TOOL-214-7); Puppet Warp mesh following the outline (TOOL-214-6); Content-Aware
   Move's Transform On Drop (TOOL-213-4).
-  Blur Gallery: Field Blur's pins and Iris Blur's pins with their outline, roundness and feather
-  handles are edited on the image (2026-10-11, #3373); Tilt-Shift, Spin and Path Blur are still
-  parameter dialogs.
+  Blur Gallery: Field, Iris, Tilt-Shift and Spin Blur are edited on the image with Photoshop's pins
+  and handles (2026-10-11, #3373); Tilt-Shift has one band (the engine takes one), and Path Blur
+  (#1759) is still a parameter dialog.
 - **Evidence:** scorecard rows above, all partial or missing.
 - **Impact:** these are the tools retouchers and compositors use daily; a slider dialog is not a
   substitute.
@@ -228,6 +228,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | G7: Tilt-Shift's band (lines, turn dots) and Spin Blur's pins (outline handles, blur-angle ring) on the image; Path Blur remains a dialog |
 | 2026-10-11 | minor | G7: Iris Blur's pins, outline, roundness and feather handles on the image too; Tilt-Shift, Spin and Path Blur remain dialogs |
 | 2026-10-11 | minor | G7: Field Blur pins are placed, dragged and tuned on the image (#3373); the other Blur Gallery filters remain dialogs |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
