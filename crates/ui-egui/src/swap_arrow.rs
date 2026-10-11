@@ -75,9 +75,6 @@ mod tests {
         assert!(has_ink(9, 10, 12, 14), "missing left-pointing head");
         assert!(has_ink(15, 17, 20, 21), "missing downward-pointing head");
         assert!(!has_ink(9, 17, 13, 21), "wrong diagonal runs into the lower-left corner");
-        if let Ok(path) = std::env::var("PHOTOCRAFT_SWAP_GLYPH_PNG") {
-            image.save(path).expect("save glyph inspection PNG");
-        }
     }
 
     /// Only the swap icon above-right of the swatches is the reference, not the pencil above
