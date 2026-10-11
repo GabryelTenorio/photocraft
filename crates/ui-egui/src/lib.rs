@@ -37,6 +37,7 @@ mod camera_raw_preview_ui;
 mod camera_raw_scope_ui;
 pub mod camera_raw_ui;
 pub mod canvas;
+mod canvas_popup;
 pub mod canvas_tool_menu;
 pub mod channel_view;
 pub mod channels_panel;
@@ -59,6 +60,7 @@ pub mod delete_layer_prompt;
 pub mod dialog_blend_ui;
 pub mod dialogs;
 pub mod direct_select;
+pub mod direction;
 pub mod discard_ui;
 pub mod distort_ui;
 pub mod doc_props_ui;
@@ -474,7 +476,6 @@ pub struct PhotocraftApp {
     pub(crate) blend_preview: Option<blend_preview::BlendPreview>,
     /// Patch Tool drag: the healed document at the pointer (`patch_preview`).
     pub(crate) patch_preview: Option<patch_preview::PatchPreview>,
-    pub(crate) shape_stroke_preview: Option<shape_stroke_ui::ShapeStrokePreview>,
     /// The pixels a Magnetic Lasso border follows (`magnetic_lasso_ui`).
     pub(crate) magnetic: magnetic_lasso_ui::Runtime,
     /// The next tool `Down` is a right-button drag that erases (see `paint_mouse`).
@@ -688,7 +689,6 @@ impl PhotocraftApp {
             move_hover: None,
             blend_preview: None,
             patch_preview: None,
-            shape_stroke_preview: None,
             magnetic: Default::default(),
             secondary_erase: false,
             defer_live_stroke: false,
@@ -1481,6 +1481,7 @@ impl eframe::App for PhotocraftApp {
             vector_ui::pen_commit(self, false);
         }
         transform_tool::end_if_left(self);
+        shape_stroke_ui::sync_editor(self, ctx);
         self.collect_screenshots(ctx);
         self.issue_screenshots(ctx);
         prefs_ui::tick(self, ctx);
@@ -1642,6 +1643,7 @@ impl eframe::App for PhotocraftApp {
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         self.automation_input = false;
+        shape_stroke_ui::finish_frame(self, &ctx);
         native_menu::sync(self, &ctx);
         if screen_picker::busy(&ctx) {
             // Block input without a backdrop: the worker may still be capturing the screen.
@@ -2138,6 +2140,9 @@ impl PhotocraftApp {
 mod color_swatch_tests;
 
 #[cfg(test)]
+mod profile_prompt_tests;
+
+#[cfg(test)]
 mod input_tests;
 
 #[cfg(test)]
@@ -2192,6 +2197,9 @@ mod dropdown_press_tests;
 
 #[cfg(test)]
 mod marquee_tests;
+
+#[cfg(test)]
+mod canvas_menu_tests;
 
 #[cfg(test)]
 mod caps_lock_tests;
