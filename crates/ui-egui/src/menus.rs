@@ -425,10 +425,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
             Ok(Value::Null)
         }
-        // Solid Color fills and solid-colour shapes use the Color Picker; other adjustment /
-        // fill / shape controls use Properties.
+        // Solid Color fills and solid-colour shapes use the Color Picker, Pattern fills the Pattern
+        // Fill dialog; other adjustment / fill / shape controls use Properties.
         "layer.layerContentOptions" => {
             if let Some(dialog) = crate::solid_fill_ui::open(app).or_else(|| crate::shape_fill_ui::open(app)) {
+                return Ok(json!({"dialog": dialog}));
+            }
+            if let Some(dialog) = crate::pattern_fill_ui::open(app) {
                 return Ok(json!({"dialog": dialog}));
             }
             let r = app.run(id, params)?;
@@ -447,6 +450,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         // Photoshop's "Select and Mask…" is the engine's select.refineEdge.
         // Select › Color Range… from the menu: the dialog (with params: the engine directly).
         "select.colorRange" if params.as_object().is_none_or(|o| o.is_empty()) => Ok(json!({"dialog": crate::color_range_ui::open(app)})),
+        // Layer › New Fill Layer › Pattern… from the menu: the Pattern Fill dialog (with params:
+        // the engine directly).
+        photocraft_engine::pattern_fill_cmds::CREATE if params.as_object().is_none_or(|o| o.is_empty()) => {
+            Ok(json!({"dialog": crate::pattern_fill_ui::open_new(app)?}))
+        }
         // Edit › Fill… from the menu or its shortcuts: the Fill dialog (with params: the engine).
         crate::fill_ui::COMMAND if params.as_object().is_none_or(|o| o.is_empty()) => {
             if let Some(Err(why)) = photocraft_engine::commands::find(id).map(|c| (c.enabled)(&app.session)) {
@@ -459,8 +467,21 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         "select.transformSelection" if params.as_object().is_none_or(|o| o.is_empty()) => {
             crate::transform_tool::begin_selection(app, ctx).map(|_| json!({"transform": app.ui.transform}))
         }
+        // While editing type, the clipboard rows and Select > All work on the text (#1355, #2893).
         "edit.cut" if app.ui.text_edit.is_some() => {
             crate::type_tool::cut_selection(app, ctx);
+            Ok(Value::Null)
+        }
+        "edit.copy" if app.ui.text_edit.is_some() => {
+            crate::type_tool::copy_selection(app, ctx);
+            Ok(Value::Null)
+        }
+        "edit.paste" if app.ui.text_edit.is_some() => {
+            crate::type_tool::request_paste(ctx);
+            Ok(Value::Null)
+        }
+        "select.all" if app.ui.text_edit.is_some() => {
+            crate::type_tool::select_all(app);
             Ok(Value::Null)
         }
         "edit.paste" if params.as_object().is_none_or(|o| o.is_empty()) => {
@@ -494,7 +515,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 _ => &mut e.lock_guides,
             };
             *slot = !*slot;
-            Ok(json!(*slot))
+            let on = *slot;
+            if id == "view.rulers" {
+                crate::prefs_ui::remember_rulers(app, on);
+            }
+            Ok(json!(on))
         }
         "edit.freeTransform"
         | "edit.transform.scale"
@@ -656,7 +681,8 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         // "Custom…" is the full Proof Setup dialog.
         "view.proofSetup.custom" => app.session.active().is_some(),
         "view.rulers" | "view.show.grid" | "view.show.guides" | "view.snap" | "view.lockGuides" => true,
-        "edit.cut" if app.ui.text_edit.is_some() => crate::type_tool::selected_range(app).is_some(),
+        "edit.cut" | "edit.copy" if app.ui.text_edit.is_some() => crate::type_tool::selected_range(app).is_some(),
+        "edit.paste" | "select.all" if app.ui.text_edit.is_some() => true,
         // An image copied in another app can only be seen by reading the OS clipboard, which happens
         // on an explicit paste: with a clipboard service these stay enabled. Paste and New from
         // Clipboard need no document (with none open, Paste makes one); Paste in Place does.
@@ -1012,7 +1038,9 @@ impl ItemCache {
     }
 }
 
-/// Draws the menu bar; returns the right edge of the last menu title (the bar itself fills the row).
+/// Draws the menu bar; returns the inner edge of the menu titles, facing the rest of the title bar
+/// (the right edge of the last title, or its left edge in a right-to-left UI, where File is at the
+/// right). The bar itself fills the row.
 pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
     // Built only while a menu is open: every item's enabled/checked state scales with the
     // document (layer lookups), which cost milliseconds per frame on large layouts (#125). While
@@ -1020,7 +1048,8 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
     let kept = std::cell::Cell::new(app.menu_cache.take());
     let built: std::cell::OnceCell<ItemCache> = std::cell::OnceCell::new();
     let app_ref: &PhotocraftApp = app;
-    let mut right = ui.cursor().left();
+    let rtl = crate::direction::is_rtl();
+    let mut edge = if rtl { ui.cursor().right() } else { ui.cursor().left() };
     let lang = crate::i18n::current();
     let mut clicked: Option<String> = None;
     let t = crate::theme::Tokens::get(ui.ctx());
@@ -1033,6 +1062,9 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
         v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, t.text_dim);
         v.widgets.hovered.bg_stroke = egui::Stroke::NONE;
         egui::MenuBar::new().ui(ui, |ui| {
+            // egui lays the bar out left to right; a right-to-left UI starts it at the right.
+            let mut mirrored = rtl.then(|| ui.new_child(egui::UiBuilder::new().layout(crate::direction::row())));
+            let ui = mirrored.as_mut().unwrap_or(ui);
             ui.spacing_mut().button_padding = egui::vec2(6.0, 3.0);
             nav.bar_bottom = Some(ui.max_rect().bottom());
             let mut buttons = Vec::with_capacity(TOP_MENUS.len());
@@ -1058,6 +1090,7 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
                     config.close_behavior
                 };
                 egui::Popup::menu(&title)
+                    .align(crate::direction::below())
                     .open_memory(open)
                     .close_behavior(close)
                     .style(config.style.clone())
@@ -1088,9 +1121,13 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
                     });
                 buttons.push(title);
             }
-            right = buttons.iter().map(|b| b.rect.right()).fold(right, f32::max);
+            edge = if rtl { buttons.iter().map(|b| b.rect.left()).fold(edge, f32::min) } else { buttons.iter().map(|b| b.rect.right()).fold(edge, f32::max) };
             switch_on_hover(ui.ctx(), &buttons);
-            let tops: Vec<egui::Id> = buttons.iter().map(egui::Popup::default_response_id).collect();
+            // ← and → step to the menu on that side, so in screen order.
+            let mut tops: Vec<egui::Id> = buttons.iter().map(egui::Popup::default_response_id).collect();
+            if rtl {
+                tops.reverse();
+            }
             nav.keys(ui.ctx(), &tops, &mut clicked);
         });
     });
@@ -1109,7 +1146,7 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
             app.ui.status_error = true;
         }
     }
-    right
+    edge
 }
 
 fn press_gesture_id() -> egui::Id {

@@ -317,6 +317,8 @@ pub struct Tools {
     pub vary_round_brush_hardness_on_hud: bool,
     /// Round snapped vector and transform coordinates to whole pixels.
     pub snap_vector_tools_and_transforms_to_pixel_grid: bool,
+    /// The size and angle readouts beside the pointer while a marquee or crop frame is drawn,
+    /// resized or turned (off: none).
     pub show_transformation_values: bool,
     /// Move tool with Auto-Select: outline the layer a click would pick under the pointer.
     pub show_highlight_on_rollover: bool,
@@ -695,6 +697,10 @@ pub struct UnitsAndRulers {
     pub print_resolution: f64,
     pub screen_resolution: f64,
     pub point_size: PointSize,
+    /// View › Rulers as last set: written when the user toggles the rulers and applied at
+    /// launch, so new and opened documents show them as Photoshop does. Set from the View
+    /// menu (⌘R), not from the Preferences dialog.
+    pub show_rulers: bool,
 }
 
 impl Default for UnitsAndRulers {
@@ -707,6 +713,7 @@ impl Default for UnitsAndRulers {
             print_resolution: 300.0,
             screen_resolution: 72.0,
             point_size: PointSize::PostScript,
+            show_rulers: false,
         }
     }
 }
@@ -991,8 +998,6 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "workspace.autoShowHiddenPanels",
     "workspace.enableFloatingDocumentWindowDocking",
     "workspace.enableNarrowOptionsBar",
-    "tools.enableFlickPanning",
-    "tools.showTransformationValues",
     "fileHandling.imagePreviews",
     "fileHandling.saveInBackground",
     "fileHandling.ignoreExifProfileTag",
@@ -1003,12 +1008,10 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "scratchDisks.disks",
     "unitsAndRulers.columnWidth",
     "unitsAndRulers.gutter",
-    "unitsAndRulers.printResolution",
     "plugIns.showExtensionPanels",
     "plugIns.allowScriptsToConnect",
     "plugIns.generatorEnabled",
     "type.missingGlyphProtection",
-    "type.showFontNamesInEnglish",
     "type.textEngine",
     "type.recentFonts",
     "enhancedControls.scrubbySliderAcceleration",
