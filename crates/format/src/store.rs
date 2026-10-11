@@ -595,6 +595,7 @@ impl PcraftWriter {
         let p = self.prepare(doc, opts)?;
         let mut stats = p.stats;
         for sub in ["tiles", "blobs", "composite"] {
+            reject_symlink(&dir.join(sub))?;
             std::fs::create_dir_all(dir.join(sub))?;
         }
         let canonical_dir = std::fs::canonicalize(dir)?;
@@ -641,7 +642,7 @@ impl PcraftWriter {
                 Object::Tile(..) => stats.tiles_written += 1,
                 Object::Blob(_) => stats.blobs_written += 1,
             }
-            write_atomic(&object_path, &obj.compressed())?;
+            write_member(&object_path, &obj.compressed())?;
             let written = path_signature(&object_path)?;
             if let Some(cache) = &mut self.verified_directory {
                 match written {
@@ -655,14 +656,14 @@ impl PcraftWriter {
             }
         }
         for (name, data) in &p.previews {
-            write_atomic(&dir.join(name), data)?;
+            write_member(&dir.join(name), data)?;
         }
         for stale in [THUMB, COMPOSITE] {
             if !p.previews.iter().any(|(n, _)| *n == stale) {
                 let _ = std::fs::remove_file(dir.join(stale));
             }
         }
-        write_atomic(&dir.join(MANIFEST), &p.manifest)?;
+        write_member(&dir.join(MANIFEST), &p.manifest)?;
         for path in existing {
             if !p.objects.contains_key(&path) {
                 std::fs::remove_file(dir.join(&path))?;
@@ -720,11 +721,33 @@ fn list_objects(dir: &Path) -> Result<HashSet<String>> {
             let e = e?;
             let name = e.file_name().to_string_lossy().into_owned();
             if name.ends_with(".zst") {
+                reject_symlink(&e.path())?;
                 out.insert(format!("{sub}/{name}"));
             }
         }
     }
     Ok(out)
+}
+
+/// A directory bundle owns only what lies beneath its root: a symlinked subdirectory or member
+/// would carry object writes and stale-object removal to wherever it points.
+// ponytail: check-then-use; a link swapped in between this check and the write needs directory
+// handles (cap-std) to close, which the format crate doesn't take yet.
+fn reject_symlink(path: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{}: a .pcraft bundle member must not be a symbolic link", path.display()))
+                .into())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// [`write_atomic`] for a bundle member, which must be a real file beneath the bundle
+/// ([`write_atomic`] itself writes through a symlink, which is right for a user's own file path).
+fn write_member(path: &Path, data: &[u8]) -> Result<()> {
+    reject_symlink(path)?;
+    write_atomic(path, data)
 }
 
 /// Crash-safe replace of one file (see [`crate::atomic`]).
