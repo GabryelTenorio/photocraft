@@ -17,7 +17,7 @@ use crate::{PhotocraftApp, icons, widgets};
 const TOOL_SECTIONS: &[&[&[Tool]]] = &[
     &[&[Tool::Move]],
     &[
-        &[Tool::RectMarquee, Tool::EllipseMarquee],
+        &[Tool::RectMarquee, Tool::EllipseMarquee, Tool::SingleRowMarquee, Tool::SingleColumnMarquee],
         &[Tool::Lasso, Tool::PolygonLasso, Tool::MagneticLasso],
         &[Tool::ObjectSelection, Tool::QuickSelection, Tool::MagicWand],
         &[Tool::Crop, Tool::Slice, Tool::SliceSelect],
@@ -25,7 +25,7 @@ const TOOL_SECTIONS: &[&[&[Tool]]] = &[
     ],
     &[
         &[Tool::Remove, Tool::SpotHealing, Tool::Healing, Tool::Patch, Tool::ContentAwareMove, Tool::RedEye],
-        &[Tool::Brush, Tool::Pencil, Tool::MixerBrush],
+        &[Tool::Brush, Tool::Pencil, Tool::MixerBrush, Tool::ColorReplacement],
         &[Tool::CloneStamp, Tool::PatternStamp],
         &[Tool::HistoryBrush],
         &[Tool::Eraser, Tool::BackgroundEraser, Tool::MagicEraser],
@@ -117,183 +117,193 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             if ui.input(|i| i.pointer.any_pressed()) {
                 ui.data_mut(|d| d.remove::<egui::Id>(held_id));
             }
-            egui::ScrollArea::vertical().id_salt("toolbar-columns").show(ui, |ui| {
-                // Pro has no group dividers, so its two columns fill every row across groups.
-                let sections: Vec<Vec<(usize, Vec<Tool>)>> = if t.pro { vec![sections.into_iter().flatten().collect()] } else { sections };
-                for (si, section) in sections.iter().enumerate() {
-                    // Photoshop 2026 draws one uninterrupted column (no group dividers).
-                    if si > 0 && !t.pro {
-                        ui.add_space(4.0);
-                        let (r, _) = ui.allocate_exact_size(vec2(if double { bx * 2.0 + 2.0 } else { bx }, 1.0), Sense::hover());
-                        ui.painter().line_segment([r.left_center() + vec2(8.0, 0.0), r.right_center() - vec2(8.0, 0.0)], Stroke::new(1.0, t.separator));
-                        ui.add_space(4.0);
-                    }
-                    let rows: Vec<&[(usize, Vec<Tool>)]> = if double { section.chunks(2).collect() } else { section.chunks(1).collect() };
-                    for row in rows {
-                        ui.horizontal(|ui| {
-                            for (slot_index, slot) in row.iter() {
-                                let key = egui::Id::new(("tool-slot", *slot_index));
-                                let tool = slot_tool(ui, app.ui.tool, slot, key);
-                                let sel = slot.contains(&app.ui.tool);
-                                let tip = if tool.key() == '\0' { tl!(tool.label()).to_string() } else { format!("{}  ({})", tl!(tool.label()), tool.key()) };
-                                let resp = icons::button(ui, icons::tool_icon(tool), bx, sel, &tip);
-                                if slot.len() > 1 {
-                                    paint_toolbar_flyout_indicator(ui, &t, &resp);
-                                }
-                                if resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) != Some(key) {
-                                    app.ui.tool = tool;
-                                }
-                                // Double-clicking the Hand tool fits the image on screen (Photoshop).
-                                if resp.double_clicked() && tool == Tool::Hand {
-                                    app.ui.tool = tool;
-                                    // With no document open there is nothing to fit.
-                                    let _ = app.run("view.fitOnScreen", json!({}));
-                                }
-                                // Double-clicking the Zoom tool zooms to 100% (Photoshop).
-                                if resp.double_clicked() && tool == Tool::Zoom {
-                                    app.ui.tool = tool;
-                                    // With no document open there is nothing to zoom.
-                                    let _ = app.run("view.actualPixels", json!({}));
-                                }
-                                // Right-click or long-press opens the flyout (Photoshop).
-                                let held_for =
-                                    resp.is_pointer_button_down_on().then(|| ui.input(|i| i.pointer.press_start_time().map(|t0| i.time - t0))).flatten();
-                                if slot.len() > 1
-                                    && let Some(seconds) = held_for
-                                    && seconds < 0.35
-                                {
-                                    ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(0.35 - seconds));
-                                }
-                                let long_press = held_for.is_some_and(|seconds| seconds >= 0.35);
-                                if slot.len() > 1 && (resp.secondary_clicked() || long_press) {
-                                    ui.data_mut(|d| {
-                                        d.insert_temp(flyout_id, (key, resp.rect));
-                                        if long_press {
-                                            d.insert_temp(held_id, key);
-                                        }
-                                    });
-                                }
-                                if slot.len() > 1 && long_press {
-                                    ui.ctx().request_repaint();
-                                }
-                                if let Some((open_key, anchor)) = ui.data(|d| d.get_temp::<(egui::Id, Rect)>(flyout_id))
-                                    && open_key == key
-                                {
-                                    let area = egui::Area::new(key.with("flyout"))
-                                        .order(egui::Order::Foreground)
-                                        .fixed_pos(anchor.right_top() + vec2(6.0, 0.0))
-                                        .show(ui.ctx(), |ui| {
-                                            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                                let label_w = slot
-                                                    .iter()
-                                                    .map(|it| {
-                                                        ui.painter()
-                                                            .layout_no_wrap(tl!(it.label()).to_string(), egui::FontId::proportional(12.5), t.text)
-                                                            .size()
-                                                            .x
-                                                    })
-                                                    .fold(0.0f32, f32::max);
-                                                let fw = (label_w + 42.0 + 40.0).max(180.0);
-                                                for &item in slot.iter() {
-                                                    let (r, ir) = ui.allocate_exact_size(vec2(fw, 26.0), Sense::click());
-                                                    if ir.hovered() {
-                                                        ui.painter().rect_filled(r, 3.0, t.hover);
-                                                    }
-                                                    if item == tool {
-                                                        ui.painter().rect_filled(
-                                                            Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(4.0, 4.0)),
-                                                            0.0,
+            let ctx = ui.ctx().clone();
+            let footer = (if t.pro { 8.0 } else { 14.0 })
+                + chips_height(t.pro, t.round_chips, t.round_chips && double)
+                + if t.pro { 8.0 + if double { bx } else { bx * 2.0 + 3.0 } } else { 0.0 }
+                + 6.0;
+            egui::ScrollArea::vertical()
+                .id_salt("toolbar-columns")
+                .auto_shrink([false, false])
+                .max_height((ui.available_height() - footer).max(0.0))
+                .min_scrolled_height(0.0)
+                .show(ui, |ui| {
+                    // Pro has no group dividers, so its two columns fill every row across groups.
+                    let sections: Vec<Vec<(usize, Vec<Tool>)>> = if t.pro { vec![sections.into_iter().flatten().collect()] } else { sections };
+                    for (si, section) in sections.iter().enumerate() {
+                        // Photoshop 2026 draws one uninterrupted column (no group dividers).
+                        if si > 0 && !t.pro {
+                            ui.add_space(4.0);
+                            let (r, _) = ui.allocate_exact_size(vec2(if double { bx * 2.0 + 2.0 } else { bx }, 1.0), Sense::hover());
+                            ui.painter().line_segment([r.left_center() + vec2(8.0, 0.0), r.right_center() - vec2(8.0, 0.0)], Stroke::new(1.0, t.separator));
+                            ui.add_space(4.0);
+                        }
+                        let rows: Vec<&[(usize, Vec<Tool>)]> = if double { section.chunks(2).collect() } else { section.chunks(1).collect() };
+                        for row in rows {
+                            ui.horizontal(|ui| {
+                                for (slot_index, slot) in row.iter() {
+                                    let key = egui::Id::new(("tool-slot", *slot_index));
+                                    let tool = slot_tool(ui, app.ui.tool, slot, key);
+                                    let sel = slot.contains(&app.ui.tool);
+                                    let tip =
+                                        if tool.key() == '\0' { tl!(tool.label()).to_string() } else { format!("{}  ({})", tl!(tool.label()), tool.key()) };
+                                    let resp = icons::button(ui, icons::tool_icon(tool), bx, sel, &tip);
+                                    if slot.len() > 1 {
+                                        paint_toolbar_flyout_indicator(ui, &t, &resp);
+                                    }
+                                    if resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) != Some(key) {
+                                        app.ui.tool = tool;
+                                    }
+                                    // Double-clicking the Hand tool fits the image on screen (Photoshop).
+                                    if resp.double_clicked() && tool == Tool::Hand {
+                                        app.ui.tool = tool;
+                                        // With no document open there is nothing to fit.
+                                        let _ = app.run("view.fitOnScreen", json!({}));
+                                    }
+                                    if resp.double_clicked() && tool == Tool::Zoom {
+                                        app.ui.tool = tool;
+                                        let _ = app.run("view.actualPixels", json!({}));
+                                    }
+                                    // Right-click or long-press opens the flyout (Photoshop).
+                                    let held_for =
+                                        resp.is_pointer_button_down_on().then(|| ui.input(|i| i.pointer.press_start_time().map(|t0| i.time - t0))).flatten();
+                                    if slot.len() > 1
+                                        && let Some(seconds) = held_for
+                                        && seconds < 0.35
+                                    {
+                                        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(0.35 - seconds));
+                                    }
+                                    let long_press = held_for.is_some_and(|seconds| seconds >= 0.35);
+                                    if slot.len() > 1 && (resp.secondary_clicked() || long_press) {
+                                        ui.data_mut(|d| {
+                                            d.insert_temp(flyout_id, (key, resp.rect));
+                                            if long_press {
+                                                d.insert_temp(held_id, key);
+                                            }
+                                        });
+                                    }
+                                    if slot.len() > 1 && long_press {
+                                        ui.ctx().request_repaint();
+                                    }
+                                    if let Some((open_key, anchor)) = ui.data(|d| d.get_temp::<(egui::Id, Rect)>(flyout_id))
+                                        && open_key == key
+                                    {
+                                        let area = egui::Area::new(key.with("flyout"))
+                                            .order(egui::Order::Foreground)
+                                            .fixed_pos(anchor.right_top() + vec2(6.0, 0.0))
+                                            .show(ui.ctx(), |ui| {
+                                                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                                    let label_w = slot
+                                                        .iter()
+                                                        .map(|it| {
+                                                            ui.painter()
+                                                                .layout_no_wrap(tl!(it.label()).to_string(), egui::FontId::proportional(12.5), t.text)
+                                                                .size()
+                                                                .x
+                                                        })
+                                                        .fold(0.0f32, f32::max);
+                                                    let fw = (label_w + 42.0 + 40.0).max(180.0);
+                                                    for &item in slot.iter() {
+                                                        let (r, ir) = ui.allocate_exact_size(vec2(fw, 26.0), Sense::click());
+                                                        if ir.hovered() {
+                                                            ui.painter().rect_filled(r, 3.0, t.hover);
+                                                        }
+                                                        if item == tool {
+                                                            ui.painter().rect_filled(
+                                                                Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(4.0, 4.0)),
+                                                                0.0,
+                                                                t.text,
+                                                            );
+                                                        }
+                                                        icons::paint(
+                                                            ui,
+                                                            Rect::from_center_size(pos2(r.left() + 26.0, r.center().y), vec2(18.0, 18.0)),
+                                                            icons::tool_icon(item),
+                                                            14.0,
+                                                            t.icon,
+                                                        );
+                                                        ui.painter().text(
+                                                            pos2(r.left() + 42.0, r.center().y),
+                                                            Align2::LEFT_CENTER,
+                                                            tl!(item.label()),
+                                                            egui::FontId::proportional(12.5),
                                                             t.text,
                                                         );
+                                                        if item.key() != '\0' {
+                                                            ui.painter().text(
+                                                                pos2(r.right() - 8.0, r.center().y),
+                                                                Align2::RIGHT_CENTER,
+                                                                item.key().to_string(),
+                                                                egui::FontId::proportional(12.0),
+                                                                t.text_dim,
+                                                            );
+                                                        }
+                                                        if ir.clicked() {
+                                                            app.ui.tool = item;
+                                                            ui.data_mut(|d| d.remove::<(egui::Id, Rect)>(flyout_id));
+                                                        }
                                                     }
-                                                    icons::paint(
-                                                        ui,
-                                                        Rect::from_center_size(pos2(r.left() + 26.0, r.center().y), vec2(18.0, 18.0)),
-                                                        icons::tool_icon(item),
-                                                        14.0,
-                                                        t.icon,
-                                                    );
-                                                    ui.painter().text(
-                                                        pos2(r.left() + 42.0, r.center().y),
-                                                        Align2::LEFT_CENTER,
-                                                        tl!(item.label()),
-                                                        egui::FontId::proportional(12.5),
-                                                        t.text,
-                                                    );
-                                                    if item.key() != '\0' {
-                                                        ui.painter().text(
-                                                            pos2(r.right() - 8.0, r.center().y),
-                                                            Align2::RIGHT_CENTER,
-                                                            item.key().to_string(),
-                                                            egui::FontId::proportional(12.0),
-                                                            t.text_dim,
-                                                        );
-                                                    }
-                                                    if ir.clicked() {
-                                                        app.ui.tool = item;
-                                                        ui.data_mut(|d| d.remove::<(egui::Id, Rect)>(flyout_id));
-                                                    }
-                                                }
+                                                });
                                             });
-                                        });
-                                    let held_release = resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) == Some(key);
-                                    let clicked_outside = ui.input(|i| i.pointer.any_click()) && !held_release && !area.response.hovered() && !resp.hovered();
-                                    if clicked_outside || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                                        ui.data_mut(|d| d.remove::<(egui::Id, Rect)>(flyout_id));
+                                        let held_release = resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) == Some(key);
+                                        let clicked_outside =
+                                            ui.input(|i| i.pointer.any_click()) && !held_release && !area.response.hovered() && !resp.hovered();
+                                        if clicked_outside || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                            ui.data_mut(|d| d.remove::<(egui::Id, Rect)>(flyout_id));
+                                        }
                                     }
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
-                }
-                let ctx = ui.ctx().clone();
-                if t.pro && icons::button(ui, "ellipsis", bx, false, tl!("Edit Toolbar…")).clicked() {
-                    let _ = crate::menus::invoke(app, &ctx, "edit.toolbar", json!({}));
-                }
-                ui.add_space(if t.pro { 8.0 } else { 14.0 });
-                color_chips(app, ui, double);
-                if t.pro {
-                    ui.add_space(8.0);
+                    if t.pro && icons::button(ui, "ellipsis", bx, false, tl!("Edit Toolbar…")).clicked() {
+                        let _ = crate::menus::invoke(app, &ctx, "edit.toolbar", json!({}));
+                    }
+                    reveal_focused_control(ui);
+                });
+            ui.add_space(if t.pro { 8.0 } else { 14.0 });
+            color_chips(app, ui, double);
+            if t.pro {
+                ui.add_space(8.0);
 
-                    let layout = if double { egui::Layout::left_to_right(egui::Align::Min) } else { egui::Layout::top_down(egui::Align::Min) };
+                let layout = if double { egui::Layout::left_to_right(egui::Align::Min) } else { egui::Layout::top_down(egui::Align::Min) };
 
-                    ui.with_layout(layout, |ui| {
-                        let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
-                        if icons::button(
-                            ui,
-                            "square-dashed",
-                            bx,
-                            quick_mask,
-                            if quick_mask { tl!("Edit in Standard Mode  (Q)") } else { tl!("Edit in Quick Mask Mode  (Q)") },
-                        )
-                        .clicked()
-                        {
-                            let _ = crate::menus::invoke(app, &ctx, "select.editInQuickMaskMode", json!({}));
-                        }
-                        let sm = icons::button(ui, "app-window", bx, false, tl!("Change Screen Mode  (F)"));
-                        paint_toolbar_flyout_indicator(ui, &t, &sm);
+                ui.with_layout(layout, |ui| {
+                    let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
+                    if icons::button(
+                        ui,
+                        "square-dashed",
+                        bx,
+                        quick_mask,
+                        if quick_mask { tl!("Edit in Standard Mode  (Q)") } else { tl!("Edit in Quick Mask Mode  (Q)") },
+                    )
+                    .clicked()
+                    {
+                        let _ = crate::menus::invoke(app, &ctx, "select.editInQuickMaskMode", json!({}));
+                    }
+                    let sm = icons::button(ui, "app-window", bx, false, tl!("Change Screen Mode  (F)"));
+                    paint_toolbar_flyout_indicator(ui, &t, &sm);
 
-                        if sm.clicked() {
-                            let _ = crate::menus::invoke(app, &ctx, "view.screenMode.cycle", json!({}));
-                        }
-                        // Right-click (or long-press) lists the modes, like Photoshop's flyout.
-                        egui::Popup::context_menu(&sm).show(|ui| {
-                            ui.set_min_width(220.0);
-                            for (id, label) in [
-                                ("view.screenMode.standard", tl!("Standard Screen Mode")),
-                                ("view.screenMode.fullScreenWithMenuBar", tl!("Full Screen Mode With Menu Bar")),
-                                ("view.screenMode.fullScreen", tl!("Full Screen Mode")),
-                            ] {
-                                let on = crate::view_cmds::checked(app, id).unwrap_or(false);
-                                if ui.add(egui::Button::selectable(on, label)).clicked() {
-                                    let _ = crate::menus::invoke(app, &ctx, id, json!({}));
-                                    ui.close();
-                                }
+                    if sm.clicked() {
+                        let _ = crate::menus::invoke(app, &ctx, "view.screenMode.cycle", json!({}));
+                    }
+                    // Right-click (or long-press) lists the modes, like Photoshop's flyout.
+                    egui::Popup::context_menu(&sm).show(|ui| {
+                        ui.set_min_width(220.0);
+                        for (id, label) in [
+                            ("view.screenMode.standard", tl!("Standard Screen Mode")),
+                            ("view.screenMode.fullScreenWithMenuBar", tl!("Full Screen Mode With Menu Bar")),
+                            ("view.screenMode.fullScreen", tl!("Full Screen Mode")),
+                        ] {
+                            let on = crate::view_cmds::checked(app, id).unwrap_or(false);
+                            if ui.add(egui::Button::selectable(on, label)).clicked() {
+                                let _ = crate::menus::invoke(app, &ctx, id, json!({}));
+                                ui.close();
                             }
-                        });
+                        }
                     });
-                }
-            });
+                });
+            }
         },
     );
 }
@@ -579,8 +589,12 @@ pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         photocraft_engine::prefs::AppearanceMode::Light => ("sun", tl!("Light")),
                     };
                     let appearance_tip = format!("{}: {}", tl!("Appearance Mode"), appearance_label);
-                    if icons_shown >= 2 && icons::button(ui, theme_icon, 28.0, false, &appearance_tip).clicked() {
-                        crate::prefs_ui::cycle_appearance(app, ui.ctx());
+                    if icons_shown >= 2 {
+                        let button = icons::button(ui, theme_icon, 28.0, false, &appearance_tip);
+                        if button.clicked() {
+                            crate::prefs_ui::cycle_appearance(app, ui.ctx());
+                        }
+                        button.context_menu(|ui| crate::prefs_ui::appearance_context_menu(app, ui));
                     }
                     // The community Discord, one click away while the bar has room for it
                     // (narrow windows drop it first; it is also Help › Discord).
@@ -776,6 +790,29 @@ mod title_tests {
     }
 }
 
+// Custom controls also need to bring keyboard focus into a scroll viewport.
+fn reveal_focused_control(ui: &egui::Ui) {
+    // read_response reprocesses pointer events. Reading a popup's newly focused field
+    // during its opening click can undo the focus that the popup just requested.
+    if ui.input(|input| input.pointer.any_pressed() || input.pointer.any_released()) {
+        return;
+    }
+    let focused = ui.memory(|memory| memory.focused());
+    let key = ui.id().with("scroll-focused-control");
+    let changed = ui.data_mut(|data| {
+        let previous = data.get_temp::<Option<egui::Id>>(key).flatten();
+        data.insert_temp(key, focused);
+        previous != focused
+    });
+    if changed
+        && let Some(response) = focused.and_then(|id| ui.ctx().read_response(id))
+        && response.layer_id == ui.layer_id()
+        && ui.min_rect().contains_rect(response.rect)
+    {
+        ui.scroll_to_rect(response.rect, Some(egui::Align::Center));
+    }
+}
+
 // ----------------------------------------------------------------------------- options bar
 
 pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
@@ -784,6 +821,11 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .exact_size(if t.pro { 36.0 } else { 42.0 })
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(10, 0)))
         .show(ui, |ui| {
+            let r = ui.max_rect();
+            ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, t.separator));
+            ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, t.separator));
+            ui.style_mut().spacing.scroll = egui::style::ScrollStyle { bar_width: 4.0, ..egui::style::ScrollStyle::floating() };
+            egui::ScrollArea::horizontal().id_salt("tool-options").auto_shrink([false, false]).show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 if t.pro {
                     crate::chrome_ui::home_button(app, ui);
@@ -834,24 +876,38 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 let b = &mut brush;
                 match app.ui.tool {
                     Tool::Brush | Tool::Eraser if t.pro => {
-                        brush_preset_chip(ui, b, &mut app.ui);
-                        crate::brush_picker::settings_toggle(app, ui);
+                        // A Block-mode Eraser has a fixed size, opacity and flow (Photoshop, #2770).
+                        let block = crate::eraser_ui::block_mode(app, app.ui.tool);
+                        ui.add_enabled_ui(!block, |ui| {
+                            brush_preset_chip(ui, b, &mut app.ui);
+                            crate::brush_picker::settings_toggle(app, ui);
+                        });
                         widgets::vline(ui, 22.0);
-                        opt_label(ui, tl!("Mode"));
-                        let mut mode = b.mode;
-                        let opts: Vec<(BlendMode, &str)> = BlendMode::LAYER_MODES.iter().map(|m| (*m, m.label())).collect();
-                        if widgets::dropdown(ui, "brush-mode", &mut mode, &opts, 96.0) {
-                            b.mode = mode;
+                        // The Eraser has no blend mode: its Mode is Brush, Pencil or Block (#2662).
+                        if app.ui.tool == Tool::Eraser {
+                            crate::eraser_ui::mode_dropdown(ui, &mut app.ui.tool_options.eraser_mode);
+                        } else {
+                            opt_label(ui, tl!("Mode"));
+                            let mut mode = b.mode;
+                            let opts: Vec<(BlendMode, &str)> = BlendMode::LAYER_MODES.iter().map(|m| (*m, m.label())).collect();
+                            if widgets::dropdown(ui, "brush-mode", &mut mode, &opts, 96.0) {
+                                b.mode = mode;
+                            }
                         }
-                        percent_field(ui, tl!("Opacity"), &mut b.opacity, 0.0..=100.0, 62.0);
-                        if icons::button(ui, "circle-dot", 24.0, b.pressure_opacity, tl!("Always use pressure for opacity")).clicked() {
-                            b.pressure_opacity = !b.pressure_opacity;
-                        }
-                        percent_field(ui, tl!("Flow"), &mut b.flow, 1.0..=100.0, 62.0);
-                        let airbrush = icons::button(ui, "sparkles", 24.0, b.build_up, tl!("Enable airbrush-style build-up effects"));
-                        if crate::brush_picker::named(airbrush, tl!("Enable airbrush-style build-up effects")).clicked() {
-                            b.build_up = !b.build_up;
-                        }
+                        ui.add_enabled_ui(!block, |ui| {
+                            percent_field(ui, tl!("Opacity"), &mut b.opacity, 0.0..=100.0, 62.0);
+                            if icons::button(ui, "circle-dot", 24.0, b.pressure_opacity, tl!("Always use pressure for opacity")).clicked() {
+                                b.pressure_opacity = !b.pressure_opacity;
+                            }
+                        });
+                        // A Pencil- or Block-mode Eraser is always full flow, without build-up (Photoshop).
+                        ui.add_enabled_ui(!block && !crate::eraser_ui::pencil_mode(app, app.ui.tool), |ui| {
+                            percent_field(ui, tl!("Flow"), &mut b.flow, 1.0..=100.0, 62.0);
+                            let airbrush = icons::button(ui, "sparkles", 24.0, b.build_up, tl!("Enable airbrush-style build-up effects"));
+                            if crate::brush_picker::named(airbrush, tl!("Enable airbrush-style build-up effects")).clicked() {
+                                b.build_up = !b.build_up;
+                            }
+                        });
                         opt_label(ui, tl!("Smoothing"));
                         smoothing_field(ui, b, 58.0);
                         smoothing_options(ui, b);
@@ -886,12 +942,21 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         brush_preset_chip(ui, b, &mut app.ui);
                         crate::brush_picker::settings_toggle(app, ui);
                         widgets::vline(ui, 22.0);
-                        opt_label(ui, tl!("Size"));
-                        widgets::value_field(ui, &mut b.size, 1.0..=2500.0, "px", 76.0);
+                        // A Block-mode Eraser has a fixed size, opacity and flow (Photoshop, #2770).
+                        let block = crate::eraser_ui::block_mode(app, app.ui.tool);
+                        ui.add_enabled_ui(!block, |ui| {
+                            opt_label(ui, tl!("Size"));
+                            widgets::value_field(ui, &mut b.size, 1.0..=2500.0, "px", 76.0);
+                        });
                         widgets::vline(ui, 22.0);
-                        percent_field(ui, tl!("Hardness"), &mut b.hardness, 0.0..=100.0, 66.0);
-                        percent_field(ui, tl!("Opacity"), &mut b.opacity, 0.0..=100.0, 66.0);
-                        percent_field(ui, tl!("Flow"), &mut b.flow, 1.0..=100.0, 66.0);
+                        if app.ui.tool == Tool::Eraser {
+                            crate::eraser_ui::mode_dropdown(ui, &mut app.ui.tool_options.eraser_mode);
+                        }
+                        // A Pencil-mode Eraser is always hard and at full flow (Photoshop).
+                        let fixed = block || crate::eraser_ui::pencil_mode(app, app.ui.tool);
+                        ui.add_enabled_ui(!fixed, |ui| percent_field(ui, tl!("Hardness"), &mut b.hardness, 0.0..=100.0, 66.0));
+                        ui.add_enabled_ui(!block, |ui| percent_field(ui, tl!("Opacity"), &mut b.opacity, 0.0..=100.0, 66.0));
+                        ui.add_enabled_ui(!fixed, |ui| percent_field(ui, tl!("Flow"), &mut b.flow, 1.0..=100.0, 66.0));
                         opt_label(ui, tl!("Smoothing"));
                         smoothing_field(ui, b, 66.0);
                         widgets::vline(ui, 22.0);
@@ -913,7 +978,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         widgets::vline(ui, 22.0);
                         widgets::checkbox(ui, &mut b.mixer.sample_all_layers, tl!("Sample All Layers"));
                     }
-                    Tool::RectMarquee | Tool::EllipseMarquee if t.pro => {
+                    Tool::RectMarquee | Tool::EllipseMarquee | Tool::SingleRowMarquee | Tool::SingleColumnMarquee if t.pro => {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         for (i, (icon, tip)) in [
                             ("square", tl!("New selection").to_string()),
@@ -939,16 +1004,18 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         // Photoshop greys Anti-alias for the Rectangular Marquee (its edges are always hard).
                         ui.add_enabled_ui(app.ui.tool == Tool::EllipseMarquee, |ui| widgets::checkbox(ui, &mut o.anti_alias, tl!("Anti-alias")));
                         widgets::vline(ui, 22.0);
-                        opt_label(ui, tl!("Style"));
+                        // A single row or column has no style or size: Photoshop greys them.
+                        let sized = matches!(app.ui.tool, Tool::RectMarquee | Tool::EllipseMarquee);
+                        ui.add_enabled_ui(sized, |ui| opt_label(ui, tl!("Style")));
                         let styles = [
                             ("normal".to_string(), tl!("Normal")),
                             ("fixedRatio".to_string(), tl!("Fixed Ratio")),
                             ("fixedSize".to_string(), tl!("Fixed Size")),
                         ];
-                        if widgets::dropdown(ui, "marquee-style", &mut o.marquee_style, &styles, 96.0) {
+                        if ui.add_enabled_ui(sized, |ui| widgets::dropdown(ui, "marquee-style", &mut o.marquee_style, &styles, 96.0)).inner {
                             (o.marquee_width, o.marquee_height) = if o.marquee_style == "fixedSize" { (64.0, 64.0) } else { (1.0, 1.0) };
                         }
-                        let fixed = o.marquee_style != "normal";
+                        let fixed = sized && o.marquee_style != "normal";
                         let (unit, range) = if o.marquee_style == "fixedSize" { ("px", 1.0..=300_000.0) } else { ("", 0.001..=999.0) };
                         ui.add_enabled_ui(fixed, |ui| {
                             opt_label(ui, tl!("Width"));
@@ -1081,11 +1148,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         crate::gradient_ui::options_changed(app, &before);
                     }
                     Tool::Crop if t.pro => {
-                        let presets = crate::crop_size::dropdown_options();
-                        if widgets::dropdown(ui, "crop-ratio", &mut app.ui.tool_options.crop_ratio, &presets, 140.0) {
-                            // A size preset or Front Image fills W x H x Resolution (#2443).
-                            crate::crop_size::chosen(app);
-                        }
+                        // Ratios, sizes, saved presets, New / Delete Crop Preset… (#2443, #1919).
+                        crate::crop_presets::dropdown(app, ui);
                         let o = &mut app.ui.tool_options;
                         if o.crop_ratio == crate::crop_size::WHR {
                             crate::crop_size::fields(o, ui);
@@ -1182,6 +1246,15 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         ui,
                         &format!(
                             "Drag to select  ·  {} add  ·  {} subtract  ·  {} intersect  ·  click to deselect",
+                            crate::shortcuts::pretty("Shift"),
+                            crate::shortcuts::pretty("Alt"),
+                            crate::shortcuts::pretty("Shift+Alt")
+                        ),
+                    ),
+                    Tool::SingleRowMarquee | Tool::SingleColumnMarquee => hint(
+                        ui,
+                        &format!(
+                            "Click to select a one-pixel line  ·  {} add  ·  {} subtract  ·  {} intersect",
                             crate::shortcuts::pretty("Shift"),
                             crate::shortcuts::pretty("Alt"),
                             crate::shortcuts::pretty("Shift+Alt")
@@ -1288,6 +1361,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     crate::symmetry_ui::menu(app, ui);
                 }
                 crate::brush_panel::commit_gesture(app, ui.ctx(), &brush_before, &brush);
+            });
+            // Font ink can extend beyond its advance width at fractional positions.
+            ui.expand_to_include_x(ui.min_rect().right() + 2.0);
+            reveal_focused_control(ui);
             });
         });
 }
@@ -1423,9 +1500,11 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 // ----------------------------------------------------------------------------- dock
 
 pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    // Even legacy destinations must discard gestures captured by an earlier workspace.
+    let customized = crate::panel_docking::show(app, ui);
     let t = Tokens::get(ui.ctx());
     let p = app.ui.panels.clone();
-    if t.pro {
+    if t.pro && !customized {
         dock_panels(app, ui, &p, &t);
     }
     // Narrow icon rail, unless an embedding app hides it: shows, expands or collapses panel groups.
@@ -1448,24 +1527,28 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 for (icon, name, g) in entries {
                     // Studio floats Properties outside the dock.
                     let docked = t.pro || g != Group::Properties;
-                    let on = g.shown(&p) && !(docked && app.ui.dock.is_collapsed(g));
+                    let on = if customized { crate::panel_docking::rail_on(app, g) } else { g.shown(&p) && !(docked && app.ui.dock.is_collapsed(g)) };
                     if icons::rail_button(ui, icon, rb, on, name).clicked() {
-                        crate::dock::rail_click(app, g, docked);
+                        if customized {
+                            crate::panel_docking::rail_click(app, g);
+                        } else {
+                            crate::dock::rail_click(app, g, docked);
+                        }
                     }
                 }
             },
         );
     }
-    if !t.pro {
+    if !t.pro && !customized {
         dock_panels(app, ui, &p, &t);
     }
     crate::dock::persist(app, ui.ctx());
 }
 
 /// The right dock's width range (points).
-const DOCK_WIDTH: std::ops::RangeInclusive<f32> = 250.0..=520.0;
+pub(crate) const DOCK_WIDTH: std::ops::RangeInclusive<f32> = 250.0..=520.0;
 
-fn dock_width_id() -> egui::Id {
+pub(crate) fn dock_width_id() -> egui::Id {
     egui::Id::new("dock-width-request")
 }
 
@@ -1504,7 +1587,7 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
 }
 
 /// One dock group's tab content; `dock` bounds it and scrolls it when it's taller.
-fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate::dock::Group, tab: usize) {
+pub(crate) fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate::dock::Group, tab: usize) {
     use crate::dock::Group;
     let pro = Tokens::get(ui.ctx()).pro;
     match (group, tab) {
@@ -1611,15 +1694,18 @@ fn navigator(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let Some(tex) = crate::canvas::navigator_texture(app, &ctx, idx) else { return };
     let size = app.session.documents()[idx].doc.size;
     let avail = ui.available_width();
-    let box_h = 150.0;
+    // The preview fills the group's height above the zoom controls (their height as measured
+    // last frame), so it grows when the group is made taller, as in Photoshop (#2726).
+    let controls_h = ui.data(|d| d.get_temp::<f32>(navigator_controls_id())).unwrap_or(48.0);
+    let left = ui.available_height() - controls_h;
+    let box_h = if left.is_finite() { left.max(40.0) } else { 150.0 };
     let (frame, resp) = ui.allocate_exact_size(vec2(avail, box_h), Sense::click_and_drag());
     ui.painter().rect_filled(frame, t.radius_sm, t.canvas);
-    let aspect = size.width as f32 / size.height.max(1) as f32;
-    let (w, h) = if aspect > avail / box_h { (avail - 16.0, (avail - 16.0) / aspect) } else { ((box_h - 16.0) * aspect, box_h - 16.0) };
-    let rect = Rect::from_center_size(frame.center(), vec2(w, h));
+    let rect = navigator_fit(frame, size.width, size.height);
+    ui.data_mut(|d| d.insert_temp(navigator_preview_id(), rect));
     widgets::checker(ui.painter(), rect, 6.0);
     ui.painter().image(tex, rect, Rect::from_min_max(egui::Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
-    let s = w / size.width as f32;
+    let s = rect.width() / size.width.max(1) as f32;
     if (resp.clicked() || resp.dragged())
         && let Some(pp) = resp.interact_pointer_pos()
     {
@@ -1627,36 +1713,132 @@ fn navigator(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         app.ui.views[idx].center = [d.x.clamp(0.0, size.width as f32), d.y.clamp(0.0, size.height as f32)];
         app.ui.views[idx].fit_pending = false;
     }
+    // The Navigator has its own zoom target: an unmodified wheel over the preview
+    // should zoom even when the document canvas is configured to scroll on wheel.
+    // Use the canvas wheel classifier to honour one ×1.1 step per notch without
+    // applying egui's smoothed wheel tail a second time.
+    let pinch_zooms = app.session.prefs().enhanced_controls.zoom_with_trackpad_pinch;
+    if resp.hovered()
+        && let Some(crate::wheel_nav::Wheel::Zoom(factor)) = crate::wheel_nav::read(&ctx, true, pinch_zooms)
+    {
+        let view = &mut app.ui.views[idx];
+        let next = crate::zoom_levels::clamp(view.zoom * factor, view.doc_size);
+        if next != view.zoom {
+            view.zoom = next;
+            view.fit_pending = false;
+        }
+    }
     // Visible-area rectangle.
     let v = app.ui.views[idx].clone();
     let canvas = app.last_canvas_rect;
     let point_zoom = (v.zoom / app.canvas_ppp()).max(1e-6);
-    let vw = canvas.width() / point_zoom * s;
+    // Pixel aspect correction shows fewer document columns across the same canvas width.
+    let vw = canvas.width() / point_zoom / app.ui.view.display_aspect() * s;
     let vh = canvas.height() / point_zoom * s;
     let c = pos2(rect.min.x + v.center[0] * s, rect.min.y + v.center[1] * s);
     let vr = Rect::from_center_size(c, vec2(vw, vh)).intersect(frame.shrink(1.0));
     ui.painter().rect_stroke(vr, 2.0, Stroke::new(1.5, Color32::from_rgb(255, 84, 84)), StrokeKind::Middle);
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        label(ui, tl!("Zoom"));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            for (lbl, z) in [("200%", 2.0), ("100%", 1.0)] {
-                if widgets::pill_tab(ui, lbl, (v.zoom - z).abs() < 1e-3).clicked() {
-                    app.ui.views[idx].zoom = z;
-                    app.ui.views[idx].fit_pending = false;
+    let controls = ui.vertical(|ui| {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            label(ui, tl!("Zoom"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                for (lbl, z) in [("200%", 2.0), ("100%", 1.0)] {
+                    if widgets::pill_tab(ui, lbl, (v.zoom - z).abs() < 1e-3).clicked() {
+                        app.ui.views[idx].zoom = z;
+                        app.ui.views[idx].fit_pending = false;
+                    }
                 }
-            }
-            if widgets::pill_tab(ui, tl!("Fit"), false).clicked() {
-                app.ui.views[idx].fit_pending = true;
-            }
+                if widgets::pill_tab(ui, tl!("Fit"), false).clicked() {
+                    app.ui.views[idx].fit_pending = true;
+                }
+            });
         });
+        // The whole zoom range, and always the current zoom: a narrower slider would pull it back.
+        let (lo, hi) = (crate::zoom_levels::min(v.doc_size).min(v.zoom).log2(), crate::zoom_levels::MAX.max(v.zoom).log2());
+        let mut lz = v.zoom.log2();
+        if lz.is_finite() && widgets::slider(ui, &mut lz, lo..=hi, None).changed() {
+            app.ui.views[idx].zoom = crate::zoom_levels::clamp(2f32.powf(lz), v.doc_size);
+            app.ui.views[idx].fit_pending = false;
+        }
     });
-    // The whole zoom range, and always the current zoom: a narrower slider would pull it back.
-    let (lo, hi) = (crate::zoom_levels::min(v.doc_size).min(v.zoom).log2(), crate::zoom_levels::MAX.max(v.zoom).log2());
-    let mut lz = v.zoom.log2();
-    if lz.is_finite() && widgets::slider(ui, &mut lz, lo..=hi, None).changed() {
-        app.ui.views[idx].zoom = crate::zoom_levels::clamp(2f32.powf(lz), v.doc_size);
-        app.ui.views[idx].fit_pending = false;
+    // From the preview's bottom, so the spacing above the controls counts too.
+    let controls = Rect::from_min_max(pos2(frame.left(), frame.bottom()), pos2(frame.right(), controls.response.rect.bottom()));
+    ui.data_mut(|d| {
+        d.insert_temp(navigator_controls_id(), controls.height());
+        d.insert_temp(navigator_controls_rect_id(), controls);
+    });
+}
+
+/// The document's `w` × `h` fitted inside the Navigator's `frame` with an 8 pt inset, centred and
+/// keeping its aspect.
+fn navigator_fit(frame: Rect, w: u32, h: u32) -> Rect {
+    let inner = (frame.size() - vec2(16.0, 16.0)).max(vec2(1.0, 1.0));
+    let (w, h) = (w.max(1) as f32, h.max(1) as f32);
+    let s = (inner.x / w).min(inner.y / h);
+    Rect::from_center_size(frame.center(), vec2(w * s, h * s))
+}
+
+fn navigator_preview_id() -> egui::Id {
+    egui::Id::new("navigator-preview-rect")
+}
+
+fn navigator_controls_id() -> egui::Id {
+    egui::Id::new("navigator-controls-height")
+}
+
+fn navigator_controls_rect_id() -> egui::Id {
+    egui::Id::new("navigator-controls-rect")
+}
+
+/// Where the Navigator drew its document preview last frame.
+#[cfg(test)]
+pub(crate) fn last_navigator_preview(ctx: &egui::Context) -> Option<Rect> {
+    ctx.data(|d| d.get_temp(navigator_preview_id()))
+}
+
+/// The Navigator's zoom controls (below the preview) last frame.
+#[cfg(test)]
+pub(crate) fn last_navigator_controls(ctx: &egui::Context) -> Option<Rect> {
+    ctx.data(|d| d.get_temp(navigator_controls_rect_id()))
+}
+
+#[cfg(test)]
+mod navigator_wheel_tests {
+    use super::*;
+    use egui::{Event, Modifiers, MouseWheelUnit, RawInput, TouchPhase};
+
+    fn frame(app: &mut PhotocraftApp, ctx: &egui::Context, pointer: Pos2, wheel: f32) {
+        let mut events = vec![Event::PointerMoved(pointer)];
+        if wheel != 0.0 {
+            events.push(Event::MouseWheel { unit: MouseWheelUnit::Line, delta: vec2(0.0, wheel), phase: TouchPhase::Move, modifiers: Modifiers::NONE });
+        }
+        let mut out = ctx
+            .run_ui(RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(430.0, 460.0))), events, ..Default::default() }, |ui| navigator(app, ui));
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn navigator_wheel_changes_zoom_only_when_over_preview() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 200, "height": 100})).unwrap();
+        app.sync_views();
+        app.ui.views[0].zoom = 1.0;
+        app.ui.views[0].fit_pending = false;
+        let ctx = egui::Context::default();
+        PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::ALL[0]);
+        crate::wheel_nav::configure(&ctx);
+        frame(&mut app, &ctx, pos2(50.0, 55.0), 0.0);
+        let center = app.ui.views[0].center;
+        frame(&mut app, &ctx, pos2(50.0, 55.0), 1.0);
+        assert!((app.ui.views[0].zoom - 1.1).abs() < 1e-4, "one wheel notch zooms once");
+        assert_eq!(app.ui.views[0].center, center, "Navigator wheel must not pan");
+        frame(&mut app, &ctx, pos2(50.0, 55.0), -1.0);
+        assert!((app.ui.views[0].zoom - 1.0).abs() < 1e-4);
+        // Below the preview (it now fills the group, #2726): over the zoom controls.
+        let below = last_navigator_controls(&ctx).map_or(pos2(50.0, 455.0), |r| pos2(r.left() + 4.0, r.bottom() - 2.0));
+        frame(&mut app, &ctx, below, 1.0);
+        assert!((app.ui.views[0].zoom - 1.0).abs() < 1e-4, "wheel outside preview leaves zoom unchanged");
     }
 }
 
@@ -1678,12 +1860,14 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let mut s = hsva0.s * 100.0;
     let mut v = hsva0.v * 100.0;
     let hue = widgets::hue_stops();
-    let mut changed = widgets::slider_row(ui, tl!("Hue"), &mut h, 0.0..=360.0, "°", Some(&hue)).changed();
+    // Preferences ▸ Interface ▸ Dynamic Color Sliders: off, the tracks are the plain ones.
+    let dynamic = app.session.prefs().interface.dynamic_color_sliders;
+    let mut changed = widgets::slider_row(ui, tl!("Hue"), &mut h, 0.0..=360.0, "°", dynamic.then_some(&hue)).changed();
     let sat_stops =
         [egui::ecolor::Hsva::new(hsva0.h, 0.0, hsva0.v.max(0.2), 1.0), egui::ecolor::Hsva::new(hsva0.h, 1.0, hsva0.v.max(0.2), 1.0)].map(Color32::from);
-    changed |= widgets::slider_row(ui, tl!("Saturation"), &mut s, 0.0..=100.0, "%", Some(&sat_stops)).changed();
+    changed |= widgets::slider_row(ui, tl!("Saturation"), &mut s, 0.0..=100.0, "%", dynamic.then_some(&sat_stops)).changed();
     let val_stops = [Color32::BLACK, Color32::from(egui::ecolor::Hsva::new(hsva0.h, hsva0.s, 1.0, 1.0))];
-    changed |= widgets::slider_row(ui, tl!("Brightness"), &mut v, 0.0..=100.0, "%", Some(&val_stops)).changed();
+    changed |= widgets::slider_row(ui, tl!("Brightness"), &mut v, 0.0..=100.0, "%", dynamic.then_some(&val_stops)).changed();
     let hsva = egui::ecolor::Hsva::new(h / 360.0, s / 100.0, v / 100.0, 1.0);
     // Only an edit counts: the h/s/v round trip isn't exact, so comparing values would rewrite
     // the foreground (and recolour selected type) every frame.
@@ -1753,6 +1937,18 @@ fn layer_drag_edge_scroll(pointer: Option<Pos2>, viewport: Rect, dragging: bool,
     direction.signum() * velocity * dt.clamp(0.0, 0.05)
 }
 
+/// Fit blend mode + Opacity into the available Layers-panel width (#2309).
+/// Preserve the normal translated label when there is room; on a narrow dock,
+/// keep the field interactive and give the dropdown the remaining width.
+fn opacity_row_layout(available: f32, label_width: f32, gap: f32) -> (f32, bool) {
+    let full_right = label_width + LAYER_PCT_W + 2.0 * gap + 16.0;
+    // The label shows while the blend dropdown keeps a usable width (at the default dock width
+    // with an English label it does; a long translated label on a narrow dock gives way).
+    let show_label = available >= full_right + 80.0;
+    let reserved = LAYER_PCT_W + gap + if show_label { label_width + gap + 16.0 } else { 0.0 };
+    ((available - reserved).max(40.0), show_label)
+}
+
 fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // A new active layer opens its parent groups and is scrolled into view (#152).
     let reveal = crate::layer_reveal::track(app, ui.ctx());
@@ -1802,12 +1998,13 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.add_enabled_ui(!bg, |ui| {
                 let mut m = l.blend;
-                // Leave room for the Opacity label and field: a translated label ("Непрозрачность:")
-                // can be much wider than the English one, and must not slide under the dropdown.
+                // Reserve space for the numeric field first. On a narrow dock, hide the
+                // redundant visible Opacity label rather than force the dropdown beyond
+                // the panel's right edge (#2309). The numeric field keeps its name.
                 let opacity_label = if t.pro { tl!("Opacity:") } else { tl!("Opacity") };
-                let right = (body_text_width(ui, opacity_label) + LAYER_PCT_W + 2.0 * ui.spacing().item_spacing.x + 16.0).max(150.0);
-                let w = ui.available_width() - right;
-                let (chosen, hovered) = widgets::dropdown_wheel_hovered(ui, "blend", &mut m, &blend_options(l.is_group(), l.blend), w.max(100.0));
+                let (blend_width, show_opacity_label) =
+                    opacity_row_layout(ui.available_width(), body_text_width(ui, opacity_label), ui.spacing().item_spacing.x);
+                let (chosen, hovered) = widgets::dropdown_wheel_hovered(ui, "blend", &mut m, &blend_options(l.is_group(), l.blend), blend_width);
                 // One step per choice: a click, an arrow key or each wheel notch (#1747).
                 for m in &chosen {
                     actions.push(("layer.setProps".into(), json!({"layer": l.id.0, "blend": m.label()})));
@@ -1817,7 +2014,8 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut o = l.opacity * 100.0;
                     let field = widgets::popup_value_field(ui, opacity_label, &mut o, 0.0..=100.0, "%", LAYER_PCT_W);
-                    let scrub = scrub_pct_label(ui, opacity_label, &mut o);
+                    // On a narrow dock the (scrubby) label yields its room to the controls (#2309).
+                    let scrub = if show_opacity_label { scrub_pct_label(ui, opacity_label, &mut o) } else { widgets::PopupFieldResponse::default() };
                     if field.changed || scrub.changed {
                         actions.push(pct_action(l, "opacity", o, scrub.drag.or(field.drag)));
                     }
@@ -2068,6 +2266,13 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             app.ui.vector_mask_target = p.as_bool().unwrap_or(false);
             app.ui.mask_target = false;
             app.sync_mask_targets();
+            continue;
+        }
+        // Double-clicking a mask thumbnail opens its settings: show Properties.
+        if id == "ui.properties" {
+            app.ui.panels.properties = true;
+            app.ui.dock_tabs.properties = 0;
+            app.ui.dock.collapsed.retain(|g| *g != crate::dock::Group::Properties);
             continue;
         }
         if p.is_null() {
@@ -2400,11 +2605,16 @@ fn layer_row(
                 actions.push(done);
             }
         } else if let Some(kind) = pos.and_then(|p| masks.hit(p)) {
-            if kind == crate::mask_thumbs_ui::MaskKind::Pixel {
-                actions.push(("ui.maskTarget".into(), json!(true)));
+            match kind {
+                crate::mask_thumbs_ui::MaskKind::Pixel => actions.push(("ui.maskTarget".into(), json!(true))),
+                crate::mask_thumbs_ui::MaskKind::Vector => actions.push(("ui.vectorMaskTarget".into(), json!(true))),
             }
             if let Some((cmd, val)) = crate::mask_thumbs_ui::double_click_command(app, kind) {
+                // The preference launches Select and Mask on a pixel mask.
                 actions.push((cmd.into(), val));
+            } else {
+                // Otherwise double-click opens the mask's settings (Density/Feather).
+                actions.push(("ui.properties".into(), json!(true)));
             }
         } else if pos.and_then(|p| masks.hit(p)).is_none() {
             let id = match &l.content {
@@ -2588,6 +2798,9 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 /// Floating Properties card anchored to the canvas' top-right corner.
 pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    if app.ui.docking.is_some() {
+        return;
+    }
     // Pro (Photoshop) docks Properties; Studio floats it over the canvas.
     if !app.ui.panels.properties || Tokens::get(ctx).pro {
         return;
@@ -2596,9 +2809,10 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(id) = st.active_layer else { return };
     let doc = st.doc.clone();
     let Some(layer) = doc.layer(id) else { return };
-    // Pixel-mask controls also belong here when their thumbnail is targeted.
+    // Mask controls (pixel or vector) also belong here when their thumbnail is targeted.
     let mask_target = crate::mask_props_ui::targeted(app, layer);
-    if !mask_target && !matches!(layer.content, LayerContent::Adjustment(_) | LayerContent::Fill(_)) {
+    let vector_target = crate::mask_props_ui::vector_targeted(app, layer);
+    if !mask_target && !vector_target && !matches!(layer.content, LayerContent::Adjustment(_) | LayerContent::Fill(_)) {
         return;
     }
     let t = Tokens::get(ctx);
@@ -2658,9 +2872,11 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
             widgets::hairline(ui);
             ui.add_space(8.0);
             // Per-layer ids, so text still being typed for one layer can't commit to the next.
-            ui.push_id(id, |ui| {
+            ui.push_id((doc.id, id, mask_target), |ui| {
                 if mask_target {
                     crate::mask_props_ui::properties(app, ui, layer);
+                } else if vector_target {
+                    crate::mask_props_ui::vector_properties(app, ui, layer);
                 } else if let LayerContent::Adjustment(adj) = &layer.content {
                     adjustment_controls(app, ui, id, adj);
                 } else {
@@ -2731,6 +2947,11 @@ fn layer_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
 
 /// Docked Properties body (Pro theme).
 fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let identity = app.session.active().map(|st| (st.doc.id, st.active_layer, app.ui.mask_target, app.ui.vector_mask_target));
+    ui.push_id(("properties-target", identity), |ui| properties_body_inner(app, ui));
+}
+
+fn properties_body_inner(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let Some(st) = app.session.active() else {
         empty(ui, tl!("No properties"));
@@ -2742,6 +2963,14 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     {
         crate::props_layout::header(ui, layer);
         crate::mask_props_ui::properties(app, ui, layer);
+        return;
+    }
+    // The vector mask's own controls, when its thumbnail is targeted.
+    if let Some(layer) = st.active_layer.and_then(|id| doc.layer(id))
+        && crate::mask_props_ui::vector_targeted(app, layer)
+    {
+        crate::props_layout::header(ui, layer);
+        crate::mask_props_ui::vector_properties(app, ui, layer);
         return;
     }
     // Photoshop shows the Document properties when nothing or the Background layer is selected.
@@ -3112,6 +3341,15 @@ fn layer_drop_payload(dragged: u64, target: LayerId, position: &str, selected: &
     }
 }
 
+/// Would this drop move the Background off the bottom, or put a layer below it? Photoshop
+/// refuses both (no drop indicator); ⌥-dragging the Background still copies it above.
+fn background_drop_refused(doc: &photocraft_doc::Document, payload: &Value, target: LayerId, position: &str, copy: bool) -> bool {
+    let Some(bg) = doc.layers.first().filter(|b| crate::doc_props_ui::is_background(doc, b)).map(|b| b.id) else { return false };
+    let moves_bg =
+        !copy && (payload["layer"].as_u64() == Some(bg.0) || payload["layers"].as_array().is_some_and(|a| a.iter().any(|v| v.as_u64() == Some(bg.0))));
+    moves_bg || (target == bg && position == "below")
+}
+
 /// Drag a layer row to reorder: drop above, below, or inside an existing group. With ⌥ held on
 /// release the layers stay put and copies land there instead (Photoshop).
 /// Multi-layer moves are atomic (one undo step), using the engine's stable document order.
@@ -3180,6 +3418,11 @@ fn layer_drag_and_drop(
     } else {
         "below"
     };
+    let Some(st) = app.session.active() else { return };
+    let mut payload = layer_drop_payload(dragged, l.id, position, &st.selected_layers());
+    if background_drop_refused(&st.doc, &payload, l.id, position, copy) {
+        return;
+    }
     let painter = ui.painter();
     match position {
         "into" => {
@@ -3193,8 +3436,6 @@ fn layer_drag_and_drop(
         }
     }
     if released {
-        let selected = app.session.active().map(|st| st.selected_layers()).unwrap_or_default();
-        let mut payload = layer_drop_payload(dragged, l.id, position, &selected);
         if copy && let Some(o) = payload.as_object_mut() {
             o.insert("copy".into(), json!(true));
         }
@@ -3931,6 +4172,44 @@ mod type_flyout_tests {
     }
 
     #[test]
+    fn long_press_brush_selects_color_replacement() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::ALL[0]);
+        frame(&mut app, &ctx, 0.0, vec![]);
+        frame(&mut app, &ctx, 0.1, vec![]);
+        let index = TOOL_SECTIONS.iter().flat_map(|section| section.iter()).position(|slot| slot.contains(&Tool::Brush)).unwrap();
+        let slot = TOOL_SECTIONS.iter().flat_map(|section| section.iter()).nth(index).copied().unwrap();
+        // Photoshop's Brush group, Color Replacement after the Mixer Brush.
+        assert_eq!(slot, &[Tool::Brush, Tool::Pencil, Tool::MixerBrush, Tool::ColorReplacement]);
+        let bx = if Tokens::get(&ctx).pro { 30.0 } else { 36.0 };
+        let mut buttons: Vec<Rect> = ctx.viewport(|v| {
+            v.prev_pass
+                .widgets
+                .layers()
+                .flat_map(|(_, w)| w.iter())
+                .filter(|w| w.rect.size() == egui::Vec2::splat(bx) && w.sense.senses_click())
+                .map(|w| w.rect)
+                .collect()
+        });
+        buttons.sort_by(|a, b| a.top().total_cmp(&b.top()));
+        let at = buttons[index].center();
+        let pointer = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(&mut app, &ctx, 1.0, vec![egui::Event::PointerMoved(at), pointer(at, true)]);
+        frame(&mut app, &ctx, 1.36, vec![]);
+        frame(&mut app, &ctx, 1.4, vec![pointer(at, false)]);
+        frame(&mut app, &ctx, 1.45, vec![]);
+        let key = egui::Id::new(("tool-slot", index));
+        let menu = ctx.memory(|m| m.area_rect(key.with("flyout"))).unwrap();
+        // The last of the four 26-point rows.
+        let row = egui::pos2(menu.left() + 65.0, menu.bottom() - 20.0);
+        frame(&mut app, &ctx, 2.0, vec![egui::Event::PointerMoved(row), pointer(row, true)]);
+        frame(&mut app, &ctx, 2.05, vec![pointer(row, false)]);
+        assert_eq!(app.ui.tool, Tool::ColorReplacement);
+        assert_eq!(crate::icons::tool_icon(Tool::ColorReplacement), "brush-replace");
+    }
+
+    #[test]
     fn rotate_view_is_in_the_hand_flyout() {
         let hand = TOOL_SECTIONS.iter().flat_map(|section| section.iter()).find(|slot| slot.contains(&Tool::Hand)).expect("Hand group");
         assert_eq!(*hand, [Tool::Hand, Tool::RotateView]);
@@ -3969,7 +4248,7 @@ mod toolbar_hidden_tests {
         let slots: usize = TOOL_SECTIONS.iter().map(|section| section.len()).sum();
         hide(&mut app, &Tool::ALL);
         assert_eq!(tool_buttons(&mut app), all - slots, "every tool slot is gone when every tool is hidden");
-        hide(&mut app, &[Tool::Brush, Tool::Pencil, Tool::MixerBrush]);
+        hide(&mut app, &[Tool::Brush, Tool::Pencil, Tool::MixerBrush, Tool::ColorReplacement]);
         assert_eq!(tool_buttons(&mut app), all - 1, "a slot whose tools are all hidden is gone");
         hide(&mut app, &[Tool::Sponge]);
         assert_eq!(tool_buttons(&mut app), all, "a slot with a visible tool stays");
@@ -4315,6 +4594,31 @@ mod group_drag_selection_tests {
     }
 
     #[test]
+    fn the_background_row_neither_moves_nor_takes_a_layer_below_it() {
+        let mut s = photocraft_engine::Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let bg = s.active().unwrap().doc.layers[0].id;
+        let a = LayerId(s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap());
+        let doc = &s.active().unwrap().doc;
+        let refused = |dragged: LayerId, target: LayerId, pos: &str, sel: &[LayerId], copy: bool| {
+            background_drop_refused(doc, &layer_drop_payload(dragged.0, target, pos, sel), target, pos, copy)
+        };
+        assert!(refused(bg, a, "above", &[bg], false));
+        assert!(refused(a, bg, "below", &[a], false));
+        assert!(refused(a, bg, "below", &[a], true));
+        assert!(refused(a, a, "above", &[bg, a], false), "the Background is among the dragged layers");
+        assert!(!refused(a, bg, "above", &[a], false));
+        assert!(!refused(bg, a, "above", &[bg], true), "⌥-dragging copies the Background above");
+        // Without a Background every drop is fine.
+        let mut s = photocraft_engine::Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("layer.new.layerFromBackground", json!({})).unwrap();
+        let l0 = s.active().unwrap().doc.layers[0].id;
+        let doc = &s.active().unwrap().doc;
+        assert!(!background_drop_refused(doc, &layer_drop_payload(l0.0, a, "above", &[l0]), a, "above", false));
+    }
+
+    #[test]
     fn dragging_unselected_or_singular_row_remains_a_single_layer_move() {
         let a = LayerId(10);
         let b = LayerId(11);
@@ -4335,5 +4639,367 @@ mod group_drag_selection_tests {
 }
 
 #[cfg(test)]
+mod opacity_row_layout_tests {
+    use super::*;
+
+    #[test]
+    fn opacity_label_yields_to_controls_in_narrow_layers_panel() {
+        let gap = 2.0;
+        let label = 62.0;
+        let (wide, visible) = opacity_row_layout(360.0, label, gap);
+        assert!(visible);
+        assert!(wide >= 100.0);
+        // The default dock width keeps the English label (the Layers dock at its 250 px minimum).
+        assert!(opacity_row_layout(255.0, 46.0, 8.0).1);
+        let (medium, visible) = opacity_row_layout(180.0, label, gap);
+        assert!(!visible, "the long label must not overlap the blend field");
+        assert!(medium + LAYER_PCT_W + gap <= 180.0);
+        let (narrow, visible) = opacity_row_layout(135.0, label, gap);
+        assert!(!visible);
+        assert!(narrow >= 40.0);
+        assert!(narrow + LAYER_PCT_W + gap <= 135.0);
+    }
+}
+
+#[cfg(test)]
 #[path = "mask_props_ui_tests.rs"]
 mod mask_properties_tests;
+
+#[cfg(test)]
+mod compact_visual_regressions {
+    use super::*;
+    use egui_kittest::kittest::Queryable;
+
+    fn input_at_scale(screen: Rect, scale: f32) -> egui::RawInput {
+        let mut input = egui::RawInput { screen_rect: Some(screen), ..Default::default() };
+        input.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
+        input
+    }
+
+    fn toolbar_harness(kind: theme::ThemeKind, scale: f32) -> egui_kittest::Harness<'static, PhotocraftApp> {
+        let mut ready = false;
+        let mut harness = egui_kittest::Harness::builder().with_size(vec2(400.0, 360.0)).with_pixels_per_point(scale).build_ui_state(
+            move |ui, app: &mut PhotocraftApp| {
+                if !ready {
+                    egui_extras::install_image_loaders(ui.ctx());
+                    theme::install_fonts(ui.ctx());
+                    theme::apply(ui.ctx(), kind);
+                    app.session.prefs.edit(|prefs| prefs.shortcuts.insert("window.togglePanels".into(), String::new()));
+                    ready = true;
+                    return;
+                }
+                crate::shortcuts::handle(app, ui.ctx());
+                toolbar(app, ui);
+            },
+            PhotocraftApp::new(photocraft_engine::Session::new(), Default::default()),
+        );
+        harness.run_steps(4);
+        harness
+    }
+
+    #[test]
+    fn compact_toolbar_scrolls_to_and_activates_the_last_tool() {
+        for kind in theme::ThemeKind::ALL {
+            for scale in [1.0, 1.5, 2.0] {
+                let mut harness = toolbar_harness(kind, scale);
+                harness.event(egui::Event::PointerMoved(pos2(25.0, 100.0)));
+                harness.event(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: vec2(0.0, -1500.0),
+                    modifiers: egui::Modifiers::NONE,
+                    phase: egui::TouchPhase::Move,
+                });
+                harness.run_steps(30);
+                let node = harness.get_by_label("Zoom Tool  (Z)");
+                let rect = node.rect();
+                assert!(rect.top() >= 0.0 && rect.bottom() <= 360.0, "{kind:?} at {scale}x: last tool remains outside the toolbar: {rect:?}");
+                node.click();
+                harness.run_steps(3);
+                assert_eq!(harness.state().ui.tool, Tool::Zoom, "the scrolled button must select its real tool");
+            }
+        }
+    }
+
+    #[test]
+    fn compact_toolbar_tab_reveals_and_activates_the_last_tool() {
+        for kind in theme::ThemeKind::ALL {
+            for scale in [1.0, 1.5, 2.0] {
+                let mut harness = toolbar_harness(kind, scale);
+                // The supported shortcut preference clears the canvas Tab binding. From no
+                // focus, every step below is a real Tab processed by the app's dispatcher.
+                let mut reached = false;
+                for _ in 0..80 {
+                    harness.key_press(egui::Key::Tab);
+                    harness.run_steps(3);
+                    reached = harness.get_by_label("Zoom Tool  (Z)").is_focused();
+                    if reached {
+                        break;
+                    }
+                }
+                assert!(reached, "{kind:?} at {scale}x: Tab must reach the last tool");
+                harness.run_steps(20);
+                let rect = harness.get_by_label("Zoom Tool  (Z)").rect();
+                assert!(rect.top() >= 0.0 && rect.bottom() <= 360.0, "{kind:?} at {scale}x: focused tool remains clipped: {rect:?}");
+                harness.key_press(egui::Key::Space);
+                harness.run_steps(3);
+                assert_eq!(harness.state().ui.tool, Tool::Zoom, "Space must select the revealed tool");
+            }
+        }
+    }
+
+    #[test]
+    fn capture_compact_visual_fixtures() {
+        let Some(directory) = std::env::var_os("CRAFT_UI_VISUAL_FIXTURES").map(std::path::PathBuf::from) else { return };
+        std::fs::create_dir_all(&directory).unwrap();
+        for kind in crate::theme::ThemeKind::ALL {
+            for (width, height) in [(800.0, 480.0), (1280.0, 720.0)] {
+                for scale in [1.0, 1.5, 2.0] {
+                    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                    app.session.tools.foreground = [1.0, 0.0, 1.0, 1.0];
+                    app.session.tools.background = [0.0, 1.0, 0.0, 1.0];
+                    let mut ready = false;
+                    let mut harness = egui_kittest::Harness::builder().with_size(vec2(width, height)).with_pixels_per_point(scale).wgpu().build_ui_state(
+                        move |ui, app: &mut PhotocraftApp| {
+                            if !ready {
+                                egui_extras::install_image_loaders(ui.ctx());
+                                crate::theme::install_fonts(ui.ctx());
+                                crate::theme::apply(ui.ctx(), kind);
+                                ready = true;
+                                return;
+                            }
+                            app.ui.tool = if Tokens::get(ui.ctx()).pro { Tool::Pencil } else { Tool::Brush };
+                            options_bar(app, ui);
+                            toolbar(app, ui);
+                        },
+                        app,
+                    );
+                    harness.input_mut().max_texture_side = Some(8192);
+                    harness.run_steps(4);
+                    let stem = format!("photocraft-compact-{}-{width}-{height}-{scale}x", kind.id());
+                    harness.render().unwrap().save(directory.join(format!("{stem}.png"))).unwrap();
+                    let mut regions = serde_json::Map::new();
+                    for id in ["options_bar", "toolbar"] {
+                        let r = egui::containers::panel::PanelState::load(&harness.ctx, egui::Id::new(id)).unwrap().outer_rect;
+                        regions.insert(id.into(), json!([r.left(), r.top(), r.width(), r.height()]));
+                    }
+                    let metadata = json!({"screen": [width, height], "scale": scale, "regions": regions});
+                    std::fs::write(directory.join(format!("{stem}.json")), serde_json::to_vec_pretty(&metadata).unwrap()).unwrap();
+                    for _ in 0..6 {
+                        harness.input_mut().events.extend([
+                            egui::Event::PointerMoved(pos2(width * 0.5, 20.0)),
+                            egui::Event::MouseWheel {
+                                unit: egui::MouseWheelUnit::Point,
+                                delta: vec2(-1500.0, 0.0),
+                                modifiers: egui::Modifiers::NONE,
+                                phase: egui::TouchPhase::Move,
+                            },
+                        ]);
+                        harness.run_steps(1);
+                    }
+                    harness.render().unwrap().save(directory.join(format!("{stem}-scrolled.png"))).unwrap();
+                    std::fs::write(directory.join(format!("{stem}-scrolled.json")), serde_json::to_vec_pretty(&metadata).unwrap()).unwrap();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compact_toolbar_keeps_both_color_chips_visible() {
+        for kind in crate::theme::ThemeKind::ALL {
+            for height in [480.0, 720.0] {
+                for scale in [1.0, 1.5, 2.0] {
+                    let ctx = egui::Context::default();
+                    egui_extras::install_image_loaders(&ctx);
+                    crate::theme::install_fonts(&ctx);
+                    crate::theme::apply(&ctx, kind);
+                    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                    app.session.tools.foreground = [1.0, 0.0, 1.0, 1.0];
+                    app.session.tools.background = [0.0, 1.0, 0.0, 1.0];
+                    let mut output = ctx.run_ui(input_at_scale(Rect::from_min_size(egui::Pos2::ZERO, vec2(800.0, height)), scale), |ui| toolbar(&mut app, ui));
+                    output.textures_delta.clear();
+                    for color in [Color32::from_rgb(255, 0, 255), Color32::GREEN] {
+                        let (clip, chip) = output
+                            .shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Rect(rect) if rect.fill == color => Some((shape.clip_rect, rect.rect)),
+                                egui::Shape::Circle(circle) if circle.fill == color => {
+                                    Some((shape.clip_rect, Rect::from_center_size(circle.center, vec2(circle.radius * 2.0, circle.radius * 2.0))))
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or_else(|| panic!("{kind:?} at {height}/{scale}: both color chips are painted"));
+                        assert!(clip.contains_rect(chip) && chip.bottom() <= height, "{kind:?} at {height}: color chip {chip:?} clipped by {clip:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tab_focus_reveals_the_final_narrow_tool_option() {
+        for kind in theme::ThemeKind::ALL {
+            for scale in [1.0, 1.5, 2.0] {
+                let mut ready = false;
+                let mut harness = egui_kittest::Harness::builder().with_size(vec2(360.0, 120.0)).with_pixels_per_point(scale).build_ui_state(
+                    move |ui, app: &mut PhotocraftApp| {
+                        if !ready {
+                            egui_extras::install_image_loaders(ui.ctx());
+                            theme::install_fonts(ui.ctx());
+                            theme::apply(ui.ctx(), kind);
+                            app.ui.tool = if Tokens::get(ui.ctx()).pro { Tool::Pencil } else { Tool::Brush };
+                            app.session.prefs.edit(|prefs| prefs.shortcuts.insert("window.togglePanels".into(), String::new()));
+                            ready = true;
+                            return;
+                        }
+                        crate::shortcuts::handle(app, ui.ctx());
+                        options_bar(app, ui);
+                    },
+                    PhotocraftApp::new(photocraft_engine::Session::new(), Default::default()),
+                );
+                harness.run_steps(4);
+                let pro = Tokens::get(&harness.ctx).pro;
+                let last_label = if pro { "Auto Erase" } else { "Pressure for Opacity" };
+                // Only the canvas Tab shortcut is cleared, using its public preference;
+                // no response is assigned focus programmatically.
+                let mut reached = false;
+                for _ in 0..80 {
+                    harness.key_press(egui::Key::Tab);
+                    harness.run_steps(3);
+                    let label = harness.output().shapes.iter().find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.job.text.contains(last_label) => Some(text.visual_bounding_rect()),
+                        _ => None,
+                    });
+                    reached = label.is_some_and(|label| {
+                        harness.ctx.memory(|memory| memory.focused()).and_then(|id| harness.ctx.read_response(id)).is_some_and(|response| {
+                            response.rect.intersects(label)
+                                || ((label.left() - response.rect.right()).abs() <= 12.0
+                                    && response.rect.top() < label.bottom()
+                                    && response.rect.bottom() > label.top())
+                        })
+                    });
+                    if reached {
+                        break;
+                    }
+                }
+                assert!(reached, "{kind:?} at {scale}x: Tab must reach the final tool option");
+                harness.run_steps(20);
+                let (clip, label) = harness
+                    .output()
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.job.text.contains(last_label) => Some((shape.clip_rect, text.visual_bounding_rect())),
+                        _ => None,
+                    })
+                    .expect("the final option remains painted");
+                assert!(clip.contains_rect(label), "{kind:?} at {scale}x: Tab leaves the focused final option outside {clip:?}: {label:?}");
+                let previous = if pro { harness.state().ui.tool_options.pencil_auto_erase } else { harness.state().session.tools.brush.pressure_opacity };
+                harness.key_press(egui::Key::Space);
+                harness.run_steps(3);
+                let current = if pro { harness.state().ui.tool_options.pencil_auto_erase } else { harness.state().session.tools.brush.pressure_opacity };
+                assert_ne!(current, previous, "{kind:?} at {scale}x: Space must activate the revealed option");
+                assert!(harness.state().ui.panels.options_bar, "widget traversal must preserve the options bar");
+            }
+        }
+    }
+
+    #[test]
+    fn narrow_tool_options_can_scroll_to_the_last_control() {
+        for kind in crate::theme::ThemeKind::ALL {
+            for width in [360.0, 800.0, 1280.0] {
+                for scale in [1.0, 1.5, 2.0] {
+                    let ctx = egui::Context::default();
+                    egui_extras::install_image_loaders(&ctx);
+                    crate::theme::install_fonts(&ctx);
+                    crate::theme::apply(&ctx, kind);
+                    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                    let (tool, last_label) = if Tokens::get(&ctx).pro { (Tool::Pencil, "Auto Erase") } else { (Tool::Brush, "Pressure for Opacity") };
+                    app.ui.tool = tool;
+                    let screen = Rect::from_min_size(egui::Pos2::ZERO, vec2(width, 120.0));
+                    let mut output = ctx.run_ui(input_at_scale(screen, scale), |ui| options_bar(&mut app, ui));
+                    output.textures_delta.clear();
+                    for frame in 1..=6 {
+                        output = ctx.run_ui(
+                            egui::RawInput {
+                                time: Some(f64::from(frame) * 0.1),
+                                events: vec![
+                                    egui::Event::PointerMoved(pos2(width * 0.5, 20.0)),
+                                    egui::Event::MouseWheel {
+                                        unit: egui::MouseWheelUnit::Point,
+                                        delta: vec2(-1500.0, 0.0),
+                                        modifiers: egui::Modifiers::NONE,
+                                        phase: egui::TouchPhase::Move,
+                                    },
+                                ],
+                                ..input_at_scale(screen, scale)
+                            },
+                            |ui| options_bar(&mut app, ui),
+                        );
+                        output.textures_delta.clear();
+                    }
+                    let (clip, label) = output
+                        .shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.job.text.contains(last_label) => Some((shape.clip_rect, text)),
+                            _ => None,
+                        })
+                        .expect("scrolling reaches the final tool control");
+                    assert!(
+                        clip.contains_rect(label.visual_bounding_rect()),
+                        "{kind:?} at {width}: final control is clipped: {:?} / {clip:?}",
+                        label.visual_bounding_rect()
+                    );
+                    assert!(label.visual_bounding_rect().right() <= width, "the final option stays inside the window");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod properties_target_regressions {
+    use super::*;
+    use egui_kittest::{Harness, kittest::Queryable};
+
+    #[test]
+    fn pending_transform_arithmetic_does_not_apply_to_another_document_with_the_same_layer_id() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width":200,"height":200,"background":"transparent"})).unwrap();
+        app.run("select.rect", json!({"x":10,"y":20,"width":100,"height":50})).unwrap();
+        app.run("edit.fill", json!({"color":"#ff0000"})).unwrap();
+        app.run("select.deselect", json!({})).unwrap();
+        let layer = app.session.active().unwrap().active_layer.unwrap();
+        let duplicate = (*app.session.active().unwrap().doc).clone();
+        let second = app.session.add_document(duplicate, None);
+        app.session.active_mut().unwrap().active_layer = Some(layer);
+        assert!(app.session.set_active(0));
+        let mut ready = false;
+        let mut h = Harness::builder().with_size(vec2(360.0, 650.0)).build_ui_state(
+            move |ui, app: &mut PhotocraftApp| {
+                if !ready {
+                    PhotocraftApp::setup_context(ui.ctx(), theme::ThemeKind::ProMedium);
+                    ready = true;
+                    return;
+                }
+                properties_body(app, ui);
+            },
+            app,
+        );
+        h.run_steps(3);
+        h.get_all_by_role(egui::accesskit::Role::SpinButton).next().expect("transform width").click();
+        h.run_steps(1);
+        for c in "50/2".chars() {
+            h.event(egui::Event::Text(c.to_string()));
+            h.run_steps(1);
+        }
+        let before = h.state().session.documents()[second].doc.layer(layer).unwrap().surface().unwrap().content_bounds();
+        assert!(h.state_mut().session.set_active(second));
+        h.run_steps(2);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(2);
+        let after = h.state().session.active().unwrap().doc.layer(layer).unwrap().surface().unwrap().content_bounds();
+        assert_eq!(after, before, "pending width belongs to the old document/layer");
+    }
+}
