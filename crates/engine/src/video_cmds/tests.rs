@@ -176,6 +176,29 @@ fn edits_to_a_frame_survive_scrubbing_and_render() {
 }
 
 #[test]
+fn imported_frames_restore_source_not_transparency() {
+    let dir = tmpdir("restore-source-regression");
+    write_png(&format!("{dir}/a.png"), 16, 12, "#ff0000");
+    write_png(&format!("{dir}/b.png"), 16, 12, "#00ff00");
+    let mut s = session();
+    let id = LayerId(s.execute("layer.videoLayers.newVideoLayerFromFile", json!({"path":dir})).unwrap()["layer"].as_u64().unwrap());
+    let red = layer_px(&s, id);
+    assert!(red[0] > 0.99 && red[3] > 0.99);
+    s.execute("edit.fill", json!({"color":"#0000ff"})).unwrap();
+    assert!(layer_px(&s, id)[2] > 0.99);
+    s.execute("layer.videoLayers.restoreFrame", json!({})).unwrap();
+    assert_eq!(layer_px(&s, id), red);
+    s.execute("timeline.setFrame", json!({"frame":1})).unwrap();
+    let green = layer_px(&s, id);
+    assert!(green[1] > 0.99 && green[3] > 0.99);
+    s.execute("edit.fill", json!({"color":"#0000ff"})).unwrap();
+    s.execute("layer.videoLayers.restoreAllFrames", json!({})).unwrap();
+    assert_eq!(layer_px(&s, id), green);
+    s.execute("timeline.setFrame", json!({"frame":0})).unwrap();
+    assert_eq!(layer_px(&s, id), red);
+}
+
+#[test]
 fn render_writer_progress_and_cancellation_leave_session_unchanged() {
     let mut s = session();
     s.execute("timeline.create", json!({"duration": 4, "fps": 4})).unwrap();
