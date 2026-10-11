@@ -2248,6 +2248,8 @@
 	Grid:	Raster:
 	Highlight Clipping Warning (O)	Lichter-Abschneidewarnung (O)
 	Lasso around an area, then drag the selection	Lasso um einen Bereich ziehen, dann die Auswahl verschieben
+	Transform On Drop	Beim Ablegen transformieren
+	Scale or rotate the moved area, then press {key}	Verschobenen Bereich skalieren oder drehen, dann {key} drücken
 	Now drag the selection onto another area	Jetzt die Auswahl auf einen anderen Bereich ziehen
 	Patch:	Korrektur:
 	Shadow Clipping Warning (U)	Tiefen-Abschneidewarnung (U)
@@ -2594,7 +2596,7 @@ cameraData	Lens	Objektiv
 	Freeform Pen Tool	Freiform-Stift-Werkzeug
 	Curvature Pen Tool	Rundungsstift-Werkzeug
 	Curve Fit:	Kurvenanpassung:
-	Drag: draw freehand · Release on the start point: close	Ziehen: frei zeichnen · Am Startpunkt loslassen: schließen
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Ziehen: frei zeichnen · {alt}-Klick: gerades Segment · Am Startpunkt loslassen: schließen
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klick: weicher Punkt · Doppelklick: Ecke · Punkt ziehen: verschieben · Ersten Punkt klicken: schließen · {key} fertig
 	New Crop Preset…	Neue Freistellungsvorgabe…
 	Delete Crop Preset…	Freistellungsvorgabe löschen…
@@ -2606,6 +2608,15 @@ cameraData	Lens	Objektiv
 	Snap to Origin	An Ursprung ausrichten
 	Search settings…	Einstellungen durchsuchen…
 	No matching settings	Keine passenden Einstellungen
+	Loading fonts…	Schriften werden geladen…
+	Tool	Werkzeug
+	Simulate Pressure	Druck simulieren
+	Stroke Path…	Pfad nachziehen…
+	Background Eraser	Hintergrund-Radiergummi
+	Healing Brush	Korrektur-Pinsel
+	Spot Healing Brush	Punktkorrektur-Pinsel
+	Smudge	Wischfinger
+	Sponge	Schwamm
 # Select and Mask view modes (#1754)
 	Onion Skin	Zwiebelschicht
 	Marching Ants	Laufende Ameisen
@@ -2631,3 +2642,8 @@ cameraData	Lens	Objektiv
 	Emulsion Down	Schichtseite unten
 	Functions	Funktionen
 	Print Resolution:	Druckauflösung:
+	Use Previous Layer to Create Clipping Mask	Vorherige Ebene zum Erstellen einer Schnittmaske verwenden
+	Fill with {mode}-neutral color (white)	Mit neutraler Farbe für {mode} füllen (Weiß)
+	Fill with {mode}-neutral color (black)	Mit neutraler Farbe für {mode} füllen (Schwarz)
+	Fill with {mode}-neutral color (50% gray)	Mit neutraler Farbe für {mode} füllen (50 % Grau)
+	(No neutral color exists for {mode} mode.)	(Für den Modus {mode} gibt es keine neutrale Farbe.)
