@@ -626,6 +626,52 @@ fn info(s: &Session, p: &Value) -> Result<Value> {
     }))
 }
 
+/// A type layer (not yet rendered or added) from `type.create`'s params: text, point `x`/`y` or
+/// paragraph `box`, `orientation`, character and paragraph keys, starting from the default type
+/// styles in the foreground colour. Shared with the Type Mask tools' `type.createSelection`.
+pub(crate) fn new_text_layer(s: &Session, p: &Value, cmd: &str) -> Result<TextLayer> {
+    let orientation = match p.get("orientation") {
+        None => Orientation::Horizontal,
+        Some(Value::String(value)) if value == "horizontal" => Orientation::Horizontal,
+        Some(Value::String(value)) if value == "vertical" => Orientation::Vertical,
+        _ => return Err(bad(cmd, "orientation must be horizontal or vertical")),
+    };
+    check_kerning(p).map_err(|m| bad(cmd, m))?;
+    check_size_tracking(p).map_err(|m| bad(cmd, m))?;
+    let text = norm_text(p.get("text").and_then(Value::as_str).unwrap_or(""));
+    // Type › Save Default Type Styles sets the starting styles; the colour is always
+    // the foreground colour, as in Photoshop.
+    let (mut style, mut para) = s
+        .type_defaults
+        .clone()
+        .unwrap_or_else(|| (CharStyle { font_family: photocraft_text::fonts::DEFAULT_FAMILY.into(), ..Default::default() }, ParagraphStyle::default()));
+    let fg = s.tools.foreground;
+    style.color = Color::rgba(fg[0], fg[1], fg[2], fg[3]);
+    apply_char_props(&mut style, p);
+    apply_para_props(&mut para, p);
+    let (shape, transform) = match p.get("box").and_then(Value::as_array) {
+        Some(b) if b.len() == 4 => {
+            let v: Vec<f32> = b.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect();
+            if v[2] <= 0.0 || v[3] <= 0.0 {
+                return Err(bad(cmd, "box width and height must be positive"));
+            }
+            (TextShape::Box { x: 0.0, y: 0.0, width: v[2], height: v[3] }, Affine::translate(f64::from(v[0]), f64::from(v[1])))
+        }
+        _ => (TextShape::Point, Affine::translate(f32p(p, "x").unwrap_or(0.0).into(), f32p(p, "y").unwrap_or(0.0).into())),
+    };
+    let mut t = TextLayer {
+        runs: vec![TextRun { len: text.len(), style }],
+        paragraphs: vec![ParagraphRun { len: text.len(), style: para }],
+        text,
+        shape,
+        transform,
+        orientation,
+        ..Default::default()
+    };
+    t.sync_summary();
+    Ok(t)
+}
+
 const CHAR_PARAMS: &str = r##""font":str,"fontStyle":str,"weight":100..900,"italic":bool,"size":0.1..=1296 pt,"color":"#rrggbb"|[r,g,b,a],"tracking":-1000..=10000 (1/1000 em),"leading":pt|"auto","baselineShift":pt,"horizontalScale":%,"verticalScale":%,"underline":bool,"strikethrough":bool,"fauxBold":bool,"fauxItalic":bool,"kerning":1/1000em (manual, after each character)|"metrics"|"optical"|"off","caps":"normal|small|all","ligatures":bool,"discretionaryLigatures":bool,"features":{"ss01":1},"variations":{"wght":650},"language":str"##;
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -639,42 +685,7 @@ pub fn specs() -> Vec<CommandSpec> {
             enabled: has_doc,
             journal: true,
             run: |s, p| {
-                let orientation = match p.get("orientation") {
-                    None => Orientation::Horizontal,
-                    Some(Value::String(value)) if value == "horizontal" => Orientation::Horizontal,
-                    Some(Value::String(value)) if value == "vertical" => Orientation::Vertical,
-                    _ => return Err(bad("type.create", "orientation must be horizontal or vertical")),
-                };
-                check_kerning(p).map_err(|m| bad("type.create", m))?;
-                check_size_tracking(p).map_err(|m| bad("type.create", m))?;
-                let text = norm_text(p.get("text").and_then(Value::as_str).unwrap_or(""));
-                // Type › Save Default Type Styles sets the starting styles; the colour is always
-                // the foreground colour, as in Photoshop.
-                let (mut style, mut para) = s.type_defaults.clone().unwrap_or_else(|| (CharStyle { font_family: photocraft_text::fonts::DEFAULT_FAMILY.into(), ..Default::default() }, ParagraphStyle::default()));
-                let fg = s.tools.foreground;
-                style.color = Color::rgba(fg[0], fg[1], fg[2], fg[3]);
-                apply_char_props(&mut style, p);
-                apply_para_props(&mut para, p);
-                let (shape, transform) = match p.get("box").and_then(Value::as_array) {
-                    Some(b) if b.len() == 4 => {
-                        let v: Vec<f32> = b.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect();
-                        if v[2] <= 0.0 || v[3] <= 0.0 {
-                            return Err(bad("type.create", "box width and height must be positive"));
-                        }
-                        (TextShape::Box { x: 0.0, y: 0.0, width: v[2], height: v[3] }, Affine::translate(f64::from(v[0]), f64::from(v[1])))
-                    }
-                    _ => (TextShape::Point, Affine::translate(f32p(p, "x").unwrap_or(0.0).into(), f32p(p, "y").unwrap_or(0.0).into())),
-                };
-                let mut t = TextLayer {
-                    runs: vec![TextRun { len: text.len(), style }],
-                    paragraphs: vec![ParagraphRun { len: text.len(), style: para }],
-                    text,
-                    shape,
-                    transform,
-                    orientation,
-                    ..Default::default()
-                };
-                t.sync_summary();
+                let mut t = new_text_layer(s, p, "type.create")?;
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| layer_name(&t.text));
                 let id = s.edit("New Type Layer", |doc, active| {
                     refresh(doc, &mut t);
@@ -897,7 +908,50 @@ pub fn specs() -> Vec<CommandSpec> {
                 }
             },
         },
+        size_key("type.increaseSize", "Increase Type Size", "Cmd+Shift+.", |s, p| step_size(s, p, true, 2.0)),
+        size_key("type.decreaseSize", "Decrease Type Size", "Cmd+Shift+,", |s, p| step_size(s, p, false, 2.0)),
+        size_key("type.increaseSizeMore", "Increase Type Size by 10", "Cmd+Alt+Shift+.", |s, p| step_size(s, p, true, 10.0)),
+        size_key("type.decreaseSizeMore", "Decrease Type Size by 10", "Cmd+Alt+Shift+,", |s, p| step_size(s, p, false, 10.0)),
     ]
+}
+
+fn has_type_layer(s: &Session) -> std::result::Result<(), String> {
+    let st = s.active().ok_or("no document open")?;
+    match st.active_layer.and_then(|id| st.doc.layer(id)) {
+        Some(l) if matches!(l.content, LayerContent::Text(_)) => Ok(()),
+        _ => Err("the active layer is not a type layer".into()),
+    }
+}
+
+/// Photoshop's ⇧⌘> / ⇧⌘< (⌥ for bigger steps). On a US keyboard > and < share the . and , keys.
+fn size_key(id: &'static str, label: &'static str, shortcut: &'static str, run: fn(&mut Session, &Value) -> Result<Value>) -> CommandSpec {
+    CommandSpec {
+        id,
+        label,
+        menu: &[],
+        shortcut: Some(shortcut),
+        params: r##"{"layer":id?,"range":[startChar,endChar]? (default all),"by":pt? (as the layer appears)}"##,
+        enabled: has_type_layer,
+        journal: true,
+        run,
+    }
+}
+
+/// Grows or shrinks every character in the range by `by` points as the layer appears, so mixed
+/// sizes keep their differences and a scaled layer steps in the points its size field shows.
+fn step_size(s: &mut Session, p: &Value, up: bool, default_by: f32) -> Result<Value> {
+    let id = layer_id(s, p)?;
+    let by = f32p(p, "by").filter(|v| v.is_finite()).unwrap_or(default_by).abs().min(TYPE_SIZE_MAX_PT as f32);
+    with_text_layer(s, p, "Change Type Size", |t, _, _| {
+        let m = t.transform.m;
+        let scale = (m[0] * m[3] - m[1] * m[2]).abs().sqrt() as f32;
+        let scale = if scale.is_finite() && scale > 1e-3 { scale } else { 1.0 };
+        let delta = if up { by } else { -by } / scale;
+        let (a, b) = range_param(&t.text, p);
+        style_range(t, a, b, &|st| st.size_pt = (st.size_pt + delta).clamp(TYPE_SIZE_MIN_PT as f32, TYPE_SIZE_MAX_PT as f32));
+        Ok(())
+    })?;
+    info(s, &json!({ "layer": id.0 }))
 }
 
 #[cfg(test)]
@@ -1034,6 +1088,42 @@ mod tests {
         assert_eq!(layer_name_of(&s, id), "Title");
         assert!(s.undo());
         assert_eq!(layer_name_of(&s, id), "Type Layer");
+    }
+
+    #[test]
+    fn size_keys_step_each_run_and_respect_layer_scale() {
+        let mut s = session();
+        let id = s.execute("type.create", json!({"x": 0, "y": 40, "text": "Hello world", "size": 12})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("type.setStyle", json!({"layer": id, "range": [6, 11], "size": 20})).unwrap();
+        s.execute("type.increaseSize", json!({})).unwrap();
+        let sizes = |s: &Session| text_layer(s, id).char_runs().iter().map(|r| r.style.size_pt).collect::<Vec<_>>();
+        assert_eq!(sizes(&s), vec![14.0, 22.0], "every run grows by 2 pt");
+        s.execute("type.decreaseSizeMore", json!({"range": [0, 5]})).unwrap();
+        assert_eq!(sizes(&s)[0], 4.0, "only the range, by 10 pt");
+        for _ in 0..2 {
+            s.execute("type.decreaseSize", json!({"range": [0, 5]})).unwrap();
+        }
+        assert_eq!(sizes(&s)[0], TYPE_SIZE_MIN_PT as f32, "never below the smallest size");
+        s.execute("edit.undo", json!({})).unwrap();
+        assert_eq!(sizes(&s)[0], 2.0, "one undo step per press");
+
+        let scaled = s.execute("type.create", json!({"x": 0, "y": 80, "text": "Big", "size": 12})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("type.edit", json!({"layer": scaled, "transform": [2.0, 0.0, 0.0, 2.0, 0.0, 80.0]})).unwrap();
+        s.execute("type.increaseSize", json!({"layer": scaled})).unwrap();
+        assert_eq!(text_layer(&s, scaled).char_runs()[0].style.size_pt, 13.0, "a 200% layer shows 24 pt and steps to 26 pt");
+    }
+
+    #[test]
+    fn size_keys_need_a_type_layer() {
+        let mut s = session();
+        assert!(s.execute("type.increaseSize", json!({})).is_err());
+        let id = s.execute("type.create", json!({"x": 0, "y": 40, "text": "Hi", "size": 12})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("type.increaseSize", json!({"by": "big"})).unwrap();
+        s.execute("type.increaseSize", json!({"by": -3})).unwrap();
+        s.execute("type.decreaseSize", json!({"by": 1e30, "range": [9, 0]})).unwrap();
+        assert_eq!(text_layer(&s, id).char_runs()[0].style.size_pt, TYPE_SIZE_MIN_PT as f32, "bad steps fall back or clamp, never panic");
+        assert_eq!(crate::commands::find("type.increaseSize").and_then(|c| c.shortcut), Some("Cmd+Shift+."));
+        assert_eq!(crate::commands::find("type.decreaseSize").and_then(|c| c.shortcut), Some("Cmd+Shift+,"));
     }
 
     #[test]
