@@ -368,7 +368,7 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
         for name in CATEGORIES.iter().map(|c| c.0).chain(["Saved"]) {
             let on = cat == name;
             let label = if name == "Saved" { tl!("Saved") } else { tl!(name) };
-            let r = ui.add(egui::Label::new(RichText::new(label).size(13.0).color(if on { t.text } else { t.text_dim })).sense(Sense::click()));
+            let r = ui.add(egui::Label::new(RichText::new(label).size(13.0).color(if on { t.text } else { t.text_dim })).selectable(false).sense(Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand);
             if on {
                 ui.painter().line_segment([r.rect.left_bottom() + vec2(0.0, 3.0), r.rect.right_bottom() + vec2(0.0, 3.0)], Stroke::new(2.0, t.text));
             }
@@ -402,6 +402,7 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
                     for listed in row {
                         let p = &at_pref_resolutions(listed, &units);
                         let (r, resp) = ui.allocate_exact_size(card, Sense::click());
+                        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                         let on = chosen == p.0;
                         ui.painter().rect_filled(
                             r,
