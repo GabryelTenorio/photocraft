@@ -24,7 +24,8 @@ pub fn stepped(modes: &[BlendMode], current: BlendMode, step: i32) -> Option<Ble
     modes.get(usize::try_from(next).ok()?).copied()
 }
 
-/// Consumes this frame's ⇧+ / ⇧− presses (⇧= on a US layout is `+`) and applies them.
+/// Consumes this frame's ⇧+ / ⇧− presses (⇧= on a US layout is `+`; on a German one
+/// `shortcuts::layout_symbols` has already turned ⇧+ and ⇧- into `+` and `-`) and applies them.
 pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let steps: Vec<i32> = ctx.input_mut(|i| {
         let mut out = Vec::new();
@@ -110,6 +111,33 @@ mod tests {
         ctx.begin_pass(raw);
         crate::shortcuts::handle(app, ctx);
         ctx.end_pass().textures_delta.clear();
+    }
+
+    /// #3102: on a German layout ⇧+ types `*`, which egui reports as the physical `]`, and ⇧- types
+    /// `_` as the physical `/`. With the Brush they step its mode, not its hardness; a US ⇧] (`}`)
+    /// still raises the hardness.
+    #[test]
+    fn german_shift_plus_and_minus_step_the_mode_and_us_shift_bracket_keeps_the_hardness() {
+        let ctx = egui::Context::default();
+        let mut a = app(Tool::Brush);
+        a.session.tools.brush.hardness = 0.5;
+        let shift = egui::Modifiers::SHIFT;
+        let typed = |a: &mut PhotocraftApp, key: Key, physical_key: Key, text: &str| {
+            let press = egui::Event::Key { key, physical_key: Some(physical_key), pressed: true, repeat: false, modifiers: shift };
+            let raw = egui::RawInput { events: vec![egui::Event::ModifiersChanged(shift), press, egui::Event::Text(text.into())], ..Default::default() };
+            ctx.begin_pass(raw);
+            crate::shortcuts::handle(a, &ctx);
+            ctx.end_pass().textures_delta.clear();
+        };
+        typed(&mut a, Key::CloseBracket, Key::CloseBracket, "*");
+        assert_eq!(a.session.tools.brush.mode, BlendMode::Dissolve);
+        assert_eq!(a.session.tools.brush.hardness, 0.5, "not Increase Brush Hardness");
+        typed(&mut a, Key::Slash, Key::Slash, "_");
+        assert_eq!(a.session.tools.brush.mode, BlendMode::Normal);
+        // US: ⇧] arrives as `}` from the physical `]`.
+        typed(&mut a, Key::CloseCurlyBracket, Key::CloseBracket, "}");
+        assert!(a.session.tools.brush.hardness > 0.5);
+        assert_eq!(a.session.tools.brush.mode, BlendMode::Normal);
     }
 
     #[test]
