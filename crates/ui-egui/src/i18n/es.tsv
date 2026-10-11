@@ -2095,6 +2095,7 @@
 	Cancelled {label}	Se canceló {label}
 	Esc to cancel	Esc para cancelar
 	Opening {name}	Abriendo {name}
+	Saved {name}	Guardado: {name}
 	Saving {name}	Guardando {name}
 	A save to {name} is still running; try again when it finishes	Todavía se está guardando {name}; inténtalo de nuevo cuando termine
 	{label} is writing the file and can no longer be cancelled	{label} está escribiendo el archivo y ya no se puede cancelar
@@ -2501,6 +2502,9 @@ fontWeight	Italic	Cursiva
 	Quick Selection found nothing there	Selección rápida no encontró nada ahí
 	Object Selection found nothing there — try a tighter rectangle	Selección de objeto no encontró nada ahí — pruebe un rectángulo más ajustado
 	No subject found — try a rectangle around the object	No se encontró ningún sujeto — pruebe un rectángulo alrededor del objeto
+	Appearance Settings…	Ajustes de apariencia…
+	Add to favorites	Añadir a favoritos
+	Remove from favorites	Quitar de favoritos
 # File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
 	Camera Data	Datos de cámara
 cameraData	Make	Marca

@@ -2094,6 +2094,7 @@
 	Cancelled {label}	已取消 {label}
 	Esc to cancel	按 Esc 取消
 	Opening {name}	正在開啟 {name}
+	Saved {name}	已儲存 {name}
 	Saving {name}	正在儲存 {name}
 	A save to {name} is still running; try again when it finishes	仍在儲存到 {name}；請在完成後再試一次
 	{label} is writing the file and can no longer be cancelled	{label} 正在寫入檔案，已無法取消
@@ -2411,6 +2412,9 @@ fontWeight	Italic	斜體
 	Quick Selection found nothing there	快速選取在該處找不到任何內容
 	Object Selection found nothing there — try a tighter rectangle	物件選取在該處找不到任何內容 — 請嘗試更緊密的矩形
 	No subject found — try a rectangle around the object	找不到主體 — 請嘗試在物件周圍繪製矩形
+	Appearance Settings…	外觀設定…
+	Add to favorites	加入最愛
+	Remove from favorites	從最愛移除
 # File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
 	Camera Data	相機資料
 cameraData	Make	製造商

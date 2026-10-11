@@ -2112,6 +2112,7 @@
 	Cancelled {label}	Zrušeno: {label}
 	Esc to cancel	Esc pro zrušení
 	Opening {name}	Otevírání {name}
+	Saved {name}	Uloženo: {name}
 	Saving {name}	Ukládání {name}
 	A save to {name} is still running; try again when it finishes	Ukládání do {name} stále probíhá; zkuste to znovu, až skončí
 	{label} is writing the file and can no longer be cancelled	{label} zapisuje soubor a už ho nelze zrušit
@@ -2434,6 +2435,9 @@ fontWeight	Italic	Kurzíva
 	Quick Selection found nothing there	Rychlý výběr zde nic nenašel
 	Object Selection found nothing there — try a tighter rectangle	Výběr objektu zde nic nenašel — zkuste těsnější obdélník
 	No subject found — try a rectangle around the object	Nebyl nalezen žádný objekt — zkuste obdélník kolem objektu
+	Appearance Settings…	Nastavení vzhledu…
+	Add to favorites	Přidat do oblíbených
+	Remove from favorites	Odebrat z oblíbených
 # File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
 	Camera Data	Údaje fotoaparátu
 cameraData	Make	Výrobce
