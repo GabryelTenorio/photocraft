@@ -1042,7 +1042,8 @@ mod tests {
             h.run_steps(2);
             h.get_by_label("Web").click();
             h.run_steps(2);
-            click_at(&mut h, preset_title_at(&h, "Web Minimum"));
+            let at = preset_title_at(&h, "Web Minimum");
+            click_at(&mut h, at);
             enter(&mut h);
             assert_eq!(created(&h), (1024, 768, 96.0));
         }
