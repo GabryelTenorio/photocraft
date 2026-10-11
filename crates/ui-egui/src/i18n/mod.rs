@@ -732,9 +732,6 @@ mod tests {
         }
     }
 
-    /// Every `tl!("literal")` in the shell has an entry in each language that claims complete menus
-    /// (so a new label can't ship untranslated by accident). Literals that are deliberately shown as
-    /// they are (names, units) are listed in `KEEP_AS_IS`.
     /// `text` with each `#[cfg(test)] mod … { … }` block removed, by brace counting (the test
     /// modules in this crate are well formed).
     fn without_test_modules(text: &str) -> String {
@@ -774,6 +771,9 @@ mod tests {
         assert!(code.starts_with("a\n") && code.ends_with("\nc"), "{code}");
     }
 
+    /// Every `tl!("literal")` in the shell has an entry in each language that claims complete menus
+    /// (so a new label can't ship untranslated by accident). Literals that are deliberately shown as
+    /// they are (names, units) are listed in `KEEP_AS_IS`.
     #[test]
     fn every_tl_literal_is_translated() {
         const KEEP_AS_IS: &[&str] = &[];
@@ -822,6 +822,22 @@ mod tests {
         for lang in Lang::all().filter(|l| l.complete_menus()) {
             for (name, _) in crate::brush_panel::SECTIONS {
                 assert!(lang.0.catalog().plain(name).is_some(), "{} missing brush section: {name}", lang.code());
+            }
+        }
+    }
+
+    /// `menus::reveal_label` picks one name per platform, so every name needs a translation
+    /// whichever OS runs the tests (UI-217-19).
+    #[test]
+    fn reveal_labels_are_translated() {
+        for lang in Lang::all().filter(|l| l.complete_menus()) {
+            let cat = lang.0.catalog();
+            for label in ["Reveal in Finder", "Show in Explorer", "Show in Folder"] {
+                let tr = cat.plain(label);
+                assert!(tr.is_some(), "{} missing {label}", lang.code());
+                if label != "Reveal in Finder" {
+                    assert!(!tr.unwrap_or_default().contains("Finder"), "{}: {label} names the Finder", lang.code());
+                }
             }
         }
     }
