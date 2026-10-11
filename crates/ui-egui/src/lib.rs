@@ -75,11 +75,14 @@ pub mod fill_ui;
 pub mod filter_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod filter_preview_worker;
+pub mod flick_pan;
 mod font_preview;
+pub mod frame_tool;
 pub mod gallery_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
+pub mod guide_layout_ui;
 pub mod hold_keys;
 pub mod i18n;
 mod icon_data;
@@ -149,6 +152,7 @@ pub(crate) mod shape_fill_ui;
 pub mod shape_stroke_ui;
 pub mod shortcut_dispatch;
 pub mod shortcuts;
+mod single_line_drag;
 mod sizing;
 pub mod slice_ui;
 pub mod smart_ui;
@@ -273,6 +277,10 @@ pub(crate) enum SaveKind {
 pub type AutomationReadFn = Box<dyn FnMut(&str) -> Result<(String, Vec<u8>), String>>;
 /// Write bytes through the desktop control session's authorized write root.
 pub type AutomationWriteFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
+/// Load a directory-form `.pcraft` through the authorized read root, returning its display
+/// name (the file name) and the loaded document. `Ok(None)` marks a regular file: the
+/// caller falls back to the bytes path for the zip form.
+pub type AutomationOpenPcraftFn = Box<dyn FnMut(&str) -> Result<Option<(String, Document)>, String>>;
 /// Reject engine commands which still perform ambient filesystem I/O.
 pub type AutomationCommandFn = Box<dyn Fn(&str, &Value) -> Result<(), String>>;
 /// Open a URL in the system browser (native) — reliable cross-platform, unlike `ctx.open_url`.
@@ -354,6 +362,7 @@ pub struct Services {
     /// using `file_dialog` and `write` with the user's authority.
     pub automation_read: Option<AutomationReadFn>,
     pub automation_write: Option<AutomationWriteFn>,
+    pub automation_open_pcraft: Option<AutomationOpenPcraftFn>,
     pub automation_command: Option<AutomationCommandFn>,
     /// Same policy as [`Self::automation_command`], as a function pointer the engine calls for
     /// each step of `actions.play`. Installed on the session only while a control request or
@@ -1675,12 +1684,22 @@ impl PhotocraftApp {
         }
     }
 
-    /// The Layers panel targets the active layer's mask, and no alpha channel or Quick Mask
-    /// takes over (the engine routes those itself).
+    /// The active layer's mask is what pixel commands edit: the Layers panel targets it, or every
+    /// colour channel is off and that mask is the picture. An alpha channel or Quick Mask wins,
+    /// as the engine routes those itself.
     pub fn layer_mask_targeted(&self) -> bool {
-        let Some(st) = self.session.active().filter(|_| self.ui.mask_target) else { return false };
+        let Some(st) = self.session.active() else { return false };
         let composite = st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::Composite && st.doc.quick_mask.is_none();
-        composite && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some())
+        let has_mask = st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some());
+        if !composite || !has_mask {
+            return false;
+        }
+        if self.ui.mask_target {
+            return true;
+        }
+        let colors_off = st.channel_view.visible_colors(photocraft_engine::channel_cmds::color_count(&st.doc)) == 0;
+        let alpha_on = (0..st.doc.channels.len()).any(|i| st.channel_view.alpha_shown(i));
+        colors_off && !alpha_on
     }
 
     /// Viewing a layer mask (#196) targets it; a vector-mask target needs a vector mask on the
@@ -1860,6 +1879,7 @@ impl PhotocraftApp {
     /// very first frame renders; otherwise `logic` does it and the first frame is skipped.
     pub fn setup_context(ctx: &egui::Context, kind: theme::ThemeKind) {
         ctx.add_plugin(tool_cursor::CursorLifecycle);
+        ctx.add_plugin(single_line_drag::SingleLineDrag::default());
         theme::install_fonts(ctx);
         egui_extras::install_image_loaders(ctx);
         theme::apply(ctx, kind);
@@ -2158,6 +2178,9 @@ mod warp_text_dialog_tests;
 mod blend_dropdown_wheel_tests;
 
 #[cfg(test)]
+mod dropdown_press_tests;
+
+#[cfg(test)]
 mod marquee_tests;
 
 #[cfg(test)]
@@ -2171,6 +2194,8 @@ mod stamp_tests;
 
 #[cfg(test)]
 mod alt_click_tests;
+#[cfg(test)]
+mod status_bar_tests;
 #[cfg(test)]
 mod stroke_timing_tests;
 
