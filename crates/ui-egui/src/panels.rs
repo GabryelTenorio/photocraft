@@ -459,23 +459,9 @@ fn color_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, two_columns: bool) {
             p.add(egui::Shape::convex_polygon(vec![tip, base + side * 3.0, base - side * 3.0], ink(&s), Stroke::NONE));
         }
     } else {
-        // Switch Colors: a bold 2px quarter curve with a small filled head at each end, drawn on
-        // the 13px icon grid (arc radius 7 from (3, 4.5) to (9.5, 11), heads left and down).
-        let o = sr.min;
-        let ink = ink(&s);
-        let (c, rad) = (o + vec2(2.52, 11.48), 7.0_f32);
-        let (a0, a1) = ((4.5_f32 - 11.48).atan2(3.0 - 2.52), (11.0_f32 - 11.48).atan2(9.5 - 2.52));
-        let arc: Vec<_> = (0..=10)
-            .map(|i| {
-                let a = a0 + (a1 - a0) * i as f32 / 10.0;
-                c + vec2(rad * a.cos(), rad * a.sin())
-            })
-            .collect();
-        p.add(egui::Shape::line(arc, Stroke::new(2.0, ink)));
-        for head in [[(0.2, 4.5), (3.4, 2.2), (3.4, 6.8)], [(9.5, 13.8), (7.2, 10.6), (11.8, 10.6)]] {
-            let pts = head.iter().map(|&(x, y)| o + vec2(x, y)).collect();
-            p.add(egui::Shape::convex_polygon(pts, ink, Stroke::NONE));
-        }
+        // Switch Colors: a bold diagonal curve with a filled head at each end, measured from the
+        // reference glyph (see swap_arrow.rs, which owns the geometry and its unit tests).
+        crate::swap_arrow::paint(p, sr.min, ink(&s));
     }
     // Default Colors: a small black chip over a small white one.
     if let (Some(dr), Some(d)) = (dr, d.as_ref()) {

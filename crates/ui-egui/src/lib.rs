@@ -159,6 +159,7 @@ pub mod stroke_trail;
 pub mod stroke_ui;
 pub mod stylus;
 pub mod swatches_ui;
+pub mod swap_arrow;
 pub mod symmetry_ui;
 mod tab_strip;
 pub mod targa_options_ui;
