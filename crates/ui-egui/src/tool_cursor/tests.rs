@@ -422,13 +422,13 @@ fn painting_preference_and_zoom_change_the_native_cursor_without_changing_pointe
 }
 
 #[test]
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 fn pen_hover_moves_with_the_os_and_restores_other_tool_panel_and_precise_cursors() {
     let mut h = harness();
     h.state_mut().ui.tool = crate::Tool::Pen;
     h.run_steps(2);
     let initial = h.output().platform_output.cursor_image.clone().expect("Pen hover uses the native bitmap");
-    assert_eq!(initial.rgba, rasterize(Shape::Pen, h.ctx.pixels_per_point()).unwrap().rgba);
+    assert_eq!(initial.rgba, rasterize(Shape::Pen, native_scale(&h.ctx)).unwrap().rgba);
     let start = h.state().last_canvas_rect.center();
     let end = start + vec2(25.0, 12.0);
     h.event(Event::PointerMoved(end));
@@ -464,7 +464,12 @@ fn pen_hover_moves_with_the_os_and_restores_other_tool_panel_and_precise_cursors
     h.run_steps(2);
     h.event(Event::Key { key: egui::Key::Space, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
-    assert_ne!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba, "Space temporarily shows the Hand cursor");
+    if cfg!(target_os = "windows") {
+        assert_ne!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba, "Space temporarily shows the Hand cursor");
+    } else {
+        assert!(h.output().platform_output.cursor_image.is_none(), "Space replaces the Pen bitmap with the OS hand");
+        assert_eq!(h.output().platform_output.cursor_icon, CursorIcon::Grab);
+    }
     h.event(Event::Key { key: egui::Key::Space, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
     assert_eq!(h.output().platform_output.cursor_image.as_ref().unwrap().rgba, initial.rgba);

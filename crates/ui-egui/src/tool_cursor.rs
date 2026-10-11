@@ -74,9 +74,8 @@ pub(crate) fn crosshair(painter: &Painter, at: Pos2, length: f32, gap: f32) -> C
 /// The existing Pen tool glyph, with its nib at the pointer rather than the centre of its box.
 pub(crate) fn pen(painter: &Painter, at: Pos2) -> CursorIcon {
     let ctx = painter.ctx();
-    if cfg!(target_os = "windows")
-        && ctx.viewport_id() == egui::ViewportId::ROOT
-        && let Some(image) = cached_image(ctx, Shape::Pen, ctx.pixels_per_point())
+    if native(ctx)
+        && let Some(image) = cached_image(ctx, Shape::Pen, native_scale(ctx))
     {
         ctx.set_cursor_image(Some(image));
         return CursorIcon::None;
