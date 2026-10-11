@@ -591,9 +591,9 @@ impl Compositor {
         };
         let mut pipelines: HashMap<_, _> =
             Kernel::DRAWN.iter().filter(|k| !k.is_map()).filter_map(|&k| Some(((k, acc_format, false), pipeline(k, acc_format, false)?))).collect();
-        // Only these four entry points sample gradients. The finite exact variants are built
+        // Only these three entry points sample exact horizontal gradients. The finite variants are built
         // once per compositor, never cached per gradient or rebuilt while editing stops.
-        for k in [Kernel::Content, Kernel::Adjust, Kernel::FxPaint, Kernel::FxStroke] {
+        for k in [Kernel::Content, Kernel::FxPaint, Kernel::FxStroke] {
             if let Some(p) = pipeline(k, acc_format, true) {
                 pipelines.insert((k, acc_format, true), p);
             }

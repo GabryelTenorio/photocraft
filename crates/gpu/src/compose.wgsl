@@ -788,7 +788,22 @@ fn adjust(c: vec3<f32>) -> vec3<f32> {
 
 // ---- fills ----------------------------------------------------------------------------------
 
+// Header texel3 points past the exact stops to the CPU-computed horizontal t table.
+// Integer document coordinates make whole-texture and paged/chunked draws identical.
+fn exact_parameter(x: i32) -> f32 {
+    let base = i32(lut_at(3));
+    let origin = bitcast<i32>((bitcast<u32>(i32(lut_at(base))) << 16u) | u32(lut_at(base + 1)));
+    let count = clamp(i32(lut_at(base + 2)), 1, 16384);
+    var column = 0;
+    if (x > origin) {
+        if (x >= origin + count - 1) { column = count - 1; }
+        else { column = x - origin; }
+    }
+    return lut_at(base + 3 + column);
+}
+
 fn gradient_t(d: vec2<i32>) -> f32 {
+    if (EXACT_RAMP) { return exact_parameter(d.x); }
     // p0 = (angle°, scale, reverse, style), p1 = frame (x0, y0, w, h)
     let w = max(op.p1.z, 1.0);
     let h = max(op.p1.w, 1.0);
@@ -807,25 +822,13 @@ fn gradient_t(d: vec2<i32>) -> f32 {
     let chord = max(min(w / max(abs(c), 1e-6), h / max(abs(s), 1e-6)), 1.0) * max(op.p0.y, 1e-3);
     // Linear / Reflected sample the pixel's top-left corner (effects::gradient_t).
     let corner = 0.5 * (c - s);
-    let projected = along - corner;
-    let half_chord = chord / 2.0;
     var t: f32;
     switch i32(op.p0.w) {
         case 1: { t = sqrt(dx * dx + dy * dy) / (len / 2.0); }                  // Radial
         case 2: { t = rem_euclid((a - atan2(-dy, dx)) / 6.28318530718, 1.0); }   // Angle
-        case 3: {                                                            // Reflected
-            if (EXACT_RAMP && abs(projected) >= half_chord) { t = 1.0; }
-            else { t = abs(projected / half_chord); }
-        }
+        case 3: { t = abs((along - corner) / (chord / 2.0)); }                  // Reflected
         case 4: { t = (abs(along) + abs(across)) / (len / 2.0); }               // Diamond
-        default: {                                                           // Linear
-            // Metal can contract division + bias into a tiny positive t at the
-            // exact start. Bound the projection first, without an epsilon, so a
-            // coincident endpoint selects the same stop as the CPU oracle.
-            if (EXACT_RAMP && projected <= -half_chord) { t = 0.0; }
-            else if (EXACT_RAMP && projected >= half_chord) { t = 1.0; }
-            else { t = projected / chord + 0.5; }
-        }
+        default: { t = (along - corner) / chord + 0.5; }                        // Linear
     }
     t = clamp(t, 0.0, 1.0);
     if (op.p0.z > 0.5) { t = 1.0 - t; }
