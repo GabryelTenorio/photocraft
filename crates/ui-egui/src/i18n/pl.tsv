@@ -42,6 +42,8 @@
 	Right	Prawa
 	Open Recent	Otwórz ostatnie
 	Clear Recent Files	Wyczyść listę ostatnich plików
+	Remove from Recent	Usuń z ostatnich plików
+	Remove {name} from Recent	Usuń {name} z ostatnich plików
 	Close	Zamknij
 	Minimize	Minimalizuj
 	Maximize	Maksymalizuj
@@ -265,6 +267,7 @@
 	Layer via Cut	Warstwa przez wycięcie
 	Layer From Background…	Warstwa z tła…
 	Layer from Background…	Warstwa z tła…
+	Background From Layer	Tło z warstwy
 	New Shape Layer	Nowa warstwa kształtu
 	New Type Layer	Nowa warstwa tekstowa
 	New Fill Layer	Nowa warstwa wypełnienia
@@ -688,6 +691,10 @@
 	Classic Theme	Motyw klasyczny
 	Solarized dark	Solarized ciemny
 	Solarized Dark Theme	Ciemny motyw Solarized
+	Breeze dark	Breeze ciemny
+	Breeze Dark Theme	Ciemny motyw Breeze
+	Breeze light	Breeze jasny
+	Breeze Light Theme	Jasny motyw Breeze
 	Next Theme	Następny motyw
 	Actions	Akcje
 	Brush Settings	Ustawienia pędzla
@@ -1527,6 +1534,7 @@
 	Blur Tool	Narzędzie Rozmycie
 	Bold	Pogrubiona
 	Brush	Pędzel
+	Block	Blok
 	Brush Pose	Pozycja pędzla
 	Brush Tip Shape	Kształt końcówki pędzla
 	Brush Tool	Narzędzie Pędzel
@@ -1576,6 +1584,8 @@
 	Efficiency: 100%	Wydajność: 100%
 	Ellipse Tool	Narzędzie Elipsa
 	Elliptical Marquee Tool	Narzędzie Zaznaczenie eliptyczne
+	Single Row Marquee Tool	Narzędzie Zaznaczenie pojedynczego wiersza
+	Single Column Marquee Tool	Narzędzie Zaznaczenie pojedynczej kolumny
 	Emboss	Płaskorzeźba
 	Eraser	Gumka
 	Eraser Tool	Narzędzie Gumka
@@ -1652,6 +1662,10 @@
 	Paints from the document's opening state	Maluje na podstawie stanu dokumentu z chwili otwarcia
 	Path Selection Tool	Narzędzie Zaznaczanie ścieżki
 	Direct Selection Tool	Narzędzie Zaznaczanie bezpośrednie
+	Add Anchor Point Tool	Narzędzie Dodaj punkt kontrolny
+	Delete Anchor Point Tool	Narzędzie Usuń punkt kontrolny
+	Click a segment to add an anchor point · {alt}-click an anchor to delete it	Kliknij segment, aby dodać punkt kontrolny · {alt}-klik na punkcie kontrolnym usuwa go
+	Click an anchor point to delete it · {alt}-click a segment to add one	Kliknij punkt kontrolny, aby go usunąć · {alt}-klik na segmencie dodaje punkt
 	Pattern Overlay	Nakładka wzoru
 	Pen Pressure	Nacisk pióra
 	Pen Tilt	Nachylenie pióra
@@ -1744,6 +1758,7 @@
 	Invalid {mode} profile	Nieprawidłowy profil {mode}
 	Unnamed {mode} profile	Profil {mode} bez nazwy
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Rozdzielczość: {dpi} pikseli/cal
 	Doc: {w} × {h} px	Dok.: {w} × {h} px
 	Frame {current} / {total}	Klatka {current} / {total}
@@ -1782,6 +1797,7 @@
 	Cache tile size	Rozmiar kafla pamięci podręcznej
 	Camera Raw Defaults	Domyślne ustawienia Camera Raw
 	Canvas border	Obramowanie płótna
+	Show canvas dots	Pokaż kropki płótna
 	Canvas color	Kolor płótna
 	Canvas custom color	Własny kolor płótna
 	Color picker	Próbnik kolorów
@@ -1895,6 +1911,7 @@
 	Show only crosshair while painting	Podczas malowania pokaż tylko celownik
 	Show slice numbers	Pokaż numery plasterków
 	Show tooltips	Pokaż podpowiedzi
+	Show highlight on rollover	Pokaż podświetlenie po najechaniu
 	Show bounding box when dragging layer	Pokaż ramkę ograniczającą podczas przeciągania warstwy
 	Show transformation values	Pokaż wartości przekształcenia
 	Slice color	Kolor plasterków
@@ -2000,6 +2017,7 @@
 	Create Warped Text	Utwórz wypaczony tekst
 	Rasterize Smart Object	Rasteryzuj obiekt inteligentny
 	Rasterize Fill Content	Rasteryzuj zawartość wypełnienia
+	Rasterize Layer Style	Rasteryzuj styl warstwy
 	Unlock: picking a preset replaces these settings	Odblokuj: wybór ustawienia wstępnego zastąpi te ustawienia
 	Lock: keep these settings when picking another preset	Zablokuj: zachowaj te ustawienia po wybraniu innego ustawienia wstępnego
 	Diameter:	Średnica:
@@ -2020,6 +2038,7 @@
 	Apply the pen's tilt and rotation to the tip shape	Zastosuj nachylenie i obrót pióra do kształtu końcówki
 	Mixer Brush	Pędzel mieszający
 	Mixer Brush Tool	Narzędzie Pędzel mieszający
+	Color Replacement Tool	Narzędzie Zamiana koloru
 	Wet	Wilgotność
 	Mix	Mieszanie
 	Wetness Jitter	Rozrzut wilgotności
@@ -2071,6 +2090,7 @@
 	Cancelled {label}	Anulowano: {label}
 	Esc to cancel	Esc, aby anulować
 	Opening {name}	Otwieranie {name}
+	Saved {name}	Zapisano: {name}
 	Saving {name}	Zapisywanie {name}
 	A save to {name} is still running; try again when it finishes	Zapisywanie do {name} wciąż trwa; spróbuj ponownie, gdy się zakończy
 	{label} is writing the file and can no longer be cancelled	{label} zapisuje plik i nie można już tego anulować
@@ -2621,6 +2641,9 @@ cameraRaw	Roughness	Chropowatość
 	Structure:	Struktura:
 	Content-Aware Move Tool	Narzędzie Przesunięcie z uwzględnieniem zawartości
 	TIFF Options	Opcje TIFF
+	Targa Options	Opcje Targa
+	24 bits/pixel	24 bity/piksel
+	32 bits/pixel	32 bity/piksel
 	Including layers will increase file size.	Dołączenie warstw zwiększy rozmiar pliku.
 	Discard Layers and Save a Copy	Odrzuć warstwy i zapisz kopię
 	Don't show again	Nie pokazuj ponownie
@@ -3358,6 +3381,7 @@ cameraRaw	Roughness	Chropowatość
 	Color to Alpha…	Kolor na alfę…
 	Transparency Threshold	Próg przezroczystości
 	Opacity Threshold	Próg krycia
+	PhotoCraft — Screen Color Picker	PhotoCraft — Próbnik kolorów ekranu
 
 	Rasterize svg groups deeper than	Rasteryzuj grupy SVG głębsze niż ten poziom
 	0 turns this threshold off; SVG groups nested deeper than 100 levels are always rasterized.	0 wyłącza ten próg; grupy SVG zagnieżdżone głębiej niż 100 poziomów są zawsze rasteryzowane.
@@ -3437,9 +3461,48 @@ cameraRaw	Roughness	Chropowatość
 	Quick Selection found nothing there	Szybkie zaznaczanie nic tam nie znalazło
 	Object Selection found nothing there — try a tighter rectangle	Zaznaczanie obiektu nic tam nie znalazło — spróbuj ciaśniejszego prostokąta
 	No subject found — try a rectangle around the object	Nie znaleziono obiektu — spróbuj prostokąta wokół obiektu
+	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Kliknij pierwszy punkt lub naciśnij {key}, aby zamknąć · {del} usuwa punkt · Esc anuluje
+	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Kliknij i prowadź wzdłuż krawędzi · kliknij, aby przypiąć punkt · {alt}-klik dla prostego odcinka · kliknij dwukrotnie, aby zamknąć
+	Fill Screen	Wypełnij ekran
+	Follows only edges this close to the pointer ([ and ] change it)	Podąża tylko za krawędziami tak blisko wskaźnika ([ i ] zmieniają wartość)
+	Higher values follow only edges that contrast sharply with their surroundings	Wyższe wartości podążają tylko za krawędziami mocno kontrastującymi z otoczeniem
+	How often fastening points are placed by themselves	Jak często punkty mocujące są stawiane automatycznie
+	Appearance Settings…	Ustawienia wyglądu…
+	Add to favorites	Dodaj do ulubionych
+	Remove from favorites	Usuń z ulubionych
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+cameraData	Make	Producent
+cameraData	Model	Model
+cameraData	Date Taken	Data wykonania
+cameraData	Exposure	Czas naświetlania
+cameraData	F-Stop	Przysłona
+cameraData	ISO Speed	Czułość ISO
+cameraData	Focal Length	Ogniskowa
+cameraData	Focal Length (35 mm)	Ogniskowa (35 mm)
+cameraData	Lens	Obiektyw
+# Shared panel docking
+	Activate Panel	Aktywuj panel
+	Change Panel Group	Zmień grupę paneli
+	Change Panel Layout	Zmień układ paneli
+	Close Panel	Zamknij panel
+	Dock Panel	Dokuj panel
+	Float Panel	Panel pływający
+	Move Panel	Przenieś panel
+	Group with	Grupuj z
+	Panel menu	Menu panelu
+	Resize panel window	Zmień rozmiar okna panelu
+	Resize panels	Zmień rozmiar paneli
 	Use Classic Mode	Użyj trybu klasycznego
 	Auto Center Preview	Automatycznie wyśrodkuj podgląd
 	Next Document	Następny dokument
 	Previous Document	Poprzedni dokument
 	W x H x Resolution	Szer. x Wys. x Rozdzielczość
 	Front Image	Obraz na wierzchu
+	New Crop Preset…	Nowe ustawienie kadrowania…
+	Delete Crop Preset…	Usuń ustawienie kadrowania…
+	Select the crop presets to delete:	Wybierz ustawienia kadrowania do usunięcia:
+	Select the crop presets to delete	Wybierz ustawienia kadrowania do usunięcia
+	Enter a name for the crop preset	Wprowadź nazwę ustawienia kadrowania
+	There is no crop size or ratio to save	Brak rozmiaru lub proporcji kadrowania do zapisania
+	Search settings…	Szukaj ustawień…
+	No matching settings	Brak pasujących ustawień
