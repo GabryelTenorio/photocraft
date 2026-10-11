@@ -18,6 +18,25 @@
 # the Russian typographic equivalent, with the space the source carries.
 
 # Menus
+
+# Guide layout dialog
+	Rows	Строки
+	Number	Количество
+	Margin	Поля
+	Top:	Сверху:
+	Left:	Слева:
+	Bottom:	Снизу:
+	Right:	Справа:
+	Target:	Цель:
+	Selected Artboards	Выбранные монтажные области
+	Center Columns	Центрировать столбцы
+	Clear Existing Guides	Удалить существующие направляющие
+	Invalid guide layout	Недопустимый макет направляющих
+	Leave empty for automatic size	Оставьте пустым для автоматического размера
+	5 Columns, 3 Rows	5 столбцов, 3 строки
+	8 Columns	8 столбцов
+	12 Columns	12 столбцов
+
 	File	Файл
 	Edit	Редактирование
 	Image	Изображение
@@ -268,6 +287,12 @@
 	Inverse	Инверсия
 	Color Range…	Цветовой диапазон…
 	Select and Mask…	Выделение и маска…
+# Select and Mask dialog labels
+	Smart Radius	Умный радиус
+	Shift Edge	Сместить край
+	Decontaminate	Очистить
+	Output	Вывод
+	Refine Edge	Уточнить край
 	Select Subject	Выбрать объект
 	Sky	Небо
 	Focus Area…	Область фокусировки…
@@ -288,6 +313,7 @@
 	All Layers	Все слои
 	Current & Below	Текущий и ниже
 	Current Layer	Текущий слой
+	Refine Strokes	Штрихи уточнения
 
 # Filter
 	Last Filter	Последний фильтр
@@ -643,6 +669,7 @@
 	Efficiency: 100%	Эффективность: 100%
 	Dimensions:	Габариты:
 	Width	Ширина
+	Slant	Наклон
 	Height	Высота
 	Width:	Ширина:
 	Height:	Высота:
@@ -1406,6 +1433,8 @@
 	Adwaita Dark Theme	Тёмная тема Adwaita
 	Pro Theme	Тема Pro
 	Pro Medium Gray Theme	Средне-серая тема Pro
+	Pro Light Gray Theme	Светло-серая тема Pro
+	Pro Light Theme	Светлая тема Pro
 
 # Workspaces
 	Workspace…	Рабочая среда…
@@ -1494,6 +1523,7 @@
 	Click to add a point · drag off or {key}-click or Delete to remove	Щёлкните, чтобы добавить точку · уведите или {key}-клик, либо Delete — удалить
 	Click to apply, {key}-click to clear overrides, double-click for Style Options	Щёлкните, чтобы применить · {key}-клик сбрасывает переопределения · двойной клик — параметры стиля
 	Click: corner · Drag: smooth · Click first point: close · {key} finish · Esc cancel	Клик: угол · перетаскивание: гладкая · клик по первой точке: замкнуть · {key} завершить · Esc отмена
+	Click: corner · Drag: smooth · {alt}-drag: break handle · Click or drag first point: close · {key} finish · Esc cancel	Клик: угол · перетаскивание: гладкая · {alt}+перетаскивание: разбить маркер · клик или перетаскивание первой точки: замкнуть · {key} завершить · Esc отмена
 	Commit Perspective Warp ({key})	Принять перспективную деформацию ({key})
 	Commit Puppet Warp ({key})	Принять кукольную деформацию ({key})
 	Commit any current edits ({key})	Принять все текущие правки ({key})
@@ -1567,6 +1597,7 @@
 	Quick Selection Tool	Быстрое выделение
 	Object Selection Tool	Выделение объектов
 	Pen Tool	Перо
+	Convert Point Tool	Преобразование узла
 	Path Selection Tool	Выделение контура
 	Direct Selection Tool	Выделение узла
 	Add Anchor Point Tool	Добавить узел
@@ -1730,6 +1761,9 @@
 	Divide	Разделить
 	Result	Результат
 	New Document	Новый документ
+	New Document With Mask	Новый документ с маской
+	New Layer With Mask	Новый слой с маской
+	New Layer	Новый слой
 	Preset Name	Имя набора
 	No saved presets yet.	Сохранённых наборов пока нет.
 	New Channel	Новый канал
@@ -1957,6 +1991,9 @@
 	Baseline	Базовая линия
 	Bicubic	Бикубическая
 	Bicubic (smooth gradients)	Бикубическая (плавные градиенты)
+	Automatic	Автоматически
+	Bicubic Smoother (enlargement)	Бикубическая, глаже (увеличение)
+	Bicubic Sharper (reduction)	Бикубическая, чётче (уменьшение)
 	Bilinear	Билинейная
 	Black, White	Чёрный, белый
 	Blue, Red, Yellow	Синий, красный, жёлтый
@@ -2311,6 +2348,8 @@
 	Preserve details	Сохранять детали
 	Print resolution	Разрешение при печати
 	Pro	Pro
+	Pro light	Светлая Pro
+	Pro light gray	Светло-серая Pro
 	Pro medium	Средняя Pro
 	Pro photo	ProPhoto
 	Purple	Фиолетовая
@@ -2386,6 +2425,7 @@
 	Developing {name}	Обработка {name}
 	Cancelled {label}	{label}: отменено
 	Esc to cancel	Esc — отмена
+	Opened {name}	Открыто: {name}
 	Opening {name}	Открытие {name}
 	Saved {name}	Сохранено: {name}
 	Saving {name}	Сохранение {name}
@@ -2563,6 +2603,21 @@ cameraRaw	Roughness	Неровность
 	Domed	Купол
 	Domed (Inverted)	Купол (инвертированный)
 	Diagonal (Descending)	Диагональ (нисходящая)
+	Contour Editor	Редактор контура
+	Anti-aliased	Сглаживание
+	Corner	Угол
+	Gloss Contour	Контур глянца
+	Contour	Контур
+	Cone - Inverted	Конус - инвертированный
+	Cove - Deep	Бухта - глубокая
+	Cove - Shallow	Бухта - мелкая
+	Gaussian	Гауссова
+	Half Round	Полукруг
+	Ring	Кольцо
+	Ring - Double	Кольцо - двойное
+	Rolling Slope - Descending	Волнистый склон - нисходящий
+	Rounded Steps	Скруглённые ступени
+	Sawtooth 1	Пила 1
 	Linear	Линейный
 
 	Red Eye Tool	Инструмент «Красные глаза»
@@ -2830,6 +2885,13 @@ cameraData	Lens	Объектив
 	Previous Document	Предыдущий документ
 	W x H x Resolution	Ш x В x Разрешение
 	Front Image	Изображение переднего плана
+	Frame Tool	Рамка
+	Create a new rectangular frame	Создать прямоугольную рамку
+	Create a new elliptical frame	Создать эллиптическую рамку
+	Include in playback	Включить в воспроизведение
+	Perspective Crop Tool	Кадрирование перспективы
+	Show Grid	Показать сетку
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Растяните рамку или щёлкните четыре угла · перетащите углы на края наклонной фигуры · {commit} применяет · Esc отменяет
 	Artboard Tool	Монтажная область (инструмент)
 	Make Portrait	Сделать книжной
 	Make Landscape	Сделать альбомной
@@ -2839,12 +2901,40 @@ cameraData	Lens	Объектив
 	Curve Fit:	Точность кривой:
 	Drag: draw freehand · Release on the start point: close	Перетаскивание: рисовать от руки · отпустить на начальной точке: замкнуть
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Клик: гладкая точка · двойной клик: угол · перетаскивание точки: переместить · клик по первой точке: замкнуть · {key} завершить
+	Scale:	Масштаб:
+	Snap to Origin	Привязать к началу координат
+	Link with Layer	Связать со слоем
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
+# Select and Mask view modes (#1754)
+	Onion Skin	Калька
+	Marching Ants	Бегущие муравьи
+	On Black	На черном
+	On White	На белом
+	On Layers	На слоях
+	Show Edge	Показать край
+	Show Original	Показать исходное
+	F cycles the views; hold X to see the image	F переключает виды; удерживайте X, чтобы увидеть изображение
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	Кисть уточнения края (R)
+	Expand Detection Area	Расширить область обнаружения
+	Restore Original Edge	Восстановить исходный край
+	Paint over hair or fur on the image; Alt paints the other mode	Рисуйте по волосам или шерсти на изображении; Alt рисует в другом режиме
+	Clear Brush Strokes	Очистить мазки кисти
+	Show rulers	Показать линейки
 	New Crop Preset…	Новый набор параметров кадрирования…
 	Delete Crop Preset…	Удалить набор параметров кадрирования…
 	Select the crop presets to delete:	Выберите наборы параметров кадрирования для удаления:
 	Select the crop presets to delete	Выберите наборы параметров кадрирования для удаления
 	Enter a name for the crop preset	Введите имя набора параметров кадрирования
 	There is no crop size or ratio to save	Нет размера или соотношения сторон кадрирования для сохранения
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Щёлкните, чтобы разместить · Alt-щелчок или перетаскивание за пределы холста для удаления
+	No document open	Документ не открыт
+	{n} of {max} sample points	{n} из {max} точек замера
+# Print dialog (#2697)
+	Emulsion Down	Эмульсией вниз
+	Functions	Функции
+	Print Resolution:	Разрешение печати:
