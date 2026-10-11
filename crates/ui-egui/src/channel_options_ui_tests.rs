@@ -115,3 +115,63 @@ fn dialog_body_renders_for_alpha_spot_and_quick_mask() {
         assert!(owns(&f));
     }
 }
+
+#[test]
+fn new_spot_channel_dialog_creates_the_ink_from_the_selection_and_remembers_it() {
+    let mut app = app();
+    app.run("select.rect", json!({"x": 2, "y": 2, "width": 8, "height": 8})).unwrap();
+    let id = open_new_spot(&mut app).unwrap();
+    let f = &app.ui.dialogs.last().unwrap().fields;
+    assert!(owns_new_spot(f) && !owns(f));
+    assert_eq!((f["name"].clone(), f["color"].clone(), f["solidity"].clone()), (json!("Spot Color 1"), json!("#ff0000"), json!(0.0)));
+    let d = app.ui.dialog_mut(id).unwrap();
+    d.fields.insert("name".into(), json!("PMS 300"));
+    d.fields.insert("color".into(), json!("#0050ff"));
+    d.fields.insert("solidity".into(), json!(60.0));
+    crate::dialogs::confirm(&mut app, id).unwrap();
+    let doc = &app.session.active().unwrap().doc;
+    let ch = doc.channels.last().unwrap();
+    assert_eq!(ch.name, "PMS 300");
+    let (ink, solidity) = ch.spot.expect("a spot channel");
+    assert_eq!(ink.to_rgba8()[..3], [0x00, 0x50, 0xff]);
+    assert!((solidity - 0.6).abs() < 1e-6);
+    // Inked where the selection was, empty outside it.
+    let (inside, outside) = (ch.surface.rgba(4, 4)[0], ch.surface.rgba(14, 14)[0]);
+    assert!(inside > 0.99 && outside < 0.01, "{inside} {outside}");
+
+    // The next one gets a fresh name and the last ink and solidity.
+    let f = new_spot_fields(&app).unwrap();
+    assert_eq!((f["name"].clone(), f["color"].clone(), f["solidity"].clone()), (json!("Spot Color 1"), json!("#0050ff"), json!(60.0)));
+}
+
+#[test]
+fn new_spot_channel_cancel_menu_routing_and_no_document() {
+    let ctx = egui::Context::default();
+    let mut empty = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+    assert!(open_new_spot(&mut empty).is_none());
+    assert!(crate::menus::invoke(&mut empty, &ctx, NEW_SPOT, json!({})).is_err());
+
+    let mut app = app();
+    let n = app.session.active().unwrap().doc.channels.len();
+    let r = crate::menus::invoke(&mut app, &ctx, NEW_SPOT, json!({})).unwrap();
+    let id = r["dialog"].as_u64().unwrap();
+    assert!(owns_new_spot(&app.ui.dialog_mut(id).unwrap().fields));
+    app.ui.close_dialog(id);
+    assert_eq!(app.session.active().unwrap().doc.channels.len(), n, "Cancel adds nothing");
+    // Explicit params run the engine directly, no dialog.
+    crate::menus::invoke(&mut app, &ctx, NEW_SPOT, json!({"name": "Direct"})).unwrap();
+    assert!(app.ui.dialogs.is_empty());
+    assert_eq!(app.session.active().unwrap().doc.channels.last().unwrap().name, "Direct");
+}
+
+#[test]
+fn new_spot_body_renders_and_bad_saved_prefs_fall_back() {
+    let mut app = app();
+    app.session.prefs.edit(|p| p.dialogs.insert(NEW_SPOT.into(), json!({"color": "nope", "solidity": 900})));
+    let mut f = new_spot_fields(&app).unwrap();
+    assert_eq!((f["color"].clone(), f["solidity"].clone()), (json!("#ff0000"), json!(0.0)));
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    ctx.run_ui(Default::default(), |ui| new_spot_body(ui, &mut f)).textures_delta.clear();
+    assert!(owns_new_spot(&f));
+}

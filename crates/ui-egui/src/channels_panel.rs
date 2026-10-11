@@ -275,7 +275,7 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     }
                     ui.separator();
                     item(ui, a, "New Channel…", "channel.new", json!({}));
-                    item(ui, a, "New Spot Channel…", "channel.newSpot", json!({}));
+                    item(ui, a, "New Spot Channel…", "ui.newSpotChannel", json!({}));
                     ui.separator();
                     item(ui, a, "Split Channels", "channel.split", json!({}));
                     item(ui, a, "Merge Channels…", "channel.merge", json!({}));
@@ -312,6 +312,10 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 let row = Row::Alpha(p.as_u64().unwrap_or(0) as usize);
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new(("chan-rename", doc.id.0, format!("{:?}", row.reference()))), i.name.clone()));
             }
+            continue;
+        }
+        if id == "ui.newSpotChannel" {
+            crate::channel_options_ui::open_new_spot(app);
             continue;
         }
         if id == "ui.channelOptions" {
