@@ -70,6 +70,47 @@ fn context(app: &PhotocraftApp) -> egui::Id {
     ))
 }
 
+fn paint_target(app: &PhotocraftApp) -> egui::Id {
+    egui::Id::new((
+        app.session.active().map(|st| (st.doc.id, st.active_layer)),
+        app.ui.tool,
+        app.ui.mask_target,
+        app.ui.vector_mask_target,
+        &app.ui.tool_options.shape.mode,
+    ))
+}
+
+#[derive(Clone)]
+struct PaintPopup {
+    owner: egui::Id,
+    target: egui::Id,
+    last_seen: u64,
+    left: f32,
+    child: Option<egui::Id>,
+}
+
+fn popup_id() -> egui::Id {
+    egui::Id::new("shape-paint-popup")
+}
+
+pub(crate) fn paint_popup_open(ctx: &egui::Context) -> bool {
+    let frame = ctx.cumulative_frame_nr();
+    ctx.data(|d| d.get_temp::<PaintPopup>(popup_id()).is_some() || d.get_temp::<u64>(popup_id().with("frame")) == Some(frame))
+}
+
+pub(crate) fn close_popup(ctx: &egui::Context) {
+    let popup = ctx.data_mut(|d| {
+        let popup = d.get_temp::<PaintPopup>(popup_id());
+        d.remove::<PaintPopup>(popup_id());
+        popup
+    });
+    if let Some(popup) = popup
+        && let Some(child) = popup.child
+    {
+        egui::Popup::close_id(ctx, child);
+    }
+}
+
 fn recent_id() -> egui::Id {
     egui::Id::new("shape-paint-recent-colors")
 }
@@ -86,7 +127,7 @@ fn remember(ctx: &egui::Context, color: Color) {
 
 fn color_button(ui: &mut egui::Ui, color: Color, label: &str, selected: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
-    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
     let inner = rect.shrink(2.0);
     if color.alpha < 1.0 {
@@ -106,6 +147,7 @@ fn palette(app: &PhotocraftApp, ui: &mut egui::Ui, current: Color) -> Option<Fil
         ui.label(egui::RichText::new(tl!("No recent colors")).color(Tokens::get(ui.ctx()).text_dim));
     } else {
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
             for color in recent {
                 let label = crate::color_picker_ui::hex(color.to_rgb());
                 if color_button(ui, color, &label, color == current).clicked() {
@@ -116,19 +158,22 @@ fn palette(app: &PhotocraftApp, ui: &mut egui::Ui, current: Color) -> Option<Fil
     }
     ui.separator();
     let conv = photocraft_engine::presets::swatches::SwatchConv::new(&app.session);
-    for (i, group) in app.session.presets.swatches.iter().enumerate() {
-        egui::CollapsingHeader::new(&group.name).id_salt(("shape-colors", i)).default_open(i == 0).show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for swatch in &group.items {
-                    let [r, g, b] = conv.rgb(&swatch.color);
-                    let color = Color::rgb(r, g, b);
-                    if color_button(ui, color, &swatch.name, color == current).clicked() {
-                        chosen = Some(Fill::Solid(color));
+    egui::ScrollArea::vertical().id_salt("shape-color-library").max_height(220.0).show(ui, |ui| {
+        for (i, group) in app.session.presets.swatches.iter().enumerate() {
+            egui::CollapsingHeader::new(&group.name).id_salt(("shape-colors", i)).default_open(i == 0).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    for swatch in &group.items {
+                        let [r, g, b] = conv.rgb(&swatch.color);
+                        let color = Color::rgb(r, g, b);
+                        if color_button(ui, color, &swatch.name, color == current).clicked() {
+                            chosen = Some(Fill::Solid(color));
+                        }
                     }
-                }
+                });
             });
-        });
-    }
+        }
+    });
     chosen
 }
 
@@ -154,6 +199,12 @@ pub(crate) fn color_dialog_open(ctx: &egui::Context) -> bool {
 
 /// Runs even when another tool or the screen sampler temporarily hides the shape controls.
 pub(crate) fn prune(app: &PhotocraftApp, ctx: &egui::Context) {
+    if ctx
+        .data(|d| d.get_temp::<PaintPopup>(popup_id()))
+        .is_some_and(|p| p.target != paint_target(app) || ctx.cumulative_frame_nr() > p.last_seen.saturating_add(2))
+    {
+        close_popup(ctx);
+    }
     let Some(mut dialog) = ctx.data(|d| d.get_temp::<ColorDialog>(dialog_id())) else { return };
     let frame = ctx.cumulative_frame_nr();
     // The screen sampler temporarily replaces the entire app UI, including the owner swatch.
@@ -188,6 +239,7 @@ fn open_color(app: &PhotocraftApp, ui: &egui::Ui, owner: egui::Id, fill: Option<
         alpha: color.alpha * 100.0,
     };
     ui.data_mut(|d| d.insert_temp(dialog_id(), dialog));
+    close_popup(ui.ctx());
     egui::Popup::close_all(ui.ctx());
 }
 
@@ -266,19 +318,72 @@ pub(crate) struct PaintEdit {
     pub discrete: bool,
 }
 
+fn paint_swatch(app: &PhotocraftApp, ui: &egui::Ui, rect: egui::Rect, fill: Option<&Fill>) {
+    let t = Tokens::get(ui.ctx());
+    // Keep the checkerboard and gradient inside the allocated frame. An outside stroke can
+    // lose its bottom edge to the toolbar clip, especially beside a bright transparent stop.
+    paint(app, ui, rect.shrink(1.0), fill);
+    ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), egui::StrokeKind::Inside);
+}
+
 pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>, fallback: [f32; 4], tip: &str) -> Option<PaintEdit> {
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(vec2(26.0, 18.0), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tip));
-    paint(app, ui, rect, fill);
-    ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), egui::StrokeKind::Outside);
+    paint_swatch(app, ui, rect, fill);
     let response = response.on_hover_text(tip);
+    if response.clicked() {
+        let same = ui.data(|d| d.get_temp::<PaintPopup>(popup_id())).is_some_and(|p| p.owner == response.id);
+        close_popup(ui.ctx());
+        if !same {
+            let bounds = ui.ctx().content_rect();
+            let width = (bounds.width() - 32.0).clamp(160.0, 280.0);
+            let frame = ui.ctx().cumulative_frame_nr();
+            ui.data_mut(|d| {
+                d.insert_temp(
+                    popup_id(),
+                    PaintPopup {
+                        owner: response.id,
+                        target: paint_target(app),
+                        last_seen: frame,
+                        left: response.rect.left().min(bounds.right() - width - 32.0).max(bounds.left()),
+                        child: None,
+                    },
+                )
+            });
+        }
+    }
+    let owned = ui.data(|d| d.get_temp::<PaintPopup>(popup_id())).filter(|p| p.owner == response.id);
+    if owned.is_some() {
+        let frame = ui.ctx().cumulative_frame_nr();
+        ui.data_mut(|d| {
+            if let Some(mut popup) = d.get_temp::<PaintPopup>(popup_id()) {
+                popup.last_seen = frame;
+                d.insert_temp(popup_id(), popup);
+            }
+            d.insert_temp(popup_id().with("frame"), frame);
+        });
+    }
     let screen_id = response.id.with("screen-color");
     let solid = |c: [f32; 4]| Fill::Solid(Color::rgba(c[0], c[1], c[2], c[3]));
     let alpha = if let Some(Fill::Solid(color)) = fill { color.alpha } else { fallback[3] };
     let mut out = crate::screen_picker::take(ui.ctx(), screen_id).map(|c| Some(solid([c[0], c[1], c[2], alpha])));
     let mut discrete = out.is_some();
-    let popup = crate::widgets::swatch_popup(&response).show(|ui| {
+    // The child ComboBox owns egui's memory popup slot. Keep this parent explicitly owned,
+    // like Stroke Options, and consider both hit regions when dismissing it.
+    let mut child = None;
+    let mut child_shown = false;
+    let mut child_clicked = false;
+    let parent_popup = egui::Popup::from_response(&response)
+        .open(owned.is_some())
+        .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+        .anchor(egui::Rect::from_x_y_ranges(
+            owned.as_ref().map_or(response.rect.left(), |p| p.left)..=owned.as_ref().map_or(response.rect.left(), |p| p.left),
+            response.rect.y_range(),
+        ))
+        .align(egui::RectAlign::BOTTOM_START)
+        .align_alternatives(&[egui::RectAlign::TOP_START]);
+    let popup = parent_popup.show(|ui| {
         ui.set_width((ui.ctx().content_rect().width() - 32.0).clamp(160.0, 280.0));
         // Changing paint mode must not retain the previous Area height as a scroll limit.
         ui.set_max_height((ui.ctx().content_rect().height() - 80.0).max(100.0));
@@ -311,12 +416,14 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
         ui.separator();
         egui::ScrollArea::vertical().id_salt("paint-body").max_height((ui.ctx().content_rect().height() - 140.0).max(100.0)).show(ui, |ui| match fill {
             Some(f @ Fill::Gradient { .. }) => {
-                egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
+                ui.label(tl!("Gradient"));
+                egui::ScrollArea::vertical().id_salt("shape-gradient-library").max_height(132.0).show(ui, |ui| {
                     for (i, group) in app.session.presets.gradients.iter().enumerate() {
                         egui::CollapsingHeader::new(&group.name).id_salt(("shape-gradients", i)).default_open(i == 0).show(ui, |ui| {
                             ui.horizontal_wrapped(|ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
                                 for preset in &group.items {
-                                    let (r, response) = ui.allocate_exact_size(vec2(56.0, 24.0), Sense::click());
+                                    let (r, response) = ui.allocate_exact_size(vec2(28.0, 22.0), Sense::click());
                                     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &preset.name));
                                     paint(app, ui, r.shrink(2.0), Some(&gradient(app, preset)));
                                     ui.painter().rect_stroke(r, t.radius_sm, Stroke::new(1.0, t.field_border), egui::StrokeKind::Inside);
@@ -331,15 +438,16 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
                 });
                 ui.add_space(4.0);
                 let key = response.id.with(("gradient-stop-edit", context(app)));
+                // Selection belongs to the swatch's document/layer, rather than its revision.
+                // Numeric opacity edits must keep the selected handle across their own commits.
+                let strip_key = response.id.with(("gradient-stop-strip", paint_target(app)));
+                if let Some(p) = crate::gradient_ui::paint_stop_opacity(ui, strip_key, f)
+                    && let Ok(next) = photocraft_engine::gradient_fill_cmds::apply_stop(f, &p, app.session.tools.foreground, app.session.tools.background)
+                {
+                    out = Some(Some(next));
+                }
                 let pending = ui.data(|d| d.get_temp::<Value>(key));
-                match crate::gradient_ui::stop_strip(
-                    ui,
-                    key.with("strip"),
-                    f,
-                    true,
-                    pending.as_ref(),
-                    (app.session.tools.foreground, app.session.tools.background),
-                ) {
+                match crate::gradient_ui::stop_strip(ui, strip_key, f, true, pending.as_ref(), (app.session.tools.foreground, app.session.tools.background)) {
                     Some(crate::gradient_ui::StopAction::Preview(p)) => {
                         ui.data_mut(|d| d.insert_temp(key, p));
                     }
@@ -349,6 +457,7 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
                             && let Ok(next) =
                                 photocraft_engine::gradient_fill_cmds::apply_stop(f, &p, app.session.tools.foreground, app.session.tools.background)
                         {
+                            crate::gradient_ui::retain_stop_selection(ui, strip_key, f, &p);
                             out = Some(Some(next));
                             discrete = true;
                         }
@@ -372,19 +481,22 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
                             )
                         });
                     let mut changed = false;
-                    ui.label(tl!("Style"));
-                    ui.horizontal_wrapped(|ui| {
-                        for (choice, label) in opts {
-                            if ui.selectable_label(*style == choice, label).clicked() && *style != choice {
-                                *style = choice;
-                                changed = true;
-                                discrete = true;
-                            }
-                        }
-                    });
                     ui.horizontal(|ui| {
+                        let parent_layer = ui.layer_id();
+                        let child_id = ui.make_persistent_id(egui::IdSalt::new("shape-gradient-style")).with("popup");
+                        child = Some(child_id);
+                        child_shown |= egui::Popup::is_id_open(ui.ctx(), child_id);
+                        if crate::widgets::dropdown(ui, "shape-gradient-style", style, &opts, 130.0) {
+                            changed = true;
+                            discrete = true;
+                        }
+                        child_shown |= egui::Popup::is_id_open(ui.ctx(), child_id);
+                        if let Some(response) = ui.ctx().read_response(child_id) {
+                            ui.ctx().set_sublayer(parent_layer, response.layer_id);
+                            child_clicked |= !response.clicked_elsewhere();
+                        }
                         ui.label(tl!("Angle"));
-                        changed |= crate::widgets::value_field(ui, angle, (-180.0_f32).min(*angle)..=180.0_f32.max(*angle), "°", 80.0).changed();
+                        changed |= crate::widgets::value_field(ui, angle, (-180.0_f32).min(*angle)..=180.0_f32.max(*angle), "°", 62.0).changed();
                     });
                     let mut percent = *scale * 100.0;
                     ui.horizontal(|ui| {
@@ -440,12 +552,10 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
                 }
             }
             Some(Fill::Solid(color)) => {
-                egui::ScrollArea::vertical().max_height((ui.ctx().content_rect().height() - 160.0).clamp(100.0, 260.0)).show(ui, |ui| {
-                    if let Some(next) = palette(app, ui, *color) {
-                        out = Some(Some(next));
-                        discrete = true;
-                    }
-                });
+                if let Some(next) = palette(app, ui, *color) {
+                    out = Some(Some(next));
+                    discrete = true;
+                }
                 if let Some(rgb) = crate::screen_picker::button(ui, screen_id) {
                     out = Some(Some(solid([rgb[0], rgb[1], rgb[2], color.alpha])));
                     discrete = true;
@@ -454,6 +564,19 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
             None => {}
         });
     });
+    if owned.is_some() {
+        ui.data_mut(|d| {
+            if let Some(mut popup) = d.get_temp::<PaintPopup>(popup_id()) {
+                popup.child = child;
+                d.insert_temp(popup_id(), popup);
+            }
+        });
+        let outside = popup.as_ref().is_some_and(|p| p.response.clicked_elsewhere()) && !child_clicked && !response.clicked();
+        let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if outside || escape && !child_shown {
+            close_popup(ui.ctx());
+        }
+    }
     if popup.is_none() {
         ui.data_mut(|d| d.remove::<Value>(response.id.with(("gradient-stop-edit", context(app)))));
     }
@@ -475,7 +598,10 @@ pub(crate) fn swatch(app: &PhotocraftApp, ui: &mut egui::Ui, fill: Option<&Fill>
 mod tests {
     use super::*;
     use crate::state::Tool;
-    use egui_kittest::{Harness, kittest::Queryable};
+    use egui_kittest::{
+        Harness,
+        kittest::{NodeT, Queryable},
+    };
     use photocraft_doc::{LayerContent, LayerId, ShapeLayer};
     use serde_json::json;
 
@@ -525,6 +651,76 @@ mod tests {
         h.get_by_label("Color Picker").click();
         h.run_steps(3);
         assert!(color_dialog_open(&h.ctx));
+    }
+
+    #[test]
+    fn transparent_swatch_frame_fits_even_when_clipped_to_its_toolbar_slot() {
+        let app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let fill = Fill::gradient(vec![(0.0, Color::BLACK), (1.0, Color::rgba(0.0, 0.0, 0.0, 0.0))], 90.0, 1.0, GradientStyle::Linear, false);
+        for theme in crate::theme::ThemeKind::ALL {
+            for scale in [1.0, 1.5, 2.0] {
+                let ctx = egui::Context::default();
+                PhotocraftApp::setup_context(&ctx, theme);
+                ctx.set_pixels_per_point(scale);
+                let rect = egui::Rect::from_min_size(egui::pos2(20.25, 20.5), vec2(26.0, 18.0));
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    ui.set_clip_rect(rect);
+                    paint_swatch(&app, ui, rect, Some(&fill));
+                });
+                output.textures_delta.clear();
+                let frame = output.shapes.iter().rev().find(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.stroke.width > 0.0)).unwrap();
+                assert!(
+                    frame.clip_rect.contains_rect(frame.shape.visual_bounding_rect()),
+                    "{theme:?} at {scale}: the border must survive an exact toolbar clip"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stroke_stop_opacity_keeps_selection_and_edits_only_that_paint_with_undo() {
+        let (mut app, id) = app(Tool::Rectangle, 32);
+        app.run(
+            "shape.edit",
+            json!({"layer": id.0, "stroke": {"fill": {"gradient": {"stops": [[0, "#000000"], [1, "#000000"]], "opacityStops": [[0, 1], [1, 0]]}}}}),
+        )
+        .unwrap();
+        let before = shape(&app, id).clone();
+        let globals = (app.session.tools.foreground, app.session.tools.background);
+        let history = app.session.active().unwrap().history.past_len();
+        let mut h = harness(app);
+        h.get_by_label("Stroke color").click();
+        h.run_steps(3);
+        assert!(h.get_by_label("Stop opacity").accesskit_node().is_disabled());
+        let rect = h.get_by_label("Gradient stops").rect();
+        let pos = egui::pos2(rect.right() - 8.0, rect.top() + 6.0);
+        h.event(egui::Event::PointerMoved(pos));
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+        h.run_steps(1);
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+        h.run_steps(3);
+        let opacity = h.get_by_label("Stop opacity");
+        assert!(!opacity.accesskit_node().is_disabled());
+        opacity.click();
+        h.run_steps(2);
+        h.key_press(egui::Key::ArrowUp);
+        h.run_steps(3);
+        h.key_press(egui::Key::ArrowUp);
+        h.run_steps(3);
+        assert!(!h.get_by_label("Stop opacity").accesskit_node().is_disabled(), "own commits must keep the selected opacity handle");
+        let mut expected = before.clone();
+        if let Fill::Gradient { opacity_stops, .. } = &mut expected.stroke.as_mut().unwrap().paint {
+            opacity_stops[1].1 = 0.02;
+        }
+        assert_eq!(shape(h.state(), id).stroke, expected.stroke);
+        assert_eq!(shape(h.state(), id).fill, before.fill);
+        assert_eq!(shape(h.state(), id).path, before.path);
+        assert_eq!((h.state().session.tools.foreground, h.state().session.tools.background), globals);
+        assert_eq!(h.state().session.active().unwrap().history.past_len(), history + 1);
+        h.state_mut().run("edit.undo", json!({})).unwrap();
+        assert_eq!(shape(h.state(), id), &before);
+        h.state_mut().run("edit.redo", json!({})).unwrap();
+        assert_eq!(shape(h.state(), id).stroke, expected.stroke);
     }
 
     #[test]
@@ -803,8 +999,11 @@ mod tests {
         h.run_steps(3);
         let linear = shape(h.state(), id).fill.clone();
         let history = h.state().session.active().unwrap().history.past_len();
+        h.get_all_by_role(egui::accesskit::Role::ComboBox).find(|n| n.accesskit_node().value().as_deref() == Some("Linear")).unwrap().click();
+        h.run_steps(3);
         h.get_by_label("Radial").click();
         h.run_steps(3);
+        assert!(h.query_by_label("Gradient stops").is_some(), "the child style dropdown must keep its paint popup open");
         let mut expected = linear.clone();
         if let Some(Fill::Gradient { style, .. }) = &mut expected {
             *style = GradientStyle::Radial;
@@ -815,6 +1014,15 @@ mod tests {
         h.state_mut().run("edit.undo", json!({})).unwrap();
         assert_eq!(shape(h.state(), id).fill, linear);
         h.state_mut().run("edit.redo", json!({})).unwrap();
+        assert_eq!(shape(h.state(), id).fill, expected);
+        h.get_all_by_role(egui::accesskit::Role::ComboBox).find(|n| n.accesskit_node().value().as_deref() == Some("Radial")).unwrap().click();
+        h.run_steps(3);
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(h.query_by_label("Gradient stops").is_some(), "first Escape closes the child list");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(h.query_by_label("Gradient stops").is_none(), "second Escape closes the paint popup");
         assert_eq!(shape(h.state(), id).fill, expected);
     }
 

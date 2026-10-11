@@ -219,12 +219,16 @@ struct CanvasDismissal {
 pub(crate) fn dismiss_from_canvas(app: &mut crate::PhotocraftApp, response: &egui::Response) -> bool {
     let ctx = &response.ctx;
     let frame = ctx.cumulative_frame_nr();
-    let was_open = app.ui.stroke_editor.is_some() || ctx.data(|d| d.get_temp::<u64>(open_frame_id())) == Some(frame);
+    let was_open =
+        app.ui.stroke_editor.is_some() || ctx.data(|d| d.get_temp::<u64>(open_frame_id())) == Some(frame) || crate::shape_paint_ui::paint_popup_open(ctx);
     let (pressed, down) = ctx.input(|i| (i.pointer.any_pressed(), i.pointer.any_down()));
     let dismiss = was_open && pressed && response.contains_pointer();
     if dismiss && let Some(e) = app.ui.stroke_editor.take() {
         editor::close_children(ctx, &e.key);
         ctx.request_repaint();
+    }
+    if dismiss {
+        crate::shape_paint_ui::close_popup(ctx);
     }
     ctx.data_mut(|d| {
         let state = d.get_temp_mut_or_default::<CanvasDismissal>(egui::Id::new("shape-stroke-canvas-dismissal"));
