@@ -212,6 +212,12 @@
 	Mask All Objects	Απόκρυψη όλων των αντικειμένων με μάσκα
 	Update All Text Layers	Ενημέρωση όλων των επιπέδων κειμένου
 	Select and Mask…	Επιλογή και μάσκα…
+# Select and Mask dialog labels
+	Smart Radius	Έξυπνη ακτίνα
+	Shift Edge	Μετατόπιση άκρης
+	Decontaminate	Απομάκρυνση επιμόλυνσης
+	Refine Edge	Βελτίωση άκρης
+	Apply At Canvas Bounds	Εφαρμογή στα όρια του καμβά
 	Edit in Quick Mask Mode	Επεξεργασία σε λειτουργία γρήγορης μάσκας
 	Blur Gallery	Συλλογή θολώσεων
 	Blur More	Περισσότερη θόλωση
