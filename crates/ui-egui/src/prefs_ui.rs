@@ -1353,14 +1353,7 @@ fn pref_group(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 /// language, font size and scaling, then everything else. Compact enough that the language
 /// shows without scrolling in a small window (#2532). A search (`query`, lowercased) hides the
 /// rows that don't match and skips a group left empty.
-fn interface_groups(
-    ui: &mut egui::Ui,
-    obj: &mut Map<String, Value>,
-    keys: &[String],
-    lang: crate::i18n::Lang,
-    system: Option<egui::Theme>,
-    query: &str,
-) {
+fn interface_groups(ui: &mut egui::Ui, obj: &mut Map<String, Value>, keys: &[String], lang: crate::i18n::Lang, system: Option<egui::Theme>, query: &str) {
     const APPEARANCE: [&str; 3] = ["canvasColor", "canvasCustomColor", "canvasBorder"];
     const PRESENTATION: [&str; 3] = ["language", "uiFontSize", "uiScale"];
     let shown = |k: &str| keys.iter().any(|key| key == k) && field_visible("interface", obj, k, query);
