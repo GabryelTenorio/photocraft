@@ -132,15 +132,26 @@ pub(crate) fn decode(t: &Tiff, limits: &Limits) -> Result<Sensor> {
     let raw = raw_ifd(t, &ifds).ok_or_else(|| RawError::malformed("DNG has no raw image"))?;
     let mut warnings = Vec::new();
     let photometric = t.tag_uint(&raw, tag::PHOTOMETRIC).unwrap_or(0);
-    let plane = read_plane(t, &raw, limits, JpegLayout::Flat)?;
-    let samples = plane.samples;
+    let mut plane = read_plane(t, &raw, limits, JpegLayout::Flat)?;
     let is_cfa = photometric == PHOTOMETRIC_CFA;
-    if is_cfa && samples != 1 {
-        return Err(RawError::unsupported(format!("CFA data with {samples} samples per pixel")));
+    if is_cfa && plane.samples != 1 {
+        return Err(RawError::unsupported(format!("CFA data with {} samples per pixel", plane.samples)));
     }
-    if !is_cfa && samples != 3 {
-        return Err(RawError::unsupported(format!("LinearRaw data with {samples} samples per pixel")));
+    if !is_cfa && plane.samples == 1 {
+        // A monochrome LinearRaw — a Leica M Monochrom DNG, a VueScan black-and-white film scan,
+        // … — has one grey sample per pixel. Expand it to three identical channels so the RGB
+        // develop path handles it, as the file's other readers do (#3497).
+        let mut data = Vec::with_capacity(plane.data.len().saturating_mul(3));
+        for v in &plane.data {
+            data.extend_from_slice(&[*v, *v, *v]);
+        }
+        plane.data = data;
+        plane.samples = 3;
+        warnings.push("monochrome LinearRaw: one sample per pixel, grey replicated to RGB".to_string());
+    } else if !is_cfa && plane.samples != 3 {
+        return Err(RawError::unsupported(format!("LinearRaw data with {} samples per pixel", plane.samples)));
     }
+    let samples = plane.samples;
     let active = rect_from(t, &raw, plane.width, plane.height);
     if active.is_empty() {
         return Err(RawError::malformed("empty active area"));

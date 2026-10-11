@@ -398,6 +398,30 @@ fn deflate_strips_round_trip() {
     }
 }
 
+/// #3497: a monochrome LinearRaw DNG — one grey sample per pixel, no CFA — opens, its grey
+/// replicated across three channels so the RGB develop path handles it.
+#[test]
+fn gray_linear_raw_opens_as_rgb() {
+    let (w, h) = (16, 8);
+    let data: Vec<u16> = (0..w * h).map(|i| (100 + i * 4000 / (w * h)) as u16).collect();
+    let mut spec = DngSpec::cfa(w, h, data.clone());
+    spec.samples = 1;
+    spec.linear_raw_gray = true;
+    spec.white = 65535;
+    let s = sensor(&spec.build());
+    assert_eq!((s.width, s.height, s.samples), (w, h, 3), "grey expanded to RGB");
+    assert!(s.cfa.is_none());
+    for (i, px) in s.data.chunks_exact(3).enumerate() {
+        assert_eq!(px, [data[i]; 3], "pixel {i} is grey in all three channels");
+    }
+    assert!(s.warnings.iter().any(|w| w.contains("monochrome LinearRaw")), "{:?}", s.warnings);
+    // The full open path (decode + develop) succeeds and stays neutral grey.
+    let d = develop(&spec.build(), &DevelopOptions::default()).unwrap();
+    for px in d.rgb.chunks_exact(3).take(8) {
+        assert!(px[0].abs_diff(px[1]) <= 2 && px[1].abs_diff(px[2]) <= 2, "not neutral grey: {px:?}");
+    }
+}
+
 /// A zlib stream cut short must fail cleanly (decompression comes up short or errors), and a
 /// declared-but-absent giant tile must trip the limits instead of allocating.
 #[test]
