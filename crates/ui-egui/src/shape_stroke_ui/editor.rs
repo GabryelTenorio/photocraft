@@ -261,17 +261,23 @@ pub fn button(
 
 fn choice<T: Copy + PartialEq>(ui: &mut egui::Ui, label: &str, value: &mut T, choices: &[(T, &str)], children: &mut Children) {
     let parent_layer = ui.layer_id();
+    let (press, close) = crate::press_menu::PressCombo::before(ui, label);
     let response = egui::ComboBox::from_id_salt(label)
         .width(152.0)
         .selected_text(choices.iter().find(|(v, _)| v == value).map_or("", |(_, n)| tl!(*n)))
+        .close_behavior(close)
         .show_ui(ui, |ui| {
             // Restored Area order can place a previously used child behind its parent.
             // Both request the top on opening, so explicitly preserve their relationship.
             ui.ctx().set_sublayer(parent_layer, ui.layer_id());
             for (v, name) in choices {
-                ui.selectable_value(value, *v, tl!(*name));
+                let item = ui.selectable_label(*value == *v, tl!(*name));
+                if press.chosen(ui, &item) {
+                    *value = *v;
+                }
             }
         });
+    press.after(&response.response);
     response.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, ui.is_enabled(), tl!(label)));
     let id = egui::Popup::default_response_id(&response.response);
     children.ids.push(id);
