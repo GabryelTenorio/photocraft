@@ -261,6 +261,7 @@
 	Layer via Cut	Laag via knippen
 	Layer From Background…	Laag uit achtergrond…
 	Layer from Background…	Laag uit achtergrond…
+	Background From Layer	Achtergrond uit laag
 	New Shape Layer	Nieuwe vormlaag
 	New Type Layer	Nieuwe tekstlaag
 	New Fill Layer	Nieuwe opvullaag
@@ -1569,6 +1570,8 @@
 	Efficiency: 100%	Efficiëntie: 100%
 	Ellipse Tool	Ellipsgereedschap
 	Elliptical Marquee Tool	Ovaal selectiekader
+	Single Row Marquee Tool	Selectiekader enkele rij
+	Single Column Marquee Tool	Selectiekader enkele kolom
 	Emboss	Reliëf
 	Eraser	Gum
 	Eraser Tool	Gumgereedschap
@@ -1988,6 +1991,7 @@
 	Create Warped Text	Verbogen tekst maken
 	Rasterize Smart Object	Slim object rasteren
 	Rasterize Fill Content	Vulinhoud rasteren
+	Rasterize Layer Style	Laagstijl rasteren
 	Unlock: picking a preset replaces these settings	Ontgrendelen: een voorinstelling kiezen vervangt deze instellingen
 	Lock: keep these settings when picking another preset	Vergrendelen: deze instellingen behouden bij het kiezen van een andere voorinstelling
 	Diameter:	Diameter:

@@ -252,6 +252,8 @@
 	Layer via Cut	잘라내어 레이어 만들기
 	Layer From Background…	배경에서 레이어 만들기…
 	Layer from Background…	배경에서 레이어 만들기…
+	Background from Layer	레이어에서 배경 만들기
+	Background From Layer	레이어에서 배경 만들기
 	New Shape Layer	새 모양 레이어
 	New Type Layer	새 문자 레이어
 	New Fill Layer	새 칠 레이어
@@ -1557,6 +1559,8 @@
 	Efficiency: 100%	효율: 100%
 	Ellipse Tool	타원 도구
 	Elliptical Marquee Tool	원형 선택 윤곽 도구
+	Single Row Marquee Tool	단일 행 선택 윤곽 도구
+	Single Column Marquee Tool	단일 열 선택 윤곽 도구
 	Emboss	엠보스
 	Eraser	지우개
 	Eraser Tool	지우개 도구
@@ -1974,6 +1978,7 @@
 	Create Warped Text	뒤틀린 텍스트 만들기
 	Rasterize Smart Object	스마트 오브젝트 래스터화
 	Rasterize Fill Content	칠 내용 래스터화
+	Rasterize Layer Style	레이어 스타일 래스터화
 	Unlock: picking a preset replaces these settings	잠금 해제: 사전 설정 선택 시 이 설정 대체
 	Lock: keep these settings when picking another preset	잠금: 다른 사전 설정 선택 시 이 설정 유지
 	Diameter:	직경:

@@ -273,6 +273,8 @@
 	Layer via Cut	Vrstva vyjmutím
 	Layer From Background…	Vrstva z pozadí…
 	Layer from Background…	Vrstva z pozadí…
+	Background from Layer	Pozadí z vrstvy
+	Background From Layer	Pozadí z vrstvy
 	New Shape Layer	Nová vrstva tvaru
 	New Type Layer	Nová textová vrstva
 	New Fill Layer	Nová vrstva výplně
@@ -1603,6 +1605,8 @@
 	Efficiency: 100%	Efektivita: 100 %
 	Ellipse Tool	Nástroj elipsa
 	Elliptical Marquee Tool	Nástroj eliptický výběr
+	Single Row Marquee Tool	Nástroj výběr jednoho řádku
+	Single Column Marquee Tool	Nástroj výběr jednoho sloupce
 	Emboss	Reliéf
 	Eraser	Guma
 	Eraser Tool	Nástroj guma
@@ -2032,6 +2036,7 @@
 	Create Warped Text	Vytvořit deformovaný text
 	Rasterize Smart Object	Rastrovat chytrý objekt
 	Rasterize Fill Content	Rastrovat obsah výplně
+	Rasterize Layer Style	Rastrovat styl vrstvy
 	Unlock: picking a preset replaces these settings	Odemknout: výběr přednastavení tato nastavení nahradí
 	Lock: keep these settings when picking another preset	Zamknout: zachovat tato nastavení při výběru jiného přednastavení
 	Diameter:	Průměr:

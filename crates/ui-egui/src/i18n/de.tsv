@@ -269,6 +269,8 @@
 	Layer via Cut	Ebene durch Ausschneiden
 	Layer From Background…	Ebene aus Hintergrund…
 	Layer from Background…	Ebene aus Hintergrund…
+	Background from Layer	Hintergrund aus Ebene
+	Background From Layer	Hintergrund aus Ebene
 	New Shape Layer	Neue Formebene
 	New Type Layer	Neue Textebene
 	New Fill Layer	Neue Füllebene
@@ -1578,6 +1580,8 @@
 	Efficiency: 100%	Effizienz: 100 %
 	Ellipse Tool	Ellipsen-Werkzeug
 	Elliptical Marquee Tool	Ellipsenauswahl-Werkzeug
+	Single Row Marquee Tool	Auswahlwerkzeug (einzelne Zeile)
+	Single Column Marquee Tool	Auswahlwerkzeug (einzelne Spalte)
 	Emboss	Relief
 	Eraser	Radiergummi
 	Eraser Tool	Radiergummi-Werkzeug
@@ -1999,6 +2003,7 @@
 	Create Warped Text	Verkrümmten Text erstellen
 	Rasterize Smart Object	Smart-Objekt rasterisieren
 	Rasterize Fill Content	Füllinhalt rasterisieren
+	Rasterize Layer Style	Ebenenstil rasterisieren
 	Unlock: picking a preset replaces these settings	Entsperren: das Wählen einer Vorgabe ersetzt diese Einstellungen
 	Lock: keep these settings when picking another preset	Sperren: diese Einstellungen beim Wählen einer anderen Vorgabe behalten
 	Diameter:	Durchmesser:
