@@ -1154,6 +1154,8 @@ pub(crate) fn check_group_depth(doc: &Document, what: &str) -> Result<()> {
 
 /// Group Layers (⌘G) / Group from Layers: the explicit layer, or every selected layer, moves
 /// into a new group placed where the top-most of them was. Bottom-to-top order is preserved.
+/// Like Photoshop the new group starts collapsed; the New Group dialog's colour, mode and opacity
+/// are set in the same history step.
 pub fn group_layers(s: &mut Session, p: &Value) -> Result<Value> {
     let ids = match p.get("layer").and_then(Value::as_u64) {
         Some(id) => vec![LayerId(id)],
@@ -1162,7 +1164,7 @@ pub fn group_layers(s: &mut Session, p: &Value) -> Result<Value> {
     if ids.is_empty() {
         return Err(EngineError::Other("no layer selected".into()));
     }
-    let name = p.get("name").and_then(Value::as_str).map(str::to_string);
+    let opts = crate::group_options::GroupOptions::parse("layer.groupLayers", p)?;
     let gid = s.edit("Group Layers", |doc, active| {
         let ids = top_level(doc, &ids);
         // Artboards stay at the top level: inside a group they would stop being boards.
@@ -1170,13 +1172,19 @@ pub fn group_layers(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(EngineError::Other("artboards can't go into a group".into()));
         }
         let top = *ids.last().ok_or(EngineError::NoLayer(LayerId(0)))?;
-        let name = name.unwrap_or_else(|| doc.next_layer_name("Group"));
-        let gid = doc.insert_above(Some(top), Layer::group(name, vec![]));
+        let name = opts.name.clone().unwrap_or_else(|| doc.next_layer_name("Group"));
+        let mut group = Layer::group(name, vec![]);
+        if let LayerContent::Group(g) = &mut group.content {
+            g.expanded = false;
+        }
+        let gid = doc.insert_above(Some(top), group);
         let mut children = Vec::with_capacity(ids.len());
         for id in &ids {
             children.push(doc.remove(*id).ok_or(EngineError::NoLayer(*id))?);
         }
-        *doc.layer_mut(gid).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(gid))? = children;
+        let group = doc.layer_mut(gid).ok_or(EngineError::NoLayer(gid))?;
+        *group.children_mut().ok_or(EngineError::NoLayer(gid))? = children;
+        opts.apply(group);
         check_group_depth(doc, "Group Layers")?;
         *active = Some(gid);
         Ok(gid)
@@ -1368,7 +1376,15 @@ pub fn specs() -> Vec<CommandSpec> {
             link_layers(s)
         }),
         spec!("layer.mergeLayers", "Merge Layers", &["Layer"], Some("Cmd+E"), "{} (one layer selected: Merge Down)", has_layer, |s, _| merge_layers(s)),
-        spec!("layer.new.groupFromLayers", "Group from Layers…", &["Layer", "New"], None, r##"{"name":str?}"##, has_layer, group_layers),
+        spec!(
+            "layer.new.groupFromLayers",
+            "Group from Layers…",
+            &["Layer", "New"],
+            None,
+            r##"{"name":text?,"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":str="passThrough" (blend mode),"opacity":0..100=100 (percent)} (every selected layer; the new group starts collapsed)"##,
+            has_layer,
+            group_layers
+        ),
         spec!("layer.arrange.reverse", "Reverse", &["Layer", "Arrange"], None, "{}", two_plus, |s, _| reverse(s)),
         spec!(
             "layer.lockLayers",

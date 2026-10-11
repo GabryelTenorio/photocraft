@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (New Group button groups the selected layers) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (New Group dialog, ⌥/⌘-click New Group, groups from layers start collapsed) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -202,7 +202,9 @@ Paragraph; the rest open as in-app floating windows.
 | Themes: Photoshop's four greys | partial | five themes; #2661 |
 | Document tabs: overflow, context menu, reorder | done | UI-217-6; middle-click close #2570 |
 | Layers panel: wheel steps blend modes, drop on New/Trash | partial | UI-217-14 |
-| Layers panel New Group button: click with 2+ layers selected groups them (CC 2014+), ⇧-click groups, one layer gives an empty group; ⌥-click (dialog) and ⌘-click (group below) missing | partial | #2561, `new_group_button_tests.rs` |
+| Layers panel New Group button: click with 2+ layers selected groups them (CC 2014+), ⇧-click groups, one layer gives an empty group, ⌥-click opens the New Group dialog, ⌘-click adds the group below the active layer | done | #2561, `new_group_button_tests.rs` |
+| New Group dialog (Name, Color, Mode, Opacity) for Layer › New › Group… / Group from Layers…, the Layers panel menu and the row menu; ⌘G stays immediate | done | `new_group_ui.rs`, `new_group_ui_tests.rs` |
+| Groups made from layers (⌘G, New Group button, Group from Layers) start collapsed; selecting a layer inside opens the group | done | `group_options.rs` tests, `new_group_button_tests.rs` |
 
 ## Revision history
 
@@ -210,5 +212,6 @@ Paragraph; the rest open as in-app floating windows.
 |---|---|---|
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-11 | minor | New Group button: a click with two or more layers selected groups them, as in Photoshop CC 2014 and later (#2561) |
+| 2026-10-11 | minor | New Group dialog (Layer › New, Layers panel menu, row menu, ⌥-click), ⌘-click New Group adds the group below, groups made from layers start collapsed |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |

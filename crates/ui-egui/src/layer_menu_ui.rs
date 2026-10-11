@@ -56,8 +56,9 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
     v.push(None);
     v.push(Some((if multi { tl!("Duplicate Layers…") } else { tl!("Duplicate Layer…") }, "layer.duplicate")));
     v.push(Some((if multi { tl!("Delete Layers") } else { tl!("Delete Layer") }, "layer.delete")));
-    // Groups the clicked layer, or the whole selection when several layers are selected.
-    v.push(Some((tl!("Group from Layers…"), "layer.groupLayers")));
+    // Groups the clicked layer, or the whole selection when several layers are selected, after
+    // Photoshop's New Group dialog.
+    v.push(Some((tl!("Group from Layers…"), "layer.new.groupFromLayers")));
     v.push(None);
     v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
     v.push(Some((tl!("Export As…"), "layer.exportAs")));
@@ -196,7 +197,7 @@ fn items(app: &crate::PhotocraftApp, ui: &mut egui::Ui, l: &Layer, on_set: bool,
     }
 }
 
-fn color_name(color: LabelColor) -> &'static str {
+pub(crate) fn color_name(color: LabelColor) -> &'static str {
     crate::i18n::tr_ctx(crate::i18n::current(), "layerLabel", color.label())
 }
 
@@ -560,7 +561,8 @@ mod tests {
     }
 
     /// Group from Layers is offered for a multi-layer selection too (it used to be dropped from
-    /// the menu then) and puts every selected layer in one new group, leaving the rest alone.
+    /// the menu then). As in Photoshop it asks in the New Group from Layers dialog first; OK puts
+    /// every selected layer in one new group, leaving the rest alone.
     #[test]
     fn group_from_layers_groups_every_selected_layer() {
         use egui_kittest::kittest::Queryable;
@@ -568,6 +570,11 @@ mod tests {
         let (mut h, [text, shape, other]) = open_multi_selection_menu();
         let at = h.get_by_label("Group from Layers…").rect().center();
         click(&mut h, at, egui::PointerButton::Primary);
+        let dialog = h.state().ui.dialogs.last().map(|d| (d.id, d.fields.clone())).expect("the New Group dialog opened");
+        assert!(crate::new_group_ui::owns(&dialog.1));
+        assert_eq!(dialog.1["__command"], "layer.new.groupFromLayers");
+        crate::dialogs::confirm(h.state_mut(), dialog.0).unwrap();
+        h.run_steps(2);
         let doc = &h.state().session.active().unwrap().doc;
         let groups: Vec<_> = doc.walk().into_iter().map(|(_, _, l)| l).filter(|l| l.is_group()).collect();
         assert_eq!(groups.len(), 1);
@@ -617,7 +624,7 @@ mod tests {
         for id in [
             "layer.duplicate",
             "layer.delete",
-            "layer.groupLayers",
+            "layer.new.groupFromLayers",
             "layer.rasterize.layer",
             "layer.smartObjects.convertToSmartObject",
             "layer.createClippingMask",
