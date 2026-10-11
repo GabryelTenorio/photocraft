@@ -228,6 +228,7 @@ pub fn rich_doc(mode: ColorMode, depth: SampleType) -> Document {
         psd_raw: Some(vec![1, 2, 3]),
     });
     d.guides = Guides { horizontal: vec![10.0, 20.5], vertical: vec![100.25] };
+    d.ruler_origin = [12.5, -4.25];
     let mut sel = Surface::new(PixelFormat::GRAY8);
     scribble(&mut sel, 14, false);
     d.selection = Some(sel);
