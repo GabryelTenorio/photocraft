@@ -178,6 +178,9 @@ pub(crate) fn compound<R>(s: &mut Session, label: &str, f: impl FnOnce(&mut Sess
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let (before, history, prior) = (st.doc.clone(), st.history.clone(), st.layer_target());
     let journal = s.journal.len();
+    // Color Sampler points are view state a step may move (crop, rotation): roll them back too, so
+    // a failed second step can't leave them pinned to pixels the restored document no longer has.
+    let samplers = st.color_samplers.clone();
     let r = f(s);
     if r.is_err() {
         s.journal.truncate(journal);
@@ -195,6 +198,7 @@ pub(crate) fn compound<R>(s: &mut Session, label: &str, f: impl FnOnce(&mut Sess
         }
         Err(e) => {
             st.doc = before;
+            st.color_samplers = samplers;
             st.revision += 1;
             st.last_damage = None;
             Err(e)
