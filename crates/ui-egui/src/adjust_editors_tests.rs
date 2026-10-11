@@ -155,6 +155,34 @@ fn every_adjustment_layer_edits_through_properties() {
     }
 }
 
+/// #3264: browsing LUTs previews without recording one edit per LUT. The list replaces the
+/// dropdown: Up/Down move through it and preview, a click or Enter applies once.
+#[test]
+fn color_lookup_list_previews_luts_and_applies_one_edit() {
+    let mut h = app_harness("colorLookup", "rgb", 8);
+    let (_, before) = layer(&h);
+    let Adjustment::ColorLookup { name: before_name, .. } = before else { panic!("Color Lookup layer") };
+    let steps = h.state().session.active().unwrap().history.past_len();
+    let first = photocraft_engine::adjust_cmds::LOOKS.first().expect("a built-in look").1;
+    h.get_by_label(first).click();
+    h.run_steps(4);
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "a click applies once");
+    assert!(h.state().live_adjust.is_none(), "the click is committed");
+    let steps = steps + 1;
+    for _ in 0..3 {
+        h.key_press(egui::Key::ArrowDown);
+        h.run_steps(1);
+    }
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps, "arrow navigation only previews");
+    assert!(h.state().live_adjust.is_some(), "the LUT under the cursor is previewed");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    let (_, after) = layer(&h);
+    let Adjustment::ColorLookup { name: after_name, .. } = after else { panic!("Color Lookup layer") };
+    assert_ne!(after_name, before_name, "browsing selects a different LUT");
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "Enter applies the previewed LUT as one edit");
+}
+
 fn curve_of(a: &Adjustment) -> Vec<[f32; 2]> {
     match a {
         Adjustment::Curves { master, .. } => master.iter().map(|p| [(p.input * 255.0).round(), (p.output * 255.0).round()]).collect(),
