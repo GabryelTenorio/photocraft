@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Hand-tool flick panning) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Pen ⇧ 45°) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -116,7 +116,7 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 
 | Behaviour | Status | Evidence |
 |---|---|---|
-| Click corner, drag smooth, ⌥ breaks a handle, ⌘ direct-selects, ⇧ 45° | partial | TOOL-214-10 |
+| Click corner, drag smooth, ⌥ breaks a handle, ⌘ direct-selects, ⇧ 45° | done | TOOL-214-10; `vector_ui.rs` (#3751) |
 | Handle on the last point, close-drag handle | partial | #1482 |
 | Path operations in the options bar (combine, subtract, intersect, exclude) | partial | `layer.combineShapes.*`; Pen options #1397 |
 | On-canvas corner-radius handles on live shapes | missing | TOOL-214-12 |
@@ -210,3 +210,4 @@ Paragraph; the rest open as in-app floating windows.
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |
+| 2026-10-11 | minor | Pen ⇧ 45° done: ⇧-click puts the next anchor on the nearest 45° ray, ⇧-drag turns its handles in 45° steps (TOOL-214-10 done, #3751) |
