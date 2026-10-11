@@ -39,17 +39,21 @@ USAGE:
   photocraft-cli commands [--json] [--filter <text>]
       List the engine command registry.
   photocraft-cli mcp [--bridge <127.0.0.1:port>] [--control-token <64-hex> | --control-token-file <path>]
-      [--automation-read-root <dir>] [--automation-write-root <dir>]
+      [--automation-read-root <dir>]... [--automation-write-root <dir>]
       Run the MCP server on stdio (headless engine, or bridge to a running `photocraft --control <port>`).
+      With --bridge, configure roots on the desktop process; root flags on the bridge are an error.
   photocraft-cli serve [--port <port>] [--control-token <64-hex> | --control-token-file <path>]
-      [--automation-read-root <dir>] [--automation-write-root <dir>]
+      [--automation-read-root <dir>]... [--automation-write-root <dir>]
       Keep one headless session open and answer JSON lines ({\"id\",\"method\",\"params\"}) on stdio,
       or on 127.0.0.1:<port>. Methods: engine.execute, jobs.list/cancel, engine.commands,
       doc.open/new/save/inspect/render/select/close, session.list, batch, methods
       (docs/control-protocol.md#headless-server).
 
   photocraft-cli <subcommand> --help (or -h) prints this text. A flag the subcommand doesn't take is
-  an error.
+  an error. Repeat --automation-read-root to search directories in order (first existing regular file).
+  Only a missing file tries the next read root; other errors stop the request. All roots must exist.
+  --automation-write-root accepts one directory; repeating it is an error. Writes never grant reads.
+  Without read or write roots, the corresponding filesystem access is denied.
 ";
 
 struct Args {
@@ -115,7 +119,7 @@ fn parse(sub: &Subcommand, args: &[String]) -> Result<Option<Args>, String> {
             }
             a.flags.push((k.to_owned(), Some(v.to_owned())));
         } else if sub.values.contains(&s.as_str()) {
-            let v = args.get(i + 1).ok_or_else(|| format!("{s} needs a value"))?;
+            let v = args.get(i + 1).filter(|v| !is_root_flag(s) || !v.starts_with('-')).ok_or_else(|| format!("{s} needs a value"))?;
             a.flags.push((s.clone(), Some(v.clone())));
             i += 1;
         } else if sub.bare.contains(&s.as_str()) {
@@ -127,7 +131,23 @@ fn parse(sub: &Subcommand, args: &[String]) -> Result<Option<Args>, String> {
         }
         i += 1;
     }
+    // Reads accumulate in argument order; only writes have a single capability boundary.
+    if a.flags.iter().filter(|(flag, _)| flag == "--automation-write-root").count() > 1 {
+        return Err("--automation-write-root accepts one directory and cannot be repeated".into());
+    }
+    for (flag, value) in &a.flags {
+        if is_root_flag(flag) && value.as_deref().is_none_or(str::is_empty) {
+            return Err(format!("{flag} needs a non-empty directory"));
+        }
+    }
+    if a.has("--bridge") && a.flags.iter().any(|(flag, _)| is_root_flag(flag)) {
+        return Err("automation root flags cannot be used with --bridge; configure them on the desktop process".into());
+    }
     Ok(Some(a))
+}
+
+fn is_root_flag(flag: &str) -> bool {
+    matches!(flag, "--automation-read-root" | "--automation-write-root")
 }
 
 impl Args {
@@ -137,9 +157,107 @@ impl Args {
     fn has(&self, k: &str) -> bool {
         self.flags.iter().any(|(f, _)| f == k)
     }
+    fn read_roots(&self) -> impl Iterator<Item = &Path> {
+        // Keep every grant, including an invalid empty value, for workspace validation.
+        self.flags.iter().filter(|(flag, _)| flag == "--automation-read-root").map(|(_, value)| Path::new(value.as_deref().unwrap_or_default()))
+    }
 }
 
 type R = Result<(), String>;
+
+#[cfg(test)]
+mod root_arg_tests {
+    use super::*;
+
+    #[test]
+    fn repeated_write_roots_are_usage_errors_before_starting_servers() {
+        for sub in ["mcp", "serve"] {
+            for roots in [
+                vec!["--automation-write-root", "missing-library", "--automation-write-root", "missing-work"],
+                vec!["--automation-write-root=missing-library", "--automation-write-root=missing-work"],
+                vec!["--automation-write-root", "missing-library", "--automation-write-root=missing-work"],
+                vec!["--automation-write-root=missing-library", "--automation-write-root", "missing-work"],
+                vec!["--automation-write-root=", "--automation-write-root=missing-work"],
+                vec!["--automation-write-root=missing-work", "--automation-write-root="],
+                vec!["--automation-write-root=missing-work", "--automation-write-root=missing-work"],
+            ] {
+                let args: Vec<String> = std::iter::once(sub).chain(roots).map(str::to_owned).collect();
+                let mut out = Vec::new();
+                let mut err = Vec::new();
+                assert_eq!(run(&args, &mut out, &mut err), 2, "{sub}: {}", String::from_utf8_lossy(&err));
+                assert!(out.is_empty());
+                assert!(String::from_utf8_lossy(&err).contains("--automation-write-root accepts one directory and cannot be repeated"));
+            }
+        }
+    }
+
+    #[test]
+    fn ordered_read_roots_allow_duplicates_and_mixed_syntax() {
+        for name in ["mcp", "serve"] {
+            let sub = SUBCOMMANDS.iter().find(|s| s.name == name).unwrap();
+            let absent = parse(sub, &[]).unwrap().unwrap();
+            assert_eq!(absent.read_roots().count(), 0);
+            for flags in [
+                vec!["--automation-read-root", "library with spaces"],
+                vec!["--automation-read-root=library with spaces"],
+                vec!["--automation-read-root", "library with spaces", "--automation-read-root=work", "--automation-read-root", "library with spaces"],
+                vec!["--automation-read-root=library with spaces", "--automation-read-root", "work", "--automation-read-root=library with spaces"],
+            ] {
+                let repeated = flags.len() > 2;
+                let args: Vec<String> = flags.into_iter().map(str::to_owned).collect();
+                let parsed = parse(sub, &args).unwrap().unwrap();
+                let roots: Vec<&Path> = parsed.read_roots().collect();
+                let expected = if repeated {
+                    vec![Path::new("library with spaces"), Path::new("work"), Path::new("library with spaces")]
+                } else {
+                    vec![Path::new("library with spaces")]
+                };
+                assert_eq!(roots, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn root_values_must_be_present_and_non_empty() {
+        for name in ["mcp", "serve"] {
+            let sub = SUBCOMMANDS.iter().find(|s| s.name == name).unwrap();
+            for flag in ["--automation-read-root", "--automation-write-root"] {
+                for args in [
+                    vec![flag.to_owned()],
+                    vec![flag.to_owned(), String::new()],
+                    vec![format!("{flag}=")],
+                    vec![flag.to_owned(), "--automation-read-root=work".into()],
+                    vec![flag.to_owned(), "--help".into()],
+                ] {
+                    assert!(parse(sub, &args).is_err(), "{name}: {args:?}");
+                }
+            }
+            let args: Vec<String> = ["--automation-read-root=work", "--automation-read-root="].into_iter().map(str::to_owned).collect();
+            assert!(parse(sub, &args).is_err());
+        }
+    }
+
+    #[test]
+    fn bridge_roots_are_rejected_before_connecting() {
+        for flag in ["--automation-read-root", "--automation-write-root"] {
+            let args: Vec<String> = ["mcp", "--bridge", "127.0.0.1:1", flag, "work"].into_iter().map(str::to_owned).collect();
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            assert_eq!(run(&args, &mut out, &mut err), 2);
+            assert!(String::from_utf8_lossy(&err).contains("configure them on the desktop process"));
+        }
+    }
+
+    #[test]
+    fn repeated_commands_keep_their_values() {
+        let sub = SUBCOMMANDS.iter().find(|s| s.name == "run").unwrap();
+        let args: Vec<String> = ["--cmd", "layer.new.layer", "--cmd", "layer.delete"].into_iter().map(str::to_owned).collect();
+        assert_eq!(
+            parse(sub, &args).unwrap().unwrap().flags,
+            vec![("--cmd".into(), Some("layer.new.layer".into())), ("--cmd".into(), Some("layer.delete".into()))]
+        );
+    }
+}
 
 /// [`run`] on the raw process arguments. An argument that is not valid Unicode is a usage error
 /// naming its position and a lossy rendering (exit 2), never a panic: `std::env::args()` aborts
@@ -229,8 +347,7 @@ fn missing_font_warnings(fonts: Vec<String>) -> Vec<String> {
 }
 
 fn automation_workspace(args: &Args) -> Result<AuthorizedWorkspace, String> {
-    AuthorizedWorkspace::new(args.get("--automation-read-root").map(Path::new), args.get("--automation-write-root").map(Path::new))
-        .map_err(|error| error.to_string())
+    AuthorizedWorkspace::with_read_roots(args.read_roots(), args.get("--automation-write-root").map(Path::new)).map_err(|error| error.to_string())
 }
 
 fn convert(a: &Args, _out: &mut dyn Write, err: &mut dyn Write) -> R {

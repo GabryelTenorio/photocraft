@@ -1,7 +1,7 @@
 //! Photocraft desktop app.
 //!
 //! Usage: `photocraft [--control <port>] [--control-token <64-hex> |
-//! --control-token-file <path>] [--automation-read-root <dir>]
+//! --control-token-file <path>] [--automation-read-root <dir>]...
 //! [--automation-write-root <dir>] [--safe-gpu] [--in-window-menus] [files…]`
 //!
 //! `--safe-gpu` starts with the CPU renderer (no GPU canvas; a software adapter for the window
@@ -106,6 +106,172 @@ fn control_args_exit_code(errors: &[String]) -> Option<i32> {
     if errors.is_empty() { None } else { Some(2) }
 }
 
+/// Launch-time roots, with environment fallbacks replaced by explicit flags. Keep this parsing
+/// independent of the GUI and process environment so ordering and missing values are testable.
+#[derive(Debug)]
+struct AutomationRootArgs {
+    read: Vec<std::path::PathBuf>,
+    write: Option<std::path::PathBuf>,
+    explicit_read: bool,
+    explicit_write: bool,
+}
+
+impl AutomationRootArgs {
+    fn new(read_env: Option<std::ffi::OsString>, write_env: Option<std::ffi::OsString>) -> Self {
+        Self {
+            read: read_env.into_iter().map(std::path::PathBuf::from).collect(),
+            write: write_env.map(std::path::PathBuf::from),
+            explicit_read: false,
+            explicit_write: false,
+        }
+    }
+
+    /// Consume one root flag, including `--flag=value`. Leave a following flag in the iterator
+    /// when this flag has no value, so it cannot accidentally become a directory grant.
+    fn consume(&mut self, arg: &std::ffi::OsStr, args: &mut std::iter::Peekable<impl Iterator<Item = std::ffi::OsString>>) -> Result<bool, String> {
+        let text = arg.to_string_lossy();
+        let (flag, inline) = match text.split_once('=') {
+            Some((flag, value)) => (flag, Some(value)),
+            None => (text.as_ref(), None),
+        };
+        let read = match flag {
+            "--automation-read-root" => true,
+            "--automation-write-root" => false,
+            _ => return Ok(false),
+        };
+        if read {
+            if !self.explicit_read {
+                self.read.clear();
+                self.explicit_read = true;
+            }
+        } else if self.explicit_write {
+            return Err("--automation-write-root accepts one directory and cannot be repeated".into());
+        } else {
+            self.explicit_write = true;
+            self.write = None;
+        }
+        let value = if let Some(value) = inline {
+            // Separate values preserve non-Unicode filesystem paths. Never use a lossy inline
+            // value as a different path; callers can pass that path as the next argument.
+            if arg.to_str().is_none() {
+                return Err(format!("{flag}: inline value is not valid Unicode; pass the directory as a separate argument"));
+            }
+            std::ffi::OsString::from(value)
+        } else {
+            if args.peek().is_none_or(|value| value.to_string_lossy().starts_with('-')) {
+                return Err(format!("{flag} needs a value"));
+            }
+            args.next().ok_or_else(|| format!("{flag} needs a value"))?
+        };
+        if value.is_empty() {
+            return Err(format!("{flag} needs a non-empty directory"));
+        }
+        if read {
+            self.read.push(value.into());
+        } else {
+            self.write = Some(value.into());
+        }
+        Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod automation_root_arg_tests {
+    use super::AutomationRootArgs;
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    fn parse(flags: &[&str], read_env: Option<&str>, write_env: Option<&str>) -> Result<AutomationRootArgs, String> {
+        let mut roots = AutomationRootArgs::new(read_env.map(OsString::from), write_env.map(OsString::from));
+        let mut args = flags.iter().map(|flag| OsString::from(*flag)).peekable();
+        while let Some(arg) = args.next() {
+            assert!(roots.consume(&arg, &mut args)?);
+        }
+        Ok(roots)
+    }
+
+    #[test]
+    fn reads_accumulate_in_cli_order_including_duplicates_and_equals() {
+        let roots =
+            parse(&["--automation-read-root=library", "--automation-read-root", "work with spaces", "--automation-read-root=library"], None, None).unwrap();
+        assert_eq!(roots.read, vec![PathBuf::from("library"), PathBuf::from("work with spaces"), PathBuf::from("library")]);
+    }
+
+    #[test]
+    fn environment_is_one_fallback_replaced_by_explicit_flags() {
+        let fallback = parse(&[], Some("library;work"), Some("output")).unwrap();
+        assert_eq!(fallback.read, vec![PathBuf::from("library;work")]);
+        assert_eq!(fallback.write, Some(PathBuf::from("output")));
+        let absent = parse(&[], None, None).unwrap();
+        assert!(absent.read.is_empty());
+        assert!(absent.write.is_none());
+        let explicit = parse(
+            &["--automation-read-root", "first", "--automation-read-root=second", "--automation-write-root=output"],
+            Some("fallback"),
+            Some("fallback-output"),
+        )
+        .unwrap();
+        assert_eq!(explicit.read, vec![PathBuf::from("first"), PathBuf::from("second")]);
+        assert_eq!(explicit.write, Some(PathBuf::from("output")));
+        let read_only = parse(&["--automation-read-root=first"], Some("fallback"), Some("fallback-output")).unwrap();
+        assert_eq!(read_only.read, vec![PathBuf::from("first")]);
+        assert_eq!(read_only.write, Some(PathBuf::from("fallback-output")));
+        let write_only = parse(&["--automation-write-root=output"], Some("fallback"), Some("fallback-output")).unwrap();
+        assert_eq!(write_only.read, vec![PathBuf::from("fallback")]);
+        assert_eq!(write_only.write, Some(PathBuf::from("output")));
+        // Empty environment values remain configured, so workspace construction rejects them.
+        let empty = parse(&[], Some(""), Some("")).unwrap();
+        assert_eq!(empty.read, vec![PathBuf::new()]);
+        assert_eq!(empty.write, Some(PathBuf::new()));
+        assert!(photocraft_automation::AuthorizedWorkspace::with_read_roots(empty.read.iter().map(PathBuf::as_path), None).is_err());
+        let overridden = parse(&["--automation-read-root=first", "--automation-write-root=output"], Some(""), Some("")).unwrap();
+        assert_eq!(overridden.read, vec![PathBuf::from("first")]);
+        assert_eq!(overridden.write, Some(PathBuf::from("output")));
+    }
+
+    #[test]
+    fn repeated_write_roots_are_rejected_even_when_identical_or_empty() {
+        for flags in [
+            vec!["--automation-write-root", "work", "--automation-write-root", "work"],
+            vec!["--automation-write-root=work", "--automation-write-root=other"],
+            vec!["--automation-write-root", "work", "--automation-write-root=other"],
+            vec!["--automation-write-root=work", "--automation-write-root", "other"],
+            vec!["--automation-write-root=work", "--automation-write-root="],
+            vec!["--automation-write-root=", "--automation-write-root=work"],
+        ] {
+            assert!(parse(&flags, None, None).is_err(), "{flags:?}");
+        }
+    }
+
+    #[test]
+    fn missing_and_empty_values_cannot_fall_back_to_environment() {
+        for flag in ["--automation-read-root", "--automation-write-root"] {
+            assert!(parse(&[flag], Some("fallback"), Some("fallback")).is_err());
+            assert!(parse(&[flag, ""], Some("fallback"), Some("fallback")).is_err());
+            assert!(parse(&[&format!("{flag}=")], Some("fallback"), Some("fallback")).is_err());
+            let mut roots = AutomationRootArgs::new(None, None);
+            let mut args = [OsString::from("--safe-gpu")].into_iter().peekable();
+            assert!(roots.consume(std::ffi::OsStr::new(flag), &mut args).is_err());
+            assert_eq!(args.next(), Some(OsString::from("--safe-gpu")));
+        }
+        assert!(parse(&["--automation-read-root=valid", "--automation-read-root="], None, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn separate_non_unicode_paths_are_preserved_and_inline_ones_are_rejected() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let path = OsString::from_vec(b"library-\xff".to_vec());
+        let mut roots = AutomationRootArgs::new(None, None);
+        let mut args = [path.clone()].into_iter().peekable();
+        assert!(roots.consume(std::ffi::OsStr::new("--automation-read-root"), &mut args).unwrap());
+        assert_eq!(roots.read, vec![PathBuf::from(path)]);
+        let inline = OsString::from_vec(b"--automation-read-root=library-\xff".to_vec());
+        assert!(roots.consume(&inline, &mut args).is_err());
+    }
+}
+
 #[cfg(test)]
 mod control_port_tests {
     use super::{control_args_exit_code, parse_control_port};
@@ -149,8 +315,8 @@ fn main() -> eframe::Result {
     }
     let mut control_token = None;
     let mut control_token_file = None;
-    let mut automation_read_root = std::env::var_os("PHOTOCRAFT_AUTOMATION_READ_ROOT").map(std::path::PathBuf::from);
-    let mut automation_write_root = std::env::var_os("PHOTOCRAFT_AUTOMATION_WRITE_ROOT").map(std::path::PathBuf::from);
+    let mut automation_roots =
+        AutomationRootArgs::new(std::env::var_os("PHOTOCRAFT_AUTOMATION_READ_ROOT"), std::env::var_os("PHOTOCRAFT_AUTOMATION_WRITE_ROOT"));
     let mut files = Vec::new();
     // Arguments that are not valid Unicode (issue #1108): a file manager can hand over a Latin-1
     // file name on Linux, and `std::env::args()` would panic before any window opened. Paths are
@@ -158,8 +324,16 @@ fn main() -> eframe::Result {
     let mut unreadable_paths: Vec<String> = Vec::new();
     let mut safe_gpu = false;
     let mut in_window_menus = std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0");
-    let mut args = std::env::args_os().skip(1);
+    let mut args = std::env::args_os().skip(1).peekable();
     while let Some(a) = args.next() {
+        match automation_roots.consume(&a, &mut args) {
+            Ok(true) => continue,
+            Err(error) => {
+                control_arg_errors.push(error);
+                continue;
+            }
+            Ok(false) => {}
+        }
         match a.to_str() {
             Some("--control") => match args.next() {
                 Some(value) => match parse_control_port(&value.to_string_lossy(), "--control") {
@@ -174,8 +348,6 @@ fn main() -> eframe::Result {
                 None => control_token = None,
             },
             Some("--control-token-file") => control_token_file = args.next().map(std::path::PathBuf::from),
-            Some("--automation-read-root") => automation_read_root = args.next().map(std::path::PathBuf::from),
-            Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
             Some("--safe-gpu") => safe_gpu = true,
             Some("--in-window-menus") => in_window_menus = true,
             Some("--version") => {
@@ -252,7 +424,10 @@ fn main() -> eframe::Result {
         } else {
             eprintln!("photocraft: using supplied control token");
         }
-        let workspace = match photocraft_automation::AuthorizedWorkspace::new(automation_read_root.as_deref(), automation_write_root.as_deref()) {
+        let workspace = match photocraft_automation::AuthorizedWorkspace::with_read_roots(
+            automation_roots.read.iter().map(std::path::PathBuf::as_path),
+            automation_roots.write.as_deref(),
+        ) {
             Ok(workspace) => workspace,
             Err(error) => {
                 eprintln!("photocraft: cannot configure automation workspace: {error}");

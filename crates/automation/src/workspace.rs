@@ -31,7 +31,7 @@ struct RootCapability {
 /// before I/O.
 #[derive(Clone, Default)]
 pub struct AuthorizedWorkspace {
-    read: Option<RootCapability>,
+    read: Vec<RootCapability>,
     write: Option<RootCapability>,
 }
 
@@ -39,35 +39,90 @@ impl AuthorizedWorkspace {
     /// Open the configured roots as capabilities. Either authority may be
     /// omitted; omitted authority fails closed.
     pub fn new(read_root: Option<&Path>, write_root: Option<&Path>) -> Result<Self, AutomationError> {
-        Ok(Self { read: open_root(read_root, "read")?, write: open_root(write_root, "write")? })
+        Self::with_read_roots(read_root, write_root)
     }
 
-    /// Read one regular file below the configured read root.
+    /// Open ordered read capabilities and an independent, optional write capability.
+    /// Every configured root must be valid; a write root does not also grant reads.
+    pub fn with_read_roots<'a>(read_roots: impl IntoIterator<Item = &'a Path>, write_root: Option<&Path>) -> Result<Self, AutomationError> {
+        let mut read = Vec::new();
+        for path in read_roots {
+            let root = open_root(path, "read", &read)?;
+            read.push(root);
+        }
+        let write = write_root.map(|path| open_root(path, "write", &read)).transpose()?;
+        Ok(Self { read, write })
+    }
+
+    /// Read the first matching regular file, trying roots in their configured order.
+    /// Only an open that reports NotFound tries the next root. Once opened, errors
+    /// (including a non-regular file or a failed bounded read) never select another file.
     pub fn read(&self, path: &str) -> Result<Vec<u8>, AutomationError> {
-        let relative = request_path(path, self.read.as_ref())?;
-        let root = self.read.as_ref().ok_or_else(|| AutomationError::BadRequest(format!("{DENIED}: read authority is absent")))?;
-        let mut file = root.dir.open(&relative).map_err(|e| file_error("read", path, e))?;
+        self.read_with_save_path(path).map(|(bytes, _)| bytes)
+    }
+
+    /// Read bytes and derive a conservative implicit-save request from the same
+    /// selected capability. A different read root must never redirect an implicit
+    /// save to a same-named file in the write root. Aliases and nested roots need an
+    /// explicit Save As; this is not canonical desktop document identity.
+    pub fn read_with_save_path(&self, path: &str) -> Result<(Vec<u8>, Option<String>), AutomationError> {
+        let (mut file, root) = self.open_read(path)?;
         let metadata = file.metadata().map_err(|e| file_error("read", path, e))?;
         if !metadata.is_file() {
             return Err(AutomationError::BadRequest(format!("automation read path is not a regular file: `{path}`")));
         }
         // Bounded reads, and a clear error for a file larger than memory (#375).
-        photocraft_format::read::read_all(&mut file, metadata.len()).map_err(|e| file_error("read", path, e))
+        let bytes = photocraft_format::read::read_all(&mut file, metadata.len()).map_err(|e| file_error("read", path, e))?;
+        let save_path = self.write.as_ref().filter(|write| Arc::ptr_eq(&root.dir, &write.dir)).map(|_| path.to_owned());
+        Ok((bytes, save_path))
+    }
+
+    fn open_read(&self, path: &str) -> Result<(cap_std::fs::File, &RootCapability), AutomationError> {
+        if self.read.is_empty() {
+            return Err(AutomationError::BadRequest(format!("{DENIED}: read authority is absent")));
+        }
+        let mut not_found = None;
+        for root in &self.read {
+            let Some(relative) = scoped_path(path, root)? else { continue };
+            match root.dir.open(&relative) {
+                Ok(file) => return Ok((file, root)),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => not_found = Some(error),
+                Err(error) => return Err(file_error("read", path, error)),
+            }
+        }
+        match not_found {
+            Some(error) => Err(file_error("read", path, error)),
+            None => Err(path_error(path, "absolute paths must be inside an automation read root")),
+        }
     }
 
     /// Load one `.pcraft` document in directory form — the native on-disk layout — below the
-    /// read root. `read` serves regular files only (the zip form), so a regular file at the
+    /// first matching read root. Directory opens never establish an implicit save target.
+    /// `read` serves regular files only (the zip form), so a regular file at the
     /// path is reported as `Ok(None)` for the caller to fall back to.
     pub fn open_pcraft(&self, path: &str) -> Result<Option<photocraft_doc::Document>, AutomationError> {
-        let relative = request_path(path, self.read.as_ref())?;
-        let root = self.read.as_ref().ok_or_else(|| AutomationError::BadRequest(format!("{DENIED}: read authority is absent")))?;
-        let dir = match root.dir.open_dir(&relative) {
-            Ok(dir) => dir,
-            Err(e) if e.kind() == std::io::ErrorKind::NotADirectory => return Ok(None),
-            Err(e) => return Err(file_error("read", path, e)),
-        };
-        let source = DirHandle { dir };
-        Ok(Some(photocraft_format::load_bytes_source(&source, &photocraft_format::LoadOptions::default())?))
+        if self.read.is_empty() {
+            return Err(AutomationError::BadRequest(format!("{DENIED}: read authority is absent")));
+        }
+        let mut not_found = None;
+        for root in &self.read {
+            let Some(relative) = scoped_path(path, root)? else { continue };
+            let dir = match root.dir.open_dir(&relative) {
+                Ok(dir) => dir,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    not_found = Some(error);
+                    continue;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotADirectory => return Ok(None),
+                Err(error) => return Err(file_error("read", path, error)),
+            };
+            let source = DirHandle { dir };
+            return Ok(Some(photocraft_format::load_bytes_source(&source, &photocraft_format::LoadOptions::default())?));
+        }
+        match not_found {
+            Some(error) => Err(file_error("read", path, error)),
+            None => Err(path_error(path, "absolute paths must be inside an automation read root")),
+        }
     }
 
     /// Create or replace one file below the configured write root, crash-safely: the bytes go to
@@ -108,17 +163,21 @@ impl AuthorizedWorkspace {
     }
 }
 
-fn open_root(path: Option<&Path>, authority: &str) -> Result<Option<RootCapability>, AutomationError> {
-    let Some(path) = path else { return Ok(None) };
+fn open_root(path: &Path, authority: &str, opened: &[RootCapability]) -> Result<RootCapability, AutomationError> {
     if path.as_os_str().is_empty() {
         return Err(AutomationError::BadRequest(format!("automation {authority} root is empty")));
     }
-    let dir = Dir::open_ambient_dir(path, ambient_authority())
-        .map_err(|e| AutomationError::Io(format!("cannot open automation {authority} root `{}`: {e}", path.display())))?;
     // Textual (no link resolution), like the request paths it is compared with.
     let absolute =
         std::path::absolute(path).map_err(|e| AutomationError::Io(format!("cannot resolve automation {authority} root `{}`: {e}", path.display())))?;
-    Ok(Some(RootCapability { dir: Arc::new(dir), path: absolute }))
+    // Reuse the held handle, not only its spelling: a launch-time root symlink
+    // could otherwise change between two opens of the same configured path.
+    if let Some(root) = opened.iter().find(|root| root.path == absolute) {
+        return Ok(root.clone());
+    }
+    let dir = Dir::open_ambient_dir(path, ambient_authority())
+        .map_err(|e| AutomationError::Io(format!("cannot open automation {authority} root `{}`: {e}", path.display())))?;
+    Ok(RootCapability { dir: Arc::new(dir), path: absolute })
 }
 
 /// A request path as the relative path the root's capability resolves. An absolute path is
@@ -128,7 +187,16 @@ fn open_root(path: Option<&Path>, authority: &str) -> Result<Option<RootCapabili
 /// resolved on the filesystem; the held directory handle still does all the opening, so
 /// links cannot escape the root.
 fn request_path(raw: &str, root: Option<&RootCapability>) -> Result<PathBuf, AutomationError> {
-    let Some(root) = root.filter(|_| Path::new(raw).is_absolute()) else { return relative_path(raw) };
+    let Some(root) = root else { return relative_path(raw) };
+    scoped_path(raw, root)?.ok_or_else(|| path_error(raw, "absolute paths must be inside the automation root"))
+}
+
+/// An absolute prefix mismatch is a noncandidate, whereas a malformed path
+/// beneath a matching root is an error. Never turn either into a relative lookup.
+fn scoped_path(raw: &str, root: &RootCapability) -> Result<Option<PathBuf>, AutomationError> {
+    if !Path::new(raw).is_absolute() {
+        return relative_path(raw).map(Some);
+    }
     let mut request = Path::new(raw).components();
     for want in root.path.components() {
         let same = match (request.next(), want) {
@@ -137,11 +205,11 @@ fn request_path(raw: &str, root: Option<&RootCapability>) -> Result<PathBuf, Aut
             (None, _) => false,
         };
         if !same {
-            return Err(path_error(raw, "absolute paths must be inside the automation root"));
+            return Ok(None);
         }
     }
     let rest: Vec<&str> = request.map(|c| c.as_os_str().to_str().unwrap_or("\u{FFFD}")).collect();
-    relative_path(&rest.join("/"))
+    relative_path(&rest.join("/")).map(Some)
 }
 
 fn relative_path(raw: &str) -> Result<PathBuf, AutomationError> {
@@ -465,6 +533,102 @@ mod tests {
     }
 
     #[test]
+    fn ordered_read_roots_keep_write_authority_and_save_provenance_separate() {
+        let (library, work, _) = roots("multiple-roots");
+        std::fs::write(library.join("photo.txt"), b"library").unwrap();
+        std::fs::write(work.join("draft.txt"), b"draft").unwrap();
+        std::fs::write(library.join("same.txt"), b"first").unwrap();
+        std::fs::write(work.join("same.txt"), b"second").unwrap();
+        let workspace = AuthorizedWorkspace::with_read_roots([library.as_path(), work.as_path(), library.as_path()], Some(&work)).unwrap();
+        assert_eq!(workspace.read_with_save_path("photo.txt").unwrap(), (b"library".to_vec(), None));
+        assert_eq!(workspace.read_with_save_path("draft.txt").unwrap(), (b"draft".to_vec(), Some("draft.txt".into())));
+        assert_eq!(workspace.read("same.txt").unwrap(), b"first");
+        let absolute = work.join("same.txt").to_string_lossy().into_owned();
+        assert_eq!(workspace.read_with_save_path(&absolute).unwrap(), (b"second".to_vec(), Some(absolute)));
+        let reverse = AuthorizedWorkspace::with_read_roots([work.as_path(), library.as_path()], Some(&work)).unwrap();
+        assert_eq!(reverse.read("same.txt").unwrap(), b"second");
+        // Identical configured spellings share the held handle, including the write grant.
+        assert!(Arc::ptr_eq(&workspace.read[0].dir, &workspace.read[2].dir));
+        assert!(Arc::ptr_eq(&workspace.read[1].dir, &workspace.write.as_ref().unwrap().dir));
+        workspace.write("result.txt", b"output").unwrap();
+        assert_eq!(std::fs::read(work.join("result.txt")).unwrap(), b"output");
+        assert!(!library.join("result.txt").exists());
+        assert!(workspace.write(&library.join("photo.txt").to_string_lossy(), b"blocked").is_err());
+        assert_eq!(std::fs::read(library.join("photo.txt")).unwrap(), b"library");
+        let error = workspace.read("missing.txt").unwrap_err().to_string();
+        assert!(error.contains("NotFound"), "{error}");
+    }
+
+    #[test]
+    fn every_read_root_is_validated_and_write_roots_never_imply_reads() {
+        let (library, work, _) = roots("root-validation");
+        std::fs::write(work.join("file.txt"), b"work").unwrap();
+        for invalid in [library.join("missing"), work.join("file.txt"), PathBuf::new()] {
+            assert!(AuthorizedWorkspace::with_read_roots([library.as_path(), invalid.as_path(), work.as_path()], Some(&work)).is_err());
+        }
+        let write_only = AuthorizedWorkspace::with_read_roots(std::iter::empty(), Some(&work)).unwrap();
+        assert!(write_only.read("file.txt").is_err());
+        assert!(write_only.read(&work.join("file.txt").to_string_lossy()).is_err());
+        let read_only = AuthorizedWorkspace::with_read_roots([library.as_path(), work.as_path()], None).unwrap();
+        assert_eq!(read_only.read_with_save_path("file.txt").unwrap(), (b"work".to_vec(), None));
+        assert!(read_only.write("file.txt", b"blocked").is_err());
+    }
+
+    #[test]
+    fn an_earlier_directory_or_invalid_path_never_falls_back_to_a_later_file() {
+        let (library, work, _) = roots("root-errors");
+        std::fs::create_dir(library.join("same.txt")).unwrap();
+        std::fs::write(work.join("same.txt"), b"later").unwrap();
+        let workspace = AuthorizedWorkspace::with_read_roots([library.as_path(), work.as_path()], Some(&work)).unwrap();
+        assert!(workspace.read("same.txt").is_err());
+        for invalid in ["", "../same.txt", "a/../same.txt", "a\\same.txt", "a//same.txt", "NUL", "same.txt:stream"] {
+            assert!(workspace.read(invalid).is_err(), "accepted {invalid:?}");
+            assert!(workspace.write(invalid, b"blocked").is_err(), "wrote {invalid:?}");
+        }
+        let traversal = library.join("../outside/same.txt");
+        assert!(workspace.read(&traversal.to_string_lossy()).is_err());
+        assert_eq!(std::fs::read(work.join("same.txt")).unwrap(), b"later");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn multiple_roots_do_not_allow_link_escapes_or_alias_save_back() {
+        use std::os::unix::fs::symlink;
+        let (library, work, _) = roots("multi-root-links");
+        std::fs::write(work.join("photo.txt"), b"work").unwrap();
+        symlink(&work, library.join("escape")).unwrap();
+        std::fs::create_dir(work.join("escape")).unwrap();
+        std::fs::write(work.join("escape/photo.txt"), b"later").unwrap();
+        let workspace = AuthorizedWorkspace::with_read_roots([library.as_path(), work.as_path()], Some(&work)).unwrap();
+        // Being separately granted does not allow following a link out of the selected root.
+        assert!(workspace.read("escape/photo.txt").is_err());
+        assert_eq!(workspace.read("photo.txt").unwrap(), b"work");
+        let alias = library.join("alias");
+        symlink(&work, &alias).unwrap();
+        let aliased = AuthorizedWorkspace::new(Some(&alias), Some(&work)).unwrap();
+        assert_eq!(aliased.read_with_save_path("photo.txt").unwrap(), (b"work".to_vec(), None));
+        let nested = AuthorizedWorkspace::new(Some(&work.join("escape")), Some(&work)).unwrap();
+        assert_eq!(nested.read_with_save_path("photo.txt").unwrap(), (b"later".to_vec(), None));
+        symlink(&library, work.join("escape-write")).unwrap();
+        assert!(workspace.write("escape-write/output.txt", b"blocked").is_err());
+        assert!(!library.join("output.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn same_root_leaf_link_save_replaces_the_link_without_writing_its_target() {
+        let (inside, _, workspace) = roots("leaf-link");
+        std::fs::write(inside.join("target.txt"), b"target").unwrap();
+        std::os::unix::fs::symlink("target.txt", inside.join("link.txt")).unwrap();
+        let (bytes, save_path) = workspace.read_with_save_path("link.txt").unwrap();
+        assert_eq!(bytes, b"target");
+        workspace.write(&save_path.unwrap(), b"replacement").unwrap();
+        assert_eq!(std::fs::read(inside.join("target.txt")).unwrap(), b"target");
+        assert_eq!(std::fs::read(inside.join("link.txt")).unwrap(), b"replacement");
+        assert!(!std::fs::symlink_metadata(inside.join("link.txt")).unwrap().file_type().is_symlink());
+    }
+
+    #[test]
     fn open_pcraft_loads_a_directory_below_the_read_root() {
         let (inside, _, workspace) = roots("pcraft-dir");
         let doc = photocraft_doc::Document::new("Native", photocraft_doc::Size::new(16, 12), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8);
@@ -501,6 +665,32 @@ mod tests {
         std::fs::create_dir(&bundle2).unwrap();
         std::os::unix::fs::symlink("/dev/zero", bundle2.join("manifest.json")).unwrap();
         assert!(workspace2.open_pcraft("native.pcraft").is_err(), "an escaping symlink entry is refused");
+    }
+
+    #[test]
+    fn directory_pcraft_uses_ordered_roots_without_falling_back_after_selection() {
+        let (library, work, _) = roots("pcraft-ordered");
+        let save = |root: &Path, name: &str| {
+            let doc = photocraft_doc::Document::new(name, photocraft_doc::Size::new(4, 4), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8);
+            photocraft_format::PcraftWriter::new().save_dir(&doc, &root.join("native.pcraft"), &photocraft_format::SaveOptions::default()).unwrap();
+        };
+        save(&work, "Later");
+        let workspace = AuthorizedWorkspace::with_read_roots([library.as_path(), work.as_path()], Some(&work)).unwrap();
+        assert_eq!(workspace.open_pcraft("native.pcraft").unwrap().unwrap().name, "Later");
+        save(&library, "First");
+        assert_eq!(workspace.open_pcraft("native.pcraft").unwrap().unwrap().name, "First");
+        assert_eq!(workspace.open_pcraft(&work.join("native.pcraft").to_string_lossy()).unwrap().unwrap().name, "Later");
+        std::fs::remove_dir_all(library.join("native.pcraft")).unwrap();
+        std::fs::write(library.join("native.pcraft"), b"zip placeholder").unwrap();
+        assert!(workspace.open_pcraft("native.pcraft").unwrap().is_none());
+        std::fs::remove_file(library.join("native.pcraft")).unwrap();
+        std::fs::create_dir(library.join("native.pcraft")).unwrap();
+        assert!(workspace.open_pcraft("native.pcraft").is_err());
+        for invalid in ["../native.pcraft", "a//native.pcraft", "a\\native.pcraft"] {
+            assert!(workspace.open_pcraft(invalid).is_err());
+        }
+        let write_only = AuthorizedWorkspace::with_read_roots(std::iter::empty(), Some(&work)).unwrap();
+        assert!(write_only.open_pcraft("native.pcraft").is_err());
     }
 
     fn temp_files(dir: &Path) -> Vec<String> {

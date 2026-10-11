@@ -75,7 +75,7 @@ The transport is `apps/photocraft/src/control_server.rs`, and the handlers are i
   base64 PNG data; a path is relative to the automation write root. Raises the window first
   (default) because occluded macOS windows stop rendering
 - `ui.focus`: bring the main window to the front
-- `app.open {path}` / `app.save {path?, tgaBits?}`: relative file I/O through the configured automation roots (`app.open` reads under the read root, `app.save` writes under the write root; absolute paths, `..` and paths escaping the root are refused, and both fail closed when no root was granted). Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name` (directory `.pcraft` — the native on-disk form — loads through the read root's capability; the single-file (zip) form takes the bytes path), `app.save` the `path` written. `app.save` without `path` writes back only to the document's own PSD, PSB or `.pcraft` file, like File › Save. `tgaBits` (24 or 32) sets a TGA's bits per pixel: 32 writes the alpha channel (or else the transparency) as its alpha, 24 none; without it, 32 with an alpha channel or transparency, else 24. Automation saves never show TGA or TIFF options. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
+- `app.open {path}` / `app.save {path?, tgaBits?}`: capability-scoped file I/O through the configured automation roots (`app.open` searches read roots in launch order; `app.save` writes under the separately granted single write root). Absolute read requests are accepted only beneath a configured read root; absolute write requests only beneath the write root. All file I/O remains relative to held directory capabilities. Parent traversal (`..`), link escapes and paths outside the applicable roots are refused; absent authority fails closed. Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name` (directory `.pcraft` loads through the selected read capability; the single-file zip form takes the bytes path), `app.save` the `path` written. `app.save` without `path` requires an established save target and writes back only a PSD, PSB or `.pcraft` file in its own format. Opening a directory `.pcraft` or opening through a different read-root capability requires an explicit layered Save As beneath the write root first. `tgaBits` (24 or 32) sets a TGA's bits per pixel: 32 writes the alpha channel (or else the transparency) as its alpha, 24 none; without it, 32 with an alpha channel or transparency, else 24. Automation saves never show TGA or TIFF options. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
 - `app.quit`
 
 ## Engine commands
@@ -279,19 +279,49 @@ lines are visible. The protocol is unencrypted and must remain on loopback; do n
 it to an untrusted host.
 
 Filesystem access fails closed unless launch-time read and/or write roots are granted with
-`--automation-read-root` and `--automation-write-root`. The environment-variable equivalents
-(`PHOTOCRAFT_AUTOMATION_READ_ROOT` / `PHOTOCRAFT_AUTOMATION_WRITE_ROOT`) are supported by
-the desktop `photocraft` process, but not by headless `photocraft-cli mcp` or `serve`;
-for those CLI modes, supply the flags explicitly. In MCP bridge mode, configure roots on the
-desktop process rather than on the bridging CLI. Request paths must be
-non-empty, forward-slash relative paths beneath the applicable root, or absolute paths that lie
-beneath it. An absolute path is compared with the root as text and the rest is checked like a
-relative path; nothing is resolved on the filesystem. Absolute paths outside the root, parent
-traversal, alternate separators in relative paths, drive/device/stream prefixes, malformed
-components, and link escapes are rejected before file effects. Read and write authority are
-independent; the parent of a new output file must already exist. Engine commands that still use
-ambient filesystem paths are disabled for automation until they are migrated to the same
-capability interface. Interactive desktop file pickers retain normal user-selected access.
+`--automation-read-root` and `--automation-write-root`. Repeat the read flag to grant an ordered
+list of directories; both `--flag <dir>` and `--flag=<dir>` syntax are supported by desktop,
+headless MCP and `serve`, and duplicate read roots are allowed. Headless reads try those roots
+in launch order and select the first existing regular file. Only a missing file (`NotFound`)
+falls through; directory, permission, path-escape and decoding errors are terminal.
+Desktop `app.open` also accepts native directory `.pcraft` documents through the selected read
+capability. It searches in the same order: a ZIP file in an earlier root wins over a directory
+in a later root. Once a directory is selected, loading errors are terminal. Directory opens
+never establish an implicit save target, even when the read and write capabilities match;
+use an explicit layered Save As beneath the write root.
+Every configured root must be an existing directory. An empty, missing or invalid root fails
+startup rather than being dropped. There is exactly one optional write root; repeated
+`--automation-write-root` flags are usage errors (exit 2), even when the values match.
+
+The desktop `PHOTOCRAFT_AUTOMATION_READ_ROOT` environment variable supplies a single fallback
+directory, not a path list. Any explicit read-root flags replace it, preserving CLI order.
+One explicit write-root flag overrides `PHOTOCRAFT_AUTOMATION_WRITE_ROOT`. These environment
+variables are not supported by headless `photocraft-cli mcp` or `serve`; supply flags explicitly.
+In MCP bridge mode, configure roots on the desktop process. Supplying root flags to
+`photocraft-cli mcp --bridge` is a usage error; a bridge client cannot grant filesystem access.
+
+Request paths must be non-empty, forward-slash relative paths beneath the applicable root, or
+absolute paths beneath a corresponding granted root. An absolute path is compared with the
+configured roots as text and the remainder is checked like a relative path. The file is opened
+through the held directory capability, without ambient filesystem canonicalization of the
+request. Absolute paths outside all corresponding roots, parent traversal, alternate separators
+in relative paths, drive/device/stream prefixes, malformed components, and link escapes are
+rejected before file effects. Read and write authority are independent: a write root never
+grants reads, and writes do not search read roots. The parent of a new output file must already
+exist.
+
+An automation-opened document retains an implicit save target only when its winning read root
+and configured write root use the same held directory capability. Differently configured aliases
+and nested roots conservatively require explicit Save As, even if they name the same underlying
+file. An explicit successful layered save beneath the write root establishes its save target;
+a flat export does not. Existing PSD/PSB/`.pcraft` restrictions on pathless saves still apply.
+This automation safeguard leaves interactive file-picker access unchanged. Desktop document
+identity for Cmd+S and Open Recent is a separate concern.
+
+Engine commands that still use ambient filesystem paths are disabled for automation until they
+are migrated to the same capability interface. Extra read roots do not enable ambient asset reads
+or headless directory-bundle access. Desktop `app.open` supports directory `.pcraft` only through
+its granted read capabilities. Interactive desktop file pickers retain normal user-selected access.
 
 ## Headless server
 
@@ -311,7 +341,7 @@ no MCP framing, no app start-up per command. Configure its file access with the 
 | `engine.commands` | `{filter?}`: registry with params docs and enablement |
 | `session.list` | open documents and the active index |
 | `doc.open` / `doc.new` | `{path}` / `file.new` params |
-| `doc.save` | `{path?, format?, quality?, index?, tiffLayers?, tgaBits?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF; `tgaBits` 24 or 32 sets a TGA's bits per pixel, as `app.save` does). Without `path` only a PSD, PSB or `.pcraft` document is written back to its own file, in its own format; anything else is an error and the file is left unchanged. A successful layered save (PSD, PSB or `.pcraft`) records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
+| `doc.save` | `{path?, format?, quality?, index?, tiffLayers?, tgaBits?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF; `tgaBits` 24 or 32 sets a TGA's bits per pixel, as `app.save` does). Without `path` an established save target is required, and only a PSD, PSB or `.pcraft` document is written back in its own format; anything else is an error and the file is left unchanged. Opening a directory `.pcraft` or opening through a different read-root capability requires an explicit layered Save As beneath the write root first. A successful layered save (PSD, PSB or `.pcraft`) records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
 | `doc.inspect` | `{index?}`: same JSON as `document.inspect` |
 | `doc.render` | `{index?, maxSide? (1024; 0 = full), path?}`: PNG to `path`, else `{mime, base64}` |
 | `doc.select` / `doc.close` | `{index}` / `{index?}` |
