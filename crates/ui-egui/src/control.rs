@@ -26,6 +26,8 @@
 //! - `ui.focus`: bring the main window to the front
 //! - `app.open {path}` / `app.save {path}`: relative file I/O under the automation roots; reply with `warnings`
 //! - `app.quit`
+//! - `app.capabilities`: version and feature names for callers that feature-detect
+//! - `events.subscribe {events?}`: push `document.opened|saved|closed` lines on this connection
 //! - `jobs.list` / `jobs.cancel {job?}`: background jobs (#210) with progress; cancel one (or all).
 //!   `engine.execute`, `ui.menu.invoke` and `ui.dialog.confirm` wait for a command that runs as a
 //!   job unless `wait: false` (then the reply is `{job, pending: true}`)
@@ -60,12 +62,15 @@ pub struct ControlRequest {
     pub reply: Sender<ControlResponse>,
     /// Requests still queued at this instant are rejected; already dispatched work continues.
     pub deadline: Option<std::time::Instant>,
+    /// `events.subscribe`: where the connection wants its event lines (see `doc_events`). The
+    /// transport sets it; a subscribe request without one is refused.
+    pub events: Option<Sender<Value>>,
 }
 
 impl ControlRequest {
     pub fn new(method: impl Into<String>, params: Value) -> (Self, std::sync::mpsc::Receiver<ControlResponse>) {
         let (tx, rx) = std::sync::mpsc::channel();
-        (Self { method: method.into(), params, reply: tx, deadline: None }, rx)
+        (Self { method: method.into(), params, reply: tx, deadline: None, events: None }, rx)
     }
 }
 
@@ -1002,6 +1007,25 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             app.save_automation(s("path").map(str::to_string), p.get("flatten").and_then(Value::as_bool).unwrap_or(false))
                 .map(|(p, w)| json!({"path": p, "warnings": w})),
         ),
+        "events.subscribe" => {
+            let Some(tx) = req.events.clone() else { return err("events.subscribe needs a connection that can receive events (the TCP control channel)") };
+            let events = match p.get("events") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::Array(a)) => match a.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>() {
+                    Some(names) => names,
+                    None => return err("`events` must be an array of event names"),
+                },
+                Some(_) => return err("`events` must be an array of event names"),
+            };
+            match app.doc_events.subscribe(tx, events) {
+                Ok(events) => {
+                    app.sync_doc_events();
+                    ok(json!({"events": events}))
+                }
+                Err(e) => err(e),
+            }
+        }
+        "app.capabilities" => ok(capabilities()),
         "app.quit" => {
             app.allow_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1010,6 +1034,23 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
         other => err(format!("unknown method `{other}`")),
     }
 }
+
+/// What this build supports, for callers that feature-detect (`app.capabilities`). Each entry
+/// in `features` names a behaviour a caller may rely on:
+/// - `saveInPlace`: Save writes back to an opened TIFF, JPEG, PNG or WebP (`flatten` confirms).
+/// - `events`: `events.subscribe` pushes the `events` listed.
+pub fn capabilities() -> Value {
+    json!({
+        "app": "photocraft",
+        "version": photocraft_engine::build_info::long_version(),
+        "protocol": 1,
+        "features": FEATURES,
+        "events": crate::doc_events::EVENTS,
+    })
+}
+
+/// `app.capabilities` → `features`.
+pub const FEATURES: &[&str] = &["saveInPlace", "events"];
 
 /// Snapshot of everything on screen, addressable by id.
 pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {

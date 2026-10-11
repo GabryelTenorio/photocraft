@@ -58,6 +58,7 @@ pub mod dialogs;
 pub mod direct_select;
 pub mod discard_ui;
 pub mod distort_ui;
+pub mod doc_events;
 pub mod doc_props_ui;
 pub mod dock;
 pub mod enable_rules;
@@ -612,6 +613,8 @@ pub struct PhotocraftApp {
     /// A File › Save that would flatten layers into the JPEG, PNG, WebP or TIFF the document was
     /// opened from, parked behind the confirmation (see `flatten_save_ui`).
     pub(crate) flatten_save: Option<flatten_save_ui::Prompt>,
+    /// `document.opened|saved|closed` for control-channel subscribers (see `doc_events`).
+    pub doc_events: doc_events::DocEvents,
     /// Where each document was last saved or exported to through a dialog (#1826): its next Save
     /// As or export dialog starts there rather than beside the document. Session-only.
     pub(crate) save_dirs: HashMap<photocraft_doc::DocId, std::path::PathBuf>,
@@ -729,6 +732,7 @@ impl PhotocraftApp {
             file_dialog: None,
             tiff_options: None,
             flatten_save: None,
+            doc_events: Default::default(),
             save_dirs: HashMap::new(),
             allow_close: false,
             stylus: Default::default(),
@@ -1290,6 +1294,7 @@ impl PhotocraftApp {
                     // The job locked the document, but record the revision that was written.
                     st.saved_revision = revision;
                 }
+                app.doc_saved_event(doc, path);
                 // "Save Document" script events and File › Generate › Image Assets.
                 if let Some(i) = app.session.active_index()
                     && let Some(r) = photocraft_engine::automate_cmds::document_saved(&mut app.session, i)
@@ -1343,6 +1348,8 @@ impl PhotocraftApp {
             && let Some(state) = self.session.active_mut()
         {
             state.saved_to(target.clone());
+            let doc = state.doc.id;
+            self.doc_saved_event(doc, &target);
         }
         self.ui.status = format!("Saved {target}");
         self.ui.status_error = false;
@@ -1445,6 +1452,7 @@ impl eframe::App for PhotocraftApp {
             self.checker = None;
         }
         self.drain_control(ctx);
+        self.sync_doc_events();
         native_menu::run(self, ctx);
         if self.ui.text_edit.is_some() && !self.ui.tool.is_type() {
             type_tool::commit(self);
