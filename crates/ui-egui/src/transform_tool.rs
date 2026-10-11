@@ -1191,7 +1191,7 @@ pub(crate) fn hit_screen(app: &PhotocraftApp, t: &TransformSession, p: [f64; 2])
     hit_metric(t, p, crate::canvas::ScreenMetric::active(app))
 }
 
-fn hit_metric(t: &TransformSession, p: [f64; 2], metric: crate::canvas::ScreenMetric) -> Hit {
+pub(crate) fn hit_metric(t: &TransformSession, p: [f64; 2], metric: crate::canvas::ScreenMetric) -> Hit {
     hit_quad(&t.quad.map(|q| metric.point(q)), metric.point(t.pivot), metric.point(p), HANDLE_PX)
 }
 
