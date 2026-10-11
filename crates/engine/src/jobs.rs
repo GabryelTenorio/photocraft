@@ -640,11 +640,18 @@ impl Session {
         self.jobs.spawn = background;
         // Commands this one runs on its own behalf journal after this mark (#3067).
         let nested_from = self.journal.len();
+        // A replayable command is recorded as one step, so recording pauses while it runs: an
+        // action it plays (a script step) must not flush the steps it ran so far into the action
+        // being recorded, nor move the recording mark past the entries it is about to replace.
+        let recording = if spec.journal && crate::actions_cmds::replayable(id) { self.actions.recording.take() } else { None };
         // Last-resort guard (AGENTS.md, Never crash): a command that panics anyway fails with an
         // error instead of taking the app down. `edit` only commits a document after its closure
         // returns, so the documents are unchanged.
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (spec.run)(self, &run_params)))
             .unwrap_or_else(|_| Err(EngineError::Other(format!("`{id}` failed with an internal error (logged); the document is unchanged"))));
+        if self.actions.recording.is_none() {
+            self.actions.recording = recording;
+        }
         self.jobs.spawn = false;
         self.coalesce_request = None;
         self.color_restrict = None;
@@ -675,7 +682,8 @@ impl Session {
     /// `nested_from` is the journal length when the command started. A replayable command stands
     /// for the commands it ran itself (Straighten runs Image Rotation and Crop): their entries are
     /// dropped, so a recorded action replays the command once, not its steps as well (#3067).
-    /// Edit › Transform › Again is not replayable and keeps the concrete transform it ran instead.
+    /// Edit › Transform › Again (and Again on a Copy) is not replayable and keeps the concrete
+    /// steps it ran instead.
     fn after_command(&mut self, id: &str, params: Value, journal: bool, nested_from: Option<usize>) {
         // A layer-mask view ends when another layer becomes active (#196).
         if let Some(st) = self.active_mut() {

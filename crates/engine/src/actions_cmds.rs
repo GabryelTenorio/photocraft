@@ -3,8 +3,8 @@
 //!
 //! The list lives on [`Session`] so the panel, the CLI, the control channel and MCP share one
 //! copy. Recording copies replayable journal entries (commands whose [`CommandSpec::journal`] is
-//! set, except action-editing commands and the already-expanded `edit.transform.again`) into an
-//! action. A replayable command's journal entry replaces the entries of the commands it ran on its
+//! set, except action-editing commands and the already-expanded `edit.transform.again` and
+//! `edit.transform.againCopy`) into an action. A replayable command's journal entry replaces the entries of the commands it ran on its
 //! own behalf, so they are recorded once (#3067). Playback runs those steps with [`Session::execute`]
 //! and stops at the first error, leaving one history step per step that ran.
 //!
@@ -66,10 +66,12 @@ impl ActionState {
 /// Replay commands and named action calls, excluding edits to the action definitions and the
 /// already-expanded Again wrapper.
 pub fn replayable(id: &str) -> bool {
-    // Again journals its concrete transform too; recording the wrapper would replay it twice.
+    // Again and Again on a Copy journal their concrete steps (`edit.transform`, after
+    // `layer.duplicate` for the copy) and record those: the wrappers look up the last transform in
+    // the journal, so they fail where no transform ran yet, e.g. an action played in a new session.
     id == "actions.play"
         || (!id.starts_with("actions.")
-            && id != "edit.transform.again"
+            && !matches!(id, "edit.transform.again" | "edit.transform.againCopy")
             && (shell_view_command(id) || shell_save_command(id) || crate::commands::find(id).is_some_and(|c| c.journal)))
 }
 
@@ -607,6 +609,79 @@ mod tests {
             assert_eq!(pixel(&s, 0, 8, 2), vec![1.0, 0.0, 0.0, 1.0]);
             assert_eq!(pixel(&s, 0, 4, 2), vec![0.0; 4]);
         }
+    }
+
+    #[test]
+    fn record_transform_again_on_a_copy_replays_in_a_session_without_a_transform() {
+        for depth in [8, 16] {
+            let mut s = Session::new();
+            translated_square(&mut s, depth);
+            s.execute("actions.record", json!({"name": "Step"})).unwrap();
+            s.execute("edit.transform.againCopy", json!({})).unwrap();
+            s.execute("actions.stop", json!({})).unwrap();
+            let got = s.execute("actions.get", json!({"action": "Step"})).unwrap();
+            let ids: Vec<&str> = got["steps"].as_array().unwrap().iter().map(|st| st[0].as_str().unwrap()).collect();
+            assert_eq!(ids, ["layer.duplicate", "edit.transform"], "depth {depth}: the concrete steps, not the wrapper");
+            let action = s.actions.list[0].clone();
+
+            // A new session has no transform to repeat: the concrete steps still play.
+            let mut fresh = Session::new();
+            fresh.execute("file.new", json!({"width": 20, "height": 8, "depth": depth, "background": "transparent"})).unwrap();
+            fresh
+                .edit("red square", |doc, _| {
+                    doc.layers[0].surface_mut().unwrap().fill_rect(photocraft_geom::Rect::new(4, 2, 6, 4), &[1.0, 0.0, 0.0, 1.0]);
+                    Ok(())
+                })
+                .unwrap();
+            fresh.actions.list.push(action);
+            let played = fresh.execute("actions.play", json!({"action": "Step"})).unwrap();
+            assert!(played.get("failed").is_none(), "depth {depth}: {played}");
+            assert_eq!(played["ran"], 2, "depth {depth}");
+            assert_eq!(fresh.active().unwrap().doc.layers.len(), 2, "depth {depth}: one copy");
+            assert_eq!(pixel(&fresh, 0, 4, 2), vec![1.0, 0.0, 0.0, 1.0], "depth {depth}: the original stays");
+            assert_eq!(pixel(&fresh, 1, 8, 2), vec![1.0, 0.0, 0.0, 1.0], "depth {depth}: the copy moved four pixels");
+            assert_eq!(pixel(&fresh, 1, 4, 2), vec![0.0; 4], "depth {depth}: moved once");
+        }
+    }
+
+    #[test]
+    fn record_drops_the_steps_of_a_command_that_failed_and_was_taken_back() {
+        // Transform Again on a Copy of a position-locked layer duplicates it, fails to move the
+        // copy and takes the copy back: nothing is left to record.
+        let mut s = Session::new();
+        translated_square(&mut s, 8);
+        let id = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.setProps", json!({"layer": id.0, "locks": {"position": true}})).unwrap();
+        s.execute("actions.record", json!({"name": "Locked"})).unwrap();
+        assert!(s.execute("edit.transform.againCopy", json!({})).is_err());
+        assert_eq!(s.execute("actions.stop", json!({})).unwrap()["steps"], 0, "no Duplicate step for a copy that was taken back");
+
+        // Straighten rolls back when its crop is refused after the rotation ran.
+        ruled_background(&mut s, 8);
+        s.execute("image.analysis.rulerTool", json!({"start": [10, 30], "end": [70, 25]})).unwrap();
+        s.authorize = Some(|id, _| if id == "image.crop" { Err(EngineError::Other("refused".into())) } else { Ok(()) });
+        s.execute("actions.record", json!({"name": "Refused"})).unwrap();
+        assert!(s.execute("image.analysis.straightenLayer", json!({})).is_err());
+        assert_eq!(s.active().unwrap().doc.size.width, 80, "the rotation was taken back");
+        assert_eq!(s.execute("actions.stop", json!({})).unwrap()["steps"], 0, "no rotation step for a rotation that was taken back");
+    }
+
+    #[test]
+    fn record_script_that_plays_an_action_as_one_step() {
+        let mut s = Session::new();
+        translated_square(&mut s, 8);
+        s.execute("actions.record", json!({"name": "Inner"})).unwrap();
+        s.execute("edit.transform", json!({"matrix": [1, 0, 0, 1, 1, 0], "interpolation": "nearest"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+
+        // The script's own steps run before the action it plays; they are not flushed into the
+        // recording when playback starts.
+        let script = json!({"steps": [["edit.transform", {"matrix": [1, 0, 0, 1, 2, 0], "interpolation": "nearest"}], ["actions.play", {"action": "Inner"}]]});
+        s.execute("actions.record", json!({"name": "Outer"})).unwrap();
+        s.execute("file.scripts.browse", script.clone()).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        let got = s.execute("actions.get", json!({"action": "Outer"})).unwrap();
+        assert_eq!(got["steps"], json!([["file.scripts.browse", script]]));
     }
 
     #[test]
