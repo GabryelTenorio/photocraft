@@ -101,6 +101,26 @@ fn optical_kerning_round_trips_through_psd() {
     }
 }
 
+/// A new document with standard text layers (no Optical kerning) does not emit a stub `Txt2` block,
+/// avoiding third-party parser crashes such as Photopea's missing resources error (#3514).
+#[test]
+fn new_text_layers_without_optical_kerning_omit_txt2() {
+    let t = layer("PhotoCraft", &[(10, Kerning::Metrics, 0.0)]);
+    let mut doc = Document::new("k", photocraft_geom::Size::new(64, 32), photocraft_color::ColorMode::Rgb, photocraft_color::SampleType::U8);
+    let mut t_render = t.clone();
+    photocraft_text::TextEngine::new().render_layer(&mut t_render, doc.resolution_dpi, doc.pixel_format());
+    doc.layers.push(Layer::new("title", LayerContent::Text(t_render)));
+
+    let bytes = photocraft_io::export(&doc, "k.psd", &Default::default()).unwrap().bytes;
+    let file = photocraft_psd::PsdFile::from_bytes(&bytes).unwrap();
+    assert!(!file.global_blocks.iter().any(|b| &b.key == b"Txt2"), "a new document with standard metrics kerning must not emit a stub Txt2 block");
+
+    let back = photocraft_io::import("k.psd", &bytes).unwrap().document;
+    let LayerContent::Text(b) = &back.layers[0].content else { panic!("not text") };
+    assert_eq!(b.text, "PhotoCraft");
+    assert_eq!(chars(b), chars(&t));
+}
+
 /// Two imported layers can name the same Txt2 object; export must update the second
 /// preserved TySh pointer so each layer restores its own automatic kerning mode.
 #[test]

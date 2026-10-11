@@ -787,7 +787,7 @@ pub fn build_txt2(objects: &[(i32, &TextLayer)], previous: Option<&[u8]>) -> Vec
     }
     // The outer dictionary keeps whatever the block held (`/98` version, block extras, …), and
     // `/1` whatever it holds beside the text objects.
-    let mut outer = prev.clone().unwrap_or_else(|| E::Dict(vec![("98".into(), E::Dict(vec![("0".into(), E::Int(14))])), ("0".into(), E::dict())]));
+    let mut outer = prev.clone().unwrap_or_else(|| E::Dict(vec![("98".into(), E::Dict(vec![("0".into(), E::Int(14))]))]));
     match outer.get_mut("1") {
         Some(objs @ E::Dict(_)) => objs.set("1", E::Array(slots)),
         _ => outer.set("1", E::Dict(vec![("1".into(), E::Array(slots))])),
