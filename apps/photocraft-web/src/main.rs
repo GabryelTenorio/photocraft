@@ -23,6 +23,10 @@ mod preset_bridge;
 mod indexed_presets;
 
 #[cfg(target_arch = "wasm32")]
+mod clipboard;
+#[cfg(any(target_arch = "wasm32", test))]
+mod clipboard_pixels;
+#[cfg(target_arch = "wasm32")]
 mod web;
 
 #[cfg(target_arch = "wasm32")]

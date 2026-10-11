@@ -80,10 +80,14 @@ pub fn start() {
                     PhotocraftApp::setup_context(&cc.egui_ctx, ThemeKind::Pro);
                     let inbox: Inbox = Arc::default();
                     let served: Served = Arc::default();
+                    craft_bridge::wake(cc.egui_ctx.clone());
                     load_font_manifest(served.clone(), cc.egui_ctx.clone());
                     let (session, warnings) = crate::preset_bridge::session(presets.clone());
                     preset_warnings.extend(warnings);
-                    let mut app = PhotocraftApp::new(session, services(inbox.clone()));
+                    let clipboard = crate::clipboard::Bridge::new(cc.egui_ctx.clone());
+                    let mut platform = services(inbox.clone());
+                    clipboard.install(&mut platform);
+                    let mut app = PhotocraftApp::new(session, platform);
                     if !preset_warnings.is_empty() {
                         photocraft_ui_egui::notices::post(&mut app, i18n::t("Some brush presets could not be loaded"), preset_warnings, true, None);
                     }
@@ -97,7 +101,7 @@ pub fn start() {
                     }
                     let unsaved = Arc::new(AtomicBool::new(false));
                     guard_unload(unsaved.clone());
-                    Ok(Box::new(WebShell { app, inbox, unsaved, served, database, presets }))
+                    Ok(Box::new(WebShell { app, inbox, unsaved, served, database, presets, clipboard }))
                 }),
             )
             .await;
@@ -222,6 +226,7 @@ async fn fetch_bytes(url: &str, integrity: Option<&str>) -> Result<Vec<u8>, Stri
 /// so the app's own drop path can't handle them) and feed them through the inbox.
 struct WebShell {
     app: PhotocraftApp,
+    clipboard: crate::clipboard::Bridge,
     inbox: Inbox,
     /// Read by the `beforeunload` listener ([`guard_unload`]).
     unsaved: Arc<AtomicBool>,
@@ -284,7 +289,11 @@ impl WebShell {
 
 impl eframe::App for WebShell {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if !craft_bridge::restore(|bytes| self.app.craft_restore(bytes)) {
+            return;
+        }
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
+        self.clipboard.drain(&mut self.app);
         for f in dropped {
             let inbox = self.inbox.clone();
             let ctx = ctx.clone();
@@ -302,6 +311,14 @@ impl eframe::App for WebShell {
         self.serve_fonts(ctx);
         self.app.logic(ctx, frame);
         self.save_presets(ctx);
+    }
+
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.clipboard.set_target(&self.app, ctx);
+        // On web the browser's logical events own clipboard gestures, even when keydown
+        // and the payload arrive in different frames. Leave text events to the focused field.
+        photocraft_ui_egui::shortcuts::web_clipboard_events(raw);
+        self.app.raw_input_hook(ctx, raw);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -328,7 +345,11 @@ impl eframe::App for WebShell {
                 }
             });
         }
+        if !craft_bridge::restore(|bytes| self.app.craft_restore(bytes)) {
+            return;
+        }
         self.app.ui(ui, frame);
+        craft_bridge::save(self.app.craft_signature(), || self.app.craft_capture(), ui.ctx());
         self.save_presets(ui.ctx());
     }
 }
@@ -515,3 +536,6 @@ fn screen_color_service() -> Option<photocraft_ui_egui::screen_picker::Service> 
         Pending { receiver: rx, cancelled }
     }))
 }
+
+#[path = "craft_bridge.rs"]
+mod craft_bridge;

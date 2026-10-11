@@ -59,6 +59,18 @@ impl Default for History {
 }
 
 impl History {
+    /// Suite recovery retains both stacks and the current history cursor without replaying commands.
+    pub fn craft_parts(&self) -> (Vec<HistoryState>, Vec<HistoryState>, String, LayerTarget) {
+        (self.undo.iter().cloned().collect(), self.redo.clone(), self.current_label.clone(), self.current_layers.clone())
+    }
+    pub fn craft_restore(&mut self, undo: Vec<HistoryState>, redo: Vec<HistoryState>, label: String, layers: LayerTarget) {
+        self.undo = undo.into();
+        self.redo = redo;
+        self.current_label = label;
+        self.current_layers = layers;
+        self.tiles = None;
+    }
+
     pub fn new(max_states: usize) -> Self {
         Self {
             undo: VecDeque::new(),

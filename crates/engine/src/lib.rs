@@ -806,3 +806,6 @@ mod tests;
 
 #[cfg(test)]
 mod fx_mode_tests;
+
+mod craft_codec;
+mod craft_session;

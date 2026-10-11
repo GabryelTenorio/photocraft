@@ -389,6 +389,10 @@ pub struct Services {
     /// OS clipboard images: copies go out, screenshots and images from other apps come in.
     pub clipboard_set_image: Option<ClipboardSetFn>,
     pub clipboard_get_image: Option<ClipboardGetFn>,
+    /// Asynchronous web read. Completion must return to the originating document through
+    /// `finish_clipboard_paste`; errors must not paste a stale cached image.
+    pub clipboard_paste: Option<Box<dyn FnMut(&str, Value, Option<u64>) -> Result<(), String>>>,
+    pub clipboard_text: Option<Box<dyn FnMut(Option<u64>, crate::state::TextEdit) -> Result<(), String>>>,
     /// Preferences persistence: the platform config directory on native, browser storage on
     /// the web (see `prefs_ui`).
     pub load_prefs: Option<LoadTextFn>,
@@ -888,6 +892,12 @@ impl PhotocraftApp {
             self.session.edit_prefs(|prefs| prefs.script_events.enabled = false);
         }
         let t0 = gpu_canvas::now_ms();
+        if !clip_read && matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "file.newFromClipboard") {
+            if let Some(request) = self.services.clipboard_paste.as_mut() {
+                request(id, params.clone(), self.session.active().map(|d| d.doc.id.0))?;
+                return Ok(serde_json::json!({"pending": true}));
+            }
+        }
         // The OS clipboard is read only on an explicit paste, never in the background (privacy, CPU).
         if matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "file.newFromClipboard") {
             if !clip_read {
@@ -2081,6 +2091,31 @@ pub(crate) fn remember_new_document(app: &mut PhotocraftApp, f: &serde_json::Map
     app.session.prefs.edit(|p| p.dialogs.insert(NEW_DOCUMENT.into(), serde_json::Value::Object(kept)));
 }
 
+#[cfg(test)]
+mod async_clipboard_tests {
+    use super::*;
+    #[test]
+    fn asynchronous_paste_waits_and_refuses_a_different_document() {
+        let calls = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let saved = calls.clone();
+        let mut app = PhotocraftApp::new(
+            photocraft_engine::Session::new(),
+            Services {
+                clipboard_paste: Some(Box::new(move |id, params, target| {
+                    saved.borrow_mut().push((id.to_string(), params, target));
+                    Ok(())
+                })),
+                ..Default::default()
+            },
+        );
+        let result = crate::menus::invoke(&mut app, &egui::Context::default(), "edit.paste", serde_json::json!({})).unwrap();
+        assert_eq!(result["pending"], true);
+        assert_eq!(calls.borrow().len(), 1);
+        assert!(app.finish_clipboard_paste("edit.paste", serde_json::json!({}), Some(999)).is_err());
+        assert_eq!(calls.borrow().len(), 1, "completion does not enqueue another read");
+    }
+}
+
 fn clip_signature(w: u32, h: u32, px: &[u8]) -> u64 {
     let mut sig = (w as u64) << 32 | h as u64;
     for b in px.iter().step_by(997) {
@@ -2109,6 +2144,20 @@ fn channel_tint(mode: photocraft_doc::ColorMode, k: usize, byte: u8, in_color: b
 }
 
 impl PhotocraftApp {
+    /// Complete a user-initiated asynchronous clipboard read. Switching/closing a tab while
+    /// permission or decoding was pending must never paste into a different document.
+    pub fn finish_clipboard_paste(&mut self, id: &str, params: Value, target: Option<u64>) -> Result<Value, String> {
+        if self.session.active().map(|d| d.doc.id.0) != target {
+            return Err("Paste cancelled because the active document changed. Paste again in the intended document.".into());
+        }
+        if id == "edit.paste" && params.as_object().is_none_or(|o| o.is_empty()) {
+            return crate::menus::paste_image_ready(self);
+        }
+        self.import_os_clipboard();
+        self.clip_read_for_paste = true;
+        self.run(id, params)
+    }
+
     /// Mirror the session clipboard onto the OS clipboard (RGBA8).
     fn export_os_clipboard(&mut self) {
         if !self.session.prefs().general.export_clipboard {
@@ -2508,5 +2557,21 @@ mod channel_tint_tests {
         assert_eq!(channel_tint(Cmyk, 3, 0, true), Color32::BLACK);
         assert_eq!(channel_tint(Grayscale, 0, 77, true), Color32::from_gray(77));
         assert_eq!(channel_tint(Rgb, 0, 77, false), Color32::from_gray(77));
+    }
+}
+
+impl PhotocraftApp {
+    pub fn craft_signature(&self) -> Result<String, String> {
+        Ok(self.session.craft_signature(&serde_json::to_value(&self.ui).map_err(|e| e.to_string())?))
+    }
+    pub fn craft_capture(&self) -> Result<Vec<u8>, String> {
+        self.session.craft_capture(serde_json::to_value(&self.ui).map_err(|e| e.to_string())?)
+    }
+    pub fn craft_restore(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let ui: UiState = serde_json::from_value(Session::craft_ui(bytes)?).map_err(|e| e.to_string())?;
+        self.session.craft_restore(bytes)?;
+        self.sync_views();
+        self.ui = ui;
+        Ok(())
     }
 }

@@ -480,6 +480,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             crate::type_tool::copy_selection(app, ctx);
             Ok(Value::Null)
         }
+        "edit.paste" if app.ui.text_edit.is_some() && app.services.clipboard_text.is_some() => {
+            let target = app.session.active().map(|d| d.doc.id.0);
+            if let (Some(edit), Some(read)) = (app.ui.text_edit.clone(), app.services.clipboard_text.as_mut()) {
+                read(target, edit)?;
+            }
+            Ok(json!({"pending": true}))
+        }
         "edit.paste" if app.ui.text_edit.is_some() => {
             crate::type_tool::request_paste(ctx);
             Ok(Value::Null)
@@ -489,26 +496,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             Ok(Value::Null)
         }
         "edit.paste" if params.as_object().is_none_or(|o| o.is_empty()) => {
-            // Photoshop: paste in place when the copied area is visible, else centred in the view;
-            // images from other apps are always centred.
-            app.import_os_clipboard();
-            app.clip_read_for_paste = true;
-            let external = app.clip_external;
-            let visible = !external
-                && app.session.active_index().zip(app.session.clipboard.as_ref()).is_some_and(|(i, clip)| {
-                    let v = &app.ui.views[i];
-                    let pz = app.point_zoom();
-                    let (hw, hh) = (app.last_canvas_rect.width() / 2.0 / pz / app.ui.view.display_aspect(), app.last_canvas_rect.height() / 2.0 / pz);
-                    let r =
-                        photocraft_geom::Rect::new((v.center[0] - hw) as i32, (v.center[1] - hh) as i32, (v.center[0] + hw) as i32, (v.center[1] + hh) as i32);
-                    !clip.bounds.intersect(&r).is_empty()
-                });
-            let p = match app.session.active_index() {
-                Some(i) if !visible => json!({"center": app.ui.views[i].center}),
-                _ => json!({}),
-            };
-            app.run("edit.paste", p)
+            if app.services.clipboard_paste.is_some() {
+                app.run(id, params)
+            } else {
+                paste_image_ready(app)
+            }
         }
+
         "view.rulers" | "view.show.grid" | "view.show.guides" | "view.snap" | "view.lockGuides" => {
             let e = &mut app.ui.extras;
             let slot = match id {
@@ -2143,4 +2137,26 @@ mod window_documents_tests {
         assert_eq!(r["ok"], true, "{r}");
         assert_eq!(app.session.active_index(), Some(0));
     }
+}
+
+/// Apply the existing placement policy after a synchronous or asynchronous clipboard read.
+pub(crate) fn paste_image_ready(app: &mut PhotocraftApp) -> Result<Value, String> {
+    // Photoshop: paste in place when the copied area is visible, else centred in the view;
+    // images from other apps are always centred.
+    app.import_os_clipboard();
+    app.clip_read_for_paste = true;
+    let external = app.clip_external;
+    let visible = !external
+        && app.session.active_index().zip(app.session.clipboard.as_ref()).is_some_and(|(i, clip)| {
+            let v = &app.ui.views[i];
+            let pz = app.point_zoom();
+            let (hw, hh) = (app.last_canvas_rect.width() / 2.0 / pz / app.ui.view.display_aspect(), app.last_canvas_rect.height() / 2.0 / pz);
+            let r = photocraft_geom::Rect::new((v.center[0] - hw) as i32, (v.center[1] - hh) as i32, (v.center[0] + hw) as i32, (v.center[1] + hh) as i32);
+            !clip.bounds.intersect(&r).is_empty()
+        });
+    let p = match app.session.active_index() {
+        Some(i) if !visible => json!({"center": app.ui.views[i].center}),
+        _ => json!({}),
+    };
+    app.run("edit.paste", p)
 }
