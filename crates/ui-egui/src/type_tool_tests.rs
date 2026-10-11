@@ -19,7 +19,17 @@ fn harness(ppp: f32, app: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
 }
 
 fn make_harness(ppp: f32, app: PhotocraftApp, render: bool) -> Harness<'static, PhotocraftApp> {
-    let builder = Harness::builder().with_size(vec2(1200.0, 800.0)).with_pixels_per_point(ppp);
+    make_harness_with(Harness::builder(), ppp, app, render)
+}
+
+/// 60 frames a second: every queued event is a frame, and the default quarter-second step puts
+/// the second click of a double-click past egui's double-click delay.
+fn fast_harness(app: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
+    make_harness_with(Harness::builder().with_step_dt(1.0 / 60.0), 1.0, app, false)
+}
+
+fn make_harness_with(builder: egui_kittest::HarnessBuilder<PhotocraftApp>, ppp: f32, app: PhotocraftApp, render: bool) -> Harness<'static, PhotocraftApp> {
+    let builder = builder.with_size(vec2(1200.0, 800.0)).with_pixels_per_point(ppp);
     let builder = if render { builder.wgpu() } else { builder };
     let mut h = builder.build_ui_state(
         |ui, app: &mut PhotocraftApp| {
@@ -87,6 +97,16 @@ fn click(h: &mut Harness<'static, PhotocraftApp>, p: Pos2) {
     press(h, p, true);
     press(h, p, false);
     h.run_steps(1);
+}
+
+/// Two clicks within egui's double-click delay (use [`fast_harness`]).
+fn double_click(h: &mut Harness<'static, PhotocraftApp>, p: Pos2) {
+    h.hover_at(p);
+    h.run_steps(1);
+    for pressed in [true, false, true, false] {
+        h.event(egui::Event::PointerButton { pos: p, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+    }
+    h.run_steps(2);
 }
 
 fn drag(h: &mut Harness<'static, PhotocraftApp>, a: Pos2, b: Pos2) {
@@ -1222,6 +1242,33 @@ fn variable_faces_list_the_weights_of_their_axis() {
     assert_eq!(super::style_names(&[face(700.0, false, Vec::new())]), ["Bold"]);
 }
 
+/// A variable font's axes become sliders (optical size excepted: it follows the type size), and
+/// each shows the style's value for it, or what the layout draws without one (#2985).
+#[test]
+fn variable_font_axes_become_sliders_with_the_drawn_value() {
+    use photocraft_doc::text::{CharStyle, FontVariation};
+    let face = |italic: bool, axes: Vec<super::Axis>| photocraft_text::FaceInfo {
+        family: "Roboto Flex".into(),
+        style: "Regular".into(),
+        postscript_name: None,
+        weight: 400.0,
+        italic,
+        axes,
+    };
+    let ax = |tag: &str, min: f32, def: f32, max: f32| (tag.to_string(), min, def, max);
+    let faces = [
+        face(false, vec![ax("opsz", 8.0, 14.0, 144.0), ax("wght", 100.0, 400.0, 1000.0), ax("wdth", 25.0, 100.0, 151.0)]),
+        face(true, vec![ax("slnt", -10.0, 0.0, 0.0)]),
+    ];
+    let tags = |v: Vec<super::Axis>| v.into_iter().map(|a| a.0).collect::<Vec<_>>();
+    assert_eq!(tags(super::slider_axes(&faces, false)), ["wght", "wdth"]);
+    assert_eq!(tags(super::slider_axes(&faces, true)), ["slnt"]);
+    let c = CharStyle { weight: 700, variations: vec![FontVariation { axis: "wdth".into(), value: 300.0 }], ..Default::default() };
+    assert_eq!(super::axis_value(&c, &ax("wght", 100.0, 400.0, 1000.0)), 700.0, "the style's weight");
+    assert_eq!(super::axis_value(&c, &ax("wdth", 25.0, 100.0, 151.0)), 151.0, "its own value, within the range");
+    assert_eq!(super::axis_value(&c, &ax("GRAD", -200.0, 0.0, 150.0)), 0.0, "the axis default");
+}
+
 /// Families the host serves are in the font menu before they are fetched.
 #[test]
 fn the_font_menu_lists_served_families() {
@@ -1408,6 +1455,33 @@ mod multi_layer_formatting {
         assert_eq!(text(&app, ids[0]).antialias, AntiAlias::Sharp);
     }
 
+    /// Type › Anti-Alias and Type › Orientation check the edited (else selected) layer's value.
+    #[test]
+    fn type_menu_checks_the_current_anti_alias_and_orientation() {
+        let (mut app, ids) = fixture();
+        app.run("type.antiAlias.none", json!({"layer": ids[0].0})).unwrap();
+        app.run("type.orientation.vertical", json!({"layer": ids[0].0})).unwrap();
+        app.run("type.antiAlias.crisp", json!({"layer": ids[1].0})).unwrap();
+        app.run("type.orientation.horizontal", json!({"layer": ids[1].0})).unwrap();
+        let checks = |app: &PhotocraftApp| -> Vec<String> {
+            let items = crate::menus::menu_items(app);
+            for id in ["type.antiAlias.none", "type.antiAlias.crisp", "type.orientation.horizontal", "type.orientation.vertical"] {
+                let it = items.iter().find(|i| i.id == id).unwrap();
+                assert!(it.checked.is_some(), "{id} is a check item");
+            }
+            items
+                .iter()
+                .filter(|i| (i.id.starts_with("type.antiAlias.") || i.id.starts_with("type.orientation.")) && i.checked == Some(true))
+                .map(|i| i.id.clone())
+                .collect()
+        };
+        editing(&mut app, ids[0]);
+        assert_eq!(checks(&app), ["type.antiAlias.none", "type.orientation.vertical"]);
+        app.ui.text_edit = None;
+        app.session.active_mut().unwrap().active_layer = Some(ids[1]);
+        assert_eq!(checks(&app), ["type.antiAlias.crisp", "type.orientation.horizontal"]);
+    }
+
     #[test]
     fn warp_dialog_captures_layer_selection_or_inline_edit_before_confirmation() {
         for inline in [false, true] {
@@ -1495,6 +1569,36 @@ mod multi_layer_formatting {
     }
 }
 
+/// #1132: with the Move tool, double-clicking type on the canvas edits it (Photoshop CC 2019+):
+/// the Type tool takes over with the caret on the glyph under the pointer, on whichever type
+/// layer was double-clicked, even when another layer is active. Elsewhere it does nothing.
+#[test]
+fn move_tool_double_click_on_type_edits_it() {
+    let mut app = new_app();
+    let id = LayerId(app.run("type.create", json!({"text": "HOHOHO", "size": 120, "x": 300, "y": 420})).unwrap()["layer"].as_u64().unwrap());
+    app.run("layer.new.layer", json!({})).unwrap();
+    app.ui.tool = crate::state::Tool::Move;
+    let mut h = fast_harness(app);
+    let p = glyph(&mut h, id, 2, 0.2);
+    let steps = h.state().session.active().unwrap().history.entries().len();
+    double_click(&mut h, p);
+    assert_eq!(h.state().ui.tool, crate::state::Tool::Type, "the Type tool takes over");
+    assert_eq!(h.state().ui.text_edit.as_ref().map(|e| e.layer), Some(id.0));
+    assert_eq!(selection(&h), (2, 2), "the caret sits on the double-clicked glyph");
+    assert_eq!(h.state().session.active().unwrap().active_layer, Some(id));
+    assert_eq!(h.state().session.active().unwrap().history.entries().len(), steps, "nothing moved");
+    super::insert(h.state_mut(), "x");
+    assert_eq!(text(h.state(), id).text, "HOxHOHO");
+    // Off the text, a double-click stays with the Move tool.
+    super::commit(h.state_mut());
+    h.state_mut().ui.tool = crate::state::Tool::Move;
+    h.run_steps(2);
+    let empty = screen(&mut h, id, -400.0, -300.0);
+    double_click(&mut h, empty);
+    assert_eq!(h.state().ui.tool, crate::state::Tool::Move);
+    assert!(h.state().ui.text_edit.is_none());
+}
+
 fn selection_bounds(app: &PhotocraftApp) -> Option<photocraft_geom::Rect> {
     app.session.active().unwrap().doc.selection.as_ref().map(|m| m.content_bounds())
 }
@@ -1556,4 +1660,41 @@ fn type_mask_escape_leaves_the_selection_unchanged() {
     assert!(h.state().ui.text_edit.is_none());
     assert_eq!(selection_bounds(h.state()), before);
     assert_eq!(h.state().session.active().unwrap().doc.layers.len(), layers);
+}
+
+/// #3036: ⇧ on the click that commits a Type Mask adds the glyphs to the selection and ⌥
+/// subtracts them, as in Photoshop; while typing, the working text has no Layers panel row.
+#[test]
+fn type_mask_shift_adds_and_alt_subtracts_without_a_layer_row() {
+    use crate::canvas::{ToolEvent, tool_event};
+    use crate::state::Tool;
+    use photocraft_geom::Rect;
+    let mut app = new_app();
+    type_with(&mut app, Tool::HorizontalTypeMask, "I");
+    let glyphs = selection_bounds(&app).unwrap();
+    let mut app = new_app();
+    app.ui.extras.snap = false; // the second text would snap to the first one's selected edge
+    let rect = Rect::new(1000, 100, 1100, 200);
+    app.run("select.rect", json!({"x": 1000, "y": 100, "width": 100, "height": 100})).unwrap();
+    // Type, then commit with a click outside the text holding `m`.
+    let type_and_commit = |app: &mut PhotocraftApp, m: Modifiers| {
+        app.ui.tool = Tool::HorizontalTypeMask;
+        tool_event(app, ToolEvent::Down { x: 200.0, y: 300.0, pressure: 1.0 }, Modifiers::NONE);
+        tool_event(app, ToolEvent::Up { x: 200.0, y: 300.0 }, Modifiers::NONE);
+        super::insert(app, "I");
+        let doc = app.session.active().unwrap().doc.clone();
+        let rows = crate::layer_tree_ui::panel_rows(app, &doc);
+        assert_eq!(rows.len(), doc.layers.len() - 1, "the working text is not listed");
+        tool_event(app, ToolEvent::Down { x: 1500.0, y: 800.0, pressure: 1.0 }, m);
+        tool_event(app, ToolEvent::Up { x: 1500.0, y: 800.0 }, m);
+        assert!(app.ui.text_edit.is_none());
+    };
+    let at = |app: &PhotocraftApp, x: i32, y: i32| app.session.active().unwrap().doc.selection.as_ref().map_or(0.0, |s| s.sample_channel(x, y, 0));
+    let stem = ((glyphs.x0 + glyphs.x1) / 2, (glyphs.y0 + glyphs.y1) / 2);
+    type_and_commit(&mut app, Modifiers::SHIFT);
+    assert_eq!(selection_bounds(&app), Some(rect.union(&glyphs)), "⇧ adds");
+    assert!(at(&app, stem.0, stem.1) > 0.99 && at(&app, 1050, 150) > 0.99);
+    type_and_commit(&mut app, Modifiers::ALT);
+    assert!(at(&app, stem.0, stem.1) < 0.01, "⌥ subtracts the glyphs");
+    assert!(at(&app, 1050, 150) > 0.99, "and keeps the rest");
 }
