@@ -287,6 +287,12 @@
 	Inverse	Инверсия
 	Color Range…	Цветовой диапазон…
 	Select and Mask…	Выделение и маска…
+# Select and Mask dialog labels
+	Smart Radius	Умный радиус
+	Shift Edge	Сместить край
+	Decontaminate	Очистить
+	Output	Вывод
+	Refine Edge	Уточнить край
 	Select Subject	Выбрать объект
 	Sky	Небо
 	Focus Area…	Область фокусировки…
@@ -307,6 +313,7 @@
 	All Layers	Все слои
 	Current & Below	Текущий и ниже
 	Current Layer	Текущий слой
+	Refine Strokes	Штрихи уточнения
 
 # Filter
 	Last Filter	Последний фильтр
@@ -2900,6 +2907,7 @@ cameraData	Lens	Объектив
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
+	Loading fonts…	Загрузка шрифтов…
 	Tool	Инструмент
 	Simulate Pressure	Имитировать нажим
 	Stroke Path…	Обвести контур…
