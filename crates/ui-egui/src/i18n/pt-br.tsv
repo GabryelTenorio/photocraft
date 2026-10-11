@@ -2871,3 +2871,5 @@ fontWeight	Italic	Itálico
 	Front Image	Imagem frontal
 	Search settings…	Pesquisar configurações…
 	No matching settings	Nenhuma configuração encontrada
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG preserva as formas e camadas rasterizadas compatíveis. Recursos não compatíveis podem ser rasterizados.

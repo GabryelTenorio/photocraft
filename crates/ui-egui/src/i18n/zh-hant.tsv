@@ -2423,3 +2423,5 @@ fontWeight	Italic	斜體
 	Front Image	前面的影像
 	Search settings…	搜尋設定…
 	No matching settings	沒有符合的設定
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG 會保留支援的形狀與點陣圖圖層。未支援的功能可能會轉換為點陣圖。

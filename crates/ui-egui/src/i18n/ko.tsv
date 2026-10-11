@@ -3024,3 +3024,5 @@ fontWeight	Italic	기울임
 	Front Image	전면 이미지
 	Search settings…	설정 검색…
 	No matching settings	일치하는 설정 없음
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG는 지원되는 모양과 래스터 레이어를 유지합니다. 지원되지 않는 기능은 래스터화될 수 있습니다.

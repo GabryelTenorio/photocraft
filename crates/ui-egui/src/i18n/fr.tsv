@@ -2863,3 +2863,5 @@ fontWeight	Italic	Italique
 	Front Image	Image de premier plan
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG conserve les formes et les calques pixellisés pris en charge. Les fonctions non prises en charge peuvent être pixellisées.

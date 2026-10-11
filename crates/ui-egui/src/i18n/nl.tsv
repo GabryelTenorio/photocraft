@@ -3622,3 +3622,5 @@ cameraRaw	Whites	Witten
 	Search settings…	Instellingen zoeken…
 	No matching settings	Geen overeenkomende instellingen
 	PhotoCraft — Screen Color Picker	PhotoCraft — Schermkleurkiezer
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG behoudt ondersteunde vormen en rasterlagen. Niet-ondersteunde functies kunnen worden gerasterd.

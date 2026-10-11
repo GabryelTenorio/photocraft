@@ -63,8 +63,10 @@ Ranked; each item links to its gap entry. Pick from the top unless an issue is a
 2026-10-10: the additional-export follow-up adds 11 symmetric baseline legacy/asset codecs,
 raster SVG/SVGZ/PDF delivery, with existing layered OpenRaster in the shared chooser: 28 default Save As groups and 29 Export As
 groups. Tests cover 264 new codec layout/depth conversions, baseline ORA layers/groups at 8/16-bit,
-and rendered PDF outputs. Historical codec variants, JXL/JP2/HEIF encoding, vector PDF/SVG,
-PDF import and animation remain open; see [format catalog and limits](export-formats.md).
+and rendered PDF outputs. The mixed-export follow-up keeps sRGB solid Bézier fills, centered
+strokes and bitmap layers together in SVG/SVGZ and single-page PDF, with bounded shape reopening
+and warned raster fallback. Historical codec variants, JXL/JP2/HEIF encoding, vector text/paints,
+multi-page PDF, PDF import and animation remain open; see [format catalog and limits](export-formats.md).
 
 ## Honest parity assessment (2026-10-05)
 1. **PSD that Photoshop trusts** ([G1](gaps.md#g1-psd-fidelity-and-photoshop-acceptance)):

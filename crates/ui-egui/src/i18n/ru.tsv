@@ -2730,3 +2730,5 @@ fontWeight	Italic	Курсив
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG сохраняет поддерживаемые фигуры и растровые слои. Неподдерживаемые функции могут быть растрированы.

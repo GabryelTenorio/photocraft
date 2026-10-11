@@ -2453,3 +2453,5 @@ fontWeight	Italic	斜体
 	Front Image	前面的图像
 	Search settings…	搜索设置…
 	No matching settings	没有匹配的设置
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG 会保留受支持的形状和栅格图层。不受支持的功能可能会被栅格化。

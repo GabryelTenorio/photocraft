@@ -2484,3 +2484,5 @@ fontWeight	Italic	Kursiv
 	Front Image	Vorderes Bild
 	Search settings…	Einstellungen durchsuchen…
 	No matching settings	Keine passenden Einstellungen
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG erhält unterstützte Formen und Rasterebenen. Nicht unterstützte Funktionen werden möglicherweise gerastert.

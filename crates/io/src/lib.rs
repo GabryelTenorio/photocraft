@@ -42,6 +42,7 @@ pub mod exr_parts;
 mod flat;
 mod gradient_bake;
 pub mod linked;
+mod mixed_documents;
 mod multichannel_map;
 mod ora;
 pub mod pattern_map;

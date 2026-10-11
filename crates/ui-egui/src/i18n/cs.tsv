@@ -2446,3 +2446,5 @@ fontWeight	Italic	Kurzíva
 	Front Image	Přední obraz
 	Search settings…	Hledat nastavení…
 	No matching settings	Žádná odpovídající nastavení
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG zachovává podporované tvary a rastrové vrstvy. Nepodporované funkce mohou být rastrovány.

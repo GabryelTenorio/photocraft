@@ -3552,3 +3552,5 @@ fontWeight	Thin	Πολύ λεπτά
 	Front Image	Μπροστινή εικόνα
 	Search settings…	Αναζήτηση ρυθμίσεων…
 	No matching settings	Δεν βρέθηκαν ρυθμίσεις
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	Το SVG διατηρεί τα υποστηριζόμενα σχήματα και επίπεδα ράστερ. Οι μη υποστηριζόμενες λειτουργίες ενδέχεται να μετατραπούν σε ράστερ.

@@ -3551,3 +3551,5 @@ cameraRaw	Masking	Маскування
 	Search settings…	Пошук налаштувань…
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG зберігає підтримувані фігури та растрові шари. Непідтримувані функції можуть бути растровані.
