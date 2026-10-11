@@ -3437,3 +3437,5 @@ layerLabel	No Color	Žádná barva
 	Click to place · Alt-click or drag off-canvas to remove	Kliknutím umístíte · Alt-kliknutím nebo přetažením mimo plátno odeberete
 	No document open	Není otevřen žádný dokument
 	{n} of {max} sample points	{n} z {max} bodů měření
+	Drag (lasso) or click points (polygonal) · {add} add · {sub} subtract	Táhněte (laso) nebo klikejte na body (mnohoúhelník) · {add} přidat · {sub} odečíst
+	The current gradient (pick one in Window › Gradients)	Aktuální přechod (vyberte v Okno › Přechody)
