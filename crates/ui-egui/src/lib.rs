@@ -26,6 +26,7 @@ pub mod artboard_tool;
 pub mod artboard_ui;
 pub(crate) mod blend_preview;
 mod brand;
+pub(crate) mod brush_cursor;
 pub mod brush_panel;
 pub mod brush_picker;
 pub mod brush_preview;
