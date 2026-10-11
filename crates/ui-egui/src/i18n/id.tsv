@@ -2845,3 +2845,8 @@ fontWeight	Italic	Miring
 	Front Image	Gambar Depan
 	Search settings…	Cari pengaturan…
 	No matching settings	Tidak ada pengaturan yang cocok
+	Copy Mask	Salin Masker
+	Paste Mask	Tempel Masker
+	Replace Layer Mask?	Ganti Masker Layer?
+	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
+	Replace	Ganti

@@ -2866,3 +2866,8 @@ fontWeight	Italic	Itálico
 	Front Image	Imagem frontal
 	Search settings…	Pesquisar configurações…
 	No matching settings	Nenhuma configuração encontrada
+	Copy Mask	Copiar máscara
+	Paste Mask	Colar máscara
+	Replace Layer Mask?	Substituir máscara de camada?
+	Replace the existing pixel mask on “{layer}”?	Substituir a máscara de pixels existente em “{layer}”?
+	Replace	Substituir

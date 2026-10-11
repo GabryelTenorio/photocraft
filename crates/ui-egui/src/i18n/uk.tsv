@@ -3546,3 +3546,8 @@ cameraRaw	Masking	Маскування
 	Search settings…	Пошук налаштувань…
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
+	Copy Mask	Копіювати маску
+	Paste Mask	Вставити маску
+	Replace Layer Mask?	Замінити маску шару?
+	Replace the existing pixel mask on “{layer}”?	Замінити наявну піксельну маску шару «{layer}»?
+	Replace	Замінити

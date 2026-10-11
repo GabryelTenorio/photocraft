@@ -2510,3 +2510,8 @@ fontWeight	Italic	Corsivo
 	Front Image	Immagine in primo piano
 	Search settings…	Cerca impostazioni…
 	No matching settings	Nessuna impostazione corrispondente
+	Copy Mask	Copia maschera
+	Paste Mask	Incolla maschera
+	Replace Layer Mask?	Sostituire la maschera di livello?
+	Replace the existing pixel mask on “{layer}”?	Sostituire la maschera pixel esistente su “{layer}”?
+	Replace	Sostituisci

@@ -2858,3 +2858,8 @@ fontWeight	Italic	Italique
 	Front Image	Image de premier plan
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
+	Copy Mask	Copier le masque
+	Paste Mask	Coller le masque
+	Replace Layer Mask?	Remplacer le masque de calque ?
+	Replace the existing pixel mask on “{layer}”?	Remplacer le masque de pixels existant sur « {layer} » ?
+	Replace	Remplacer

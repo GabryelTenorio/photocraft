@@ -2479,3 +2479,8 @@ fontWeight	Italic	Kursiv
 	Front Image	Vorderes Bild
 	Search settings…	Einstellungen durchsuchen…
 	No matching settings	Keine passenden Einstellungen
+	Copy Mask	Maske kopieren
+	Paste Mask	Maske einfügen
+	Replace Layer Mask?	Ebenenmaske ersetzen?
+	Replace the existing pixel mask on “{layer}”?	Vorhandene Pixelmaske auf „{layer}“ ersetzen?
+	Replace	Ersetzen

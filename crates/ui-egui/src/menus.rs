@@ -574,6 +574,13 @@ fn open_path(app: &mut PhotocraftApp, path: &str) -> Result<Value, String> {
 }
 
 pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
+    if id == photocraft_engine::mask_transfer_cmds::COPY {
+        return app.session.active().and_then(|st| st.active_layer.and_then(|id| st.doc.layer(id))).is_some_and(|l| l.mask.is_some());
+    }
+    if id == photocraft_engine::mask_transfer_cmds::PASTE {
+        return app.session.mask_clipboard.is_some()
+            && app.session.active().is_some_and(|st| st.active_layer.is_some_and(|id| st.doc.layer(id).is_some() && !st.doc.effective_locks(id).all));
+    }
     if id == "ui.symmetryTransform" {
         return crate::symmetry_ui::can_transform(app);
     }

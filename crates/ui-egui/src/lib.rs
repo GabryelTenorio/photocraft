@@ -97,6 +97,7 @@ pub mod liquify_ui;
 pub mod magnetic_lasso_ui;
 mod mask_props_ui;
 pub mod mask_thumbs_ui;
+mod mask_transfer_ui;
 pub mod menu_catalog;
 pub mod menu_nav;
 pub mod menus;
@@ -550,6 +551,7 @@ pub struct PhotocraftApp {
     /// A raw file just opened interactively, waiting for the open-time Camera Raw dialog (shown
     /// on the next frame, which has the egui context).
     pub(crate) pending_raw_open: Option<camera_raw_ui::RawOpen>,
+    pub(crate) mask_transfer: Option<mask_transfer_ui::Prompt>,
     /// The open-time re-develop (or its Camera Raw step) running in the background.
     pub(crate) raw_redevelop: Option<camera_raw_ui::Redevelop>,
     /// Filter › Adaptive Wide Angle dialog (wide_angle_ui).
@@ -701,6 +703,7 @@ impl PhotocraftApp {
             gradient: Default::default(),
             camera_raw: None,
             pending_raw_open: None,
+            mask_transfer: None,
             raw_redevelop: None,
             wide_angle: None,
             tone_hist: None,
@@ -813,6 +816,9 @@ impl PhotocraftApp {
         {
             authorize(id, &params)?;
         }
+        if let Some(result) = mask_transfer_ui::intercept(self, id, &params) {
+            return result;
+        }
         if let Some(r) = transform_tool::intercept(self, id) {
             return r;
         }
@@ -837,12 +843,18 @@ impl PhotocraftApp {
         let params = self.with_mask_target(id, params);
         let params = vector_ui::with_active_path(self, id, params);
         let path_mask = vector_ui::takes_path_mask(id) && params.get("path").is_some_and(|v| !v.is_null());
-        let creates_active_mask =
-            matches!(id, "layer.layerMask.revealAll" | "layer.layerMask.hideAll" | "layer.layerMask.revealSelection" | "layer.layerMask.hideSelection")
-                && self
-                    .session
-                    .active()
-                    .is_some_and(|st| st.active_layer.is_some_and(|layer| params.get("layer").and_then(Value::as_u64).is_none_or(|target| target == layer.0)));
+        let creates_active_mask = matches!(
+            id,
+            "layer.layerMask.revealAll"
+                | "layer.layerMask.hideAll"
+                | "layer.layerMask.revealSelection"
+                | "layer.layerMask.hideSelection"
+                | photocraft_engine::mask_transfer_cmds::PASTE
+                | photocraft_engine::mask_transfer_cmds::TRANSFER
+        ) && self
+            .session
+            .active()
+            .is_some_and(|st| st.active_layer.is_some_and(|layer| params.get("layer").and_then(Value::as_u64).is_none_or(|target| target == layer.0)));
         let r = if id == "actions.play" {
             actions::play(self, &params)
         } else if photocraft_engine::actions_cmds::shell_view_command(id) {
@@ -1494,6 +1506,7 @@ impl eframe::App for PhotocraftApp {
         jobs_ui::dialog(self, &ctx);
         discard_ui::show(self, &ctx);
         tiff_options_ui::show(self, &ctx);
+        mask_transfer_ui::show(self, &ctx);
         distort_ui::show(self, &ctx);
         camera_raw_ui::show(self, &ctx);
         wide_angle_ui::show(self, &ctx);

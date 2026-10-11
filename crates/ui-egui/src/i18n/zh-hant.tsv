@@ -2418,3 +2418,8 @@ fontWeight	Italic	斜體
 	Front Image	前面的影像
 	Search settings…	搜尋設定…
 	No matching settings	沒有符合的設定
+	Copy Mask	複製遮色片
+	Paste Mask	貼上遮色片
+	Replace Layer Mask?	取代圖層遮色片？
+	Replace the existing pixel mask on “{layer}”?	取代「{layer}」上的現有像素遮色片？
+	Replace	取代

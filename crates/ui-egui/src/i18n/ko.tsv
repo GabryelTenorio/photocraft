@@ -3019,3 +3019,8 @@ fontWeight	Italic	기울임
 	Front Image	전면 이미지
 	Search settings…	설정 검색…
 	No matching settings	일치하는 설정 없음
+	Copy Mask	마스크 복사
+	Paste Mask	마스크 붙여넣기
+	Replace Layer Mask?	레이어 마스크를 교체하시겠습니까?
+	Replace the existing pixel mask on “{layer}”?	“{layer}”의 기존 픽셀 마스크를 교체하시겠습니까?
+	Replace	교체

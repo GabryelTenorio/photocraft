@@ -3548,3 +3548,7 @@ fontWeight	Thin	Πολύ λεπτά
 	Front Image	Μπροστινή εικόνα
 	Search settings…	Αναζήτηση ρυθμίσεων…
 	No matching settings	Δεν βρέθηκαν ρυθμίσεις
+	Copy Mask	Αντιγραφή μάσκας
+	Paste Mask	Επικόλληση μάσκας
+	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
+	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;

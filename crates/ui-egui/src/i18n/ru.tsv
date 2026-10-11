@@ -2725,3 +2725,8 @@ fontWeight	Italic	Курсив
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
+	Copy Mask	Копировать маску
+	Paste Mask	Вставить маску
+	Replace Layer Mask?	Заменить маску слоя?
+	Replace the existing pixel mask on “{layer}”?	Заменить существующую пиксельную маску слоя «{layer}»?
+	Replace	Заменить

@@ -2448,3 +2448,8 @@ fontWeight	Italic	斜体
 	Front Image	前面的图像
 	Search settings…	搜索设置…
 	No matching settings	没有匹配的设置
+	Copy Mask	复制蒙版
+	Paste Mask	粘贴蒙版
+	Replace Layer Mask?	替换图层蒙版？
+	Replace the existing pixel mask on “{layer}”?	替换“{layer}”上的现有像素蒙版？
+	Replace	替换
