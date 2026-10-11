@@ -1109,9 +1109,24 @@ async fn convention_resources_are_live_json() {
         serde_json::from_str::<Value>(v["contents"][0]["text"].as_str().unwrap()).unwrap()
     };
     assert!(read("photocraft://document").await["document"].is_null());
+    let before = read("photocraft://commands").await;
+    let layer_new = before.as_array().unwrap().iter().find(|c| c["id"] == "layer.new.layer").unwrap();
+    assert_eq!(layer_new["enabled"], false);
     json_of(&call(&client, "doc_new", json!({"width":8,"height":6})).await);
     assert_eq!(read("photocraft://document").await["width"], 8);
-    assert_eq!(read("photocraft://commands").await, json_of(&call(&client, "command_list", json!({})).await));
+    // Keep Purge All enabled through session-owned history. Otherwise unrelated
+    // parallel tests can populate global render caches between catalog reads.
+    json_of(&call(&client, "command_run", json!({"id":"layer.new.layer", "params":{"name":"Catalog history"}})).await);
+    let resource = read("photocraft://commands").await;
+    let tool = json_of(&call(&client, "command_list", json!({})).await);
+    let resource = resource.as_array().unwrap();
+    let tool = tool.as_array().unwrap();
+    let layer_new = resource.iter().find(|c| c["id"] == "layer.new.layer").unwrap();
+    assert_eq!(layer_new["enabled"], true);
+    assert_eq!(resource.len(), tool.len());
+    for (resource_command, tool_command) in resource.iter().zip(tool) {
+        assert_eq!(resource_command, tool_command, "command {}", resource_command["id"]);
+    }
     assert!(client.read_resource(rmcp::model::ReadResourceRequestParams::new("photocraft://missing")).await.is_err());
     let preview = call(&client, "render_preview", json!({"max_side":4})).await;
     assert!(preview.content.iter().any(|c| c.as_image().is_some()));
