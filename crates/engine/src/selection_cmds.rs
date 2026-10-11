@@ -696,7 +696,7 @@ mod tests {
         let before = current_mask(&s.active().unwrap().doc).1;
         let outside = json!({"points": [[30, 10]], "fuzziness": 0});
         assert!(s.execute("select.colorRange", outside.clone()).unwrap_err().to_string().contains("outside the active selection"));
-        assert!(ColorRangeSamples::new(&s, &outside).unwrap_err().to_string().contains("outside the active selection"));
+        assert!(ColorRangeSamples::new(&s, &outside).err().unwrap().to_string().contains("outside the active selection"));
         assert_eq!(current_mask(&s.active().unwrap().doc).1, before);
         s.execute("select.colorRange", json!({"points": [[10, 10]], "fuzziness": 0})).unwrap();
         assert_eq!(coverage(&s, 10, 10), 1.0);
