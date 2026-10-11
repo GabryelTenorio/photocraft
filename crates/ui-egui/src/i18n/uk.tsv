@@ -3614,6 +3614,9 @@ cameraData	Lens	Об'єктив
 curves	Smooth	Згладити
 	Smooth the curve values	Згладити значення кривої
 	Drag to draw the curve · {key}-click draws a straight line	Перетягніть, щоб намалювати криву · {key}-клацання малює пряму лінію
+	Frame Tool	Інструмент «Рамка»
+	Create a new rectangular frame	Створити прямокутну рамку
+	Create a new elliptical frame	Створити еліптичну рамку
 	Include in playback	Включити у відтворення
 	New Crop Preset…	Новий набір параметрів кадрування…
 	Delete Crop Preset…	Видалити набір параметрів кадрування…

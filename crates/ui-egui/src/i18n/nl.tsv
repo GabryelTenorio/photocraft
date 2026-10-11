@@ -3686,4 +3686,7 @@ cameraData	Lens	Lens
 curves	Smooth	Vloeiend maken
 	Smooth the curve values	Curvewaarden vloeiend maken
 	Drag to draw the curve · {key}-click draws a straight line	Sleep om de curve te tekenen · {key}-klik tekent een rechte lijn
+	Frame Tool	Kadergereedschap
+	Create a new rectangular frame	Nieuw rechthoekig kader maken
+	Create a new elliptical frame	Nieuw ovaal kader maken
 	Include in playback	Opnemen in afspelen
