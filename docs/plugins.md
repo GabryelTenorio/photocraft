@@ -135,7 +135,7 @@ exports. All integers are `i32` unless noted; pointers are offsets into the modu
   except the zero-width joiner and non-joiner, and at least one character must be visible.
   `kind`: `"filter"` (the only kind in v1).
 - `params`: in dialog order. Names are `[A-Za-z0-9_]`, not starting with `_`, not `id`/`layer`.
-  Types: `number`, `int`, `bool`, `choice` and `point` (below).
+  Types: `number`, `int`, `bool`, `choice`, `point` and `color` (below).
   The host validates the user's values before calling: missing values take the default, numbers are
   clamped to `min..max` (ints rounded), a wrong type or an unknown choice is an error.
 - `overlap` (0–256): pixels of context the filter needs around each output pixel (a blur radius).
@@ -166,6 +166,23 @@ on the document size. `default` is required: two numbers, each within 0–100.
 - The plug-in receives the value as an array in `params`, e.g. `{"start": [12.0, 12.0], …}`. The
   host clamps both coordinates to 0–100; anything other than an array of two numbers is an error.
 - In the registry notation (`plugin.list` `params`) a point reads `"start":point=[12,12]`.
+
+#### Colours: `color`
+
+A `color` parameter is an opaque colour the user picks with a swatch and colour picker. `default` is
+required and must be a `"#rrggbb"` hex string (either case; no alpha, no `#rgb` short form); anything
+else rejects the manifest.
+
+```json
+"params": {
+  "inner": {"type": "color", "default": "#cfeaff"}
+}
+```
+
+- The plug-in receives the same string, lowercase, in `params`: `{"inner": "#cfeaff"}`. A value that
+  is not `"#rrggbb"` is an error. The live preview follows the picker as the colour changes.
+- Saved presets keep the hex string; a stored colour that is not a valid `"#rrggbb"` is dropped.
+- In the registry notation a colour reads `"inner":color=#cfeaff`.
 
 ### Pixels
 

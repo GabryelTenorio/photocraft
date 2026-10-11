@@ -670,6 +670,21 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
                 let bytes = rgb.map(q);
                 let name = label(&p.key);
+                if cmd == "plugin.run" {
+                    // Plug-in colours: egui's popup picker edits the field continuously, so the live
+                    // preview follows the colour as it changes (the modal Color Picker sets it on OK).
+                    let mut edit = bytes;
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(&name).color(t.text_dim));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            crate::widgets::color_edit_button_srgb(ui, &mut edit).on_hover_text(&name);
+                            ui.label(egui::RichText::new(crate::color_picker_ui::hex(rgb)).color(t.text_dim).monospace());
+                        });
+                    });
+                    let picked = if edit == bytes { rgb } else { edit.map(|b| f32::from(b) / 255.0) };
+                    f.insert(p.key.clone(), json!(crate::color_picker_ui::hex(picked)));
+                    continue;
+                }
                 let mut clicked = false;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(&name).color(t.text_dim));
@@ -1888,5 +1903,32 @@ mod tests {
         assert_eq!(params["start"], json!([12.0, 12.5]));
         assert_eq!(params["end"], json!([33.25, 70.0]), "a point value reaches the command unchanged");
         assert_eq!(params["id"], json!("org.example.bolt"));
+    }
+
+    #[test]
+    fn plugin_color_params_open_with_their_defaults_and_pass_through_unchanged() {
+        let m = photocraft_plugins::Manifest::parse(
+            br##"{"id":"org.example.bolt","name":"Bolt","kind":"filter",
+                "params":{"inner":{"type":"color","default":"#CFEAFF"},"outer":{"type":"color","default":"#5a8cff"}}}"##,
+        )
+        .unwrap();
+        let spec = m.params_notation();
+        let kinds: Vec<Kind> = parse_spec(&spec).into_iter().map(|p| p.kind).collect();
+        assert_eq!(kinds, [Kind::Color(crate::color_picker_ui::parse_hex("#cfeaff")), Kind::Color(crate::color_picker_ui::parse_hex("#5a8cff"))]);
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let mut fixed = Map::new();
+        fixed.insert("id".into(), json!("org.example.bolt"));
+        open_with_spec(&mut app, "plugin.run", "Bolt", &spec, fixed);
+        let fields = &mut app.ui.dialogs.last_mut().unwrap().fields;
+        assert_eq!((&fields["inner"], &fields["outer"]), (&json!("#cfeaff"), &json!("#5a8cff")));
+        // A colour the picker set survives drawing the dialog and reaches the plug-in unchanged.
+        fields.insert("inner".into(), json!("#ff8800"));
+        let ctx = egui::Context::default();
+        ctx.run_ui(Default::default(), |ui| body(ui, fields)).textures_delta.clear();
+        let params = params_of(fields);
+        assert_eq!(params["inner"], json!("#ff8800"));
+        assert_eq!(params["outer"], json!("#5a8cff"));
+        let resolved = m.resolve_params(&params).unwrap();
+        assert_eq!((&resolved["inner"], &resolved["outer"]), (&json!("#ff8800"), &json!("#5a8cff")));
     }
 }

@@ -61,6 +61,9 @@ pub enum ParamSpec {
     /// A point on the canvas, `[x, y]` in percent of the canvas width and height (0-100): a
     /// draggable handle on the canvas while the dialog is open.
     Point { default: [f64; 2] },
+    /// An opaque colour, `"#rrggbb"` (a swatch that opens a colour picker). The plug-in receives
+    /// the lowercase hex string.
+    Color { default: String },
 }
 
 fn int_min() -> i64 {
@@ -104,6 +107,12 @@ pub struct Manifest {
 pub struct Guide {
     pub from: String,
     pub to: String,
+}
+
+/// A `"#rrggbb"` colour (either case), lowercased; `None` for anything else (no alpha, no `#rgb`).
+pub fn normalize_color(s: &str) -> Option<String> {
+    let hex = s.strip_prefix('#')?;
+    (hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then(|| format!("#{}", hex.to_ascii_lowercase()))
 }
 
 /// Clamps a point to the canvas: each coordinate into [`POINT_RANGE`] (non-finite values are `None`).
@@ -164,6 +173,9 @@ impl Manifest {
                         return Err(Error::Manifest(format!("parameter `{k}`: point default must be two numbers in {lo}-{hi}")));
                     }
                 }
+                ParamSpec::Color { default } if normalize_color(default).is_none() => {
+                    return Err(Error::Manifest(format!("parameter `{k}`: color default must be a \"#rrggbb\" hex string, not {default:?}")));
+                }
                 _ => {}
             }
         }
@@ -198,6 +210,7 @@ impl Manifest {
                     format!("\"{k}\":\"{}\"", opts.join("|"))
                 }
                 ParamSpec::Point { default: [x, y] } => format!("\"{k}\":point=[{x},{y}]"),
+                ParamSpec::Color { default } => format!("\"{k}\":color={}", normalize_color(default).unwrap_or_default()),
             })
             .collect();
         format!("{{{}}}", parts.join(","))
@@ -251,6 +264,10 @@ impl Manifest {
                     };
                     json!(clamp_point(x, y).ok_or_else(|| wrong("two finite numbers"))?)
                 }
+                ParamSpec::Color { default } => match v {
+                    None => json!(normalize_color(default).unwrap_or_default()),
+                    Some(v) => json!(v.as_str().and_then(normalize_color).ok_or_else(|| wrong("a \"#rrggbb\" colour"))?),
+                },
             };
             out.insert(k.clone(), resolved);
         }
@@ -496,6 +513,55 @@ mod tests {
         assert_eq!(clamp_point(150.0, -0.5), Some([100.0, 0.0]));
         assert_eq!(clamp_point(f64::NAN, 1.0), None);
         assert_eq!(clamp_point(1.0, f64::INFINITY), None);
+    }
+
+    fn with_color(default: Value) -> Result<Manifest> {
+        Manifest::parse(
+            json!({"id": "org.example.bolt", "name": "Bolt", "kind": "filter", "params": {"inner": {"type": "color", "default": default}}})
+                .to_string()
+                .as_bytes(),
+        )
+    }
+
+    #[test]
+    fn color_params_validate_their_default() {
+        let m = with_color(json!("#CFEAff")).unwrap();
+        assert_eq!(m.params[0].1, ParamSpec::Color { default: "#CFEAff".into() });
+        assert_eq!(m.params_notation(), r##"{"inner":color=#cfeaff}"##);
+        assert!(with_color(json!("#000000")).is_ok());
+        for bad in [
+            json!("#cfeafz"),
+            json!("cfeaff"),
+            json!("#cfeaf"),
+            json!("#cfeaff0"),
+            json!("#cfeaffcc"),
+            json!("#fff"),
+            json!(""),
+            json!("#"),
+            json!(" #cfeaff"),
+            json!("#cféaf"),
+        ] {
+            let e = with_color(bad.clone()).unwrap_err().to_string();
+            assert!(e.contains("inner") && e.contains("#rrggbb"), "{bad}: {e}");
+        }
+        for bad in [json!(0xcfeaff), json!(null), json!([207, 234, 255]), json!(true), json!({"r": 1})] {
+            assert!(with_color(bad.clone()).is_err(), "{bad}");
+        }
+        assert!(Manifest::parse(br#"{"id":"a","name":"x","kind":"filter","params":{"c":{"type":"color"}}}"#).is_err(), "a colour needs a default");
+    }
+
+    #[test]
+    fn color_values_pass_through_as_lowercase_hex() {
+        let m = with_color(json!("#CFEAFF")).unwrap();
+        let get = |v: Value| m.resolve_params(&json!({"inner": v})).map(|p| p["inner"].clone());
+        assert_eq!(get(Value::Null).unwrap(), json!("#cfeaff"), "the default, lowercased");
+        assert_eq!(get(json!("#ff8800")).unwrap(), json!("#ff8800"), "passed through unchanged");
+        assert_eq!(get(json!("#FF8800")).unwrap(), json!("#ff8800"));
+        for bad in [json!("ff8800"), json!("#ff880"), json!("#ff8800ff"), json!("#gg8800"), json!(16746496), json!([255, 136, 0])] {
+            assert!(get(bad.clone()).is_err(), "{bad}");
+        }
+        assert_eq!(normalize_color("#AbCdEf").as_deref(), Some("#abcdef"));
+        assert_eq!(normalize_color("#ab"), None);
     }
 
     fn with_name(name: &str) -> Result<Manifest> {

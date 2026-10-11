@@ -100,7 +100,7 @@ mod tests {
 
     fn sample() -> Presets {
         let mut p = Presets::new();
-        p.insert("Soft".into(), json!({"amount": 25.0, "mode": "screen"}).as_object().unwrap().clone());
+        p.insert("Soft".into(), json!({"amount": 25.0, "mode": "screen", "inner": "#cfeaff"}).as_object().unwrap().clone());
         p
     }
 
@@ -112,7 +112,7 @@ mod tests {
         let file = root.join("plugins").join(format!("{ID}.json"));
         assert!(file.is_file());
         let v: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-        assert_eq!(v, json!({"version": 1, "presets": {"Soft": {"amount": 25.0, "mode": "screen"}}}));
+        assert_eq!(v, json!({"version": 1, "presets": {"Soft": {"amount": 25.0, "mode": "screen", "inner": "#cfeaff"}}}));
         assert_eq!(load_in(&root, ID), sample());
         let _ = std::fs::remove_dir_all(&root);
     }

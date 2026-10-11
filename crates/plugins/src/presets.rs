@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use crate::manifest::{Manifest, ParamSpec, clamp_point, valid_id};
+use crate::manifest::{Manifest, ParamSpec, clamp_point, normalize_color, valid_id};
 
 /// The presets file format this build reads and writes.
 pub const VERSION: u64 = 1;
@@ -90,7 +90,7 @@ pub fn to_json(presets: &Presets) -> String {
 impl Manifest {
     /// The values of a stored preset that still fit this manifest: unknown keys and values of the
     /// wrong type are dropped, numbers and points are clamped into range, and choices the
-    /// plug-in no longer offers are dropped. `None` when nothing usable is left (the preset no
+    /// plug-in no longer offers and colours that aren't `"#rrggbb"` are dropped. `None` when nothing usable is left (the preset no
     /// longer matches the plug-in). Missing parameters keep their defaults when the result goes
     /// through [`Manifest::resolve_params`].
     pub fn preset_values(&self, stored: &Map<String, Value>) -> Option<Map<String, Value>> {
@@ -107,6 +107,7 @@ impl Manifest {
                     Some([x, y]) => x.as_f64().zip(y.as_f64()).and_then(|(x, y)| clamp_point(x, y)).map(|p| json!(p)),
                     _ => None,
                 },
+                ParamSpec::Color { .. } => v.as_str().and_then(normalize_color).map(Value::String),
             };
             if let Some(kept) = kept {
                 out.insert(k.clone(), kept);
@@ -128,12 +129,13 @@ mod tests {
 
     fn manifest() -> Manifest {
         Manifest::parse(
-            br#"{"id":"org.example.t","name":"T","kind":"filter","params":{
+            br##"{"id":"org.example.t","name":"T","kind":"filter","params":{
                 "amount":{"type":"number","min":0,"max":100,"default":50},
                 "steps":{"type":"int","min":1,"max":8,"default":2},
                 "mono":{"type":"bool"},
                 "mode":{"type":"choice","options":["a","b"]},
-                "at":{"type":"point","default":[50,50]}}}"#,
+                "at":{"type":"point","default":[50,50]},
+                "inner":{"type":"color","default":"#cfeaff"}}}"##,
         )
         .unwrap()
     }
@@ -160,7 +162,7 @@ mod tests {
     fn round_trip() {
         let mut p = Presets::new();
         p.insert("Soft".into(), json!({"amount": 25.0, "mode": "b"}).as_object().unwrap().clone());
-        p.insert("Hard".into(), json!({"amount": 90.0, "mono": true, "at": [10.0, 20.0]}).as_object().unwrap().clone());
+        p.insert("Hard".into(), json!({"amount": 90.0, "mono": true, "at": [10.0, 20.0], "inner": "#ff8800"}).as_object().unwrap().clone());
         let text = to_json(&p);
         assert!(text.contains("\"version\": 1"), "{text}");
         assert_eq!(parse(text.as_bytes()), Parsed::Presets(p));
@@ -200,5 +202,24 @@ mod tests {
         // Applied values fill the rest from the defaults.
         let full = m.resolve_params(&Value::Object(kept["fine"].clone())).unwrap();
         assert_eq!(full["amount"], json!(50.0));
+    }
+
+    #[test]
+    fn colours_round_trip_and_invalid_ones_are_dropped() {
+        let m = manifest();
+        let mut p = Presets::new();
+        p.insert("Warm".into(), json!({"inner": "#ff8800", "amount": 10.0}).as_object().unwrap().clone());
+        let Parsed::Presets(back) = parse(to_json(&p).as_bytes()) else { panic!() };
+        assert_eq!(back, p);
+        assert_eq!(Value::Object(m.preset_values(&back["Warm"]).unwrap()), json!({"inner": "#ff8800", "amount": 10.0}));
+        assert_eq!(Value::Object(m.preset_values(json!({"inner": "#FF8800"}).as_object().unwrap()).unwrap()), json!({"inner": "#ff8800"}));
+        for bad in [json!("ff8800"), json!("#ff880"), json!("#ff8800aa"), json!("#xyz123"), json!(0xff8800), json!([255, 136, 0]), json!(null)] {
+            let stored = json!({"inner": bad, "amount": 10.0});
+            assert_eq!(Value::Object(m.preset_values(stored.as_object().unwrap()).unwrap()), json!({"amount": 10.0}), "{bad}");
+            assert_eq!(m.preset_values(json!({"inner": bad}).as_object().unwrap()), None, "{bad}");
+        }
+        // The kept colour fills in through the defaults.
+        let full = m.resolve_params(&json!({})).unwrap();
+        assert_eq!(full["inner"], json!("#cfeaff"));
     }
 }
