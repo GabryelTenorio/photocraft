@@ -617,3 +617,53 @@ fn f6_while_recording_records_a_named_call_not_the_child_steps() {
     h.state_mut().run("actions.stop", json!({})).unwrap();
     assert_eq!(h.state().session.actions.list[1].steps, [("actions.play".into(), json!({"action":"LivePrint 2R"}))]);
 }
+
+#[test]
+fn delete_layer_binding_deletes_layer_from_canvas_and_layers_panel() {
+    for bound_key in ["Backspace", "Delete"] {
+        for press_key in ["Backspace", "Delete"] {
+            for place in [Place::Canvas, Place::LayersRow, Place::FocusedWidget] {
+                let mut h = harness();
+                h.state_mut().session.prefs.edit(|p| {
+                    p.shortcuts.insert("layer.delete".into(), bound_key.into());
+                });
+                put_focus(&mut h, place);
+                let before = names(&h);
+                let active = active_name(&h);
+                press(&mut h, press_key);
+                assert_eq!(logged(&h), ["layer.delete"], "{bound_key} -> {press_key} at {place:?}");
+                assert!(!names(&h).contains(&active), "{active} deleted by {press_key}");
+                assert_eq!(names(&h).len(), before.len() - 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn delete_layer_binding_does_not_fire_in_text_or_type_edit() {
+    for bound_key in ["Backspace", "Delete"] {
+        let mut h = harness();
+        h.state_mut().session.prefs.edit(|p| {
+            p.shortcuts.insert("layer.delete".into(), bound_key.into());
+        });
+        put_focus(&mut h, Place::OpacityField);
+        let before = names(&h);
+        press(&mut h, bound_key);
+        assert!(logged(&h).is_empty(), "text field kept key");
+        assert_eq!(names(&h), before, "no layer was deleted in text field");
+
+        let mut h = harness();
+        h.state_mut().session.prefs.edit(|p| {
+            p.shortcuts.insert("layer.delete".into(), bound_key.into());
+        });
+        let type_id = h.state().session.active().unwrap().doc.layers.iter().find(|l| matches!(l.content, LayerContent::Text(_))).unwrap().id;
+        h.state_mut().run("layer.select", json!({"layer": type_id.0})).unwrap();
+        crate::type_tool::edit_active(h.state_mut()).unwrap();
+        h.run_steps(2);
+        assert!(h.state().ui.text_edit.is_some(), "type edit active");
+        let before = names(&h);
+        press(&mut h, bound_key);
+        assert!(logged(&h).is_empty(), "type edit kept key");
+        assert_eq!(names(&h).len(), before.len(), "no layer was deleted while typing");
+    }
+}

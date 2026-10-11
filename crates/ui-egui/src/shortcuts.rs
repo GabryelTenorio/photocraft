@@ -45,7 +45,8 @@ pub fn pretty(s: &str) -> String {
             ("Shift", true) => "⇧".to_string(),
             ("Alt", true) => "⌥".to_string(),
             ("Enter", true) => "↩".to_string(),
-            ("Delete", true) => "⌫".to_string(),
+            ("Backspace", true) => "⌫".to_string(),
+            ("Delete", true) => "⌦".to_string(),
             (other, _) => other.to_string(),
         })
         .collect::<Vec<_>>()
@@ -649,6 +650,8 @@ mod tests {
         assert_eq!(pretty("Shift+Alt"), if mac { "⇧⌥" } else { "Shift+Alt" });
         assert_eq!(pretty("Enter"), if mac { "↩" } else { "Enter" });
         assert_eq!(pretty("Cmd+Enter"), if mac { "⌘↩" } else { "Ctrl+Enter" });
+        assert_eq!(pretty("Backspace"), if mac { "⌫" } else { "Backspace" });
+        assert_eq!(pretty("Delete"), if mac { "⌦" } else { "Delete" });
     }
 
     #[test]
