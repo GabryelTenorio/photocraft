@@ -18,6 +18,7 @@ use android_activity::AndroidApp;
 fn android_main(app: AndroidApp) {
     android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("photocraft"));
     let files_dir = app.internal_data_path();
+    let activity = app.clone();
     let mut options = eframe::NativeOptions { android_app: Some(app), ..Default::default() };
     photocraft_ui_egui::gpu_canvas::use_adapter_limits(&mut options.wgpu_options.wgpu_setup);
     if let WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup {
@@ -34,7 +35,7 @@ fn android_main(app: AndroidApp) {
             if let Some(rs) = cc.wgpu_render_state.clone() {
                 app.set_wgpu(rs);
             }
-            Ok(Box::new(Shell { app, queue, browser: None }))
+            Ok(Box::new(Shell { app, queue, browser: None, activity }))
         }),
     );
     if let Err(e) = result {
@@ -46,6 +47,7 @@ struct Shell {
     app: PhotocraftApp,
     queue: Queue,
     browser: Option<Browser>,
+    activity: AndroidApp,
 }
 
 impl eframe::App for Shell {
@@ -54,7 +56,14 @@ impl eframe::App for Shell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.app.ui(ui, frame);
+        // Keep the app out from under the status and navigation bars: the activity's content
+        // rectangle (pixels) is the window minus the system bars.
+        let ppp = ui.ctx().pixels_per_point();
+        let r = self.activity.content_rect();
+        let content = egui::Rect::from_min_max(egui::pos2(r.left as f32 / ppp, r.top as f32 / ppp), egui::pos2(r.right as f32 / ppp, r.bottom as f32 / ppp));
+        let area = ui.max_rect();
+        let inner = if content.width() > 1.0 && content.height() > 1.0 { area.intersect(content) } else { area };
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| self.app.ui(ui, frame));
         if self.browser.is_none()
             && let Some((request, reply)) = self.queue.lock().unwrap_or_else(|e| e.into_inner()).take()
         {
