@@ -382,102 +382,81 @@ impl Stylus {
     }
 }
 
-/// Recover a missing pointer release when egui-winit receives Android
-/// TouchPhase::Cancel. The backend sends PointerGone without PointerButton
-/// release in this case, which can leave the brush's drag held indefinitely.
-///
-/// Only the tracked first touch is the mouse-emulated pointer. Never synthesize
-/// ordinary DOWN/MOVE/UP events: egui-winit already supplies those.
+/// Repair Android touch clicks that egui-winit did not convert to pointer buttons.
+/// A missing tap is reconstructed on End, including when Start was in an earlier frame.
+/// Native pointer-button pairs are never duplicated.
 #[derive(Debug, Default)]
 pub struct AndroidTouchRecovery {
     primary: Option<(egui::TouchDeviceId, egui::TouchId)>,
+    down_pos: Option<egui::Pos2>,
+    native_down: bool,
 }
 
 impl AndroidTouchRecovery {
     pub fn repair(&mut self, raw: &mut egui::RawInput) {
-        // RawInput carries input events, not a `modifiers` field (egui 0.36).
-        // A synthetic release on Android cancellation is not a shortcut action.
         let modifiers = egui::Modifiers::NONE;
-        let mut events = Vec::with_capacity(raw.events.len() + 1);
+        // Inspect the whole frame before repairing it: winit may put pointer
+        // buttons before or after the corresponding touch event.
+        let native_press = raw.events.iter().any(|e| matches!(e,
+            egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: true, .. }
+        ));
+        let native_release = raw.events.iter().any(|e| matches!(e,
+            egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: false, .. }
+        ));
+        let mut out = Vec::with_capacity(raw.events.len() + 4);
         for event in raw.events.drain(..) {
             match &event {
-                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Start, .. } => {
+                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Start, pos, .. } => {
                     if self.primary.is_none() {
                         self.primary = Some((*device_id, *id));
+                        self.down_pos = Some(*pos);
+                        self.native_down = native_press;
                     }
                 }
-                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::End, .. } => {
-                    if self.primary == Some((*device_id, *id)) {
-                        self.primary = None;
-                    }
+                egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed, .. } => {
+                    self.native_down = *pressed;
                 }
-                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Cancel, pos, .. } => {
+                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::End, pos, .. }
+                | egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Cancel, pos, .. } => {
                     if self.primary == Some((*device_id, *id)) {
+                        let cancelled = matches!(&event, egui::Event::Touch { phase: egui::TouchPhase::Cancel, .. });
+                        if !cancelled && !self.native_down && !native_press && !native_release {
+                            // A whole tap can span multiple render frames. Emit a
+                            // complete click at End if winit supplied no buttons.
+                            let down = self.down_pos.unwrap_or(*pos);
+                            out.push(egui::Event::PointerMoved(down));
+                            out.push(egui::Event::PointerButton {
+                                pos: down, button: egui::PointerButton::Primary,
+                                pressed: true, modifiers,
+                            });
+                            log::info!("S Pen touch recovery: synthesized missing click");
+                        }
+                        out.push(event);
+                        if (self.native_down || cancelled) && !native_release {
+                            // On cancellation winit can send PointerGone without
+                            // releasing the mouse-emulated primary button.
+                            out.push(egui::Event::PointerButton {
+                                pos: *pos, button: egui::PointerButton::Primary,
+                                pressed: false, modifiers,
+                            });
+                            log::info!("S Pen touch recovery: synthesized missing release");
+                        } else if !cancelled && !self.native_down && !native_press && !native_release {
+                            out.push(egui::Event::PointerButton {
+                                pos: *pos, button: egui::PointerButton::Primary,
+                                pressed: false, modifiers,
+                            });
+                        }
                         self.primary = None;
-                        let at = *pos;
-                        events.push(event);
-                        events.push(egui::Event::PointerButton {
-                            pos: at,
-                            button: egui::PointerButton::Primary,
-                            pressed: false,
-                            modifiers,
-                        });
+                        self.down_pos = None;
+                        self.native_down = false;
                         continue;
                     }
                 }
                 _ => {}
             }
-            events.push(event);
+            out.push(event);
         }
-        // A quick S Pen tap can arrive as a complete touch pair in one frame.
-        // If winit supplied no mouse-button events, restore the missing click.
-        // Do not synthesize incomplete touches or duplicate native pointer clicks.
-        let has_button = events.iter().any(|e| matches!(
-            e, egui::Event::PointerButton { button: egui::PointerButton::Primary, .. }
-        ));
-        if !has_button {
-            let start = events.iter().find_map(|e| match e {
-                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Start, pos, .. }
-                    => Some((*device_id, *id, *pos)),
-                _ => None,
-            });
-            if let Some((device, id, down)) = start {
-                let end = events.iter().find_map(|e| match e {
-                    egui::Event::Touch { device_id, id: touch_id, phase: egui::TouchPhase::End, pos, .. }
-                        if *device_id == device && *touch_id == id => Some(*pos),
-                    _ => None,
-                });
-                if let Some(up) = end {
-                    let mut fixed = Vec::with_capacity(events.len() + 3);
-                    for event in events {
-                        match &event {
-                            egui::Event::Touch { device_id, id: touch_id, phase: egui::TouchPhase::Start, .. }
-                                if *device_id == device && *touch_id == id => {
-                                fixed.push(egui::Event::PointerMoved(down));
-                                fixed.push(egui::Event::PointerButton {
-                                    pos: down, button: egui::PointerButton::Primary,
-                                    pressed: true, modifiers,
-                                });
-                            }
-                            _ => {}
-                        }
-                        let is_end = matches!(&event, egui::Event::Touch {
-                            device_id, id: touch_id, phase: egui::TouchPhase::End, ..
-                        } if *device_id == device && *touch_id == id);
-                        fixed.push(event);
-                        if is_end {
-                            fixed.push(egui::Event::PointerButton {
-                                pos: up, button: egui::PointerButton::Primary,
-                                pressed: false, modifiers,
-                            });
-                        }
-                    }
-                    raw.events = fixed;
-                    return;
-                }
-            }
-        }
-        raw.events = events;
+        raw.events = out;
     }
 }
 
