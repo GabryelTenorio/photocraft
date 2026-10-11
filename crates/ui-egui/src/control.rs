@@ -41,6 +41,19 @@ use crate::state::{DialogKind, Tool};
 
 pub type ControlResponse = Value;
 
+/// The control server's per-request reply deadline.
+pub const REPLY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The error both timeout sites return when a request's [`REPLY_DEADLINE`] passes: the
+/// transport thread waiting for a reply, and the UI thread rejecting a request it is only
+/// now draining. Built from the same constant, so the text cannot drift from the deadline.
+pub fn timeout_error() -> String {
+    format!(
+        "timeout: no reply in {}s — the command may still be running, or the app was not drawing frames (display asleep, window fully occluded, or a long operation blocked the frame loop)",
+        REPLY_DEADLINE.as_secs()
+    )
+}
+
 pub struct ControlRequest {
     pub method: String,
     pub params: Value,
@@ -488,6 +501,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     None => None,
                 };
 
+                let bridge_pro = matches!(theme.unwrap_or(app.ui.theme), crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium);
+                let legacy_update = crate::panel_docking::prepare_legacy_update(app, p, panels.as_ref(), dock_tabs.as_ref(), dock.as_ref(), bridge_pro)?;
+
                 // Apply (nothing below can fail).
                 if let Some(stroke) = shape_stroke {
                     if let Some(stroke) = stroke {
@@ -557,6 +573,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 // Dock group order, heights and collapsed groups (see `dock::DockLayout`).
                 if let Some(v) = dock {
                     app.ui.dock = v;
+                }
+                if let Some(update) = legacy_update {
+                    crate::panel_docking::commit_legacy_update(app, update, p);
                 }
                 if let Some(v) = color_panel {
                     app.ui.color_panel = v;
@@ -960,7 +979,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             }
             None => err("missing `path`"),
         },
-        "app.save" => wrap(app.save_automation(s("path").map(str::to_string)).map(|(p, w)| json!({"path": p, "warnings": w}))),
+        "app.save" => run_waiting(app, p.get("wait").and_then(Value::as_bool).unwrap_or(true), |app| app.save_automation(s("path").map(str::to_string))),
         "app.quit" => {
             app.allow_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1015,6 +1034,11 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
             })
         }),
         "panels": app.ui.panels,
+        "dockTabs": app.ui.dock_tabs,
+        "dock": app.ui.dock,
+        "docking": app.ui.docking,
+        "dockingHidden": app.ui.docking_hidden,
+        "dockingCollapsed": app.ui.docking_collapsed,
         "view": app.ui.view,
         "views": app.ui.views,
         "dialogs": dialogs,
@@ -1254,11 +1278,23 @@ mod tests {
         retry.deadline = Some(Instant::now() + Duration::from_secs(60));
         tx.send(retry).unwrap();
         app.drain_control(&egui::Context::default());
-        assert_eq!(expired_reply.try_recv().unwrap(), json!({"ok": false, "error": "timeout"}));
+        assert_eq!(expired_reply.try_recv().unwrap(), json!({"ok": false, "error": super::timeout_error()}));
         assert_eq!(retry_reply.try_recv().unwrap()["ok"], true);
         let after = app.session.active().unwrap();
         assert_eq!(after.doc.layers.len(), layers + 1, "only the live retry adds a layer");
         assert_eq!(after.history.past_len(), steps + 1, "the expired edit adds no undo step");
+    }
+
+    #[test]
+    fn timeout_errors_name_the_likely_causes() {
+        // #2489: the reply must tell "wait" from "check the machine", and its number
+        // must come from the deadline it reports.
+        let error = super::timeout_error();
+        assert!(error.starts_with("timeout"), "machines match on the prefix");
+        assert!(error.contains(&format!("{}s", super::REPLY_DEADLINE.as_secs())), "the text matches the deadline: {error}");
+        assert!(error.contains("may still be running"), "the wait-it-out cause");
+        assert!(error.contains("display asleep"), "the check-the-display cause");
+        assert!(error.contains("frame"), "the frame-loop cause");
     }
 
     #[test]
@@ -1816,6 +1852,130 @@ mod tests {
         } else {
             Ok(())
         }
+    }
+
+    #[test]
+    fn app_save_runs_as_a_background_job_and_the_final_reply_carries_the_path() {
+        use photocraft_engine::automate_cmds::ScriptBinding;
+        use serde_json::json;
+        let saved: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let record = saved.clone();
+        let services = crate::Services {
+            automation_save: Some(std::sync::Arc::new(move |_doc, path: &str, _settings, _ctl| {
+                record.lock().unwrap().push(path.to_string());
+                Ok(vec!["Layers were flattened".to_string()])
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        app.background_jobs = true;
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        // A "Save Document" binding that would leave a trace: automation saves never fire it.
+        app.session.edit_prefs(|prefs| {
+            prefs.script_events.enabled = true;
+            prefs.script_events.bindings = vec![ScriptBinding {
+                event: "saveDocument".into(),
+                script: None,
+                steps: Some(json!([["layer.new.layer", {"name": "From the binding"}]])),
+                name: "Binding".into(),
+            }];
+        });
+        let ctx = egui::Context::default();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let app = app.with_control(rx);
+        let mut app = app;
+
+        let (mut req, reply) = ControlRequest::new("app.save", json!({"path": "out.psd"}));
+        req.deadline = None;
+        tx.send(req).unwrap();
+        app.drain_control(&ctx);
+        // Started in the background: no reply yet, the job is on the document.
+        assert!(reply.try_recv().is_err(), "the reply waits for the save job");
+        assert!(app.saving(), "the save runs as a background job");
+        for _ in 0..100 {
+            crate::jobs_ui::tick(&mut app, &ctx);
+            if !app.saving() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!app.saving(), "the save finished");
+        assert_eq!(*saved.lock().unwrap(), vec!["out.psd".to_string()]);
+        assert_eq!(app.session.active().unwrap().path.as_deref(), Some("out.psd"), "the save was recorded");
+        assert_eq!(app.session.active().unwrap().doc.layer_count(), 1, "the saveDocument binding did not run for an automation save");
+        let r = reply.recv().unwrap();
+        assert_eq!(r["result"], json!({"path": "out.psd", "warnings": ["Layers were flattened"]}), "{r}");
+
+        // An interactive save (File › Save's worker) still fires the binding.
+        let save = std::sync::Arc::new(|_doc: &photocraft_doc::Document, path: &str, _settings: &crate::ExportSettings, _ctl: &crate::jobs_ui::SaveCtl| {
+            let _ = path;
+            Ok(Vec::new())
+        }) as crate::SaveFileFn;
+        crate::jobs_ui::start_save(&mut app, "user.psd".into(), crate::ExportSettings::default(), false, save, false).unwrap();
+        for _ in 0..100 {
+            crate::jobs_ui::tick(&mut app, &ctx);
+            if !app.saving() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!app.saving(), "the interactive save finished");
+        assert_eq!(app.session.active().unwrap().doc.layer_count(), 2, "the binding runs for an interactive save");
+    }
+
+    #[test]
+    fn ui_inspect_replies_while_a_save_job_encodes() {
+        // #2488: the control channel must keep answering while a large save runs.
+        use serde_json::json;
+        let gate = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let wait_for_gate = gate.clone();
+        let saved: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let record = saved.clone();
+        let services = crate::Services {
+            automation_save: Some(std::sync::Arc::new(move |_doc, path: &str, _settings, ctl| {
+                while !wait_for_gate.load(std::sync::atomic::Ordering::Acquire) {
+                    ctl.check()?;
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                record.lock().unwrap().push(path.to_string());
+                Ok(Vec::new())
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        app.background_jobs = true;
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let ctx = egui::Context::default();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let app = app.with_control(rx);
+        let mut app = app;
+
+        let (mut save_req, save_reply) = ControlRequest::new("app.save", json!({"path": "out.png", "wait": false}));
+        save_req.deadline = None;
+        tx.send(save_req).unwrap();
+        let (mut inspect_req, inspect_reply) = ControlRequest::new("ui.inspect", json!({}));
+        inspect_req.deadline = None;
+        tx.send(inspect_req).unwrap();
+        app.drain_control(&ctx);
+
+        let pending = save_reply.recv_timeout(std::time::Duration::from_secs(5)).expect("the unwaited save replies at once");
+        assert_eq!(pending["result"]["pending"], true, "{pending}");
+        assert_eq!(pending["result"]["path"], "out.png", "{pending}");
+        assert!(pending["result"]["job"].is_u64(), "the caller can poll or wait: {pending}");
+        // While the save is still encoding, the channel answers other requests.
+        assert!(saved.lock().unwrap().is_empty(), "the save is still encoding");
+        let inspected = inspect_reply.recv_timeout(std::time::Duration::from_secs(5)).expect("ui.inspect is not blocked by the save");
+        assert_eq!(inspected["ok"], true, "{inspected}");
+
+        gate.store(true, std::sync::atomic::Ordering::Release);
+        for _ in 0..500 {
+            crate::jobs_ui::tick(&mut app, &ctx);
+            if !app.saving() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(*saved.lock().unwrap(), vec!["out.png".to_string()], "the save completed after the gate opened");
     }
 
     fn deny_smart_object_paths(id: &str, params: &Value) -> photocraft_engine::Result<()> {

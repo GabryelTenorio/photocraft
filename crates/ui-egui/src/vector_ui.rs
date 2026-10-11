@@ -482,7 +482,7 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
     };
     // View › Show › Target Path (under Extras) hides the paths; the Pen's path in progress stays.
     // Free Transform Path draws the path through its box instead (transform_tool).
-    let paths = app.ui.view.shows(app.ui.view.show.target_path) && !app.ui.transform.as_ref().is_some_and(|t| t.path.is_some());
+    let paths = app.ui.view.shows(app.ui.view.show.target_path) && app.ui.transform.as_ref().is_none_or(|t| t.path.is_none());
     if crate::direct_select::shows(app, painter.ctx().input(|i| i.modifiers)) {
         // Direct Selection (or the Pen with ⌘/Ctrl held) draws the paths it edits (#790).
         crate::direct_select::draw_overlay(app, painter, &to_scr, accent, paths);
@@ -1168,7 +1168,7 @@ mod tests {
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
             let rect = Rect::from_min_size(Pos2::ZERO, vec2(400.0, 400.0));
             let painter = ui.ctx().layer_painter(egui::LayerId::background()).with_clip_rect(rect);
-            let xf = ViewXform { rect, zoom: 1.0, center: [100.0, 100.0], flip: false, rotation: 0.0 };
+            let xf = ViewXform { rect, zoom: 1.0, center: [100.0, 100.0], flip: false, rotation: 0.0, aspect: 1.0 };
             draw_overlay(app, &painter, &xf, &doc);
         });
         out.textures_delta.clear();

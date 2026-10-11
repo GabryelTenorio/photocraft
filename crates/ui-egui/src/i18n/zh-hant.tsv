@@ -47,6 +47,8 @@
 	Right	右
 	Open Recent	最近開啟的檔案
 	Clear Recent Files	清除最近檔案
+	Remove from Recent	從最近檔案中移除
+	Remove {name} from Recent	從最近檔案中移除 {name}
 	Close	關閉
 	Minimize	最小化
 	Maximize	最大化
@@ -271,6 +273,8 @@
 	Layer via Cut	剪下的圖層
 	Layer From Background…	從背景建立圖層…
 	Layer from Background…	從背景建立圖層…
+	Background from Layer	從圖層建立背景
+	Background From Layer	從圖層建立背景
 	New Shape Layer	新增形狀圖層
 	New Type Layer	新增文字圖層
 	New Fill Layer	新增填滿圖層
@@ -598,6 +602,10 @@
 	100%	100%
 	200%	200%
 	75%	75%
+	80%	80%
+	85%	85%
+	90%	90%
+	95%	95%
 	125%	125%
 	150%	150%
 	175%	175%
@@ -693,6 +701,10 @@
 	Classic Theme	經典主題
 	Solarized dark	Solarized 深色
 	Solarized Dark Theme	Solarized 深色主題
+	Breeze dark	Breeze 深色
+	Breeze Dark Theme	Breeze 深色主題
+	Breeze light	Breeze 淺色
+	Breeze Light Theme	Breeze 淺色主題
 	Next Theme	下一個主題
 	Actions	動作
 	Brush Settings	筆刷設定
@@ -1535,6 +1547,8 @@
 	Blur Tool	模糊工具
 	Bold	粗體
 	Brush	筆刷
+	Pencil	鉛筆
+	Block	區塊
 	Brush Pose	筆刷姿勢
 	Brush Tip Shape	筆尖形狀
 	Brush Tool	筆刷工具
@@ -1584,6 +1598,8 @@
 	Efficiency: 100%	效率：100%
 	Ellipse Tool	橢圓工具
 	Elliptical Marquee Tool	橢圓選取畫面工具
+	Single Row Marquee Tool	單列選取畫面工具
+	Single Column Marquee Tool	單欄選取畫面工具
 	Emboss	浮雕
 	Eraser	橡皮擦
 	Eraser Tool	橡皮擦工具
@@ -1750,6 +1766,7 @@
 	Invalid {mode} profile	無效的 {mode} 描述檔
 	Unnamed {mode} profile	未命名的 {mode} 描述檔
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	解析度：{dpi} 像素/英吋
 	Doc: {w} × {h} px	文件：{w} × {h} px
 	Frame {current} / {total}	影格 {current} / {total}
@@ -1786,6 +1803,7 @@
 	Cache tile size	快取拼貼大小
 	Camera Raw Defaults	Camera Raw 預設值
 	Canvas border	畫布邊框
+	Show canvas dots	顯示畫布圓點
 	Canvas color	畫布顏色
 	Canvas custom color	畫布自訂顏色
 	Color picker	檢色器
@@ -1900,6 +1918,7 @@
 	Show only crosshair while painting	繪圖時僅顯示十字線
 	Show slice numbers	顯示切片編號
 	Show tooltips	顯示工具提示
+	Show highlight on rollover	滑鼠懸停時顯示醒目提示
 	Show bounding box when dragging layer	拖曳圖層時顯示邊界框
 	System title bar	系統標題列
 	Show transformation values	顯示變形數值
@@ -2003,6 +2022,7 @@
 	Create Warped Text	建立彎曲文字
 	Rasterize Smart Object	點陣化智慧型物件
 	Rasterize Fill Content	點陣化填滿內容
+	Rasterize Layer Style	點陣化圖層樣式
 	Unlock: picking a preset replaces these settings	解除鎖定：選擇預設集會取代這些設定
 	Lock: keep these settings when picking another preset	鎖定：選擇其他預設集時保留這些設定
 	Diameter:	直徑：
@@ -2077,6 +2097,7 @@
 	Cancelled {label}	已取消 {label}
 	Esc to cancel	按 Esc 取消
 	Opening {name}	正在開啟 {name}
+	Saved {name}	已儲存 {name}
 	Saving {name}	正在儲存 {name}
 	A save to {name} is still running; try again when it finishes	仍在儲存到 {name}；請在完成後再試一次
 	{label} is writing the file and can no longer be cancelled	{label} 正在寫入檔案，已無法取消
@@ -2311,6 +2332,7 @@ fontWeight	Italic	斜體
 	Color to Alpha…	顏色轉為 Alpha…
 	Transparency Threshold	透明度臨界值
 	Opacity Threshold	不透明度臨界值
+	PhotoCraft — Screen Color Picker	PhotoCraft — 螢幕取色器
 
 	Rasterize svg groups deeper than	點陣化超過此深度的 SVG 群組
 	0 turns this threshold off; SVG groups nested deeper than 100 levels are always rasterized.	設為 0 可關閉此臨界值；巢狀超過 100 層的 SVG 群組一律會點陣化。
@@ -2393,9 +2415,37 @@ fontWeight	Italic	斜體
 	Quick Selection found nothing there	快速選取在該處找不到任何內容
 	Object Selection found nothing there — try a tighter rectangle	物件選取在該處找不到任何內容 — 請嘗試更緊密的矩形
 	No subject found — try a rectangle around the object	找不到主體 — 請嘗試在物件周圍繪製矩形
+	Appearance Settings…	外觀設定…
+	Add to favorites	加入最愛
+	Remove from favorites	從最愛移除
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+	Camera Data	相機資料
+cameraData	Make	製造商
+cameraData	Model	型號
+cameraData	Date Taken	拍攝日期
+cameraData	Exposure	曝光時間
+cameraData	F-Stop	光圈值
+cameraData	ISO Speed	ISO 感光度
+cameraData	Focal Length	焦距
+cameraData	Focal Length (35 mm)	焦距（35 公釐等效）
+cameraData	Lens	鏡頭
+# Shared panel docking
+	Activate Panel	啟用面板
+	Change Panel Group	變更面板群組
+	Change Panel Layout	變更面板配置
+	Close Panel	關閉面板
+	Dock Panel	停駐面板
+	Float Panel	浮動面板
+	Move Panel	移動面板
+	Group with	與此面板分組
+	Panel menu	面板選單
+	Resize panel window	調整面板視窗大小
+	Resize panels	調整面板大小
 	Use Classic Mode	使用傳統模式
 	Auto Center Preview	自動置中預視
 	Next Document	下一個文件
 	Previous Document	上一個文件
 	W x H x Resolution	寬 x 高 x 解析度
 	Front Image	前面的影像
+	Search settings…	搜尋設定…
+	No matching settings	沒有符合的設定

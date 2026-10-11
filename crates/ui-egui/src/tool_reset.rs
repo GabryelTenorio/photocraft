@@ -99,6 +99,8 @@ fn is_selection_tool(tool: Tool) -> bool {
         tool,
         Tool::RectMarquee
             | Tool::EllipseMarquee
+            | Tool::SingleRowMarquee
+            | Tool::SingleColumnMarquee
             | Tool::Lasso
             | Tool::PolygonLasso
             | Tool::MagneticLasso
@@ -117,6 +119,8 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
     match tool {
         Tool::Move => reset!(move_auto_select, move_target, move_show_transform),
         Tool::RectMarquee | Tool::EllipseMarquee => reset!(feather, anti_alias, marquee_style, marquee_width, marquee_height),
+        // The single-pixel marquees are never anti-aliased: Feather is their only option.
+        Tool::SingleRowMarquee | Tool::SingleColumnMarquee => reset!(feather),
         Tool::Lasso | Tool::PolygonLasso => reset!(feather, anti_alias),
         Tool::MagneticLasso => reset!(feather, anti_alias, magnetic_width, magnetic_contrast, magnetic_frequency, magnetic_pressure),
         Tool::MagicWand => reset!(tolerance, anti_alias, contiguous, sample_all_layers),
