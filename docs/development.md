@@ -44,6 +44,11 @@ cargo xtask stats                                          # tests and lines per
 cargo xtask parity                                         # Photoshop menu coverage -> docs/parity-checklist.md
 ```
 
+The desktop, CLI and web app crates enable static AVIF export by default through the pure-Rust
+`avif` feature. Distributors can omit it with `--no-default-features`; add `--features avif` to
+enable it again. The `photocraft-codecs`, `photocraft-io`, engine and UI libraries keep the feature
+opt-in. AVIF import is unsupported even in an export-enabled build.
+
 Image code is slow at `opt-level 0`, so the workspace profile builds dependencies at `opt-level 2`. Use `--release` for anything interactive.
 
 The dev profile builds with `debug = "line-tables-only"`: panic backtraces keep file and line, and test binaries link about twice as fast. To inspect local variables in a debugger, build with `CARGO_PROFILE_DEV_DEBUG=true`.
@@ -150,7 +155,8 @@ See `docs/control-protocol.md` for every method. Tips:
 `apps/photocraft-cli` builds the binary `photocraft-cli`:
 
 ```sh
-cargo run -p photocraft-cli -- convert in.psd out.pcraft               # any supported format -> any
+cargo run -p photocraft-cli -- convert in.psd out.pcraft               # supported input -> supported output
+cargo run --release -p photocraft-cli -- convert in.png out.avif --quality 85
 cargo run -p photocraft-cli -- info out.pcraft                          # JSON: size, mode, depth, layer tree
 cargo run -p photocraft-cli -- run in.png --cmd layer.new.layer --params '{"name":"Ink"}' \
                                           --cmd filter.blur.gaussianBlur --params '{"radius":3}' --out out.psd
@@ -160,6 +166,43 @@ cargo run -p photocraft-cli -- commands --filter blur                    # the c
 ```
 
 `actions.json` holds the steps of a recorded action: `[["<id>", {…}], …]`, `[{"command": "<id>", "params": {…}}, …]` or bare ids, as a list or wrapped in `{"actions": …}` or `{"steps": …}`; a droplet file works too. It can also be an Actions set (the Actions panel's `actions.json`, `{"actions": [{"name": …, "steps": […]}, …]}`): `--action <name>` picks the action to play (optional when the set holds one), and the whole set is loaded for each file, so a step that plays another action of the set works. `batch` refuses an `--out` folder that is the `--in` folder, since the results would replace the originals, unless `--in-place` is given. `run` prints one JSON line per command result.
+
+## AVIF export
+
+AVIF is available in Export As, Save As, and CLI `convert`, `run` and `batch` in builds with its
+encoder. Export As offers quality (1–100), transparency and scale; its metadata setting is None.
+The CLI uses `--quality` for AVIF as it does for JPEG and lossy WebP, and `--format avif` can
+override the output file's extension. The codec API shares AVIF quality with
+`EncodeOptions::jpeg_quality`.
+
+Output is a single 8-bit RGB/RGBA image with lossy colour and alpha compression. RGB/CMYK/gray document
+exports use the existing colour-managed sRGB conversion in `photocraft-io`; AVIF cannot embed
+the document's ICC profile, EXIF or XMP. Exports report depth reduction, HDR clipping and dropped
+metadata where applicable. Higher bit depths, animation and AVIF import are not implemented;
+quality 100 does not guarantee lossless output.
+
+The encoder allows at most 65535 pixels on each axis; this is a format/backend limit, not a
+promise that a canvas of that size fits in memory. Export As previews the colour-managed source
+without encoding an AVIF proxy. The final export still runs synchronously, so encoding a large
+image can block the desktop or browser UI until it finishes.
+
+Verify the feature and file routes with:
+
+```sh
+cargo test -p photocraft-codecs --features avif --test avif
+cargo test -p photocraft-io --features avif --test avif_export
+cargo test -p photocraft-cli --test avif_export
+cargo test -p photocraft-io --test avif_export
+cargo test -p photocraft-cli --no-default-features --test avif_export
+cargo run --release -p photocraft-codecs --features avif --example avif_fixtures -- log/avif-oracle
+```
+
+The fixture example writes synthetic AVIF images at several qualities and their 8-bit PNG
+references. Decode them with an independent AVIF implementation (for example libavif) and
+compare dimensions, alpha and visible colours or composites. Set `PHOTOCRAFT_AVIF_ORACLE_DIR`
+when running the IO tests to save additional RGB/alpha and colour-managed CMYK/DisplayP3/gray pairs.
+Do not compare hidden RGB under zero alpha as a fidelity guarantee. Generated artifacts belong
+in `log/` or another ignored directory, not in the committed corpus.
 
 ## Native format (.pcraft)
 
@@ -351,7 +394,7 @@ trunk build --release              # writes ../../dist/web (index.html, .js glue
 trunk serve --release              # dev server on http://127.0.0.1:8765
 ```
 
-Any static file server works for `dist/web`, for example `python3 -m http.server 8765` run inside that directory. Trunk downloads the matching `wasm-bindgen` and `wasm-opt` itself. `trunk build --release` uses the `wasm-release` Cargo profile (`data-cargo-profile` in `index.html`: fat LTO, opt-level "z" for `photocraft-ui-egui`, "s" for other crates except pixel processing, which keeps level 3). The UI override reduces browser code size while retaining the speed-oriented settings for filters and compositing. Serve the `.wasm` with compression; its raw size varies with the source and compiler. Keep it under 24 MiB (`packaging/web/package.sh` enforces this; Cloudflare's per-file cap is 25 MiB). Pull-request CI also builds the actual browser app with the same pinned Trunk version as the release job and runs `packaging/web/package.sh`, including the relative-URL and 24 MiB checks. The `web build and wasm size gate` check runs on main and on PRs that change something the web build compiles or packages (`apps/photocraft-web`, `packaging/web`, crate sources and manifests, `Cargo.toml`/`Cargo.lock`, the CI workflow), and reports the resulting wasm size in the Actions job summary. The web build never embeds craft-fonts (see Fonts above). To see where the bytes go, run `twiggy top -n 40` on `target/wasm32-unknown-unknown/wasm-release/photocraft-web.wasm` (before wasm-opt strips the names).
+Any static file server works for `dist/web`, for example `python3 -m http.server 8765` run inside that directory. Trunk downloads the matching `wasm-bindgen` and `wasm-opt` itself. `trunk build --release` uses the `wasm-release` Cargo profile (`data-cargo-profile` in `index.html`: fat LTO, opt-level "z" for `photocraft-ui-egui` and `photocraft-engine`, "s" for other crates except pixel processing, which keeps level 3). The UI and engine overrides reduce browser code size while retaining the speed-oriented settings for the pixel-core crates below. The engine override also covers image preparation implemented in the engine, so size may trade off against speed there; it applies only to this browser profile. Serve the `.wasm` with compression; its raw size varies with the source and compiler. Keep it under 24 MiB (`packaging/web/package.sh` enforces this; Cloudflare's per-file cap is 25 MiB). Pull-request CI also builds the actual browser app with the same pinned Trunk version as the release job and runs `packaging/web/package.sh`, including the relative-URL and 24 MiB checks. The `web build and wasm size gate` check runs on main and on PRs that change something the web build compiles or packages (`apps/photocraft-web`, `packaging/web`, crate sources and manifests, `Cargo.toml`/`Cargo.lock`, the CI workflow), and reports the resulting wasm size in the Actions job summary. The web build never embeds craft-fonts (see Fonts above). To see where the bytes go, run `twiggy top -n 40` on `target/wasm32-unknown-unknown/wasm-release/photocraft-web.wasm` (before wasm-opt strips the names).
 
 URL flags: `?webgl` forces the WebGL2 backend, and `?cpu` forces the CPU canvas path.
 
