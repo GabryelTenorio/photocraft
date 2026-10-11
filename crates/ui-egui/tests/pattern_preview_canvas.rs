@@ -53,7 +53,10 @@ fn near(a: [u8; 3], b: [u8; 3]) -> bool {
 #[test]
 fn pattern_preview_repeats_the_document_on_gpu_and_cpu_canvases() {
     let Some(mut h) = harness() else { return };
+    let ctx = h.ctx.clone();
     let app = h.state_mut();
+    // Exercise a theme with canvas shadows: their uniform must not displace pattern copies.
+    app.set_theme(&ctx, photocraft_ui_egui::theme::ThemeKind::Studio);
     app.run("file.new", json!({"width": 200, "height": 100, "mode": "rgb", "depth": 8})).expect("new");
     app.run("edit.fill", json!({"color": "#2050d0"})).expect("fill");
     // A red band along the left edge only, so the copy to the right shows it beside the right edge.

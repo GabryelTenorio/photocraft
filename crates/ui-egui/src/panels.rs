@@ -256,6 +256,7 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                                 });
                                             },
                                         );
+                                        crate::theme::upgrade_popup_shadow(ui.ctx(), area.response.layer_id, t.popup_shadow);
                                         let held_release = resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) == Some(key);
                                         let clicked_outside =
                                             ui.input(|i| i.pointer.any_click()) && !held_release && !area.response.hovered() && !resp.hovered();
@@ -299,7 +300,7 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         let _ = crate::menus::invoke(app, &ctx, "view.screenMode.cycle", json!({}));
                     }
                     // Right-click (or long-press) lists the modes, like Photoshop's flyout.
-                    egui::Popup::context_menu(&sm).show(|ui| {
+                    let popup = egui::Popup::context_menu(&sm).show(|ui| {
                         ui.set_min_width(220.0);
                         for (id, label) in [
                             ("view.screenMode.standard", tl!("Standard Screen Mode")),
@@ -313,6 +314,9 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             }
                         }
                     });
+                    if let Some(p) = &popup {
+                        crate::theme::upgrade_popup_shadow(&ctx, p.response.layer_id, t.popup_shadow);
+                    }
                 });
             }
         });
@@ -1295,7 +1299,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         }
                         ui.add_space(6.0);
                         let more = icons::button(ui, "ellipsis", 24.0, false, tl!("Align and distribute"));
-                        egui::Popup::menu(&more).show(|ui| {
+                        let popup = egui::Popup::menu(&more).show(|ui| {
                             ui.set_min_width(200.0);
                             let mut section = |ui: &mut egui::Ui, title: &str, prefix: &str| {
                                 ui.label(egui::RichText::new(tl!(&title)).small().color(t.text_dim));
@@ -1310,6 +1314,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             ui.separator();
                             section(ui, tl!("Distribute"), "layer.distribute.");
                         });
+                        if let Some(p) = &popup {
+                            crate::theme::upgrade_popup_shadow(ui.ctx(), p.response.layer_id, t.popup_shadow);
+                        }
                     }
                     Tool::RectMarquee | Tool::EllipseMarquee => hint(
                         ui,
@@ -2999,6 +3006,7 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
             });
         });
     });
+    crate::theme::upgrade_shadow(ctx, shown.response.layer_id, crate::theme::ShadowElevation::High, t.shadow);
     if drag != egui::Vec2::ZERO && canvas.is_positive() {
         // Keep the title bar inside the canvas.
         let r = shown.response.rect.translate(drag);
