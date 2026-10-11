@@ -54,6 +54,7 @@ fn type_layers_offer_free_transform_distort_and_perspective() {
         path_name: None,
         transform: false,
         pasteboard: false,
+        text: false,
     };
     assert!(crate::canvas_tool_menu::available(&app, &menu, "edit.freeTransform"));
     assert!(crate::canvas_tool_menu::available(&app, &menu, "edit.transform.distort"));
