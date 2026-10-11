@@ -7,10 +7,10 @@ use crate::props_layout::COL_GAP;
 use crate::theme::{self, Tokens};
 use crate::{PhotocraftApp, widgets};
 
-/// The Layers panel targets the active layer's pixel mask (not its vector mask).
 /// Image › Adjustments › Invert, which inverts a targeted layer mask in place (#780).
 const INVERT: &str = "image.adjustments.invert";
 
+/// The Layers panel targets the active layer's pixel mask (not its vector mask).
 pub fn targeted(app: &PhotocraftApp, layer: &Layer) -> bool {
     app.ui.mask_target && !app.ui.vector_mask_target && layer.mask.is_some()
 }
@@ -20,8 +20,8 @@ pub fn vector_targeted(app: &PhotocraftApp, layer: &Layer) -> bool {
     app.ui.vector_mask_target && layer.vector_mask.is_some()
 }
 
-/// The pixel-mask section: Density, Feather and the Select and Mask… button. Pixels stay
-/// intact; the two properties ride on the mask and are applied by the compositor.
+/// The pixel-mask section: Density, Feather and the Refine row. Pixels stay intact; the two
+/// properties ride on the mask and are applied by the compositor.
 pub fn properties(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
     let Some(mask) = &layer.mask else { return };
     let Some(document) = app.session.active().map(|s| s.doc.id.0) else { return };
@@ -31,11 +31,6 @@ pub fn properties(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
         }
         let (density, feather) = (mask.density, mask.feather);
         sliders(app, ui, layer.id.0, document, "layer.layerMask.edit", "pixel-mask", density, feather);
-        ui.add_space(6.0);
-        // Keep Select and Mask… one click away.
-        if widgets::secondary_button(ui, tl!("Select and Mask…"), ui.available_width()).clicked() {
-            let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
-        }
         refine_row(app, ui);
     });
 }
@@ -88,6 +83,9 @@ fn sliders(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: u64, document: u64
                 });
             }
         }
+    }
+}
+
 /// Photoshop's Refine row below Density and Feather: Select and Mask… and Color Range… open their
 /// dialogs (the mask is Select and Mask's input when nothing is selected), and Invert flips the
 /// mask. Invert names its target itself (`"target":"mask"`) rather than leaning on the shell's
