@@ -77,7 +77,7 @@ pub use crate::look::{CameraLook, LookRejected, PROXY_EDGE, Reference, ToneCurve
 pub use crate::opcodes::GainMap;
 pub use crate::preview::{Preview, embedded_preview, embedded_previews};
 pub use crate::sensor::{BlackLevels, Cfa, Rect, Sensor};
-pub use crate::tone::{Tone, retone};
+pub use crate::tone::{RetoneCache, Tone, retone, retone_with};
 
 use crate::tiff::{Tiff, tag};
 

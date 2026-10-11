@@ -16,7 +16,7 @@ use photocraft_cms::{Builtin, Intent, Profile, Transform};
 use photocraft_codecs::{self as codecs, ChannelLayout, Format, Image, SampleType};
 pub use photocraft_raw::Demosaic;
 use photocraft_raw::{CameraLook, DevelopOptions, Limits, RawError, Reference, Sensor, WhiteBalance};
-pub use photocraft_raw::{Tone, retone};
+pub use photocraft_raw::{RetoneCache, Tone, retone, retone_with};
 
 use crate::flat::image_to_document;
 use crate::{ImportResult, IoError};

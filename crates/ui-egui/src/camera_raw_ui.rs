@@ -119,6 +119,10 @@ pub struct CameraRawDialog {
     /// The open-time dialog's camera tone curve: Shadows / Highlights act on the raw data there,
     /// in linear light before this curve, and the preview undoes it to show the same.
     raw_curve: Option<Vec<[f32; 2]>>,
+    /// The proxy after the raw-stage sliders and [`photocraft_algo::camera_raw::develop_tonal`],
+    /// for the settings it was made with ([`photocraft_algo::camera_raw::tonal_part`]): a change
+    /// of colour, Detail or Effects settings starts from it.
+    tonal: super::camera_raw_detail_ui::TonalCache,
 }
 
 impl CameraRawDialog {
@@ -138,6 +142,7 @@ impl CameraRawDialog {
         result["sourceSize"] = json!([self.full_w, self.full_h]);
         result["previewApproximate"] = json!(!self.detail.ready && (self.pw != self.full_w || self.ph != self.full_h));
         result["detailPending"] = json!(self.detail.pending());
+        result["detailScreenSize"] = json!(self.detail.screen_size().map(|(w, h)| [w, h]));
         result["detailError"] = json!(self.detail.error);
         result["viewportRect"] = json!(self.viewport.map(|r| [r.left(), r.top(), r.right(), r.bottom()]));
         result["zoom"] = json!(self.viewport.map(|r| navigation.scale(r, vec2(self.full_w as f32, self.full_h as f32) / self.preview_ppp)));
@@ -185,15 +190,13 @@ impl CameraRawDialog {
 
     pub(crate) fn render(&mut self, ctx: &egui::Context) {
         let t0 = crate::gpu_canvas::now_ms();
-        let mut px = self.proxy.clone();
         let mut p = crate::camera_raw_panels::visible(&self.params, &self.hidden);
         p.pixel_scale = (self.pw as f32 / self.full_w.max(1) as f32).min(1.0);
-        if let Some(curve) = &self.raw_curve {
-            let tone = raw_stage(&p);
-            photocraft_io::raw::retone(&mut px, self.pw, self.ph, curve, tone);
-            (p.shadows, p.highlights, p.clarity, p.texture, p.dehaze) = (0.0, 0.0, 0.0, 0.0, 0.0);
-        }
-        photocraft_algo::camera_raw::develop(&mut px, self.pw, self.ph, &p, self.float);
+        // The raw stage and the tonal stages are the slow ones: kept while only colour, Detail or
+        // Effects settings change.
+        let (p, tonal) = super::camera_raw_detail_ui::tonal_stage(&self.proxy, self.pw, self.ph, &p, self.raw_curve.as_deref(), &mut self.tonal);
+        let mut px = tonal.to_vec();
+        photocraft_algo::camera_raw::develop_colour(&mut px, self.pw, self.ph, &p, self.float);
         if let Some(mask) = &self.selection {
             for ((out, original), coverage) in px.iter_mut().zip(&self.proxy).zip(mask) {
                 for (out, original) in out.iter_mut().zip(original) {
@@ -240,6 +243,12 @@ impl CameraRawDialog {
         self.preview_revision = self.preview_revision.saturating_add(1);
         self.dirty = false;
     }
+}
+
+/// Pixel values of the document → what the screen shows, as [`CameraRawDialog::image`] makes
+/// them, without copying the pixels into a buffer first (the screen-size preview's frames).
+pub(crate) fn screen_image(display: &photocraft_engine::display_color::CanvasDisplay, px: &[[f32; 4]], w: usize, h: usize) -> egui::ColorImage {
+    egui::ColorImage::from_rgba_unmultiplied([w, h], &display.rgba8_of(px))
 }
 
 /// Opens the dialog on the active layer.
@@ -316,6 +325,7 @@ fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Resul
         d.layer_name = raw.name.clone();
         d.detail.raw_curve = curve.clone().map(std::sync::Arc::new);
         d.raw_curve = curve;
+        d.tonal = Default::default();
         d.raw_open = Some(raw);
     }
     Ok(())
@@ -352,11 +362,6 @@ pub struct Redevelop {
     /// The job is the final Camera Raw step (`filter.cameraRaw`), not the re-develop: when it
     /// lands the document is marked unmodified.
     filter_step: bool,
-}
-
-/// The sliders a raw open applies while developing, before the tone curve (as Camera Raw does).
-fn raw_stage(p: &CameraRaw) -> photocraft_io::raw::Tone {
-    photocraft_io::raw::Tone { shadows: p.shadows, highlights: p.highlights, clarity: p.clarity, texture: p.texture, dehaze: p.dehaze }
 }
 
 /// Open: re-develop for raw-stage settings, apply the rest, keep the document unmodified.
@@ -731,6 +736,7 @@ fn open_pixels(
         render_ms: 0.0,
         raw_open: None,
         raw_curve: None,
+        tonal: Default::default(),
     };
     d.render(ctx);
     app.camera_raw = Some(d);
@@ -1770,6 +1776,67 @@ mod tests {
     }
 
     #[test]
+    fn colour_changes_reuse_the_tonal_stages_with_the_same_preview() {
+        let tonal = json!({"exposure": 0.4, "shadows": 40, "clarity": 25, "dehaze": 10, "whites": 10});
+        // A plain layer, and a raw being opened (whose raw-stage sliders act on the raw data).
+        for raw in [false, true] {
+            let ctx = egui::Context::default();
+            let open = |app: &mut PhotocraftApp| {
+                if raw {
+                    let raw = app.pending_raw_open.take().unwrap();
+                    open_raw(app, &ctx, raw).unwrap();
+                } else {
+                    menu(app, &ctx, "filter.cameraRaw", &json!({})).unwrap().unwrap();
+                }
+            };
+            let fresh = || {
+                let (mut app, dng) = raw_app();
+                if raw {
+                    app.open_bytes("IMG_0003.dng", &dng).unwrap();
+                } else {
+                    app.run("file.new", json!({"width": 48, "height": 32})).unwrap();
+                    app.run("layer.new.layer", json!({})).unwrap();
+                    app.run("filter.render.clouds", json!({})).unwrap();
+                }
+                app
+            };
+            // Tonal settings, then colours changed twice: the second change starts from the kept
+            // tonal result.
+            let mut app = fresh();
+            open(&mut app);
+            menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": tonal}})).unwrap().unwrap();
+            menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": {"saturation": 20, "sharpenAmount": 40}}})).unwrap().unwrap();
+            menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": {"saturation": -30, "vibrance": 15}}})).unwrap().unwrap();
+            let kept = app.camera_raw.as_ref().unwrap().processed.clone();
+            // The same settings at once, in a new dialog.
+            let mut app = fresh();
+            open(&mut app);
+            let mut all = tonal.clone();
+            all.as_object_mut().unwrap().extend([("saturation".into(), json!(-30)), ("vibrance".into(), json!(15)), ("sharpenAmount".into(), json!(40))]);
+            menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": all}})).unwrap().unwrap();
+            assert_eq!(kept, app.camera_raw.as_ref().unwrap().processed, "raw: {raw}");
+        }
+    }
+
+    /// The preview shows the pixels through the canvas's document → monitor conversion: a raw opens
+    /// in ProPhoto RGB, whose numbers on an sRGB screen look washed out.
+    #[test]
+    fn the_preview_shows_a_prophoto_raw_as_the_canvas_does() {
+        let (mut app, dng) = raw_app();
+        let ctx = egui::Context::default();
+        app.open_bytes("IMG_0004.dng", &dng).unwrap();
+        let raw = app.pending_raw_open.take().unwrap();
+        open_raw(&mut app, &ctx, raw).unwrap();
+        let canvas = app.session.color.canvas_display(&app.session.active().unwrap().doc).unwrap();
+        let d = app.camera_raw.as_ref().unwrap();
+        let shown = &d.display;
+        assert_eq!(shown.key, canvas.key);
+        assert!(!shown.is_identity(), "ProPhoto on an sRGB monitor is converted");
+        let px = [[0.6f32, 0.3, 0.2, 1.0]];
+        assert_eq!(screen_image(shown, &px, 1, 1).pixels[0], CameraRawDialog::image(&px, 1, 1, shown).pixels[0]);
+    }
+
+    #[test]
     fn dialog_drives_the_engine() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
         let ctx = egui::Context::default();
@@ -1836,6 +1903,116 @@ mod tests {
         assert_eq!(st.saved_revision, st.revision, "Open leaves the document unmodified");
         assert_eq!(st.doc.depth, photocraft_color::SampleType::U16);
         assert!(mean_red(&app) > before + 0.05, "{before} → {}", mean_red(&app));
+    }
+
+    /// Timing harness, not a test: `PHOTOCRAFT_BENCH_RAW=x.NEF cargo test -p photocraft-ui-egui --lib
+    /// bench_open_raw -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn bench_open_raw() {
+        use std::time::Instant;
+        let Ok(path) = std::env::var("PHOTOCRAFT_BENCH_RAW") else { return };
+        let bytes = std::fs::read(&path).unwrap();
+        let (mut app, _) = raw_app();
+        let ctx = egui::Context::default();
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1e3;
+        let t = Instant::now();
+        app.open_bytes("bench.NEF", &bytes).unwrap();
+        eprintln!("import {:.0} ms", ms(t));
+        let raw = app.pending_raw_open.take().unwrap();
+        let t = Instant::now();
+        open_raw(&mut app, &ctx, raw).unwrap();
+        let d = app.camera_raw.as_ref().unwrap();
+        eprintln!("dialog open {:.0} ms, proxy {}x{}, full {}x{}", ms(t), d.pw, d.ph, d.full_w, d.full_h);
+        let steps = [
+            ("wb+exposure", json!({"temperature": 15, "tint": 5, "exposure": 0.3})),
+            ("+shadows/highlights", json!({"shadows": 40, "highlights": -40})),
+            ("+clarity/texture/dehaze", json!({"clarity": 20, "texture": 15, "dehaze": 10})),
+            ("+whites/blacks/contrast", json!({"whites": 10, "blacks": -10, "contrast": 15})),
+            ("+vibrance/saturation", json!({"vibrance": 25, "saturation": 10})),
+            ("+hsl", json!({"hslSat": [0, 20, 0, 0, 0, -15, 0, 0], "hslHue": [0, 5, 0, 0, 0, 0, 0, 0]})),
+            ("+grading", json!({"gradeShadows": {"hue": 220, "sat": 20, "lum": 0}, "gradeHighlights": {"hue": 40, "sat": 15, "lum": 0}})),
+            ("+curve", json!({"pointCurve": [[0, 0], [64, 50], [192, 205], [255, 255]]})),
+            ("+sharpen/nr", json!({"sharpenAmount": 40, "noiseLuminance": 20})),
+            ("saturation tweak", json!({"saturation": 12})),
+            ("drag shadows", json!({"shadows": 45})),
+            ("drag shadows again", json!({"shadows": 50})),
+            ("drag highlights", json!({"highlights": -35})),
+            ("drag clarity", json!({"clarity": 25})),
+            ("drag texture", json!({"texture": 20})),
+            ("drag dehaze", json!({"dehaze": 12})),
+            ("drag whites", json!({"whites": 12})),
+        ];
+        for (name, set) in steps {
+            // `set` renders the proxy (as a frame does after a change).
+            let t = Instant::now();
+            let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": set}})).unwrap();
+            let proxy = ms(t);
+            if let Err(e) = r {
+                eprintln!("{name}: {e}");
+                continue;
+            }
+            let d = app.camera_raw.as_mut().unwrap();
+            // The frame at its size on a 1080p screen (Fit), as the screen-size worker develops it.
+            let size = (580, 870);
+            let t = Instant::now();
+            let _ = d.detail.develop_screen_now(&d.params, size, d.preview_revision);
+            let screen = ms(t);
+            let t = Instant::now();
+            let _ = d.detail.develop_now(&d.params);
+            eprintln!("{name:26} proxy {proxy:7.1} ms   screen {screen:7.1} ms   full-res {:7.0} ms", ms(t));
+        }
+        // Stage by stage, on the proxy and on the full frame.
+        let d = app.camera_raw.as_ref().unwrap();
+        let curve: Vec<[f32; 2]> = d.raw_curve.clone().unwrap_or_default();
+        let full: Vec<[f32; 4]> = {
+            let st = app.session.active().unwrap();
+            let s = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
+            let mut v = vec![[0.0f32; 4]; d.full_w * d.full_h];
+            s.read_rgba_into(photocraft_geom::Rect::new(0, 0, d.full_w as i32, d.full_h as i32), &mut v);
+            v
+        };
+        let sizes = [("proxy", d.proxy.clone(), d.pw, d.ph), ("full", full, d.full_w, d.full_h)];
+        let gamma = d.params.encoding_gamma;
+        let tones = [
+            ("retone shadows+highlights", photocraft_io::raw::Tone { shadows: 40.0, highlights: -40.0, ..Default::default() }),
+            ("retone clarity", photocraft_io::raw::Tone { clarity: 20.0, ..Default::default() }),
+            ("retone texture", photocraft_io::raw::Tone { texture: 15.0, ..Default::default() }),
+            ("retone dehaze", photocraft_io::raw::Tone { dehaze: 10.0, ..Default::default() }),
+        ];
+        let stages = [
+            ("wb+exposure", json!({"temperature": 15, "exposure": 0.3})),
+            ("whites/blacks", json!({"whites": 10, "blacks": -10})),
+            ("contrast", json!({"contrast": 15})),
+            ("vibrance/saturation", json!({"vibrance": 25, "saturation": 10})),
+            ("hsl", json!({"hslSat": [0, 20, 0, 0, 0, -15, 0, 0]})),
+            ("grading", json!({"gradeShadows": {"hue": 220, "sat": 20, "lum": 0}})),
+            ("sharpen", json!({"sharpenAmount": 40})),
+            ("noise reduction", json!({"noiseLuminance": 20})),
+            ("shadows (rgb)", json!({"shadows": 40})),
+            ("clarity (rgb)", json!({"clarity": 20})),
+            ("dehaze (rgb)", json!({"dehaze": 10})),
+        ];
+        for (label, px, w, h) in &sizes {
+            for (name, tone) in &tones {
+                let mut v = px.clone();
+                let t = Instant::now();
+                photocraft_io::raw::retone(&mut v, *w, *h, &curve, *tone);
+                eprintln!("{label:5} {name:28} {:8.1} ms", ms(t));
+            }
+            for (name, set) in &stages {
+                let mut p: CameraRaw = serde_json::from_value(set.clone()).unwrap();
+                p.encoding_gamma = gamma;
+                p.pixel_scale = *w as f32 / d.full_w as f32;
+                let mut v = px.clone();
+                let t = Instant::now();
+                photocraft_algo::camera_raw::develop(&mut v, *w, *h, &p, false);
+                eprintln!("{label:5} {name:28} {:8.1} ms", ms(t));
+            }
+        }
+        let t = Instant::now();
+        let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
+        eprintln!("commit {:.0} ms {r}", ms(t));
     }
 
     fn pixels(app: &PhotocraftApp) -> Vec<f32> {
