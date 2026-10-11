@@ -3439,3 +3439,50 @@ layerLabel	No Color	Žádná barva
 	{n} of {max} sample points	{n} z {max} bodů měření
 	Drag (lasso) or click points (polygonal) · {add} add · {sub} subtract	Táhněte (laso) nebo klikejte na body (mnohoúhelník) · {add} přidat · {sub} odečíst
 	The current gradient (pick one in Window › Gradients)	Aktuální přechod (vyberte v Okno › Přechody)
+# Canvas context menus, Channels panel menu, Layer Style blending page (labels rendered through a variable).
+	Make Work Path…	Vytvořit pracovní cestu…
+	Create Vector Mask	Vytvořit vektorovou masku
+	Make Selection…	Vytvořit výběr…
+	Fill Path…	Vyplnit cestu…
+	Stroke Path…	Obtáhnout cestu…
+	Clipping Path…	Ořezová cesta…
+	Free Transform Path	Volná transformace cesty
+	Unite Shapes at Overlap	Sjednotit tvary v překryvu
+	Subtract Shapes at Overlap	Odečíst tvary v překryvu
+	Copy Fill	Kopírovat výplň
+	Copy Complete Stroke	Kopírovat úplný tah
+	Paste Fill	Vložit výplň
+	Paste Complete Stroke	Vložit úplný tah
+	Make Symmetry Path	Vytvořit cestu symetrie
+	Disable Symmetry Path	Vypnout cestu symetrie
+	Dark Gray	Tmavě šedá
+	Medium Gray	Středně šedá
+	Light Gray	Světle šedá
+	Select Custom Color…	Vybrat vlastní barvu…
+	Color Picker (Custom Canvas Color)	Výběr barvy (vlastní barva plátna)
+	Duplicate Channel	Duplikovat kanál
+	Delete Channel	Odstranit kanál
+	Rename Channel…	Přejmenovat kanál…
+	Merge Spot Channel	Sloučit kanál přímé barvy
+	Convert to Alpha Channel	Převést na alfa kanál
+	Exit Quick Mask	Opustit rychlou masku
+	New Channel…	Nový kanál…
+	New Spot Channel…	Nový kanál přímé barvy…
+	Split Channels	Rozdělit kanály
+	Merge Channels…	Sloučit kanály…
+	Color Indicates Masked Areas	Barva označuje maskované oblasti
+	Color Indicates Selected Areas	Barva označuje vybrané oblasti
+	✓ Color Indicates Masked Areas	✓ Barva označuje maskované oblasti
+	✓ Color Indicates Selected Areas	✓ Barva označuje vybrané oblasti
+	Up	Nahoru
+	To	Do
+	Shallow	Mělké
+	Deep	Hluboké
+	Blend Interior Effects as Group	Prolnout vnitřní efekty jako skupinu
+	Blend Clipped Layers as Group	Prolnout oříznuté vrstvy jako skupinu
+	Transparency Shapes Layer	Průhlednost tvaruje vrstvu
+	Layer Mask Hides Effects	Maska vrstvy skrývá efekty
+	Vector Mask Hides Effects	Vektorová maska skrývá efekty
+	General Blending	Obecné prolnutí
+	This Layer:	Tato vrstva:
+	Underlying Layer:	Podkladová vrstva:
