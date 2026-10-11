@@ -187,7 +187,9 @@ fn is_pixel_param_of(command: &str, key: &str) -> bool {
 }
 
 /// Filters whose features have a fixed size in document pixels that no dialog parameter scales:
-/// per-pixel noise and dots (Add Noise, Diffuse, Mezzotint, Fibers), pixel kernels and scan lines
+/// per-pixel noise and dots (Add Noise, Diffuse, Mezzotint, Fibers, and Dust & Scratches, whose
+/// specks a proxy averages away — so the preview would show nothing removed at all, #3265 — while
+/// its radius stays in document pixels), pixel kernels and scan lines
 /// (Custom, Reduce Noise, De-Interlace, Trace Contour's one-pixel lines), fixed lengths and
 /// widths (Ripple, Oil Paint, Wind's streaks, Extrude's depth, Flame's length, width and
 /// interval) and Tree, whose branches are built from 6 px segments. On a reduced proxy those
@@ -201,6 +203,7 @@ const FULL_RESOLUTION_PREVIEW: &[&str] = &[
     "filter.render.fibers",
     "filter.pixelate.mezzotint",
     "filter.noise.addNoise",
+    "filter.noise.dustAndScratches",
     "filter.noise.reduceNoise",
     "filter.other.custom",
     "filter.video.deInterlace",
@@ -368,6 +371,9 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
     if command == "edit.definePattern" {
         fields.insert("name".into(), json!(photocraft_engine::pattern_cmds::default_name(&app.session)));
     }
+    if command == "layer.layerStyle.globalLight" {
+        global_light_defaults(app, &mut fields);
+    }
     if command == "view.proofSetup" {
         proof_setup_defaults(app, &mut fields);
     }
@@ -412,6 +418,13 @@ fn warp_defaults(app: &PhotocraftApp, fields: &mut Map<String, Value>) {
     fields.insert("horizontalDistortion".into(), json!(w.horizontal_distortion));
     fields.insert("verticalDistortion".into(), json!(w.vertical_distortion));
     fields.insert("orientation".into(), json!(if w.horizontal { "horizontal" } else { "vertical" }));
+}
+
+/// Global Light reflects the active document's current shared lighting, never remembered values.
+fn global_light_defaults(app: &PhotocraftApp, fields: &mut Map<String, Value>) {
+    let Some(st) = app.session.active() else { return };
+    fields.insert("angle".into(), json!(st.doc.global_light.angle));
+    fields.insert("altitude".into(), json!(st.doc.global_light.altitude));
 }
 
 /// Proof Setup reflects the active document's current proofing condition, never remembered values.
@@ -478,6 +491,26 @@ fn uses_logarithmic_slider(min: f32, max: f32) -> bool {
     min > 0.0 && max / min > 500.0
 }
 
+/// Schema dialogs whose `profile` menu lists the installed profiles after the built-ins.
+const PROFILE_DIALOGS: &[&str] = &["edit.assignProfile", "edit.convertToProfile", "view.proofSetup"];
+
+/// Commands whose `angle` is a direction in document angles (counter-clockwise from three
+/// o'clock): a light or a blur direction, edited on a dial as in Photoshop's Motion Blur, Emboss
+/// and Global Light (#3152). Rotation amounts (Twirl, Rotate Arbitrary, Crop, Lens Correction,
+/// the Blur Gallery shapes) and angles with another zero (Flame's points up) keep the slider.
+const ANGLE_DIAL: &[&str] = &[
+    "filter.blur.motionBlur",
+    "filter.stylize.emboss",
+    "filter.stylize.oilPaint",
+    "filter.render.lightingEffects",
+    "filter.render.relight",
+    "layer.layerStyle.globalLight",
+];
+
+fn uses_angle_dial(command: &str, key: &str) -> bool {
+    key == "angle" && ANGLE_DIAL.contains(&command)
+}
+
 /// Dialog body for filter commands.
 pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let t = Tokens::get(ui.ctx());
@@ -512,7 +545,10 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 } else {
                     ""
                 };
-                if uses_logarithmic_slider(min, max) {
+                if uses_angle_dial(&cmd, &p.key) {
+                    crate::widgets::angle_dial_row(ui, &label(&p.key), &mut v, min..=max);
+                    ui.add_space(4.0);
+                } else if uses_logarithmic_slider(min, max) {
                     // Keep one numeric field for direct entry and one log-scaled slider for
                     // wide ranges. slider_row would add a second, linear slider (#146).
                     ui.horizontal(|ui| {
@@ -539,7 +575,21 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                     let initial = default.as_deref().or_else(|| options.first().map(String::as_str)).unwrap_or("");
                     let mut cur = f.get(&p.key).and_then(Value::as_str).unwrap_or(initial).to_string();
                     let labels: Vec<String> = options.iter().map(|o| choice_label(o)).collect();
-                    let opts: Vec<(String, &str)> = options.iter().cloned().zip(labels.iter().map(String::as_str)).collect();
+                    let mut opts: Vec<(String, &str)> = options.iter().cloned().zip(labels.iter().map(String::as_str)).collect();
+                    // Like Photoshop, the profile menus also list every profile installed in
+                    // the system (printer and paper profiles), by description.
+                    let installed = if p.key == "profile" && PROFILE_DIALOGS.contains(&cmd.as_str()) {
+                        photocraft_engine::installed_profiles::installed().into_iter().filter(|i| i.is_destination()).collect()
+                    } else {
+                        Vec::new()
+                    };
+                    opts.extend(installed.iter().map(|i| (i.path.clone(), i.description.as_str())));
+                    // A profile given by path that isn't listed (typed by an agent, or spelled with
+                    // different case) still shows, by its file name, instead of a blank menu.
+                    let stem = std::path::Path::new(&cur).file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    if p.key == "profile" && PROFILE_DIALOGS.contains(&cmd.as_str()) && !opts.iter().any(|(v, _)| *v == cur) {
+                        opts.push((cur.clone(), stem.as_str()));
+                    }
                     crate::widgets::dropdown(ui, &format!("flt-{cmd}-{}", p.key), &mut cur, &opts, 170.0);
                     f.insert(p.key.clone(), json!(cur));
                 });
@@ -729,6 +779,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_direction_angles_get_the_dial() {
+        // Every listed command still has a degree `angle` range, so the list cannot go stale.
+        for cmd in ANGLE_DIAL {
+            let spec = photocraft_engine::commands::find(cmd).unwrap_or_else(|| panic!("{cmd} is not a command")).params;
+            assert!(
+                parse_spec(spec).iter().any(|p| p.key == "angle" && matches!(p.kind, Kind::Range { min, max, .. } if min >= -360.0 && max <= 360.0)),
+                "{cmd} has no angle range"
+            );
+            assert!(uses_angle_dial(cmd, "angle"));
+            assert!(!uses_angle_dial(cmd, "distance"));
+        }
+        // Rotation amounts and angles with another zero keep their slider.
+        for cmd in
+            ["filter.distort.twirl", "image.rotation.arbitrary", "image.crop", "filter.blurGallery.tiltShift", "filter.lensCorrection", "filter.render.flame"]
+        {
+            assert!(!uses_angle_dial(cmd, "angle"), "{cmd}");
+        }
+    }
+
+    #[test]
     fn restores_only_valid_previous_filter_choices() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
         app.session.prefs.edit(|prefs| {
@@ -788,6 +858,96 @@ mod tests {
         f.insert("__command".into(), json!("edit.autoAlignLayers"));
         egui::Context::default().run_ui(Default::default(), |ui| body(ui, &mut f)).textures_delta.clear();
         assert!(!params_of(&f).as_object().unwrap().contains_key("reference"), "{f:?}");
+    }
+
+    /// Layer › Layer Style › Global Light (#3054): Global Light dialog opens with the active
+    /// document's current shared lighting, preserving it on unchanged OK, ignoring stale
+    /// remembered dialog values, tracking document switching, applying edits, and leaving the
+    /// document unchanged on Cancel.
+    #[test]
+    fn global_light_dialog_reflects_active_document_light() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let doc1_id = app.session.active().unwrap().doc.id;
+
+        // 0. Default-document control: fresh document starts at angle 120 and altitude 30.
+        let d_default = crate::menus::invoke(&mut app, &ctx, "layer.layerStyle.globalLight", Value::Null).unwrap()["dialog"].as_u64().unwrap();
+        assert_eq!(app.ui.dialog_mut(d_default).unwrap().fields["angle"], json!(120.0));
+        assert_eq!(app.ui.dialog_mut(d_default).unwrap().fields["altitude"], json!(30.0));
+        crate::dialogs::confirm(&mut app, d_default).unwrap();
+        assert_eq!(app.session.active().unwrap().doc.global_light.angle, 120.0);
+        assert_eq!(app.session.active().unwrap().doc.global_light.altitude, 30.0);
+
+        // 1. Change document's global light to 30 degrees angle and 45 degrees altitude.
+        app.run("layer.layerStyle.globalLight", json!({"angle": 30.0, "altitude": 45.0})).unwrap();
+        assert_eq!(app.session.active().unwrap().doc.global_light.angle, 30.0);
+        assert_eq!(app.session.active().unwrap().doc.global_light.altitude, 45.0);
+
+        // 2. Open Global Light dialog: opens with the active document's light (30 / 45).
+        let d_id = crate::menus::invoke(&mut app, &ctx, "layer.layerStyle.globalLight", Value::Null).unwrap()["dialog"].as_u64().unwrap();
+        let fields = &app.ui.dialog_mut(d_id).unwrap().fields;
+        assert_eq!(fields["angle"], json!(30.0));
+        assert_eq!(fields["altitude"], json!(45.0));
+
+        // 3. Unchanged OK preserves the document's light.
+        crate::dialogs::confirm(&mut app, d_id).unwrap();
+        let gl = app.session.active().unwrap().doc.global_light;
+        assert_eq!(gl.angle, 30.0);
+        assert_eq!(gl.altitude, 45.0);
+
+        // 4. Stale remembered values do not override the active document.
+        app.session.prefs.edit(|prefs| {
+            prefs.dialogs.insert(
+                "layer.layerStyle.globalLight".into(),
+                json!({
+                    "angle": 75.0,
+                    "altitude": 60.0,
+                }),
+            );
+        });
+        let d_id = open(&mut app, "layer.layerStyle.globalLight").unwrap();
+        let fields = &app.ui.dialog_mut(d_id).unwrap().fields;
+        assert_eq!(fields["angle"], json!(30.0), "reads active document, not remembered");
+        assert_eq!(fields["altitude"], json!(45.0));
+
+        // 5. Cancel preserves the document's light.
+        app.ui.close_dialog(d_id);
+        let gl = app.session.active().unwrap().doc.global_light;
+        assert_eq!(gl.angle, 30.0);
+        assert_eq!(gl.altitude, 45.0);
+
+        // 6. Multiple documents: each document initializes the dialog to its own light.
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let doc2_id = app.session.active().unwrap().doc.id;
+        assert_ne!(doc1_id, doc2_id);
+        app.run("layer.layerStyle.globalLight", json!({"angle": -45.0, "altitude": 15.0})).unwrap();
+        assert_eq!(app.session.active().unwrap().doc.global_light.angle, -45.0);
+        assert_eq!(app.session.active().unwrap().doc.global_light.altitude, 15.0);
+
+        let d_id2 = open(&mut app, "layer.layerStyle.globalLight").unwrap();
+        let fields2 = &app.ui.dialog_mut(d_id2).unwrap().fields;
+        assert_eq!(fields2["angle"], json!(-45.0));
+        assert_eq!(fields2["altitude"], json!(15.0));
+        app.ui.close_dialog(d_id2);
+
+        // Switch back to doc1: dialog still reflects doc1's light (30 / 45).
+        assert!(app.session.set_active(0));
+        let d_id1 = open(&mut app, "layer.layerStyle.globalLight").unwrap();
+        assert_eq!(app.ui.dialog_mut(d_id1).unwrap().fields["angle"], json!(30.0));
+        assert_eq!(app.ui.dialog_mut(d_id1).unwrap().fields["altitude"], json!(45.0));
+
+        // 7. Modifying the dialog updates the active document.
+        app.ui.dialog_mut(d_id1).unwrap().fields.insert("angle".into(), json!(-60.0));
+        app.ui.dialog_mut(d_id1).unwrap().fields.insert("altitude".into(), json!(20.0));
+        crate::dialogs::confirm(&mut app, d_id1).unwrap();
+        assert_eq!(app.session.active().unwrap().doc.global_light.angle, -60.0);
+        assert_eq!(app.session.active().unwrap().doc.global_light.altitude, 20.0);
+
+        // Switch to doc2: doc2 is untouched (-45 / 15).
+        assert!(app.session.set_active(1));
+        assert_eq!(app.session.active().unwrap().doc.global_light.angle, -45.0);
+        assert_eq!(app.session.active().unwrap().doc.global_light.altitude, 15.0);
     }
 
     /// View › Proof Setup (#3055): Custom Proof Setup opens with the active document's current
@@ -965,6 +1125,48 @@ mod tests {
             check(cat.to_string());
         }
         assert!(missing.is_empty(), "missing Korean dynamic labels: {missing:#?}");
+    }
+
+    /// The Select menu's generated dialogs (Select and Mask, Modify ▸ …) show their
+    /// params, choices and title in every UI language, not just Korean.
+    #[test]
+    fn select_dialogs_are_translated_in_every_language() {
+        let mut missing = std::collections::BTreeMap::<&str, std::collections::BTreeSet<String>>::new();
+        for lang in crate::i18n::Lang::all().filter(|l| l.code() != "en") {
+            let mut check = |s: String| {
+                if !crate::i18n::has(lang, &s) {
+                    missing.entry(lang.code()).or_default().insert(s);
+                }
+            };
+            for c in photocraft_engine::command_specs().iter().filter(|c| c.id.starts_with("select.") && has_dialog(c.id)) {
+                let title = c.label.trim_end_matches('…');
+                if !crate::i18n::has(lang, title) {
+                    check(format!("{title}…"));
+                }
+                for p in parse_spec(c.params) {
+                    check(source_label(&p.key));
+                    if let Kind::Choice { options: choices, .. } = p.kind {
+                        choices.iter().for_each(|choice| check(source_label(choice)));
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "untranslated Select dialog labels: {missing:#?}");
+    }
+
+    /// Select and Mask's Output To lists all six of Photoshop's targets, each translated.
+    #[test]
+    fn select_and_mask_output_choices_are_translated() {
+        let spec = photocraft_engine::commands::find("select.refineEdge").unwrap().params;
+        let p = parse_spec(spec).into_iter().find(|p| p.key == "output").unwrap();
+        let Kind::Choice { options: choices, .. } = p.kind else { panic!("output is not a choice") };
+        let labels: Vec<String> = choices.iter().map(|c| source_label(c)).collect();
+        assert_eq!(labels, ["Selection", "Layer Mask", "New Layer", "New Layer With Mask", "New Document", "New Document With Mask"]);
+        for lang in crate::i18n::Lang::all().filter(|l| l.code() != "en") {
+            for label in &labels {
+                assert!(crate::i18n::has(lang, label), "{}: untranslated {label}", lang.code());
+            }
+        }
     }
 
     #[test]
@@ -1216,7 +1418,9 @@ mod tests {
     /// #2063: these filters drew their features in proxy pixels (noise, dots, dither, strokes,
     /// kernels, scan lines, contour lines, streaks, depths, a tree's segments), so a 1/4 preview
     /// showed them 4x larger than OK applied them. Their preview now runs at full resolution and
-    /// matches the applied result.
+    /// matches the applied result. Dust & Scratches (#3265) is the mirror image of those: a proxy
+    /// averages away the very specks the filter exists to remove, so its preview showed an
+    /// untouched image at a blocky scale.
     #[test]
     fn fixed_size_filters_preview_at_the_scale_they_apply() {
         let doc = sharp(256);
@@ -1230,6 +1434,7 @@ mod tests {
             ("filter.render.fibers", json!({})),
             ("filter.pixelate.mezzotint", json!({"type": "mediumDots"})),
             ("filter.noise.addNoise", json!({"amount": 12.5})),
+            ("filter.noise.dustAndScratches", json!({"radius": 4.0, "threshold": 0.0})),
             ("filter.noise.reduceNoise", json!({})),
             ("filter.other.custom", json!({"kernel": edge})),
             ("filter.video.deInterlace", json!({})),
