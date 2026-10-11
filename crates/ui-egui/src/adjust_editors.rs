@@ -526,13 +526,27 @@ fn nearest(xs: &[f32], x: f32) -> Option<u8> {
     xs.iter().enumerate().min_by(|a, b| (a.1 - x).abs().total_cmp(&(b.1 - x).abs())).map(|(i, _)| i as u8)
 }
 
+fn levels_channel_id(mem: egui::Id) -> egui::Id {
+    mem.with("levels-ch")
+}
+
+/// Levels reset to defaults (Alt+Cancel in the dialog): every channel's input, gamma and output
+/// levels back to neutral in the values' channel space, and the Channel choice back to the
+/// composite, as the dialog opens.
+pub fn reset_levels(ctx: &egui::Context, mem: egui::Id, v: &mut Value) {
+    let neutral = photocraft_doc::adjust::LevelsChannel::default();
+    let space = space_of(v);
+    *v = adjust_params::to_params(&Adjustment::Levels { master: neutral.clone(), per_channel: Default::default(), space, black: neutral });
+    ctx.data_mut(|d| d.insert_temp(levels_channel_id(mem), 0usize));
+}
+
 fn levels(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
     let t = Tokens::get(ui.ctx());
     let chans = tone_channels(space_of(v), cx.gray);
     let mut ch = 0;
     let mut auto = false;
     ui.horizontal(|ui| {
-        ch = channel_picker(ui, cx.mem.with("levels-ch"), chans, tl!("Channel:"));
+        ch = channel_picker(ui, levels_channel_id(cx.mem), chans, tl!("Channel:"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             auto = widgets::secondary_button(ui, tl!("Auto"), 0.0).clicked();
         });
