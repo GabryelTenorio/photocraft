@@ -9,6 +9,7 @@
 //! matches Android-to-W3C Pointer Events (Chromium) tiltX/tiltY conventions.
 
 use std::sync::{Mutex, Once, OnceLock, PoisonError};
+use std::collections::VecDeque;
 
 use photocraft_ui_egui::stylus::{PenSample, StylusFeed};
 
@@ -76,6 +77,45 @@ pub extern "system" fn Java_ai_storyteller_photocraft_PhotocraftActivity_nativeS
         rotation: 0.0,
         eraser: eraser != 0,
     }));
+}
+
+/// Native Android S Pen touch event. Coordinates are physical window pixels.
+#[derive(Clone, Copy, Debug)]
+pub struct PenTouch {
+    pub action: i32,
+    pub pointer_id: i32,
+    pub x: f32,
+    pub y: f32,
+    pub pressure: f32,
+}
+
+static TOUCH_EVENTS: OnceLock<Mutex<VecDeque<PenTouch>>> = OnceLock::new();
+
+fn touch_events() -> &'static Mutex<VecDeque<PenTouch>> {
+    TOUCH_EVENTS.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+/// Take the Java events once per egui frame. Native winit events remain authoritative.
+pub fn drain_touch_events() -> Vec<PenTouch> {
+    touch_events().lock().unwrap_or_else(PoisonError::into_inner).drain(..).collect()
+}
+
+/// JNI receives coordinates and Android ACTION_DOWN/UP/MOVE/CANCEL from Java.
+/// Do not inject egui events here: the callback runs on the Android UI thread.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ai_storyteller_photocraft_PhotocraftActivity_nativeStylusTouch(
+    _env: *mut std::ffi::c_void,
+    _activity: *mut std::ffi::c_void,
+    action: i32,
+    pointer_id: i32,
+    x: f32,
+    y: f32,
+    pressure: f32,
+) {
+    if !x.is_finite() || !y.is_finite() { return; }
+    let mut q = touch_events().lock().unwrap_or_else(PoisonError::into_inner);
+    if q.len() >= 1024 { q.pop_front(); }
+    q.push_back(PenTouch { action, pointer_id, x, y, pressure: pressure.clamp(0.0, 1.0) });
 }
 
 #[cfg(test)]
