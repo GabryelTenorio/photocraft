@@ -198,6 +198,8 @@ fn dist(a: &StrokePoint, b: &StrokePoint) -> f64 {
 pub struct Spline {
     p0: Option<StrokePoint>,
     p1: Option<StrokePoint>,
+    /// The lead-in a -> m0 has been emitted (the stroke has three or more points).
+    led: bool,
 }
 
 impl Spline {
@@ -208,11 +210,13 @@ impl Spline {
                 self.p0 = Some(p);
                 out.push(p); // stroke start, passed through untouched
             }
-            (Some(a), None) => {
-                self.p1 = Some(p);
-                Self::line(&a, &mid_pt(&a, &p), out); // straight lead-in
-            }
+            // Two points may still be the whole stroke, a plain straight line: hold back.
+            (Some(_), None) => self.p1 = Some(p),
             (Some(a), Some(b)) => {
+                if !self.led {
+                    Self::line(&a, &mid_pt(&a, &b), out); // straight lead-in
+                    self.led = true;
+                }
                 Self::curve(&a, &b, &p, out);
                 self.p0 = Some(b);
                 self.p1 = Some(p);
@@ -220,10 +224,13 @@ impl Spline {
         }
     }
 
-    /// End of stroke: straight run from the last midpoint to the last input point.
+    /// End of stroke: a two-point stroke is one straight line to the last point, otherwise the
+    /// straight run from the last midpoint to the last input point.
     pub fn finish(&mut self, out: &mut Vec<StrokePoint>) {
-        if let (Some(a), Some(b)) = (self.p0, self.p1) {
-            Self::line(&mid_pt(&a, &b), &b, out);
+        match (self.p0, self.p1) {
+            (Some(_), Some(b)) if !self.led => out.push(b),
+            (Some(a), Some(b)) => Self::line(&mid_pt(&a, &b), &b, out),
+            _ => {}
         }
         *self = Self::default();
     }
@@ -940,4 +947,11 @@ mod tests {
         let out = run_spline(&[pt(f64::MAX, f64::MAX), pt(-f64::MAX, 0.0), pt(f64::MAX, -f64::MAX)]);
         assert!(out.len() <= 1 + 64 * 3);
     }
+    
+    #[test]
+        fn spline_two_points_are_one_straight_segment() {
+            let out = run_spline(&[pt(0.0, 0.0), pt(10.0, 4.0)]);
+            assert_eq!(out.len(), 2);
+            assert_eq!((out[1].x, out[1].y), (10.0, 4.0));
+        }
 }

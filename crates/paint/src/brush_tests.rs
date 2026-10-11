@@ -832,10 +832,19 @@ fn tail_preview_shows_the_stroke_as_finishing_it_would() {
     let mut done = pre.clone();
     render_stroke(&mut done, &b, &pts, None, false, 1.0);
     assert!((0..60).all(|y| (0..120).all(|x| live.rgba(x, y) == done.rgba(x, y))));
-    // Without smoothing (and past the first dab) finishing adds nothing.
-    let mut r = StrokeRenderer::new(&brush(), Some(fmt), 1.0);
+    // Without smoothing the spline still holds back its last piece: finishing adds it, and the
+    // tail preview shows exactly that.
+    let plain = brush();
+    let mut live = pre.clone();
+    let mut r = StrokeRenderer::new(&plain, Some(fmt), 1.0);
     r.push(&pts);
-    assert!(r.tail_preview().is_none());
+    r.composite(&pre, &mut live, None, false, false);
+    if let Some(mut tail) = r.tail_preview() {
+        tail.composite(&pre, &mut live, None, false, false);
+    }
+    let mut done = pre.clone();
+    render_stroke(&mut done, &plain, &pts, None, false, 1.0);
+    assert!((0..60).all(|y| (0..120).all(|x| live.rgba(x, y) == done.rgba(x, y))));
 }
 
 // ---------- Tilt Scale, Brush Projection, speed spacing, locks, mixer transfer ----------
