@@ -49,9 +49,6 @@ const PAR_MIN: usize = 64 * 64;
 /// [`PAR_MIN`] for the passes that match or vote a patch per cell.
 const PAR_MIN_PATCHES: usize = 16 * 16;
 
-/// Most valid source centres [`Sources`] lists (beyond, it finds the `k`-th by counting).
-const SOURCES_LISTED: usize = 1 << 21;
-
 /// Largest level (in cells) whose source patches' moments [`Solver::prepare`] keeps.
 const SOURCE_MOMENTS_MAX: usize = 1 << 20;
 
@@ -240,7 +237,9 @@ fn downsample(l: &Level, ch: usize) -> Level<'static> {
     Level { w, h, img: Cow::Owned(img), px: Cow::Owned(px) }
 }
 
-/// Summed-area table of a boolean grid (`(w+1) × (h+1)`).
+/// Summed-area table of a boolean grid (`(w+1) × (h+1)`). Not inlined: in [`synthesize`] it made
+/// Create Texture's candidate loop slower (measured).
+#[inline(never)]
 fn integral(w: usize, h: usize, m: &[bool]) -> Vec<u32> {
     let mut s = vec![0u32; (w + 1) * (h + 1)];
     for y in 0..h {
@@ -303,39 +302,51 @@ fn hole_bounds(w: usize, h: usize, px: &[Px]) -> Option<Bounds> {
 /// Valid source centres: the whole `2r+1` patch inside the grid and copyable. Found per row
 /// (each pixel's horizontal run), then per column of runs. `None` when cancelled.
 fn valid_sources(w: usize, h: usize, r: usize, px: &[Px], ctl: &photocraft_raster::Interrupt) -> Option<Vec<bool>> {
+    const BAND: usize = 64;
     let side = 2 * r + 1;
     let par = w * h >= PAR_MIN;
     let mut run = vec![false; w * h];
     if w < side || h < side {
         return Some(run);
     }
+    // Per row: is the run of `side` pixels centred on each one all copyable (a sliding count)?
     par::chunks_mut(&mut run, w, par, |y, out| {
-        if y % 64 == 0 && ctl.cancelled() {
+        if y % BAND == 0 && ctl.cancelled() {
             return;
         }
         let row = &px[y * w..(y + 1) * w];
-        // Copyable pixels in a row so far.
-        let mut count = 0usize;
-        let mut prefix = Vec::with_capacity(w + 1);
-        prefix.push(0usize);
-        for k in row {
-            count += usize::from(*k == Px::Source);
-            prefix.push(count);
-        }
-        for x in r..w - r {
-            out[x] = prefix[x + r + 1] - prefix[x - r] == side;
+        let copyable = |x: usize| usize::from(row[x] == Px::Source);
+        let mut count: usize = (0..side).map(copyable).sum();
+        out[r] = count == side;
+        for (x, o) in out.iter_mut().enumerate().take(w - r).skip(r + 1) {
+            count = count + copyable(x + r) - copyable(x - r - 1);
+            *o = count == side;
         }
     });
     if ctl.cancelled() {
         return None;
     }
+    // Per column, in bands of rows: how many such runs end each row in a row; a centre is valid
+    // where `side` of them stack up to `r` rows below it.
     let mut valid = vec![false; w * h];
-    par::chunks_mut(&mut valid, w, par, |y, out| {
-        if y < r || y + r >= h || (y % 64 == 0 && ctl.cancelled()) {
+    par::chunks_mut(&mut valid, BAND * w, par, |band, out| {
+        if ctl.cancelled() {
             return;
         }
-        for (x, v) in out.iter_mut().enumerate().take(w - r).skip(r) {
-            *v = (y - r..=y + r).all(|yy| run[yy * w + x]);
+        let (y0, rows) = (band * BAND, out.len() / w);
+        let mut stack = vec![0usize; w];
+        for yy in y0.saturating_sub(r)..(y0 + rows + r).min(h) {
+            for (x, n) in stack.iter_mut().enumerate() {
+                *n = if run[yy * w + x] { *n + 1 } else { 0 };
+            }
+            // `yy` is the bottom row of centre `y`'s patch.
+            if yy < y0 + r || yy < 2 * r {
+                continue;
+            }
+            let y = yy - r;
+            for (v, n) in out[(y - y0) * w..(y - y0 + 1) * w].iter_mut().zip(&stack).take(w - r).skip(r) {
+                *v = *n >= side;
+            }
         }
     });
     if ctl.cancelled() {
@@ -344,18 +355,33 @@ fn valid_sources(w: usize, h: usize, r: usize, px: &[Px], ctl: &photocraft_raste
     Some(valid)
 }
 
-/// The valid source centres in row-major order (listed, or for very many of them counted per row).
+/// Columns per block of [`Sources`]' index.
+const SOURCE_BLOCK: usize = 64;
+
+/// The valid source centres in row-major order, indexed by counts per row and per block of
+/// [`SOURCE_BLOCK`] columns (so the `k`-th is found without listing them all).
 struct Sources {
     /// Valid centres before each row (`h + 1` entries).
     row_start: Vec<usize>,
-    /// All of them, when there are at most [`SOURCES_LISTED`].
-    list: Vec<(i32, i32)>,
+    /// Per row, the valid centres in it before each block.
+    block_start: Vec<u32>,
+    blocks: usize,
 }
 
 impl Sources {
     fn new(valid: &[bool], w: usize) -> Sources {
         let h = valid.len().checked_div(w).unwrap_or(0);
+        let blocks = w.div_ceil(SOURCE_BLOCK);
+        let mut block_start = vec![0u32; h * blocks];
+        // Per row: the block prefix, and the row's count.
         let counts: Vec<usize> = par::map(h, valid.len() >= PAR_MIN, |y| valid[y * w..(y + 1) * w].iter().filter(|v| **v).count());
+        par::chunks_mut(&mut block_start, blocks, valid.len() >= PAR_MIN, |y, out| {
+            let mut n = 0u32;
+            for (b, o) in out.iter_mut().enumerate() {
+                *o = n;
+                n += valid[y * w + b * SOURCE_BLOCK..y * w + ((b + 1) * SOURCE_BLOCK).min(w)].iter().filter(|v| **v).count() as u32;
+            }
+        });
         let mut row_start = Vec::with_capacity(counts.len() + 1);
         let mut total = 0usize;
         row_start.push(0);
@@ -363,16 +389,7 @@ impl Sources {
             total += c;
             row_start.push(total);
         }
-        let mut list = Vec::new();
-        if total <= SOURCES_LISTED {
-            list.reserve_exact(total);
-            for (i, v) in valid.iter().enumerate() {
-                if *v {
-                    list.push(((i % w) as i32, (i / w) as i32));
-                }
-            }
-        }
-        Sources { row_start, list }
+        Sources { row_start, block_start, blocks }
     }
 
     fn len(&self) -> usize {
@@ -381,15 +398,16 @@ impl Sources {
 
     /// The `k`-th valid centre in row-major order (`k < len`).
     fn nth(&self, k: usize, valid: &[bool], w: usize) -> (i32, i32) {
-        if let Some(p) = self.list.get(k) {
-            return *p;
-        }
         let y = self.row_start.partition_point(|&s| s <= k).saturating_sub(1);
-        let mut left = k.saturating_sub(self.row_start.get(y).copied().unwrap_or(0));
-        for (x, v) in valid.iter().skip(y * w).take(w).enumerate() {
+        let left = k.saturating_sub(self.row_start.get(y).copied().unwrap_or(0));
+        let row_blocks = self.block_start.get(y * self.blocks..(y + 1) * self.blocks).unwrap_or(&[]);
+        let b = row_blocks.partition_point(|&s| s as usize <= left).saturating_sub(1);
+        let mut left = left.saturating_sub(row_blocks.get(b).copied().unwrap_or(0) as usize);
+        let x0 = b * SOURCE_BLOCK;
+        for (x, v) in valid.iter().skip(y * w + x0).take(w.saturating_sub(x0)).enumerate() {
             if *v {
                 if left == 0 {
-                    return (x as i32, y as i32);
+                    return ((x0 + x) as i32, y as i32);
                 }
                 left -= 1;
             }
@@ -398,17 +416,14 @@ impl Sources {
     }
 
     /// All of them, in row-major order.
-    fn all(&self, valid: &[bool], w: usize) -> std::borrow::Cow<'_, [(i32, i32)]> {
-        if self.list.len() == self.len() {
-            return Cow::Borrowed(&self.list);
-        }
+    fn all(&self, valid: &[bool], w: usize) -> Vec<(i32, i32)> {
         let mut out = Vec::with_capacity(self.len());
         for (i, v) in valid.iter().enumerate() {
             if *v {
                 out.push(((i % w) as i32, (i / w) as i32));
             }
         }
-        Cow::Owned(out)
+        out
     }
 }
 
@@ -1025,12 +1040,16 @@ impl Solver<'_> {
         // covers).
         let adapted = !self.adapt.is_none();
         let par = tb.area() >= PAR_MIN_PATCHES;
+        // A weight (zero for a target that doesn't vote) and its match's centre (as a pixel
+        // index) per target.
         let mut wt = vec![0.0f32; tb.area()];
-        par::chunks_mut(&mut wt, tb.width(), par, |ty, out| {
-            for (tx, o) in out.iter_mut().enumerate() {
+        let mut src = vec![0isize; tb.area()];
+        par::chunks2_mut(&mut wt, tb.width(), &mut src, tb.width(), par, |ty, wrow, srow| {
+            for (tx, (o, sc)) in wrow.iter_mut().zip(srow.iter_mut()).enumerate() {
                 let k = ty * tb.width() + tx;
                 if used(k) {
                     *o = (-cost[k] / (2.0 * sigma2)).exp().max(1e-8);
+                    *sc = nnf[k].1 as isize * w as isize + nnf[k].0 as isize;
                 }
             }
         });
@@ -1052,8 +1071,8 @@ impl Solver<'_> {
             });
         }
         // The vote, into a buffer over the hole's bounds (every pixel reads the old pixels).
-        let img = &*self.img;
-        let (px, ctl, targets) = (self.px, &self.ctl, &self.targets);
+        let votes = Votes { w, h, ch, r: r as usize, tbox: tb, img: &*self.img, wt: &wt, src: &src, gb: &gb };
+        let (px, ctl) = (self.px, &self.ctl);
         let mut out = vec![0.0f32; hb.area() * ch];
         let mut got = vec![false; hb.area()];
         let row = |yy: usize, orow: &mut [f32], grow: &mut [bool]| {
@@ -1061,51 +1080,21 @@ impl Solver<'_> {
                 return;
             }
             let y = hb.y0 + yy;
-            let mut acc = vec![0.0f32; ch];
             for x in hb.x0..hb.x1 {
                 if px[y * w + x] != Px::Hole {
                     continue;
                 }
-                acc.iter_mut().for_each(|v| *v = 0.0);
-                let mut wsum = 0.0f32;
-                for dy in -r..=r {
-                    let ty = y as i32 + dy;
-                    if ty < 0 || ty as usize >= h {
-                        continue;
-                    }
-                    for dx in -r..=r {
-                        let tx = x as i32 + dx;
-                        if tx < 0 || tx as usize >= w {
-                            continue;
-                        }
-                        // Within the target box: the hole's bounds grown by the patch radius.
-                        let k = (ty as usize - tb.y0) * tb.width() + (tx as usize - tb.x0);
-                        if !targets[k] || !cost[k].is_finite() {
-                            continue;
-                        }
-                        let s = nnf[k];
-                        let (sx, sy) = (s.0 - dx, s.1 - dy);
-                        let wt = wt[k];
-                        let si = (sy as usize * w + sx as usize) * ch;
-                        for (c, a) in acc.iter_mut().enumerate() {
-                            let v = if adapted {
-                                let (g, b) = gb[k * ch + c];
-                                g * img[si + c] + b
-                            } else {
-                                img[si + c]
-                            };
-                            *a += v * wt;
-                        }
-                        wsum += wt;
-                    }
-                }
-                if wsum > 0.0 {
-                    let o = (x - hb.x0) * ch;
-                    for (d, a) in orow[o..o + ch].iter_mut().zip(&acc) {
-                        *d = a / wsum;
-                    }
-                    grow[x - hb.x0] = true;
-                }
+                let o = (x - hb.x0) * ch;
+                let dst = &mut orow[o..o + ch];
+                grow[x - hb.x0] = match (ch, adapted) {
+                    (1, false) => votes.pixel::<1, false>(x, y, dst),
+                    (3, false) => votes.pixel::<3, false>(x, y, dst),
+                    (4, false) => votes.pixel::<4, false>(x, y, dst),
+                    (1, true) => votes.pixel::<1, true>(x, y, dst),
+                    (3, true) => votes.pixel::<3, true>(x, y, dst),
+                    (4, true) => votes.pixel::<4, true>(x, y, dst),
+                    _ => votes.pixel_any(x, y, adapted, dst),
+                };
             }
         };
         par::chunks2_mut(&mut out, hb.width() * ch, &mut got, hb.width(), hb.area() >= PAR_MIN_PATCHES, row);
@@ -1117,6 +1106,100 @@ impl Solver<'_> {
                 }
             }
         }
+    }
+}
+
+/// What [`Solver::vote`] votes with: per target (over the target box) its weight (zero when it
+/// doesn't vote), its match's centre as a pixel index, and with colour adaptation its gain and
+/// bias per channel.
+struct Votes<'a> {
+    w: usize,
+    h: usize,
+    ch: usize,
+    r: usize,
+    tbox: Bounds,
+    img: &'a [f32],
+    wt: &'a [f32],
+    src: &'a [isize],
+    gb: &'a [(f32, f32)],
+}
+
+impl Votes<'_> {
+    /// Hole pixel `(x, y)`'s vote into `out` (`CH` channels): the weighted mean of what the
+    /// matches of the patches covering it put there, summed patch by patch in raster order of
+    /// their centres. False when no patch votes.
+    #[inline(always)]
+    fn pixel<const CH: usize, const ADAPT: bool>(&self, x: usize, y: usize, out: &mut [f32]) -> bool {
+        let (w, r, tb) = (self.w, self.r, self.tbox);
+        let mut acc = [0.0f32; CH];
+        let mut wsum = 0.0f32;
+        for ty in y.saturating_sub(r)..=(y + r).min(self.h - 1) {
+            let dy = ty as isize - y as isize;
+            let krow = (ty - tb.y0) * tb.width();
+            for tx in x.saturating_sub(r)..=(x + r).min(w - 1) {
+                let k = krow + tx - tb.x0;
+                let wt = self.wt[k];
+                if wt == 0.0 {
+                    continue;
+                }
+                // The pixel of the match's patch that lands here.
+                let si = (self.src[k] - dy * w as isize - (tx as isize - x as isize)) as usize * CH;
+                let s = &self.img[si..si + CH];
+                for c in 0..CH {
+                    let v = if ADAPT {
+                        let (g, b) = self.gb[k * CH + c];
+                        g * s[c] + b
+                    } else {
+                        s[c]
+                    };
+                    acc[c] += v * wt;
+                }
+                wsum += wt;
+            }
+        }
+        if wsum > 0.0 {
+            for (d, a) in out.iter_mut().zip(&acc) {
+                *d = a / wsum;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// [`Votes::pixel`] for any number of channels.
+    fn pixel_any(&self, x: usize, y: usize, adapted: bool, out: &mut [f32]) -> bool {
+        let (w, r, tb, ch) = (self.w, self.r, self.tbox, self.ch);
+        let mut acc = vec![0.0f32; ch];
+        let mut wsum = 0.0f32;
+        for ty in y.saturating_sub(r)..=(y + r).min(self.h - 1) {
+            let dy = ty as isize - y as isize;
+            let krow = (ty - tb.y0) * tb.width();
+            for tx in x.saturating_sub(r)..=(x + r).min(w - 1) {
+                let k = krow + tx - tb.x0;
+                let wt = self.wt[k];
+                if wt == 0.0 {
+                    continue;
+                }
+                let si = (self.src[k] - dy * w as isize - (tx as isize - x as isize)) as usize * ch;
+                for (c, a) in acc.iter_mut().enumerate() {
+                    let v = if adapted {
+                        let (g, b) = self.gb[k * ch + c];
+                        g * self.img[si + c] + b
+                    } else {
+                        self.img[si + c]
+                    };
+                    *a += v * wt;
+                }
+                wsum += wt;
+            }
+        }
+        if wsum > 0.0 {
+            for (d, a) in out.iter_mut().zip(&acc) {
+                *d = a / wsum;
+            }
+            return true;
+        }
+        false
     }
 }
 
@@ -1148,6 +1231,67 @@ fn adapted_cost(a: Adapt, nf: f32, m: &[[f32; 5]]) -> f32 {
         sum += mc[1] + g * g * mc[3] + nf * b * b - 2.0 * g * mc[4] - 2.0 * b * mc[0] + 2.0 * g * b * mc[2];
     }
     sum.max(0.0) / (nf * m.len() as f32)
+}
+
+/// `Σ (t − s)²` over a target patch's known pixels (offsets `offs` from its centre, samples
+/// `tv`, `CH` per pixel) against the source patch centred at pixel `base`, summed in that order;
+/// `None` once the sum reaches `limit` (it only grows).
+#[inline(always)]
+fn known_sse<const CH: usize>(image: &[f32], offs: &[isize], tv: &[f32], base: isize, limit: f32) -> Option<f32> {
+    let mut e = 0.0f32;
+    for (o, t) in offs.iter().zip(tv.as_chunks::<CH>().0) {
+        let si = (base + o) as usize * CH;
+        let s = &image[si..si + CH];
+        for c in 0..CH {
+            let d = t[c] - s[c];
+            e += d * d;
+        }
+        if e >= limit {
+            return None;
+        }
+    }
+    Some(e)
+}
+
+/// [`known_sse`] of [`LANES`] sources at once, each against its own limit (summed in step: the
+/// sums are independent, so the processor overlaps them).
+#[inline(always)]
+fn known_sse_lanes<const CH: usize>(image: &[f32], offs: &[isize], tv: &[f32], bases: [isize; LANES], limits: [f32; LANES]) -> [Option<f32>; LANES] {
+    let mut e = [0.0f32; LANES];
+    for (o, t) in offs.iter().zip(tv.as_chunks::<CH>().0) {
+        for l in 0..LANES {
+            let si = (bases[l] + o) as usize * CH;
+            let s = &image[si..si + CH];
+            for c in 0..CH {
+                let d = t[c] - s[c];
+                e[l] += d * d;
+            }
+        }
+        // Sums only grow: once all of them reached their limits, none can win.
+        if (0..LANES).all(|l| e[l] >= limits[l]) {
+            break;
+        }
+    }
+    std::array::from_fn(|l| (e[l] < limits[l]).then_some(e[l]))
+}
+
+/// Sources [`known_sse_lanes`] sums at once.
+const LANES: usize = 4;
+
+/// [`known_sse`] for any number of channels.
+fn known_sse_any(image: &[f32], ch: usize, offs: &[isize], tv: &[f32], base: isize, limit: f32) -> Option<f32> {
+    let mut e = 0.0f32;
+    for (o, t) in offs.iter().zip(tv.chunks_exact(ch.max(1))) {
+        let si = (base + o) as usize * ch;
+        for (tc, sc) in t.iter().zip(&image[si..si + ch]) {
+            let d = tc - sc;
+            e += d * d;
+        }
+        if e >= limit {
+            return None;
+        }
+    }
+    Some(e)
 }
 
 /// The best source so far of [`onion_peel`]'s search.
@@ -1182,9 +1326,11 @@ fn least_sum(v: f32, n: f32, strict: bool) -> f32 {
 /// source patch that best matches what is already known around it (the first in `sources` of
 /// those that match best). `hb` bounds the hole.
 ///
-/// The search is exhaustive; it starts from where the pixel's filled neighbours took their
-/// sources, and stops adding up a source's error once it can only lose (the error only grows), so
-/// it finds the same source as a plain scan in order, sooner.
+/// The search is exhaustive, but most sources are given up early (#2771, #2805): the target's
+/// known pixels are gathered once, the search starts from where the pixel's filled neighbours
+/// took their sources (or every 16th source at the hole's edge), and a source's error stops being
+/// added up once it can only lose (it only grows). So it finds the same source as a plain scan in
+/// order, sooner.
 #[allow(clippy::too_many_arguments)]
 fn onion_peel(
     w: usize,
@@ -1234,41 +1380,55 @@ fn onion_peel(
         let image = &*img;
         let best = |&i: &usize| -> (Vec<f32>, u32) {
             let (x, y) = ((i % w) as i32, (i / w) as i32);
-            let inside = |tx: i32, ty: i32| tx >= 0 && ty >= 0 && (tx as usize) < w && (ty as usize) < h && known_now[ty as usize * w + tx as usize];
-            // How many known pixels the patch holds: the same for every source.
-            let n = (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy))).filter(|&(dx, dy)| inside(x + dx, y + dy)).count();
+            // The known pixels of the target patch, in the plain scan's order: each one's offset
+            // from the patch centre (in pixels) and its samples (gathered once, #2805).
+            let side = (2 * r + 1) as usize;
+            let mut offs: Vec<isize> = Vec::with_capacity(side * side);
+            let mut tv: Vec<f32> = Vec::with_capacity(side * side * ch);
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    let (tx, ty) = (x + dx, y + dy);
+                    if tx >= 0 && ty >= 0 && (tx as usize) < w && (ty as usize) < h && known_now[ty as usize * w + tx as usize] {
+                        let ti = (ty as usize * w + tx as usize) * ch;
+                        offs.push(dy as isize * w as isize + dx as isize);
+                        tv.extend_from_slice(&image[ti..ti + ch]);
+                    }
+                }
+            }
             // The best so far: its error per sample, its place in `sources` (the first of equals
             // wins, as in a scan in order), and the sums of squares at which a source surely loses
             // to it (`e / n` above the best) or ties it (at least the best).
             let mut best = Best { v: f32::INFINITY, j: usize::MAX, worse: f32::INFINITY, equal: f32::INFINITY };
-            if n > 0 {
-                let nf = n as f32;
-                let consider = |j: usize, best: &mut Best| {
-                    let Some(&(sx, sy)) = sources.get(j) else { return };
-                    let mut e = 0.0f32;
-                    for dy in -r..=r {
-                        for dx in -r..=r {
-                            let (tx, ty) = (x + dx, y + dy);
-                            if !inside(tx, ty) {
-                                continue;
-                            }
-                            let (ti, si) = ((ty as usize * w + tx as usize) * ch, ((sy + dy) as usize * w + (sx + dx) as usize) * ch);
-                            for c in 0..ch {
-                                let d = image[ti + c] - image[si + c];
-                                e += d * d;
-                            }
-                            // The error only grows: once it can't beat the best, stop.
-                            if e >= best.worse || (j > best.j && e >= best.equal) {
-                                return;
-                            }
-                        }
-                    }
+            if !offs.is_empty() {
+                let nf = offs.len() as f32;
+                let base_of = |j: usize| sources.get(j).map_or(0, |&(sx, sy)| sy as isize * w as isize + sx as isize);
+                // The sum at which source `j` can't win: a tie loses to an earlier source.
+                let limit_of = |j: usize, best: &Best| if j > best.j { best.equal } else { best.worse };
+                // Source `j`'s whole sum `e` (it did not reach its limit): does it win?
+                let adopt = |j: usize, e: f32, best: &mut Best| {
                     let v = e / nf;
                     if v < f32::INFINITY && (v < best.v || (v == best.v && j < best.j)) {
                         *best = Best { v, j, worse: least_sum(v, nf, true), equal: least_sum(v, nf, false) };
                     }
                 };
-                // Where the filled neighbours' sources point first: a close bound early.
+                let consider = |j: usize, best: &mut Best| {
+                    if j >= sources.len() {
+                        return;
+                    }
+                    let (base, limit) = (base_of(j), limit_of(j, best));
+                    let e = match ch {
+                        1 => known_sse::<1>(image, &offs, &tv, base, limit),
+                        3 => known_sse::<3>(image, &offs, &tv, base, limit),
+                        4 => known_sse::<4>(image, &offs, &tv, base, limit),
+                        _ => known_sse_any(image, ch, &offs, &tv, base, limit),
+                    };
+                    if let Some(e) = e {
+                        adopt(j, e, best);
+                    }
+                };
+                // A close bound early: where the filled neighbours' sources point (shifted as in
+                // PatchMatch's propagation), or at the hole's edge, where none is filled yet,
+                // every 16th source.
                 for (dx, dy) in neighbours {
                     let (qx, qy) = (x + dx, y + dy);
                     if qx < 0 || qy < 0 || qx as usize >= w || qy as usize >= h {
@@ -1280,10 +1440,35 @@ fn onion_peel(
                         consider(index[cy as usize * w + cx as usize] as usize, &mut best);
                     }
                 }
-                for j in 0..sources.len() {
-                    if j % 4096 == 4095 && ctl.cancelled() {
+                if best.j == usize::MAX {
+                    for j in (0..sources.len()).step_by(16) {
+                        consider(j, &mut best);
+                    }
+                }
+                // The scan in order, `LANES` sources at a time (their sums are independent, so they
+                // overlap), each against its limit from the best before them: the best only gets
+                // better, so a source given up would have lost to it anyway.
+                let mut j = 0;
+                while j + LANES <= sources.len() {
+                    if j.is_multiple_of(4096) && j > 0 && ctl.cancelled() {
                         break;
                     }
+                    let bases: [isize; LANES] = std::array::from_fn(|l| base_of(j + l));
+                    let limits: [f32; LANES] = std::array::from_fn(|l| limit_of(j + l, &best));
+                    let sums = match ch {
+                        1 => known_sse_lanes::<1>(image, &offs, &tv, bases, limits),
+                        3 => known_sse_lanes::<3>(image, &offs, &tv, bases, limits),
+                        4 => known_sse_lanes::<4>(image, &offs, &tv, bases, limits),
+                        _ => std::array::from_fn(|l| known_sse_any(image, ch, &offs, &tv, bases[l], limits[l])),
+                    };
+                    for (l, e) in sums.into_iter().enumerate() {
+                        if let Some(e) = e {
+                            adopt(j + l, e, &mut best);
+                        }
+                    }
+                    j += LANES;
+                }
+                for j in j..sources.len() {
                     consider(j, &mut best);
                 }
             }
@@ -2016,7 +2201,7 @@ mod tests {
             let hole = disc(w, h, w as f32 * 0.45, h as f32 * 0.5, 7.5);
             let px = roles(w, h, &hole);
             let valid = valid_sources(w, h, 3, &px, &none).unwrap();
-            let sources = Sources::new(&valid, w).all(&valid, w).into_owned();
+            let sources = Sources::new(&valid, w).all(&valid, w);
             let (mut a, mut b) = (img.clone(), img.clone());
             onion_peel(w, h, ch, 3, &mut a, &px, hole_bounds(w, h, &px).unwrap(), &sources, &none).unwrap();
             onion_peel_plain(w, h, ch, 3, &mut b, &px, &sources);
@@ -2067,14 +2252,21 @@ mod tests {
                 assert_eq!(valid[y as usize * w + x as usize], want, "({x}, {y})");
             }
         }
-        // Counting per row finds the same centres as the list.
-        let listed = Sources::new(&valid, w);
-        assert!(listed.len() > 10);
-        let counted = Sources { row_start: listed.row_start.clone(), list: Vec::new() };
-        for k in 0..listed.len() {
-            assert_eq!(counted.nth(k, &valid, w), listed.nth(k, &valid, w));
+        // Counting per row and block finds the centres in order.
+        let sources = Sources::new(&valid, w);
+        let list = sources.all(&valid, w);
+        assert!(list.len() > 10 && list.len() == sources.len());
+        for (k, p) in list.iter().enumerate() {
+            assert_eq!(sources.nth(k, &valid, w), *p);
         }
-        assert_eq!(counted.all(&valid, w), listed.all(&valid, w));
+        // And on a grid wider than a block, with empty blocks and rows.
+        let (w, h) = (300, 9);
+        let wide: Vec<bool> = (0..w * h).map(|i| (i % w) % 7 == 3 && (i % w) / 64 != 2 && i / w != 4).collect();
+        let sources = Sources::new(&wide, w);
+        let list = sources.all(&wide, w);
+        for (k, p) in list.iter().enumerate() {
+            assert_eq!(sources.nth(k, &wide, w), *p);
+        }
     }
 
     #[test]

@@ -3,7 +3,7 @@
 //! every tool's output, to check that a speed-up leaves the result bit for bit as it was.
 //!
 //! ```text
-//! cargo run --release -p photocraft-engine --example content_aware_bench -- bench caf|heal|cancel|cancelscan|full24 [reps]
+//! cargo run --release -p photocraft-engine --example content_aware_bench -- bench caf|heal|spot|cancel|cancelscan|full24 [reps]
 //! cargo run --release -p photocraft-engine --example content_aware_bench -- hash|hash-big
 //! ```
 //!
@@ -62,6 +62,14 @@ fn open_photo(w: u32, h: u32) -> Res<Session> {
     let mut s = Session::new();
     s.open_document(doc, Some("photo.jpg".into()));
     Ok(s)
+}
+
+/// Minor page faults of this process so far (Linux; 0 elsewhere).
+fn minor_faults() -> u64 {
+    std::fs::read_to_string("/proc/self/stat")
+        .ok()
+        .and_then(|st| st.rsplit(')').next().and_then(|rest| rest.split_whitespace().nth(7)?.parse().ok()))
+        .unwrap_or(0)
 }
 
 fn start_job(s: &mut Session, id: &str, p: Value) -> Res<JobId> {
@@ -151,6 +159,48 @@ fn bench(which: &str, reps: usize) -> Res<()> {
                 after += reps.max(1) as u64;
             }
         }
+        // `retouch_bench`'s Spot Healing dabs (sizes 50, 100, 200, 300; Content-Aware, or the type
+        // in `CAF_SPOT_TYPE`) on its 6016² document, `reps` rounds.
+        "spot" => {
+            let side = 6016u32;
+            let mut s = Session::new();
+            exec(&mut s, "file.new", json!({"width": side, "height": side, "depth": 8}))?;
+            let area = Rect::new(2000, 2000, 4048, 4048);
+            s.edit("texture", |doc, active| {
+                let Some(surf) = active.and_then(|id| doc.layer_mut(id)).and_then(|l| l.surface_mut()) else { return Ok(()) };
+                let fmt = surf.format();
+                let mut data = Vec::with_capacity(area.width() as usize * area.height() as usize * 4);
+                for y in area.y0..area.y1 {
+                    for x in area.x0..area.x1 {
+                        let n = ((x.wrapping_mul(73_856_093) ^ y.wrapping_mul(19_349_663)) as u32 % 1000) as f32 / 1000.0 * 0.08 - 0.04;
+                        let blemish = (x % 400 - 200).abs() < 8 && (y % 400 - 200).abs() < 8;
+                        let v = if blemish {
+                            [0.05, 0.05, 0.05, 1.0]
+                        } else {
+                            [0.3 + 0.0002 * x as f32 + n, 0.4 + ((x + y) as f32 * 0.01).sin() * 0.1 + n, 0.5 + n, 1.0]
+                        };
+                        data.extend(photocraft_raster::from_rgba(&fmt, v));
+                    }
+                }
+                surf.write_region(area, &data);
+                Ok(())
+            })
+            .map_err(|e| e.to_string())?;
+            // Comma-separated types, run in turn (`CAF_SPOT_TYPE`, default Content-Aware).
+            let kinds = std::env::var("CAF_SPOT_TYPE").unwrap_or_else(|_| "contentAware".into());
+            let mut k = 4u32;
+            for _ in 0..reps {
+                for kind in kinds.split(',') {
+                    for size in [50.0, 100.0, 200.0, 300.0] {
+                        k += 1;
+                        let (x, y) = (2200 + (k % 4) * 400, 2200 + (k / 4 % 4) * 400);
+                        let (t, f) = (Instant::now(), minor_faults());
+                        exec(&mut s, "paint.spotHealing", json!({"points": [[x, y]], "size": size, "hardness": 50, "type": kind}))?;
+                        println!("{}{size} {:.3} faults {}", &kind[..4], ms(t), minor_faults().saturating_sub(f));
+                    }
+                }
+            }
+        }
         // The whole 24 MP fill, uncancelled (how long P49's job runs).
         "full24" => {
             let (w, h) = (6000u32, 4000u32);
@@ -163,7 +213,7 @@ fn bench(which: &str, reps: usize) -> Res<()> {
                 exec(&mut s, "edit.undo", json!({}))?;
             }
         }
-        o => return Err(format!("unknown scenario `{o}` (caf|heal|cancel|cancelscan|full24)")),
+        o => return Err(format!("unknown scenario `{o}` (caf|heal|spot|cancel|cancelscan|full24)")),
     }
     Ok(())
 }
@@ -407,6 +457,6 @@ fn main() -> Res<()> {
             }
             Ok(())
         }
-        _ => Err("usage: content_aware_bench bench caf|heal|cancel|cancelscan|full24 [reps] | hash | hash-big".into()),
+        _ => Err("usage: content_aware_bench bench caf|heal|spot|cancel|cancelscan|full24 [reps] | hash | hash-big".into()),
     }
 }
