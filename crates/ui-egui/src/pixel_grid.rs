@@ -1,5 +1,5 @@
 //! The pixel grid of the CPU canvas path, matching the GPU canvas shader (`gpu_canvas.rs`):
-//! shown above 500% zoom, one device pixel wide, with a uniform quarter-white line,
+//! shown above 500% zoom, one device pixel wide, with a fixed translucent neutral-grey line,
 //! and only over pixels that have content, never over empty checker.
 //!
 //! The shader reads each pixel's alpha as it draws. Here the same rule runs on the composite of
@@ -17,7 +17,7 @@ use crate::canvas::ViewXform;
 
 /// The grid shows above this zoom (1.0 = 100%). Shared with the GPU canvas.
 pub const MIN_ZOOM: f32 = 5.0;
-/// Opacity of the white grid line over a fully opaque pixel. Shared with the GPU canvas.
+/// Opacity of the neutral-grey grid line over a fully opaque pixel. Shared with the GPU canvas.
 pub const STRENGTH: f32 = 0.25;
 /// Cached regions snap to this many document pixels, so a small pan stays inside the cache.
 const REGION_SNAP: i32 = 64;
@@ -61,7 +61,7 @@ pub fn cell_color(rgba: [f32; 4]) -> Option<Color32> {
     if alpha == 0 {
         return None;
     }
-    Some(Color32::from_white_alpha(alpha))
+    Some(Color32::from_rgba_unmultiplied(128, 128, 128, alpha))
 }
 
 /// Merge consecutive cells of equal colour along one line into `emit(start, end, colour)` runs.
@@ -181,26 +181,26 @@ mod tests {
 
     #[test]
     fn grid_color_does_not_switch_at_luminance_boundaries() {
-        assert_eq!(cell_color(OPAQUE_DARK), Some(Color32::from_white_alpha(64)));
-        assert_eq!(cell_color(OPAQUE_LIGHT), Some(Color32::from_white_alpha(64)));
-        for v in [0.54, 0.55, 0.56] {
-            assert_eq!(cell_color([v, v, v, 1.0]), Some(Color32::from_white_alpha(64)));
+        assert_eq!(cell_color(OPAQUE_DARK), Some(Color32::from_rgba_unmultiplied(128, 128, 128, 64)));
+        assert_eq!(cell_color(OPAQUE_LIGHT), Some(Color32::from_rgba_unmultiplied(128, 128, 128, 64)));
+        for v in [0.0, 0.5, 0.54, 0.55, 0.56, 1.0] {
+            assert_eq!(cell_color([v, v, v, 1.0]), Some(Color32::from_rgba_unmultiplied(128, 128, 128, 64)));
         }
     }
 
     #[test]
     fn line_strength_follows_alpha_like_the_shader() {
         // Line opacity follows content alpha, regardless of its colour.
-        assert_eq!(cell_color([0.0, 0.0, 0.0, 0.5]), Some(Color32::from_white_alpha(32)));
-        assert_eq!(cell_color([1.0, 1.0, 1.0, 0.5]), Some(Color32::from_white_alpha(32)));
+        assert_eq!(cell_color([0.0, 0.0, 0.0, 0.5]), Some(Color32::from_rgba_unmultiplied(128, 128, 128, 32)));
+        assert_eq!(cell_color([1.0, 1.0, 1.0, 0.5]), Some(Color32::from_rgba_unmultiplied(128, 128, 128, 32)));
         let full = cell_color([0.0, 0.0, 0.0, 1.0]);
-        assert_eq!(full, Some(Color32::from_white_alpha(64)));
+        assert_eq!(full, Some(Color32::from_rgba_unmultiplied(128, 128, 128, 64)));
     }
 
     #[test]
     fn out_of_range_values_do_not_panic() {
         // Colour does not affect the grid; alpha past 1 is clamped.
-        assert_eq!(cell_color([f32::INFINITY, f32::NEG_INFINITY, f32::NAN, 5.0]), Some(Color32::from_white_alpha(64)));
+        assert_eq!(cell_color([f32::INFINITY, f32::NEG_INFINITY, f32::NAN, 5.0]), Some(Color32::from_rgba_unmultiplied(128, 128, 128, 64)));
         assert_eq!(cell_color([0.0; 4]), None);
     }
 
@@ -213,10 +213,10 @@ mod tests {
         let rect = DRect::from_xywh(0, 0, 6, 4);
         let segs = segments(&grid(6, 4, |_, _| OPAQUE_DARK), rect);
         assert_eq!(segs.len(), 6 + 4);
-        let white = Color32::from_white_alpha(64);
-        assert!(segs.contains(&GridSeg { from: [0, 0], to: [0, 4], color: white }));
-        assert!(segs.contains(&GridSeg { from: [5, 0], to: [5, 4], color: white }));
-        assert!(segs.contains(&GridSeg { from: [0, 3], to: [6, 3], color: white }));
+        let color = Color32::from_rgba_unmultiplied(128, 128, 128, 64);
+        assert!(segs.contains(&GridSeg { from: [0, 0], to: [0, 4], color }));
+        assert!(segs.contains(&GridSeg { from: [5, 0], to: [5, 4], color }));
+        assert!(segs.contains(&GridSeg { from: [0, 3], to: [6, 3], color }));
         // No closing line on the right or bottom edge of the region.
         assert!(!segs.iter().any(|s| s.from[0] == 6 || s.from[1] == 4));
     }
@@ -232,10 +232,10 @@ mod tests {
         let rect = DRect::from_xywh(10, 20, 5, 5);
         let px = grid(5, 5, |x, y| if (x, y) == (2, 3) { OPAQUE_DARK } else { [0.0; 4] });
         let segs = segments(&px, rect);
-        let white = Color32::from_white_alpha(64);
+        let color = Color32::from_rgba_unmultiplied(128, 128, 128, 64);
         assert_eq!(segs.len(), 2);
-        assert!(segs.contains(&GridSeg { from: [12, 23], to: [12, 24], color: white }));
-        assert!(segs.contains(&GridSeg { from: [12, 23], to: [13, 23], color: white }));
+        assert!(segs.contains(&GridSeg { from: [12, 23], to: [12, 24], color }));
+        assert!(segs.contains(&GridSeg { from: [12, 23], to: [13, 23], color }));
     }
 
     #[test]
@@ -247,7 +247,7 @@ mod tests {
         let segs = segments(&px, rect);
         assert_eq!(segs.len(), 4 + 2);
         assert!(segs.iter().all(|s| s.to[0] <= 4));
-        assert!(segs.contains(&GridSeg { from: [0, 1], to: [4, 1], color: Color32::from_white_alpha(64) }));
+        assert!(segs.contains(&GridSeg { from: [0, 1], to: [4, 1], color: Color32::from_rgba_unmultiplied(128, 128, 128, 64) }));
     }
 
     #[test]
@@ -255,7 +255,7 @@ mod tests {
         let rect = DRect::from_xywh(0, 0, 1, 4);
         let px = vec![OPAQUE_DARK, OPAQUE_DARK, OPAQUE_LIGHT, OPAQUE_LIGHT];
         let segs: Vec<_> = segments(&px, rect).into_iter().filter(|s| s.from[0] == s.to[0]).collect();
-        assert_eq!(segs, vec![GridSeg { from: [0, 0], to: [0, 4], color: Color32::from_white_alpha(64) }]);
+        assert_eq!(segs, vec![GridSeg { from: [0, 0], to: [0, 4], color: Color32::from_rgba_unmultiplied(128, 128, 128, 64) }]);
     }
 
     #[test]

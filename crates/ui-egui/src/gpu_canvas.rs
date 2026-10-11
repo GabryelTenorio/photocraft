@@ -1964,8 +1964,8 @@ fn fs_tile(in: VOut) -> @location(0) vec4<f32> {
     if (grid > 0.0) {
         let e = fract(d) * scale;
         if (e.x < 1.0 || e.y < 1.0) {
-            // A luminance-dependent white/black switch creates false contours in photos.
-            rgb = mix(rgb, vec3(1.0), grid);
+            // Fixed grey avoids false contours caused by luminance-dependent colour changes.
+            rgb = mix(rgb, vec3(128.0 / 255.0), grid);
         }
     }
     if (view.d.w > 0.5) {
