@@ -13,7 +13,9 @@ pub const MAX_SIZE: f32 = 5000.0;
 
 /// `[` / `]`: 25 % smaller or larger, at least a pixel larger so small brushes still grow.
 fn size_step(size: f32, up: bool) -> f32 {
-    let next = if up { (size * 1.25).round().max(size + 1.0) } else { (size / 1.25).round() };
+    // Floor the decrease so a 2 px brush reaches the 1 px minimum instead of rounding 1.6 back
+    // to 2 and getting stuck there.
+    let next = if up { (size * 1.25).round().max(size + 1.0) } else { (size / 1.25).floor() };
     next.clamp(1.0, MAX_SIZE)
 }
 
@@ -57,6 +59,7 @@ mod tests {
     fn steps_like_photoshop() {
         assert_eq!(size_step(1.0, false), 1.0, "never below 1 px");
         assert_eq!(size_step(1.0, true), 2.0, "small brushes still grow");
+        assert_eq!(size_step(2.0, false), 1.0, "the decrease key reaches the 1 px minimum");
         assert_eq!(size_step(100.0, true), 125.0);
         assert_eq!(size_step(125.0, false), 100.0);
         assert_eq!(size_step(MAX_SIZE, true), MAX_SIZE, "never past the largest brush");
