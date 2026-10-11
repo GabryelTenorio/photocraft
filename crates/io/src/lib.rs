@@ -313,6 +313,9 @@ pub fn merged_composite(file: &PsdFile) -> Result<Vec<[f32; 4]>, IoError> {
         // Preserve native sample precision before removing the white matte.
         let raw = file.decode_merged()?;
         let plane = raw.len() / usize::from(h.channels);
+        if plane == 0 {
+            return Err(PsdError::Invalid("empty RGB composite".into()).into());
+        }
         let planes = raw
             .chunks_exact(plane)
             .take(4)
