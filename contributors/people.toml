@@ -93,3 +93,8 @@ sync_github_name = true
 
 [people.FinnNk]
 sync_github_name = true
+
+[people.emmertex]
+real_name = "Andrew Frahn"
+display_name = "Andrew Frahn (ku7)"
+sync_github_name = false
