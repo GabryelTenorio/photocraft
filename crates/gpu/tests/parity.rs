@@ -102,6 +102,22 @@ fn any_device() -> Option<(wgpu::Adapter, wgpu::Device, wgpu::Queue, std::sync::
     Some((adapter, device, queue, lock))
 }
 
+#[test]
+fn exact_ramp_pipelines_build_on_gles() {
+    let _lock = GPU_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::GL, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+        eprintln!("skipping exact-ramp GLES pipelines: no GL adapter");
+        return;
+    };
+    assert_eq!(adapter.get_info().backend, wgpu::Backend::Gl);
+    // Browser WebGL2 limits exercise the same four EXACT_RAMP entry points as wasm.
+    let desc = wgpu::DeviceDescriptor { required_limits: wgpu::Limits::downlevel_webgl2_defaults(), ..Default::default() };
+    let (device, _queue) = pollster::block_on(adapter.request_device(&desc)).expect("GLES device");
+    Compositor::try_new_with_format(&device, Compositor::preferred_acc_format(&adapter)).expect("ordinary and exact compositor pipelines must build on GLES");
+    eprintln!("GLES exact-ramp pipelines built: {:?}", adapter.get_info());
+}
+
 /// Deterministic pseudo-random values in 0..1.
 fn rnd(seed: u32, i: u32) -> f32 {
     let mut h = seed.wrapping_mul(0x9e37_79b9) ^ i.wrapping_mul(0x85eb_ca6b);
@@ -178,6 +194,262 @@ fn diff_rect(g: &mut Gpu, doc: &Document, rect: Rect, what: &str) -> Result<phot
 
 fn check(g: &mut Gpu, doc: &Document, what: &str) {
     diff_rect(g, doc, doc.bounds(), what).unwrap_or_else(|e| panic!("{e}"));
+}
+
+// Issue #974: execute the real shader, including the exact boundary (CPU chooses the
+// preceding segment), rather than replaying the LUT arithmetic on the host.
+fn hard_stops(at: f32) -> Vec<(f32, Color)> {
+    vec![(0.0, Color::BLACK), (at, Color::WHITE), (at, Color::BLACK), (1.0, Color::WHITE)]
+}
+
+#[test]
+fn hard_stop_gradient_fill() {
+    let Some(mut g) = gpu() else { return };
+    let mut d = Document::new("hard stop", Size::new(8, 2), ColorMode::Rgb, SampleType::U8);
+    d.layers.push(Layer::new("gradient", LayerContent::Fill(Fill::gradient(hard_stops(0.5), 0.0, 1.0, GradientStyle::Linear, false))));
+    check(&mut g, &d, "hard stop fill at 0.5");
+}
+
+#[test]
+fn hard_stop_gradient_overlay() {
+    let Some(mut g) = gpu() else { return };
+    let mut d = Document::new("hard stop", Size::new(8, 2), ColorMode::Rgb, SampleType::U8);
+    let mut l = Layer::new("overlay", LayerContent::Fill(Fill::Solid(Color::WHITE)));
+    l.effects.items.push(Effect::GradientOverlay {
+        common: FxCommon::new(BlendMode::Normal, 1.0),
+        gradient: Gradient {
+            stops: hard_stops(0.5),
+            opacity_stops: vec![],
+            style: GradientStyle::Linear,
+            angle: 0.0,
+            scale: 1.0,
+            reverse: false,
+            align: true,
+            offset: (0.0, 0.0),
+        },
+        dither: false,
+    });
+    d.layers.push(l);
+    check(&mut g, &d, "hard stop overlay at 0.5");
+}
+
+#[test]
+fn hard_stop_gradient_map() {
+    let Some(mut g) = gpu() else { return };
+    let mut d = Document::new("hard stop", Size::new(8, 2), ColorMode::Rgb, SampleType::F32);
+    d.layers.push(Layer::new("gray", LayerContent::Fill(Fill::Solid(Color::rgb(0.5, 0.5, 0.5)))));
+    d.layers.push(Layer::new(
+        "map",
+        LayerContent::Adjustment(Adjustment::GradientMap {
+            stops: hard_stops(0.5).iter().map(|(p, c)| (*p, c.to_rgb())).collect(),
+            reverse: false,
+            dither: false,
+        }),
+    ));
+    check(&mut g, &d, "hard stop gradient map at 0.5");
+}
+
+#[test]
+fn hard_stop_unsorted_and_empty_ramps() {
+    let Some(mut g) = gpu() else { return };
+    for colors in
+        [vec![], vec![(0.5, Color::rgba(0.2, 0.6, 0.9, 0.4))], vec![(0.0, Color::BLACK), (0.75, Color::WHITE), (0.25, Color::TRANSPARENT), (1.0, Color::WHITE)]]
+    {
+        let opacity = vec![(0.0, 0.4), (0.75, 1.0), (0.25, 0.0), (1.0, 0.8)];
+        let mut d = Document::new("unsorted", Size::new(16, 4), ColorMode::Rgb, SampleType::F32);
+        let mut fill = Fill::gradient(colors.clone(), 0.0, 1.0, GradientStyle::Linear, false);
+        if let Fill::Gradient { opacity_stops, .. } = &mut fill {
+            *opacity_stops = opacity.clone();
+        }
+        d.layers.push(Layer::new("fill", LayerContent::Fill(fill)));
+        check(&mut g, &d, "empty/single/unsorted fill: stable sort and color alpha");
+        d.layers[0] = Layer::new("effect", LayerContent::Fill(Fill::Solid(Color::WHITE)));
+        d.layers[0].effects.items.push(Effect::GradientOverlay {
+            common: FxCommon::new(BlendMode::Normal, 1.0),
+            gradient: Gradient { stops: colors.clone(), opacity_stops: opacity, ..Gradient::default() },
+            dither: false,
+        });
+        check(&mut g, &d, "empty/single/unsorted overlay: source order and independent opacity");
+        d.layers[0].effects.items.clear();
+        d.layers[0].content = LayerContent::Fill(Fill::gradient(vec![(0.0, Color::BLACK), (1.0, Color::WHITE)], 0.0, 1.0, GradientStyle::Linear, false));
+        d.layers.push(Layer::new(
+            "map",
+            LayerContent::Adjustment(Adjustment::GradientMap { stops: colors.iter().map(|(t, c)| (*t, c.to_rgb())).collect(), reverse: false, dither: false }),
+        ));
+        check(&mut g, &d, "empty/single/unsorted map: source order");
+    }
+}
+
+#[test]
+fn hard_stop_gradient_styles_depths_and_opacity() {
+    let Some(mut g) = gpu() else { return };
+    for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+        for style in [GradientStyle::Linear, GradientStyle::Radial, GradientStyle::Angle, GradientStyle::Reflected, GradientStyle::Diamond] {
+            for reverse in [false, true] {
+                for at in [0.5, 0.375] {
+                    for opacity_only in [false, true] {
+                        let mut d = Document::new("hard stops", Size::new(8, 8), ColorMode::Rgb, depth);
+                        let mut stops = if opacity_only { vec![(0.0, Color::BLACK), (1.0, Color::WHITE)] } else { hard_stops(at) };
+                        // Fill ramps stable-sort positions. Shuffle the endpoints without changing
+                        // the duplicate stops' order; segment midpoints still follow sorted order.
+                        stops.rotate_right(1);
+                        let fill = Fill::Gradient {
+                            stops,
+                            angle: 0.0,
+                            scale: 1.0,
+                            style,
+                            reverse,
+                            opacity_stops: vec![(1.0, 0.8), (0.0, 0.3), (at, 1.0), (at, 0.0)],
+                            midpoints: vec![0.25, 0.75, 0.9],
+                            offset: (0.0, 0.0),
+                            dither: false,
+                            align: true,
+                        };
+                        d.layers.push(Layer::new("gradient", LayerContent::Fill(fill)));
+                        check(&mut g, &d, &format!("hard stops {depth:?} {style:?} reverse={reverse} at={at} opacity_only={opacity_only}"));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn hard_stop_effect_paints_and_maps() {
+    let Some(mut g) = gpu() else { return };
+    for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+        for reverse in [false, true] {
+            for at in [0.5, 0.375] {
+                let grad = Gradient {
+                    stops: hard_stops(at),
+                    opacity_stops: vec![(0.0, 0.2), (at, 1.0), (at, 0.0), (1.0, 0.7)],
+                    style: GradientStyle::Linear,
+                    angle: 0.0,
+                    scale: 1.0,
+                    reverse,
+                    align: true,
+                    offset: (0.0, 0.0),
+                };
+                for effect in [
+                    Effect::GradientOverlay { common: FxCommon::new(BlendMode::Normal, 0.8), gradient: grad.clone(), dither: false },
+                    Effect::GradientOverlay {
+                        common: FxCommon::new(BlendMode::Normal, 0.8),
+                        gradient: Gradient { stops: vec![(0.0, Color::BLACK), (1.0, Color::WHITE)], ..grad.clone() },
+                        dither: false,
+                    },
+                    Effect::Stroke(stroke(2.0, StrokePosition::Inside, FxPaint::Gradient(grad.clone()))),
+                    Effect::Stroke(stroke(2.0, StrokePosition::Outside, FxPaint::Gradient(grad.clone()))),
+                    Effect::Stroke(stroke(2.0, StrokePosition::Center, FxPaint::Gradient(grad.clone()))),
+                    Effect::InnerGlow(glow(FxPaint::Gradient(grad.clone()), GlowTechnique::Softer, 3.0, 0.0, GlowSource::Edge)),
+                    Effect::OuterGlow(glow(FxPaint::Gradient(grad.clone()), GlowTechnique::Softer, 3.0, 0.0, GlowSource::Edge)),
+                ] {
+                    let mut d = Document::new("effect", Size::new(16, 16), ColorMode::Rgb, depth);
+                    let fmt = PixelFormat::new(ColorMode::Rgb, depth, true);
+                    let mut l = Layer::raster("shape", fmt);
+                    l.surface_mut().unwrap().write_region(Rect::new(4, 4, 12, 12), &vec![1.0; 8 * 8 * 4]);
+                    l.effects.items.push(effect);
+                    d.layers.push(l);
+                    check(&mut g, &d, &format!("hard stop effect {depth:?} reverse={reverse} at={at}: {:?}", d.layers[0].effects));
+                }
+                let mut d = Document::new("map", Size::new(8, 2), ColorMode::Rgb, depth);
+                d.layers.push(Layer::new("gray", LayerContent::Fill(Fill::Solid(Color::rgb(at, at, at)))));
+                d.layers.push(Layer::new(
+                    "map",
+                    LayerContent::Adjustment(Adjustment::GradientMap {
+                        stops: grad.stops.iter().map(|(p, c)| (*p, c.to_rgb())).collect(),
+                        reverse,
+                        dither: true,
+                    }),
+                ));
+                check(&mut g, &d, &format!("hard stop map {depth:?} reverse={reverse} at={at}"));
+            }
+        }
+    }
+}
+
+#[test]
+fn hard_stop_gradient_color_modes_and_masks() {
+    let Some(mut g) = gpu() else { return };
+    for mode in [ColorMode::Rgb, ColorMode::Grayscale, ColorMode::Cmyk, ColorMode::Lab] {
+        for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+            let mut d = Document::new("mode", Size::new(8, 8), mode, depth);
+            let mut stops = hard_stops(0.375);
+            stops[1].1.alpha = 0.4;
+            stops[2].1.alpha = 0.8;
+            let mut l = Layer::new("gradient", LayerContent::Fill(Fill::gradient(stops, 0.0, 1.0, GradientStyle::Linear, false)));
+            l.opacity = 0.7;
+            l.mask = Some(mask(d.bounds(), 8, 1.0));
+            d.layers.push(l);
+            if mode == ColorMode::Cmyk {
+                assert!(g.comp.supports(&d).unwrap_err().0.contains("native CMYK fill"));
+                continue;
+            }
+            check(&mut g, &d, &format!("hard stop mode {mode:?} {depth:?}"));
+        }
+    }
+}
+
+#[test]
+fn hard_stop_gradient_maximum_stop_table() {
+    let Some(mut g) = gpu() else { return };
+    let mut d = Document::new("many stops", Size::new(8, 2), ColorMode::Rgb, SampleType::F32);
+    let mut stops: Vec<_> = (0..256).map(|i| (i as f32 / 255.0, Color::rgb(i as f32 / 255.0, 0.2, 0.7))).collect();
+    stops[127] = (0.5, Color::WHITE);
+    stops[128] = (0.5, Color::BLACK);
+    let mut fill = Fill::gradient(stops, 0.0, 1.0, GradientStyle::Linear, false);
+    if let Fill::Gradient { opacity_stops, .. } = &mut fill {
+        *opacity_stops = (0..256).map(|i| (i as f32 / 255.0, 0.8)).collect();
+    }
+    d.layers.push(Layer::new("gradient", LayerContent::Fill(fill)));
+    check(&mut g, &d, "maximum bounded color and opacity table");
+}
+
+#[test]
+fn hard_stop_gradient_endpoints_on_wide_frames() {
+    let Some(mut g) = gpu() else { return };
+    // Metal can contract (-3000 / 6000) + 0.5 into a tiny positive value. A hard
+    // stop at zero then selects the next color/opacity rather than the first.
+    for count in [4, 256] {
+        let mut stops: Vec<_> = (0..count).map(|i| (i as f32 / (count - 1) as f32, if i % 2 == 0 { Color::BLACK } else { Color::WHITE })).collect();
+        stops[1].0 = 0.0;
+        stops[count - 2].0 = 1.0;
+        let mut opacity: Vec<_> = (0..count).map(|i| (i as f32 / (count - 1) as f32, 0.5 + 0.5 * (i % 2) as f32)).collect();
+        opacity[1].0 = 0.0;
+        opacity[count - 2].0 = 1.0;
+        for style in [GradientStyle::Linear, GradientStyle::Reflected] {
+            for angle in [0.0, 180.0] {
+                for reverse in [false, true] {
+                    for scale in [0.5, 1.0] {
+                        let mut d = Document::new("endpoints", Size::new(6000, 2), ColorMode::Rgb, SampleType::F32);
+                        let mut fill = Fill::gradient(stops.clone(), angle, scale, style, reverse);
+                        if let Fill::Gradient { opacity_stops, .. } = &mut fill {
+                            *opacity_stops = opacity.clone();
+                        }
+                        d.layers.push(Layer::new("gradient", LayerContent::Fill(fill)));
+                        check(&mut g, &d, &format!("wide endpoints count={count} {style:?} angle={angle} reverse={reverse} scale={scale}"));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn hard_stop_gradient_rotated_styles() {
+    let Some(mut g) = gpu() else { return };
+    for style in [GradientStyle::Linear, GradientStyle::Radial, GradientStyle::Angle, GradientStyle::Reflected, GradientStyle::Diamond] {
+        for angle in [30.0, 90.0, 180.0, 270.0] {
+            for reverse in [false, true] {
+                let mut d = Document::new("rotated", Size::new(8, 8), ColorMode::Rgb, SampleType::U8);
+                let mut fill = Fill::gradient(hard_stops(0.5), angle, 1.0, style, reverse);
+                if let Fill::Gradient { dither, .. } = &mut fill {
+                    *dither = true;
+                }
+                d.layers.push(Layer::new("gradient", LayerContent::Fill(fill)));
+                check(&mut g, &d, &format!("rotated hard stops {style:?} angle={angle} reverse={reverse}"));
+            }
+        }
+    }
 }
 
 #[test]
@@ -635,7 +907,7 @@ fn groups_masks_and_clipping() {
 }
 
 #[test]
-fn hard_stop_gradients_match_cpu_or_fall_back() {
+fn hard_stop_gradients_match_cpu_on_gpu() {
     let Some(mut g) = gpu() else { return };
     for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
         let mut d = Document::new("hard stops", Size::new(8, 2), ColorMode::Rgb, depth);
@@ -650,16 +922,11 @@ fn hard_stop_gradients_match_cpu_or_fall_back() {
             d.layers.push(Layer::new("gradient", LayerContent::Fill(fill.clone())));
             let cpu = photocraft_compose::render(&d, d.bounds());
             assert_eq!(cpu.px[4], [1.0; 4]);
-            let out = match render_to_vec(&mut g.comp, &g.device, &g.queue, &d, d.bounds()) {
-                Ok(out) => out,
-                Err(e) => {
-                    assert!(e.0.contains("coincident gradient stops"), "{e}");
-                    photocraft_compose::render(&d, d.bounds()).px
-                }
-            };
+            let out = render_to_vec(&mut g.comp, &g.device, &g.queue, &d, d.bounds()).expect("bounded hard stops must render on the GPU");
             let worst = worst_diff(&cpu.px, &out);
             assert!(worst.0 <= TOL, "{depth:?}: diff {}/255, cpu {:?}, gpu {:?}", worst.0 * 255.0, cpu.px[worst.1], out[worst.1]);
-            assert!(g.comp.supports(&d).is_err(), "hard stops must request the canvas's CPU fallback");
+            assert!(g.comp.supports(&d).is_ok(), "bounded hard stops must use the GPU");
+            check(&mut g, &d, &format!("hard stops {depth:?} opacity {opacity}"));
         }
 
         // The ordinary two-stop control must still render on the GPU.
@@ -673,8 +940,8 @@ fn hard_stop_fill_fallback_respects_caches_and_visibility() {
     use photocraft_doc::FillCache;
     use photocraft_raster::Surface;
 
-    for opacity in [false, true] {
-        // Non-adjacent duplicates must be caught too: the CPU sorts fill stops.
+    for (opacity, oversized) in [(false, false), (true, false), (false, true), (true, true)] {
+        // Larger ramps still fall back; the CPU sorts these non-adjacent duplicates.
         let mut fill = Fill::gradient(vec![(0.0, Color::BLACK), (1.0, Color::WHITE)], 0.0, 1.0, GradientStyle::Linear, false);
         if let Fill::Gradient { stops, opacity_stops, .. } = &mut fill {
             if opacity {
@@ -683,9 +950,16 @@ fn hard_stop_fill_fallback_respects_caches_and_visibility() {
                 *stops = vec![(0.5, Color::WHITE), (0.0, Color::BLACK), (0.5, Color::BLACK), (1.0, Color::WHITE)];
             }
         }
+        if oversized && let Fill::Gradient { stops, opacity_stops, .. } = &mut fill {
+            if opacity {
+                opacity_stops.resize(257, (1.0, 1.0));
+            } else {
+                stops.resize(257, (1.0, Color::WHITE));
+            }
+        }
         let mut d = Document::new("hard stops", Size::new(8, 2), ColorMode::Rgb, SampleType::U8);
         d.layers.push(Layer::new("gradient", LayerContent::Fill(fill.clone())));
-        assert_gradient_fallback(&d);
+        assert_gradient_plan(&d, oversized);
 
         d.layers[0].visible = false;
         assert!(photocraft_gpu::plan(&d).is_ok(), "hidden fill is not sampled");
@@ -695,35 +969,47 @@ fn hard_stop_fill_fallback_respects_caches_and_visibility() {
         if let LayerContent::Fill(Fill::Gradient { reverse, .. }) = &mut d.layers[0].content {
             *reverse = true;
         }
-        assert_gradient_fallback(&d);
+        assert_gradient_plan(&d, oversized);
 
         // Group and clipping routes must propagate Unsupported to the canvas too.
         d.layers[0] = Layer::group("group", vec![Layer::new("gradient", LayerContent::Fill(fill.clone()))]);
-        assert_gradient_fallback(&d);
+        assert_gradient_plan(&d, oversized);
         let mut clipped = Layer::new("clipped", LayerContent::Fill(fill));
         clipped.clipped = true;
         d.layers = vec![Layer::new("base", LayerContent::Fill(Fill::Solid(Color::WHITE))), clipped];
-        assert_gradient_fallback(&d);
+        assert_gradient_plan(&d, oversized);
         d.layers.push(Layer::new("cover", LayerContent::Fill(Fill::Solid(Color::WHITE))));
         assert!(photocraft_gpu::plan(&d).is_ok(), "occluded gradients are not sampled");
     }
 }
 
-fn assert_gradient_fallback(d: &Document) {
-    let e = photocraft_gpu::plan(d).unwrap_err();
-    assert!(e.0.contains("coincident gradient stops"), "{e}");
+fn assert_gradient_plan(d: &Document, oversized: bool) {
+    if oversized {
+        let e = photocraft_gpu::plan(d).unwrap_err();
+        assert!(e.0.contains("256 exact stops"), "{e}");
+    } else {
+        assert!(photocraft_gpu::plan(d).is_ok(), "bounded hard stops should use the GPU");
+    }
 }
 
 #[test]
-fn hard_stop_effects_and_gradient_maps_request_cpu() {
+fn hard_stop_effects_and_gradient_maps_respect_cap() {
     let mut d = Document::with_background("hard stops", Size::new(8, 2), ColorMode::Rgb, SampleType::U8, Color::WHITE);
-    for opacity in [false, true] {
+    for (opacity, oversized) in [(false, false), (true, false), (false, true), (true, true)] {
         for position in [0.0, 0.5, 1.0] {
             let mut gradient = Gradient::default();
             if opacity {
                 gradient.opacity_stops = vec![(position, 1.0), (position, 0.0)];
             } else {
                 gradient.stops = vec![(position, Color::WHITE), (position, Color::BLACK)];
+            }
+            // #2005 routes remain covered above the exact GPU cap.
+            if oversized {
+                if opacity {
+                    gradient.opacity_stops.resize(257, (position, 0.0));
+                } else {
+                    gradient.stops.resize(257, (position, Color::BLACK));
+                }
             }
             let paint = FxPaint::Gradient(gradient.clone());
             let effects = [
@@ -734,7 +1020,7 @@ fn hard_stop_effects_and_gradient_maps_request_cpu() {
             ];
             for effect in effects {
                 d.layers[0].effects.items = vec![effect];
-                assert_gradient_fallback(&d);
+                assert_gradient_plan(&d, oversized);
                 d.layers[0].effects.enabled = false;
                 assert!(photocraft_gpu::plan(&d).is_ok(), "disabled effects are not sampled");
                 d.layers[0].effects.enabled = true;
@@ -744,19 +1030,22 @@ fn hard_stop_effects_and_gradient_maps_request_cpu() {
         }
     }
     d.layers[0].effects.items.clear();
-    d.layers.push(Layer::new(
-        "map",
-        LayerContent::Adjustment(Adjustment::GradientMap {
-            stops: vec![(0.0, [0.0; 3]), (0.5, [1.0; 3]), (0.5, [0.0; 3]), (1.0, [1.0; 3])],
-            reverse: false,
-            dither: false,
-        }),
-    ));
-    assert_gradient_fallback(&d);
-    d.layers[1].clipped = true;
-    assert_gradient_fallback(&d);
-    d.layers[1].visible = false;
-    assert!(photocraft_gpu::plan(&d).is_ok());
+    for oversized in [false, true] {
+        d.layers.truncate(1);
+        d.layers.push(Layer::new(
+            "map",
+            LayerContent::Adjustment(Adjustment::GradientMap {
+                stops: if oversized { vec![(0.5, [0.0; 3]); 257] } else { vec![(0.0, [0.0; 3]), (0.5, [1.0; 3]), (0.5, [0.0; 3]), (1.0, [1.0; 3])] },
+                reverse: false,
+                dither: false,
+            }),
+        ));
+        assert_gradient_plan(&d, oversized);
+        d.layers[1].clipped = true;
+        assert_gradient_plan(&d, oversized);
+        d.layers[1].visible = false;
+        assert!(photocraft_gpu::plan(&d).is_ok());
+    }
 }
 
 #[test]

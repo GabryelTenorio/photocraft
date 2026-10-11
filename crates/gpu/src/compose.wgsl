@@ -48,6 +48,8 @@ const F_STROKE_OUT: u32 = 1024u; // effect paint: outside stroke band
 const F_FIRST: u32 = 2048u;      // outside strokes: nothing accumulated yet
 const F_CHANNELS: u32 = 4096u;   // lerp: per-channel weights in p0 (channel restrictions)
 const F_LAB: u32 = 65536u;      // Lab document: Normal mixes in CIELAB
+// Finite pipeline variants keep exact-stop loops out of the ordinary LUT shaders.
+override EXACT_RAMP: bool = false;
 const F_HDR: u32 = 262144u;     // 32-bit float document: HDR blends and Exposure retain values above 1
 const F_QUANT: u32 = 32768u;    // lerp: A rounded to p0.x steps (adjustment results, integer docs)
 const F_ADD_DIFF: u32 = 16384u;  // lerp: A + (B - C) premultiplied (clips on pass-through groups)
@@ -479,6 +481,71 @@ fn lut_at(i: i32) -> f32 {
     return textureLoad(lut_tex, vec2(i % 4096, i / 4096), 0).r;
 }
 
+// Exact CPU stop semantics at discontinuities: choose the first stop/segment
+// whose right endpoint contains t. Duplicate positions are never interpolated across.
+fn ramp_color(i: i32) -> vec4<f32> {
+    let k = 4 + i * 6;
+    return vec4(lut_at(k + 1), lut_at(k + 2), lut_at(k + 3), lut_at(k + 4));
+}
+
+fn ramp_mix(t: f32, a: f32, b: f32) -> f32 {
+    if (b > a) { return (t - a) / (b - a); }
+    return 0.0;
+}
+
+fn gradient_sample(t: f32) -> vec4<f32> {
+    if (!EXACT_RAMP) {
+        return vec4(lut(0, t), lut(1, t), lut(2, t), lut(3, t));
+    }
+    // Match plan::MAX_RAMP_STOPS. Larger ramps use the CPU; source-order effects
+    // need a bounded scan to preserve the first containing segment.
+    let nc = clamp(i32(lut_at(0)), 0, 256);
+    let na = clamp(i32(lut_at(1)), 0, 256);
+    var c = vec4(0.0);
+    if (lut_at(2) > 0.5) { c = vec4(t, t, t, 1.0); }
+    if (nc > 0) {
+        c = ramp_color(nc - 1);
+        if (t <= lut_at(4)) {
+            c = ramp_color(0);
+        } else {
+            for (var i = 1; i < nc; i += 1) {
+                let b = lut_at(4 + i * 6);
+                if (t <= b) {
+                    let a = lut_at(4 + (i - 1) * 6);
+                    var u = ramp_mix(t, a, b);
+                    let m = clamp(lut_at(4 + (i - 1) * 6 + 5), 0.05, 0.95);
+                    if (abs(m - 0.5) >= 1e-6) {
+                        if (u <= m) { u = 0.5 * u / m; }
+                        else { u = 0.5 + 0.5 * (u - m) / (1.0 - m); }
+                    }
+                    let ca = ramp_color(i - 1);
+                    c = ca + (ramp_color(i) - ca) * u;
+                    break;
+                }
+            }
+        }
+    }
+    if (na > 0) {
+        let base = 4 + nc * 6;
+        var alpha = lut_at(base + (na - 1) * 2 + 1);
+        if (t <= lut_at(base)) {
+            alpha = lut_at(base + 1);
+        } else {
+            for (var i = 1; i < na; i += 1) {
+                let b = lut_at(base + i * 2);
+                if (t <= b) {
+                    let k = base + (i - 1) * 2;
+                    let a = lut_at(k + 1);
+                    alpha = a + (lut_at(k + 3) - a) * ramp_mix(t, lut_at(k), b);
+                    break;
+                }
+            }
+        }
+        c.a *= alpha;
+    }
+    return c;
+}
+
 fn lut3(n: i32, r: i32, g: i32, b: i32) -> vec3<f32> {
     let i = ((b * n + g) * n + r) * 3;
     return vec3(lut_at(i), lut_at(i + 1), lut_at(i + 2));
@@ -693,7 +760,7 @@ fn adjust(c: vec3<f32>) -> vec3<f32> {
         case 13: {                                                             // Gradient map
             var t = gray(c);
             if (p0.x > 0.5) { t = 1.0 - t; }
-            var o = vec3(lut(0, t), lut(1, t), lut(2, t));
+            var o = gradient_sample(t).rgb;
             if (p0.y > 0.5) { o = clamp(o + bayer4(adj_px) / 255.0, vec3(0.0), vec3(1.0)); }
             return o;
         }
@@ -740,13 +807,25 @@ fn gradient_t(d: vec2<i32>) -> f32 {
     let chord = max(min(w / max(abs(c), 1e-6), h / max(abs(s), 1e-6)), 1.0) * max(op.p0.y, 1e-3);
     // Linear / Reflected sample the pixel's top-left corner (effects::gradient_t).
     let corner = 0.5 * (c - s);
+    let projected = along - corner;
+    let half_chord = chord / 2.0;
     var t: f32;
     switch i32(op.p0.w) {
         case 1: { t = sqrt(dx * dx + dy * dy) / (len / 2.0); }                  // Radial
         case 2: { t = rem_euclid((a - atan2(-dy, dx)) / 6.28318530718, 1.0); }   // Angle
-        case 3: { t = abs((along - corner) / (chord / 2.0)); }                  // Reflected
+        case 3: {                                                            // Reflected
+            if (EXACT_RAMP && abs(projected) >= half_chord) { t = 1.0; }
+            else { t = abs(projected / half_chord); }
+        }
         case 4: { t = (abs(along) + abs(across)) / (len / 2.0); }               // Diamond
-        default: { t = (along - corner) / chord + 0.5; }                        // Linear
+        default: {                                                           // Linear
+            // Metal can contract division + bias into a tiny positive t at the
+            // exact start. Bound the projection first, without an epsilon, so a
+            // coincident endpoint selects the same stop as the CPU oracle.
+            if (EXACT_RAMP && projected <= -half_chord) { t = 0.0; }
+            else if (EXACT_RAMP && projected >= half_chord) { t = 1.0; }
+            else { t = projected / chord + 0.5; }
+        }
     }
     t = clamp(t, 0.0, 1.0);
     if (op.p0.z > 0.5) { t = 1.0 - t; }
@@ -765,7 +844,7 @@ fn dither_noise(d: vec2<i32>) -> f32 {
 fn layer_texel(d: vec2<i32>) -> vec4<f32> {
     if ((op.flags & F_GRADIENT) != 0u) {
         let t = gradient_t(d);
-        var c = vec4(lut(0, t), lut(1, t), lut(2, t), lut(3, t));
+        var c = gradient_sample(t);
         // p2.w: dither (gradient fills), rounded to p2.z levels on integer documents.
         if (op.p2.w > 0.5) {
             var rgb = clamp(c.rgb + (dither_noise(d) - 0.5) / 255.0, vec3(0.0), vec3(1.0));
@@ -933,7 +1012,7 @@ fn fx_color(d: vec2<i32>) -> vec4<f32> {
     let kind = i32(op.p2.z);
     if (kind == 1) {
         let t = gradient_t(d);
-        return vec4(lut(0, t), lut(1, t), lut(2, t), lut(3, t));
+        return gradient_sample(t);
     }
     if (kind == 2) {
         return pattern_sample(d);
@@ -1008,7 +1087,8 @@ fn fs_fxpaint(in: VOut) -> @location(0) vec4<f32> {
         let k = min(m * op.p0.x, 1.0) * op.opacity;
         if (k <= 0.0) { return dst; }
         let t = 1.0 - clamp(m, 0.0, 1.0);
-        return composite(op.mode, dst, vec4(lut(0, t), lut(1, t), lut(2, t), lut(3, t) * k), 1.0);
+        let c = gradient_sample(t);
+        return composite(op.mode, dst, vec4(c.rgb, c.a * k), 1.0);
     }
     let k = m * op.opacity;
     if (k <= 0.0) { return dst; }
