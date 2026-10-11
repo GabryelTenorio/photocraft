@@ -5,7 +5,9 @@ use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, S
 
 use crate::theme::{self, Tokens};
 
+mod angle_dial;
 mod color_count;
+pub use angle_dial::angle_dial_row;
 pub use color_count::color_count_row;
 mod type_ahead;
 pub use type_ahead::list_open as dropdown_list_open;
@@ -80,10 +82,10 @@ pub struct CardResponse {
     pub chevron: Option<Rect>,
     /// A tab dragged along the strip was dropped: `(tab, before)` (#2272).
     pub tab_reorder: Option<(usize, Option<usize>)>,
-    /// A tab is being dragged away from the strip.
-    pub tab_dragging_out: bool,
-    /// A tab drag ended away from the strip.
-    pub tab_dropped_out: bool,
+    /// The index of a tab being dragged away from the strip.
+    pub tab_dragging_out: Option<usize>,
+    /// The index of a tab whose drag ended away from the strip.
+    pub tab_dropped_out: Option<usize>,
 }
 
 impl CardResponse {
