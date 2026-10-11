@@ -79,6 +79,7 @@ pub mod filter_dialog;
 mod filter_preview_worker;
 pub mod flick_pan;
 mod font_preview;
+mod font_samples;
 pub mod frame_tool;
 pub mod gallery_ui;
 pub mod gpu_canvas;
