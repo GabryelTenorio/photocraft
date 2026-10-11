@@ -6,9 +6,11 @@
 //!   active layer, instead of making a new layer. The other channels and the layer's transparency
 //!   stay as they are. Pasting into an alpha channel, a layer mask or the Quick Mask goes through
 //!   [`crate::edit_cmds::paste_to_target`].
+//! - Cut with a colour channel targeted copies that channel and fills the cut area of that channel
+//!   only with the background colour (#2698).
 
 use photocraft_color::{ColorMode, PixelFormat};
-use photocraft_doc::Layer;
+use photocraft_doc::{Layer, LayerId};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
@@ -71,7 +73,7 @@ pub(crate) fn copy(s: &mut Session) -> Result<Option<Value>> {
     if bounds.is_empty() {
         return Err(EngineError::Other("Could not copy: the selected area is empty".into()));
     }
-    s.clipboard = Some(Clip { surface, bounds });
+    s.clipboard = Some(Clip { surface, bounds, layers: None });
     Ok(Some(json!({"bounds": [bounds.x0, bounds.y0, bounds.width(), bounds.height()], "channel": k})))
 }
 
@@ -111,6 +113,17 @@ pub(crate) fn paste(s: &mut Session, p: &Value, k: usize, in_place: bool, limit:
         Ok(())
     })?;
     Ok(json!({"layer": id.0, "channel": k, "offset": [dx, dy]}))
+}
+
+/// Cut with colour channel `k` of layer `id` targeted (#2698): copy the channel as [`copy`] does,
+/// then fill the selected area (or the canvas) of that channel only with the background colour's
+/// value for it, as Photoshop does. The other channels and the layer's transparency stay as they
+/// are. One history step.
+pub(crate) fn cut(s: &mut Session, id: LayerId, k: usize) -> Result<Value> {
+    let r = copy(s)?.ok_or_else(|| EngineError::Other("no colour channel is targeted".into()))?;
+    let bg = s.tools.background;
+    s.edit("Cut Pixels", |doc, _| crate::channel_cmds::clear_color_channel(doc, id, k, bg))?;
+    Ok(r)
 }
 
 /// Copy reads only: with an alpha channel targeted it needs no pixel layer.
