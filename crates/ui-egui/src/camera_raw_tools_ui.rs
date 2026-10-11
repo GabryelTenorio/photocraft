@@ -315,7 +315,8 @@ pub(crate) fn more_menu(ui: &mut Ui, d: &mut CameraRawDialog, previous: Option<C
     ui.set_min_width(240.0);
     let mut changed = false;
     let item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool| -> bool {
-        let b = egui::Button::new(label).shortcut_text(shortcut);
+        let b = egui::Button::new(label);
+        let b = if shortcut.is_empty() { b } else { b.shortcut_text(shortcut) };
         ui.add_enabled(enabled, b).clicked()
     };
     let at_open = d.params == d.original;

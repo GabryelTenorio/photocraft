@@ -85,6 +85,9 @@ pub struct CameraRawDialog {
     pub(crate) tools: crate::camera_raw_tools_ui::ToolState,
     pub(crate) prefs_open: bool,
     pub(crate) prefs_tab: usize,
+    /// A text field had focus last frame: the Enter / Esc that ended its edit is not the
+    /// dialog's (OK / Cancel).
+    text_focus_prev: bool,
     /// Proxy pixels (straight RGBA) and size.
     pub(crate) proxy: Vec<[f32; 4]>,
     pub(crate) selection: Option<Vec<f32>>,
@@ -713,6 +716,7 @@ fn open_pixels(
         tools: Default::default(),
         prefs_open: false,
         prefs_tab: 0,
+        text_focus_prev: false,
         render_ms: 0.0,
         raw_open: None,
         raw_curve: None,
@@ -801,6 +805,14 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
         };
         if let Err(e) = next_params.validate_changes(&d.original) {
             return Some(Err(format!("bad Camera Raw settings: {e}")));
+        }
+        use photocraft_algo::camera_raw::{UPRIGHT_MODES, WHITE_BALANCE_MODES};
+        if !UPRIGHT_MODES.contains(&next_params.upright.as_str()) || !WHITE_BALANCE_MODES.contains(&next_params.white_balance.as_str()) {
+            return Some(Err(format!(
+                "bad Camera Raw settings: upright must be one of {}, whiteBalance one of {}",
+                UPRIGHT_MODES.join("|"),
+                WHITE_BALANCE_MODES.join("|")
+            )));
         }
     }
     let scope_update = match ui.get("scope") {
@@ -1165,17 +1177,22 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
         props.set_clip_rect(list.intersect(ui.clip_rect()));
         d.scope.alt_tone = None;
         let mut dirty = false;
-        egui::ScrollArea::vertical().id_salt(("camera-raw-props", layout.tool.clone())).auto_shrink([false, false]).show(&mut props, |ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            ui.set_width(list.width() - 15.0);
-            match layout.tool.as_str() {
-                "remove" => crate::camera_raw_tools_ui::remove(ui, &mut d.tools),
-                "masking" => crate::camera_raw_tools_ui::masking(ui),
-                "redEye" => crate::camera_raw_tools_ui::red_eye(ui, &mut d.tools),
-                "presets" => dirty |= crate::camera_raw_tools_ui::presets(ui, d),
-                _ => dirty |= crate::camera_raw_panels::edit(ui, d, layout),
-            }
-        });
+        // Camera Raw keeps its scroll bar's track visible.
+        egui::ScrollArea::vertical()
+            .id_salt(("camera-raw-props", layout.tool.clone()))
+            .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .show(&mut props, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.set_width(list.width() - 15.0);
+                match layout.tool.as_str() {
+                    "remove" => crate::camera_raw_tools_ui::remove(ui, &mut d.tools),
+                    "masking" => crate::camera_raw_tools_ui::masking(ui),
+                    "redEye" => crate::camera_raw_tools_ui::red_eye(ui, &mut d.tools),
+                    "presets" => dirty |= crate::camera_raw_tools_ui::presets(ui, d),
+                    _ => dirty |= crate::camera_raw_panels::edit(ui, d, layout),
+                }
+            });
         // Tool strip.
         painter.rect_filled(ERect::from_min_max(pos2(strip.left() - 1.0, strip.top()), pos2(strip.left(), strip.bottom())), 0.0, c.rule);
         let mut tools = ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(vec2(4.0, 6.0))).layout(egui::Layout::top_down(egui::Align::Center)));
@@ -1409,7 +1426,9 @@ fn preview_bar(
 /// Ctrl+K Preferences, Esc cancels and Enter is OK.
 fn shortcuts(app: &mut PhotocraftApp, ctx: &egui::Context, action: &mut Option<&str>) {
     let Some(d) = app.camera_raw.as_mut() else { return };
-    if ctx.text_edit_focused() {
+    let focused = ctx.text_edit_focused();
+    let ended_edit = std::mem::replace(&mut d.text_focus_prev, focused);
+    if focused || ended_edit {
         return;
     }
     use egui::{Key, Modifiers};

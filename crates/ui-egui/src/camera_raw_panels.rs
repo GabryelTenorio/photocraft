@@ -245,7 +245,7 @@ fn profile_row(ui: &mut Ui, d: &mut CameraRawDialog, dirty: &mut bool) {
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     let mut choice = if d.params.monochrome { 1 } else { 0 };
-    if crate::widgets::dropdown(&mut inner, "cr-profile", &mut choice, &[(0, tr("Color")), (1, tr("Monochrome")), (2, tr("Browse..."))], 112.0) {
+    if crate::widgets::dropdown(&mut inner, "cr-profile", &mut choice, &[(0, tr("Color")), (1, tr("Monochrome")), (2, tr("Browse..."))], 128.0) {
         match choice {
             2 => d.profile_browser = true,
             n => {

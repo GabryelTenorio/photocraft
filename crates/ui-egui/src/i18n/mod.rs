@@ -905,7 +905,8 @@ mod tests {
                         while end < bytes.len() && !(bytes[end] == b'"' && (end == 0 || bytes[end - 1] != b'\\')) {
                             end += 1;
                         }
-                        let lit = rest.get(..end).unwrap_or("").replace("\\\"", "\"");
+                        // Escapes as the catalog reads them (`\n` is a line break there too).
+                        let lit = rest.get(..end).unwrap_or("").replace("\\\"", "\"").replace("\\n", "\n");
                         if rest.get(end + 1..end + 2) == Some(")") {
                             literals.insert(lit);
                         }

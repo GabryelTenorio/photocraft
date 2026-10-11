@@ -130,7 +130,9 @@ pub(crate) fn panel_header(ui: &mut Ui, id: &str, title: &str, open: bool, badge
     }
     if eye != Eye::None {
         let er = ui.interact(eye_rect, ui.id().with((id, "eye")), Sense::click());
-        let er = er.on_hover_text(crate::i18n::fmt(tl!("Toggle visibility of {panel} settings"), &[("panel", title)]));
+        let tip = crate::i18n::fmt(tl!("Toggle visibility of {panel} settings"), &[("panel", title)]);
+        er.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, eye != Eye::Hidden, &tip));
+        let er = er.on_hover_text(tip);
         let (name, tint) = match eye {
             Eye::Hidden => ("eye-off", c.text),
             Eye::Shown { edited: true } => ("eye", c.text),
@@ -396,6 +398,13 @@ fn value_box(ui: &mut Ui, id: egui::Id, rect: Rect, value: &mut f32, spec: &Spec
                 ui.data_mut(|d| d.remove::<String>(editing_id));
                 ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
                 return changed;
+            }
+            if enter || tab {
+                // The box takes its own Enter / Tab: they must not reach the dialog (OK).
+                ui.input_mut(|i| {
+                    i.consume_key(egui::Modifiers::NONE, Key::Enter);
+                    i.consume_key(egui::Modifiers::NONE, Key::Tab);
+                });
             }
             if enter || tab || r.lost_focus() {
                 if let Some(v) = crate::widgets::parse_num(buffer.trim_start_matches('+')).map(|v| v as f32).filter(|v| v.is_finite()) {
