@@ -105,7 +105,8 @@ impl Headless {
                     opts.encode.webp_lossless = false;
                 }
                 let path = str_of(&p, "path").map(PathBuf::from);
-                self.save(index_of(&p), path.as_deref(), str_of(&p, "format"), &opts)
+                let flatten = p.get("flatten").and_then(Value::as_bool).unwrap_or(false);
+                self.save(index_of(&p), path.as_deref(), str_of(&p, "format"), &opts, flatten)
             }
             "doc.inspect" => self.inspect(index_of(&p)),
             "doc.render" => {
