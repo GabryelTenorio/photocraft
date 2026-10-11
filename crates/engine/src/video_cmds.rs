@@ -138,11 +138,24 @@ fn delete_frame(s: &mut Session, _p: &Value) -> Result<Value> {
     })
 }
 
+/// Footage to restore to an imported video layer. Load before the edit transaction:
+/// if the source cannot be read, restoration leaves the document unchanged.
+fn restoration_source(s: &Session) -> Result<Option<Vec<Surface>>> {
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    let id = st.active_layer.ok_or(EngineError::NoDocument)?;
+    let v = st.doc.layer(id).and_then(|l| l.video.as_ref()).ok_or(EngineError::NoLayer(id))?;
+    match &v.source {
+        photocraft_doc::VideoSource::Blank => Ok(None),
+        photocraft_doc::VideoSource::File { path } => load_frames(path, st.doc.pixel_format()).map(Some),
+    }
+}
+
 fn restore_frame(s: &mut Session, _p: &Value) -> Result<Value> {
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
+    let original = restoration_source(s)?;
     edit_video(s, "Restore Frame", move |v, cur| {
         if let Some(f) = v.frames.get_mut(cur) {
-            *f = blank_of(fmt);
+            *f = original.as_ref().and_then(|frames| frames.get(cur)).cloned().unwrap_or_else(|| blank_of(fmt));
         }
         Ok(())
     })
@@ -150,9 +163,10 @@ fn restore_frame(s: &mut Session, _p: &Value) -> Result<Value> {
 
 fn restore_all(s: &mut Session, _p: &Value) -> Result<Value> {
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
+    let original = restoration_source(s)?;
     edit_video(s, "Restore All Frames", move |v, _| {
-        for f in v.frames.iter_mut() {
-            *f = blank_of(fmt);
+        for (index, f) in v.frames.iter_mut().enumerate() {
+            *f = original.as_ref().and_then(|frames| frames.get(index)).cloned().unwrap_or_else(|| blank_of(fmt));
         }
         Ok(())
     })
