@@ -124,7 +124,8 @@ fn insert_blank(s: &mut Session, _p: &Value) -> Result<Value> {
         let at = (cur + 1).min(v.frames.len());
         v.frames.insert(at, blank_of(fmt));
         if let Some(original) = &mut v.original_frames {
-            original.insert(at, blank_of(fmt));
+            // The stacks stay aligned, but never index past a shorter one.
+            original.insert(at.min(original.len()), blank_of(fmt));
         }
         Ok(())
     })
@@ -135,7 +136,7 @@ fn duplicate_frame(s: &mut Session, _p: &Value) -> Result<Value> {
         if let Some(f) = v.frames.get(cur).cloned() {
             if let Some(original) = &mut v.original_frames {
                 let orig = original.get(cur).cloned().unwrap_or_else(|| blank_of(f.format()));
-                original.insert(cur + 1, orig);
+                original.insert((cur + 1).min(original.len()), orig);
             }
             v.frames.insert(cur + 1, f);
         }

@@ -50,7 +50,9 @@ impl PartialEq for VideoData {
     fn eq(&self, o: &Self) -> bool {
         self.frames.len() == o.frames.len()
             && self.original_frames.as_ref().map(Vec::len) == o.original_frames.as_ref().map(Vec::len)
-            && self.source == o.source && self.fps == o.fps && self.show_altered == o.show_altered
+            && self.source == o.source
+            && self.fps == o.fps
+            && self.show_altered == o.show_altered
     }
 }
 
