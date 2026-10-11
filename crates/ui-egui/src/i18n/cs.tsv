@@ -687,6 +687,9 @@
 	New Workspace…	Nový pracovní prostor…
 	Delete Workspace…	Odstranit pracovní prostor…
 	Reset Workspace	Obnovit pracovní prostor
+	Reset Tool	Obnovit nástroj
+	Reset All Tools	Obnovit všechny nástroje
+	Reset all tools to their default settings?	Obnovit výchozí nastavení všech nástrojů?
 	Lock Workspace	Zamknout pracovní prostor
 	Theme	Motiv
 	Pro Theme	Motiv Pro
@@ -2195,6 +2198,9 @@ cameraRaw	Color	Barvy
 	Structure:	Struktura:
 	Content-Aware Move Tool	Nástroj přesun s ohledem na obsah
 	TIFF Options	Možnosti TIFF
+	Targa Options	Možnosti Targa
+	24 bits/pixel	24 bitů/pixel
+	32 bits/pixel	32 bitů/pixel
 	Including layers will increase file size.	Zahrnutí vrstev zvětší velikost souboru.
 	Discard Layers and Save a Copy	Zahodit vrstvy a uložit kopii
 	Don't show again	Příště nezobrazovat
@@ -2482,6 +2488,11 @@ cameraData	Lens	Objektiv
 	Previous Document	Předchozí dokument
 	W x H x Resolution	Š x V x Rozlišení
 	Front Image	Přední obraz
+	Freeform Pen Tool	Nástroj pero od ruky
+	Curvature Pen Tool	Nástroj pero křivosti
+	Curve Fit:	Přizpůsobení křivky:
+	Drag: draw freehand · Release on the start point: close	Tažení: kreslit od ruky · uvolnění na počátečním bodě: uzavřít
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Kliknutí: hladký bod · dvojklik: roh · tažení bodu: přesunout · kliknutí na první bod: uzavřít · {key} dokončit
 	New Crop Preset…	Nová předvolba oříznutí…
 	Delete Crop Preset…	Odstranit předvolbu oříznutí…
 	Select the crop presets to delete:	Vyberte předvolby oříznutí k odstranění:

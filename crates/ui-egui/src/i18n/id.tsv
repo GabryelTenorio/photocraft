@@ -663,6 +663,9 @@
 	New Workspace…	Ruang Kerja Baru…
 	Delete Workspace…	Hapus Ruang Kerja…
 	Reset Workspace	Reset Ruang Kerja
+	Reset Tool	Reset Alat
+	Reset All Tools	Reset Semua Alat
+	Reset all tools to their default settings?	Reset semua alat ke pengaturan bawaannya?
 	Lock Workspace	Kunci Ruang Kerja
 	Theme	Tema
 	Pro Theme	Tema Pro
@@ -2605,6 +2608,9 @@ cameraRaw	Blending	Pembauran
 	Structure:	Struktur:
 	Content-Aware Move Tool	Alat Content-Aware Move
 	TIFF Options	Opsi TIFF
+	Targa Options	Opsi Targa
+	24 bits/pixel	24 Bit/Piksel
+	32 bits/pixel	32 Bit/Piksel
 	Including layers will increase file size.	Menyertakan layer akan memperbesar ukuran file.
 	Discard Layers and Save a Copy	Buang Layer dan Simpan Salinan
 	Don't show again	Jangan tampilkan lagi
@@ -2880,6 +2886,11 @@ cameraData	Lens	Lensa
 	Previous Document	Dokumen Sebelumnya
 	W x H x Resolution	L x T x Resolusi
 	Front Image	Gambar Depan
+	Freeform Pen Tool	Alat Pen Bebas
+	Curvature Pen Tool	Alat Pen Kelengkungan
+	Curve Fit:	Penyesuaian Kurva:
+	Drag: draw freehand · Release on the start point: close	Seret: gambar bebas · Lepas di titik awal: tutup
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: titik halus · Klik ganda: sudut · Seret titik: pindahkan · Klik titik pertama: tutup · {key} selesai
 	New Crop Preset…	Preset Pangkas Baru…
 	Delete Crop Preset…	Hapus Preset Pangkas…
 	Select the crop presets to delete:	Pilih preset pangkas yang akan dihapus:

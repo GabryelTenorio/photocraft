@@ -687,6 +687,9 @@
 	New Workspace…	新增工作區…
 	Delete Workspace…	刪除工作區…
 	Reset Workspace	重設工作區
+	Reset Tool	重設工具
+	Reset All Tools	重設所有工具
+	Reset all tools to their default settings?	要將所有工具重設為預設設定嗎？
 	Lock Workspace	鎖定工作區
 	Theme	主題
 	Pro Theme	專業主題
@@ -2173,6 +2176,9 @@ cameraRaw	Blending	混合
 	Structure:	結構：
 	Content-Aware Move Tool	內容感知移動工具
 	TIFF Options	TIFF 選項
+	Targa Options	Targa 選項
+	24 bits/pixel	24 位元/像素
+	32 bits/pixel	32 位元/像素
 	Including layers will increase file size.	包含圖層會增加檔案大小。
 	Discard Layers and Save a Copy	放棄圖層並儲存拷貝
 	Don't show again	不再顯示
@@ -2459,6 +2465,11 @@ cameraData	Lens	鏡頭
 	Previous Document	上一個文件
 	W x H x Resolution	寬 x 高 x 解析度
 	Front Image	前面的影像
+	Freeform Pen Tool	自由筆型工具
+	Curvature Pen Tool	曲線筆工具
+	Curve Fit:	曲線擬合：
+	Drag: draw freehand · Release on the start point: close	拖曳：手繪 · 在起點放開：閉合
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	按一下：平滑點 · 按兩下：轉角 · 拖曳點：移動 · 按一下第一點：閉合 · {key} 完成
 	Search settings…	搜尋設定…
 	No matching settings	沒有符合的設定
 	New Crop Preset…	新增裁切預設集…

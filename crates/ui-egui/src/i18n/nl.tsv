@@ -664,6 +664,9 @@
 	New Workspace…	Nieuwe werkruimte…
 	Delete Workspace…	Werkruimte verwijderen…
 	Reset Workspace	Werkruimte herstellen
+	Reset Tool	Gereedschap herstellen
+	Reset All Tools	Alle gereedschappen herstellen
+	Reset all tools to their default settings?	Alle gereedschappen herstellen naar hun standaardinstellingen?
 	Lock Workspace	Werkruimte vergrendelen
 	Theme	Thema
 	Pro Theme	Pro-thema
@@ -2213,6 +2216,9 @@
 	Structure:	Structuur:
 	Content-Aware Move Tool	Inhoudsbewust verplaatsen
 	TIFF Options	TIFF-opties
+	Targa Options	Targa-opties
+	24 bits/pixel	24 bits/pixel
+	32 bits/pixel	32 bits/pixel
 	Including layers will increase file size.	Lagen meenemen vergroot de bestandsgrootte.
 	Discard Layers and Save a Copy	Lagen negeren en kopie opslaan
 	Don't show again	Niet meer tonen
@@ -3647,6 +3653,11 @@ cameraData	Lens	Lens
 	Previous Document	Vorig document
 	W x H x Resolution	B x H x Resolutie
 	Front Image	Voorste afbeelding
+	Freeform Pen Tool	Pengereedschap Vrije vorm
+	Curvature Pen Tool	Pengereedschap Kromming
+	Curve Fit:	Curve aanpassen:
+	Drag: draw freehand · Release on the start point: close	Slepen: uit de vrije hand tekenen · Loslaten op beginpunt: sluiten
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: vloeiend punt · Dubbelklik: hoek · Punt slepen: verplaatsen · Klik op eerste punt: sluiten · {key} voltooien
 	New Crop Preset…	Nieuwe uitsnijvoorinstelling…
 	Delete Crop Preset…	Uitsnijvoorinstelling verwijderen…
 	Select the crop presets to delete:	Selecteer de uitsnijvoorinstellingen die u wilt verwijderen:

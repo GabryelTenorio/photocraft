@@ -1060,6 +1060,9 @@
 	Enable {name}	Ενεργοποίηση: {name}
 	Hold Alt while drawing for straight segments	Κρατήστε πατημένο το Alt κατά τη σχεδίαση για ευθύγραμμα τμήματα
 	TIFF Options	Επιλογές TIFF
+	Targa Options	Επιλογές Targa
+	24 bits/pixel	24 bit/εικονοστοιχείο
+	32 bits/pixel	32 bit/εικονοστοιχείο
 	Including layers will increase file size.	Η συμπερίληψη επιπέδων θα αυξήσει το μέγεθος του αρχείου.
 	Discard Layers and Save a Copy	Απόρριψη επιπέδων και αποθήκευση αντιγράφου
 	Don't show again	Να μην εμφανιστεί ξανά
@@ -2846,6 +2849,9 @@
 	Reset Transform	Επαναφορά μετασχηματισμού
 	Reset View	Επαναφορά προβολής
 	Reset Workspace	Επαναφορά χώρου εργασίας
+	Reset Tool	Επαναφορά εργαλείου
+	Reset All Tools	Επαναφορά όλων των εργαλείων
+	Reset all tools to their default settings?	Επαναφορά όλων των εργαλείων στις προεπιλεγμένες ρυθμίσεις τους;
 	Reset to defaults	Επαναφορά προεπιλογών
 	Resize image during place	Αλλαγή μεγέθους εικόνας κατά την τοποθέτηση
 	Resolution:	Ανάλυση:
@@ -3579,6 +3585,11 @@ cameraData	Lens	Φακός
 	Previous Document	Προηγούμενο έγγραφο
 	W x H x Resolution	Π x Υ x Ανάλυση
 	Front Image	Μπροστινή εικόνα
+	Freeform Pen Tool	Πένα ελεύθερης σχεδίασης
+	Curvature Pen Tool	Πένα καμπυλότητας
+	Curve Fit:	Προσαρμογή καμπύλης:
+	Drag: draw freehand · Release on the start point: close	Σύρσιμο: ελεύθερη σχεδίαση · Άφημα στο αρχικό σημείο: κλείσιμο
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Κλικ: ομαλό σημείο · Διπλό κλικ: γωνία · Σύρσιμο σημείου: μετακίνηση · Κλικ στο πρώτο σημείο: κλείσιμο · {key}: τέλος
 	New Crop Preset…	Νέα προεπιλογή περικοπής…
 	Delete Crop Preset…	Διαγραφή προεπιλογής περικοπής…
 	Select the crop presets to delete:	Επιλέξτε τις προεπιλογές περικοπής για διαγραφή:
