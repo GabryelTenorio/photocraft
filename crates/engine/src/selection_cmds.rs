@@ -27,6 +27,24 @@ fn mode(p: &Value) -> SelectionMode {
     SelectionMode::parse(p.get("mode").and_then(Value::as_str).unwrap_or("replace"))
 }
 
+/// A Color Range replacement is scoped to the selection that was active when it opened.
+/// Explicit add/subtract/intersect operations retain their normal selection-combine semantics.
+fn point_in_selection(doc: &Document, x: i32, y: i32) -> bool {
+    doc.selection.as_ref().is_none_or(|selection| selection.sample_channel(x, y, 0) > 0.0)
+}
+
+fn scope_color_range(mask: &mut [f32], doc: &Document, area: Rect, m: SelectionMode) {
+    if m != SelectionMode::Replace {
+        return;
+    }
+    if let Some(selection) = doc.selection.as_ref() {
+        let previous = sel::mask_from_surface(Some(selection), area);
+        for (value, bound) in mask.iter_mut().zip(previous) {
+            *value = value.min(bound);
+        }
+    }
+}
+
 /// RGBA pixels the tools sample: the composite, or the active layer.
 fn sample_pixels(s: &Session, all_layers: bool) -> Result<(Rect, Vec<[f32; 4]>)> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
@@ -96,7 +114,7 @@ fn parse_color(p: &Value) -> [f32; 3] {
 
 /// Eyedropper samples from `key` (`[[x, y], …]` in document pixels): the colour under each point
 /// and where it was picked (area-local, for Localized Color Clusters).
-fn eyedropper_samples(p: &Value, key: &str, area: Rect, px: &[[f32; 4]], bad: &impl Fn(String) -> EngineError) -> Result<Vec<sel::RangeSample>> {
+fn eyedropper_samples(p: &Value, key: &str, area: Rect, px: &[[f32; 4]], allowed: &impl Fn(i32, i32) -> bool, bad: &impl Fn(String) -> EngineError) -> Result<Vec<sel::RangeSample>> {
     let Some(pts) = p.get(key) else { return Ok(Vec::new()) };
     let pts = pts.as_array().ok_or_else(|| bad(format!("`{key}` must be [[x, y], …]")))?;
     let w = area.width() as usize;
@@ -114,6 +132,9 @@ fn eyedropper_samples(p: &Value, key: &str, area: Rect, px: &[[f32; 4]], bad: &i
         let Some(&[r, g, b, _]) = q else {
             return Err(bad(format!("point [{x}, {y}] in `{key}` is outside the canvas")));
         };
+        if !allowed(xi, yi) {
+            return Err(bad(format!("point [{x}, {y}] in `{key}` is outside the active selection")));
+        }
         out.push(sel::RangeSample { color: [r, g, b], at: Some(((xi - area.x0) as f32, (yi - area.y0) as f32)) });
     }
     Ok(out)
@@ -183,6 +204,9 @@ impl ColorRangeSamples {
                 let (x, y) = (x.floor() as i32, y.floor() as i32);
                 if !area.contains(x, y) {
                     return Err(bad(format!("point [{x}, {y}] in `{key}` is outside the canvas")));
+                }
+                if mode(p) == SelectionMode::Replace && !point_in_selection(doc, x, y) {
+                    return Err(bad(format!("point [{x}, {y}] in `{key}` is outside the active selection")));
                 }
                 let r = Rect::from_xywh(x, y, 1, 1);
                 let pixel = if !b(p, "sampleAllLayers", true) {
@@ -296,14 +320,17 @@ fn color_range(s: &mut Session, p: &Value) -> Result<Value> {
     let bad = |msg: String| EngineError::BadParams { cmd: CMD.into(), msg };
     let preset = p.get("select").map_or(Some("sampledColors"), Value::as_str).ok_or_else(|| bad("`select` must be a string".into()))?;
     let invert = b(p, "invert", false);
+    let selection_mode = mode(p);
     let fuzz = |d: f32| f(p, "fuzziness", d).max(0.0);
     let (area, mut mask) = match preset {
         "sampledColors" => {
             let (area, px) = sample_pixels(s, b(p, "sampleAllLayers", true))?;
             let w = area.width() as usize;
             // The dialog's eyedroppers: colours picked on the image, at their positions.
-            let plus = eyedropper_samples(p, "points", area, &px, &bad)?;
-            let minus = eyedropper_samples(p, "subtractPoints", area, &px, &bad)?;
+            let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
+            let allowed = |x, y| selection_mode != SelectionMode::Replace || point_in_selection(doc, x, y);
+            let plus = eyedropper_samples(p, "points", area, &px, &allowed, &bad)?;
+            let minus = eyedropper_samples(p, "subtractPoints", area, &px, &allowed, &bad)?;
             let query = ColorRangeSamples::with_samples(s, p, area, &plus, &minus)?;
             let mask = query.coverage(&px, w, 1.0, [0.0, 0.0]);
             (area, mask)
@@ -362,7 +389,10 @@ fn color_range(s: &mut Session, p: &Value) -> Result<Value> {
             *v = 1.0 - *v;
         }
     }
-    set_selection(s, "Color Range", area, mask, mode(p))
+    // Invert the colour result first, then constrain it to the original selection.
+    // Add mode must still be able to extend an existing selection intentionally.
+    scope_color_range(&mut mask, &s.active().ok_or(EngineError::NoDocument)?.doc, area, selection_mode);
+    set_selection(s, "Color Range", area, mask, selection_mode)
 }
 
 fn modify(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
