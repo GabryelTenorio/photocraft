@@ -821,14 +821,14 @@ impl DabGenerator {
     pub fn finish(&mut self, dabs: &mut Vec<Dab>, dual: &mut Vec<Dab>) {
         let mut curve = Vec::new();
         self.spline.finish(&mut curve);
-    
+
         let mut sm = Vec::new();
         for p in &curve {
             self.smoother.push(*p, &mut sm);
         }
         self.smoother.finish(&mut sm);
         self.walk(&sm, dabs, dual);
-    
+
         let mut steps = Vec::new();
         self.walker.finish(&mut |s| steps.push(s));
         for s in &steps {
@@ -841,5 +841,103 @@ impl DabGenerator {
                 db.build(s, dual);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spt(x: f64, y: f64, pressure: f32, time: f64) -> StrokePoint {
+        StrokePoint { x, y, pressure, tilt_x: 0.0, tilt_y: 0.0, rotation: 0.0, wheel: 0.0, time }
+    }
+
+    fn pt(x: f64, y: f64) -> StrokePoint {
+        spt(x, y, 1.0, 0.0)
+    }
+
+    fn run_spline(points: &[StrokePoint]) -> Vec<StrokePoint> {
+        let mut s = Spline::default();
+        let mut out = Vec::new();
+        for p in points {
+            s.push(*p, &mut out);
+        }
+        s.finish(&mut out);
+        out
+    }
+
+    #[test]
+    fn spline_single_point_is_just_that_point() {
+        let out = run_spline(&[pt(3.0, 4.0)]);
+        assert_eq!(out.len(), 1);
+        assert_eq!((out[0].x, out[0].y), (3.0, 4.0));
+    }
+
+    #[test]
+    fn spline_starts_at_first_point() {
+        let out = run_spline(&[pt(1.0, 2.0), pt(10.0, 0.0), pt(20.0, 5.0)]);
+        assert_eq!((out[0].x, out[0].y), (1.0, 2.0));
+    }
+
+    #[test]
+    fn spline_two_points_ends_at_last_point() {
+        let out = run_spline(&[pt(0.0, 0.0), pt(10.0, 0.0)]);
+        let last = out.last().unwrap(); // unwrap is fine in tests
+        assert_eq!((last.x, last.y), (10.0, 0.0));
+    }
+
+    #[test]
+    fn spline_long_stroke_ends_exactly_at_last_point() {
+        let pts: Vec<StrokePoint> = (0..12)
+            .map(|i| {
+                let a = i as f64 * 0.5;
+                pt(50.0 + 30.0 * a.cos(), 50.0 + 30.0 * a.sin())
+            })
+            .collect();
+        let out = run_spline(&pts);
+        let (last_in, last_out) = (pts.last().unwrap(), out.last().unwrap());
+        assert_eq!((last_out.x, last_out.y), (last_in.x, last_in.y));
+    }
+
+    #[test]
+    fn spline_rounds_a_corner_instead_of_passing_through_it() {
+        // L-shape: the raw path turns sharply at (10, 0).
+        let out = run_spline(&[pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0)]);
+        let min = out.iter().map(|p| (p.x - 10.0).hypot(p.y)).fold(f64::MAX, f64::min);
+        assert!(min > 1.0, "curve should cut the corner, closest approach was {min}");
+    }
+
+    #[test]
+    fn spline_time_never_goes_backwards() {
+        let pts: Vec<StrokePoint> = (0..10).map(|i| spt(i as f64 * 7.0, (i as f64).sin() * 20.0, 1.0, i as f64 * 16.0)).collect();
+        let out = run_spline(&pts);
+        for w in out.windows(2) {
+            assert!(w[1].time >= w[0].time - 1e-9, "time went backwards: {} -> {}", w[0].time, w[1].time);
+        }
+    }
+
+    #[test]
+    fn spline_pressure_stays_within_input_range() {
+        let pressures = [0.2_f32, 1.0, 0.4, 0.9, 0.3, 0.8];
+        let pts: Vec<StrokePoint> = pressures.iter().enumerate().map(|(i, p)| spt(i as f64 * 9.0, (i as f64 * 1.3).sin() * 15.0, *p, i as f64 * 16.0)).collect();
+        let out = run_spline(&pts);
+        for p in &out {
+            assert!(p.pressure >= 0.2 - 1e-5 && p.pressure <= 1.0 + 1e-5, "pressure out of range: {}", p.pressure);
+        }
+    }
+
+    #[test]
+    fn spline_identical_points_do_not_panic() {
+        let out = run_spline(&[pt(5.0, 5.0), pt(5.0, 5.0), pt(5.0, 5.0)]);
+        assert!(!out.is_empty());
+        assert!(out.iter().all(|p| p.x == 5.0 && p.y == 5.0));
+    }
+
+    #[test]
+    fn spline_survives_nan_and_huge_coordinates() {
+        let out = run_spline(&[pt(f64::NAN, 0.0), pt(1.0, f64::NAN), pt(2.0, 2.0)]);
+        assert!(out.len() <= 1 + 64 * 3);
+        let out = run_spline(&[pt(f64::MAX, f64::MAX), pt(-f64::MAX, 0.0), pt(f64::MAX, -f64::MAX)]);
+        assert!(out.len() <= 1 + 64 * 3);
     }
 }
