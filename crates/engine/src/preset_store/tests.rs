@@ -638,3 +638,18 @@ fn a_group_file_that_failed_to_load_is_not_overwritten() {
     assert_eq!(mem.files.lock().unwrap().get(&file), Some(&newer), "a file the store could not read was overwritten");
     assert!(!s.preset_store.as_mut().unwrap().take_warnings().is_empty());
 }
+
+#[test]
+fn an_actions_file_that_failed_to_load_is_not_overwritten() {
+    // e.g. written by a newer PhotoCraft: skipped on load, so recording an action must not replace it.
+    let mem = MemBackend::default();
+    let newer = br#"{"version":2,"actions":[{"name":"Keep","steps":[]}]}"#.to_vec();
+    mem.files.lock().unwrap().insert(ACTIONS_FILE.into(), newer.clone());
+    let mut s = Session::new();
+    s.attach_preset_store(open(Box::new(mem.clone())));
+    s.execute("actions.record", json!({"name": "New"})).unwrap();
+    s.execute("actions.stop", json!({})).unwrap();
+    s.sync_preset_store();
+    assert_eq!(mem.files.lock().unwrap().get(ACTIONS_FILE), Some(&newer), "an actions file the store could not read was overwritten");
+    assert!(!s.preset_store.as_mut().unwrap().take_warnings().is_empty());
+}
