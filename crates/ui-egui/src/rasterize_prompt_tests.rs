@@ -169,3 +169,55 @@ fn the_control_channel_sees_and_confirms_the_prompt() {
     assert_eq!(r["ok"], json!(true), "{r}");
     assert_eq!(active_content(&app), "Pixel");
 }
+
+/// Edit › Transform › Warp on editable type (#3004), from the menu and from the warp toggle of an
+/// open transform box, driven over the control channel: the prompt opens instead of a Warp that
+/// can't be committed; Cancel leaves the type alone; OK rasterizes it and opens Warp.
+#[test]
+fn warp_on_type_asks_then_rasterizes_and_opens_warp() {
+    let ctx = egui::Context::default();
+    let call = |app: &mut PhotocraftApp, method: &str, params: serde_json::Value| {
+        let (req, _rx) = crate::control::ControlRequest::new(method, params);
+        match crate::control::handle(app, &ctx, &req) {
+            crate::control::Outcome::Done(v) => v,
+            _ => panic!("deferred"),
+        }
+    };
+    for from_free_transform in [false, true] {
+        let mut app = app_with(Kind::Type);
+        if from_free_transform {
+            call(&mut app, "ui.menu.invoke", json!({"id": "edit.freeTransform"}));
+            assert!(app.ui.transform.is_some());
+        }
+        let before = past(&app);
+        let r = call(&mut app, "ui.menu.invoke", json!({"id": "edit.transform.warp"}));
+        let d = prompt(&app).unwrap_or_else(|| panic!("no prompt: {r}"));
+        assert_eq!(d.fields["message"], json!(Kind::Type.message()));
+        assert!(app.ui.transform.as_ref().is_none_or(|t| t.warp.is_none()), "no Warp before the answer");
+        let id = d.id;
+        // Cancel: the type stays editable and nothing is recorded.
+        call(&mut app, "ui.dialog.cancel", json!({"dialog": id}));
+        assert_eq!(active_content(&app), "Type");
+        assert_eq!(past(&app), before);
+        // OK: one Rasterize Type step, then Warp is open on the pixels.
+        call(&mut app, "ui.menu.invoke", json!({"id": "edit.transform.warp"}));
+        let id = prompt(&app).map(|d| d.id).expect("prompt again");
+        let r = call(&mut app, "ui.dialog.confirm", json!({"dialog": id}));
+        assert_eq!(r["ok"], json!(true), "{r}");
+        assert_eq!(active_content(&app), "Pixel");
+        assert_eq!(past(&app), before + 1, "rasterizing is its own history state");
+        assert!(app.ui.transform.as_ref().is_some_and(|t| t.warp.is_some()), "Warp is open (from Free Transform: {from_free_transform})");
+        assert!(prompt(&app).is_none());
+    }
+}
+
+/// The prompt only continues with the command it was opened for: an edited `then` is refused.
+#[test]
+fn a_prompt_runs_no_other_command() {
+    let mut app = app_with(Kind::Type);
+    let layer = app.session.active().unwrap().active_layer.unwrap();
+    let id = open_then(&mut app, Kind::Type, layer, "file.close", json!({}));
+    assert!(crate::dialogs::confirm(&mut app, id).is_err());
+    assert_eq!(active_content(&app), "Type");
+    assert!(app.rasterize_then.is_none());
+}

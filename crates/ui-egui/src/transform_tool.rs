@@ -2147,7 +2147,7 @@ fn transform_actions(app: &mut PhotocraftApp, ui: &mut egui::Ui, warping: bool) 
     if mode.clicked() {
         if warping {
             leave_warp(app);
-        } else {
+        } else if crate::rasterize_prompt::ask_before_warp(app).is_none() {
             enter_warp(app);
         }
     }

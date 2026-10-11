@@ -3,10 +3,14 @@
 //! proceeding. Its text will no longer be editable. Rasterize the type?"), instead of failing
 //! with a status-bar message.
 //!
+//! Edit › Transform › Warp on editable type asks the same question (#3004): OK rasterizes the
+//! type, then Warp opens on the pixels. (Distort and Perspective are greyed for type instead, as
+//! in Photoshop.)
+//!
 //! The prompt is an ordinary dialog in the UI state (`ui.inspect` shows it, `ui.dialog.confirm`
 //! and `ui.dialog.cancel` answer it). OK runs the matching `layer.rasterize.*` command, then paints
-//! where the click was, so rasterizing and painting are two history states, as in Photoshop.
-//! Cancel does nothing.
+//! where the click was (or invokes the command it was asked for, `then`), so rasterizing and the
+//! edit are two history states, as in Photoshop. Cancel does nothing.
 
 use serde_json::{Map, Value, json};
 
@@ -15,6 +19,10 @@ use crate::canvas::ToolEvent;
 use crate::state::{DialogKind, Tool};
 
 const MARK: &str = "__rasterize";
+
+/// The commands a prompt may continue with. Dialog fields can be edited (`ui.dialog.set`), so a
+/// prompt never runs anything else.
+const CONTINUES: [&str; 1] = ["edit.transform.warp"];
 
 /// A layer kind that must be rasterized before its pixels can be painted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,6 +128,56 @@ pub fn open(app: &mut PhotocraftApp, kind: Kind, layer: photocraft_doc::LayerId,
     app.ui.open_dialog(DialogKind::Command, f)
 }
 
+/// Open the prompt for `layer`; OK rasterizes it, then invokes the menu command `then` with
+/// `params`, as if it had been chosen on the rasterized layer.
+pub fn open_then(app: &mut PhotocraftApp, kind: Kind, layer: photocraft_doc::LayerId, then: &str, params: Value) -> u64 {
+    let mut f = Map::new();
+    f.insert(MARK.into(), json!(kind.key()));
+    f.insert("__command".into(), json!(kind.command()));
+    f.insert("__label".into(), json!("PhotoCraft"));
+    f.insert("message".into(), json!(kind.message()));
+    f.insert("layer".into(), json!(layer.0));
+    f.insert("then".into(), json!({ "command": then, "params": params }));
+    app.ui.open_dialog(DialogKind::Command, f)
+}
+
+/// The editable type layer Edit › Transform › Warp would warp: the open transform box's layer
+/// (when it moves the layer, not a mask, channel, path or the selection), else the active layer
+/// when its pixels are targeted. Warp can't keep type editable, so it must be rasterized first.
+fn warp_needs_raster(app: &PhotocraftApp) -> Option<photocraft_doc::LayerId> {
+    let st = app.session.active()?;
+    let id = match &app.ui.transform {
+        Some(t) if t.selection || t.target.is_some() || t.path.is_some() || t.warp.is_some() => return None,
+        Some(t) => photocraft_doc::LayerId(t.layer),
+        None => {
+            if crate::canvas::paint_target(app) != json!("pixels") || crate::vector_ui::free_transform_path(app).is_some() {
+                return None;
+            }
+            st.active_layer?
+        }
+    };
+    matches!(st.doc.layer(id)?.content, photocraft_doc::LayerContent::Text(_)).then_some(id)
+}
+
+/// Edit › Transform › Warp (the menu, or the warp toggle of an open transform) on editable type:
+/// open the prompt instead and return its id (an open one is reused). `None`: warp as usual.
+pub fn ask_before_warp(app: &mut PhotocraftApp) -> Option<u64> {
+    let layer = warp_needs_raster(app)?;
+    if let Some(d) = app.ui.dialogs.iter().find(|d| owns(&d.fields)) {
+        return Some(d.id);
+    }
+    Some(open_then(app, Kind::Type, layer, "edit.transform.warp", json!({})))
+}
+
+/// Run the command a confirmed prompt continues with (it needs the egui context, which
+/// [`confirm`] doesn't have). Called right after a confirm and every frame.
+pub fn resume(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    let Some((command, params)) = app.rasterize_then.take() else { return };
+    if let Err(e) = crate::menus::invoke(app, ctx, &command, params) {
+        app.ui.status = e;
+    }
+}
+
 /// Is this dialog the prompt?
 pub fn owns(fields: &Map<String, Value>) -> bool {
     fields.contains_key(MARK)
@@ -137,10 +195,21 @@ pub fn body(ui: &mut egui::Ui, f: &Map<String, Value>) {
     });
 }
 
-/// OK: rasterize, then paint at the click (two history states).
+/// OK: rasterize, then paint at the click or queue the `then` command (two history states).
 pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
     let kind = f.get(MARK).and_then(Value::as_str).and_then(Kind::from_key).ok_or("not a rasterize prompt")?;
     let layer = f.get("layer").and_then(Value::as_u64).ok_or("the prompt has no layer")?;
+    if let Some(then) = f.get("then") {
+        let command = then.get("command").and_then(Value::as_str).filter(|c| CONTINUES.contains(c)).ok_or("the prompt has no command to continue with")?;
+        // A transform box open on the layer (the warp toggle) is applied first: scaling and
+        // rotating keep type editable, and Warp then starts from the transformed type.
+        if app.ui.transform.as_ref().is_some_and(|t| t.layer == layer) {
+            crate::transform_tool::commit(app);
+        }
+        let r = app.run(kind.command(), json!({ "layer": layer }))?;
+        app.rasterize_then = Some((command.to_string(), then.get("params").cloned().unwrap_or_else(|| json!({}))));
+        return Ok(json!({ "rasterized": r, "then": command }));
+    }
     let r = app.run(kind.command(), json!({ "layer": layer }))?;
     let tool = f.get("tool").and_then(Value::as_str).and_then(Tool::from_name);
     let at: Vec<f64> = f.get("at").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_f64).collect()).unwrap_or_default();
