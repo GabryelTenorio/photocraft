@@ -798,7 +798,13 @@ fn print_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Va
                 ui.horizontal(|ui| {
                     let hc = length_field(ui, tl!("Height"), &mut h2, &units);
                     let wc = length_field(ui, tl!("Width"), &mut w2, &units);
-                    let k = if wc && w > 0.0 { Some(w2 / w) } else if hc && h > 0.0 { Some(h2 / h) } else { None };
+                    let k = if wc && w > 0.0 {
+                        Some(w2 / w)
+                    } else if hc && h > 0.0 {
+                        Some(h2 / h)
+                    } else {
+                        None
+                    };
                     if let Some(k) = k.filter(|k| k.is_finite() && *k > 0.0) {
                         f.insert("scale".into(), json!(((l.scale * k * 100.0) * 100.0).round() / 100.0));
                         f.insert("scaleToFit".into(), json!(false));

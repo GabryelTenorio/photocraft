@@ -109,8 +109,9 @@ fn pdf_content(pdf: &[u8]) -> String {
 fn emulsion_down_mirrors_the_whole_page() {
     let mut s = session("rgb", 8);
     let plain = s.execute("file.print", json!({"dryRun": true, "paper": "a4", "center": false, "left": 1.0, "top": 1.0, "labels": true})).unwrap();
-    let mirrored =
-        s.execute("file.print", json!({"dryRun": true, "paper": "a4", "center": false, "left": 1.0, "top": 1.0, "labels": true, "emulsionDown": true})).unwrap();
+    let mirrored = s
+        .execute("file.print", json!({"dryRun": true, "paper": "a4", "center": false, "left": 1.0, "top": 1.0, "labels": true, "emulsionDown": true}))
+        .unwrap();
     assert_eq!(plain["emulsionDown"], false);
     assert_eq!(mirrored["emulsionDown"], true);
     // Same layout; only the page is flipped.
