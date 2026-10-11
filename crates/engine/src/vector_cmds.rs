@@ -511,7 +511,17 @@ pub fn transform_shape(sh: &mut ShapeLayer, a: &Affine) {
                 }
                 LiveShape::Ellipse { rect } => LiveShape::Ellipse { rect: r(rect) },
                 LiveShape::Polygon { rect, sides, star_ratio } => LiveShape::Polygon { rect: r(rect), sides, star_ratio },
-                LiveShape::Line { from, to, weight } => LiveShape::Line { from: pt(from), to: pt(to), weight },
+                LiveShape::Line { from, to, weight } => {
+                    // Live-shape edits regenerate the line's filled bar from its parameters.
+                    // Keep the weight in sync with a positive scale of the path, or an
+                    // unchanged endpoint edit unexpectedly restores the old thickness (#3063).
+                    // A line's width scales perpendicular to its direction.
+                    let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+                    let old_length = dx.hypot(dy);
+                    let new_length = (dx * m0).hypot(dy * m3);
+                    let width_scale = if old_length > 0.0 && new_length > 0.0 { m0 * m3 * old_length / new_length } else { m0.min(m3) };
+                    LiveShape::Line { from: pt(from), to: pt(to), weight: weight * width_scale }
+                }
             })
         }
         // Flips and 90° turns keep rectangles, ellipses and lines live (Image Rotation): the new
@@ -892,7 +902,21 @@ fn path_transform(s: &mut Session, p: &Value) -> Result<Value> {
         let (tx, ty) = (number("translateX", 0.0)?, number("translateY", 0.0)?);
         let (sx, sy) = (number("scaleX", 1.0)?, number("scaleY", 1.0)?);
         let angle = number("angle", 0.0)?;
-        let path = resolve_path(s, Some(&name))?;
+        // An explicit `layer` parameter must determine both the transformed path and its
+        // pivot. resolve_path("layer") otherwise reads the currently active layer (#3062).
+        let path = if let Some(id) = layer_id {
+            let layer = s.active().and_then(|st| st.doc.layer(id)).ok_or(EngineError::NoLayer(id))?;
+            match &layer.content {
+                LayerContent::Shape(shape) => shape.path.clone(),
+                _ => layer
+                    .vector_mask
+                    .as_ref()
+                    .map(|mask| mask.path.clone())
+                    .ok_or_else(|| EngineError::Other("target layer has no shape path or vector mask".into()))?,
+            }
+        } else {
+            resolve_path(s, Some(&name))?
+        };
         let (x0, y0, x1, y1) = path.control_bounds().ok_or_else(|| bad(CMD, "path has no points to transform"))?;
         let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
         Affine::translate(-cx, -cy)
@@ -1001,7 +1025,8 @@ fn path_fill(s: &mut Session, p: &Value) -> Result<Value> {
     s.edit("Fill Path", |doc, _| {
         let area = doc.bounds();
         let r = vector::fill_rasterizer(&path, vector::DEFAULT_TOLERANCE);
-        let feather_pad = (feather.ceil() as i32).saturating_mul(2);
+        // The feather reaches 3σ = 3 × radius (σ = radius, as in Photoshop), plus a pixel.
+        let feather_pad = (feather.ceil() as i32).saturating_mul(3).saturating_add(1);
         let area = r.pixel_bounds().map_or(area, |b| b.inflate(feather_pad).intersect(&area));
         if area.is_empty() {
             return Ok(());
@@ -1012,6 +1037,11 @@ fn path_fill(s: &mut Session, p: &Value) -> Result<Value> {
         }
         if feather > 0.0 {
             cov = sel::feather(&cov, area.width() as usize, area.height() as usize, feather);
+        }
+        // An active selection limits the fill, soft edges included, as every other fill does (#2387).
+        if let Some(selection) = doc.selection.as_ref() {
+            let mask = sel::mask_from_surface(Some(selection), area);
+            cov.iter_mut().zip(&mask).for_each(|(c, m)| *c *= m);
         }
         let locks = doc.effective_locks(id);
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
@@ -1075,8 +1105,13 @@ fn path_stroke(s: &mut Session, p: &Value) -> Result<Value> {
     let bg = s.tools.background;
     let dmg = s.edit("Stroke Path", |doc, _| {
         let sel = doc.selection.clone();
-        let lock = doc.effective_locks(id).transparency;
+        let locks = doc.effective_locks(id);
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+        // Pixel and full locks (the layer's own or a parent group's) refuse the stroke, as Fill Path does (#2388).
+        if locks.pixels || locks.all {
+            return Err(EngineError::Other(format!("Could not complete your request because the layer \"{}\" is locked", l.name)));
+        }
+        let lock = locks.transparency;
         let surf = l.surface_mut().ok_or_else(|| EngineError::Other("Stroke Path needs a pixel layer".into()))?;
         let mut brush = brush.clone();
         if brush.erase && lock {
