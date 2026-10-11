@@ -1214,7 +1214,7 @@
 	Logical Length:	Logická délka:
 	Logical Units:	Logické jednotky:
 	Luminance	Luminance
-	Luminance Detail	Detail luminance
+	Luminance Detail	Detail jasu
 	Magenta	Purpurová
 	Magenta  ·  Green	Purpurová  ·  zelená
 	Maintain aspect ratio	Zachovat poměr stran
@@ -2590,7 +2590,7 @@ cameraData	Lens	Objektiv
 	Artist	Autor snímku
 	Artistic	Umělecké
 	Assign Profile	Přiřadit profil
-	At	V
+	At	Pozice
 	Author	Autor
 	Auto Scale	Automatické měřítko
 	Auto-Align Layers	Automaticky zarovnat vrstvy
@@ -2663,7 +2663,7 @@ cameraData	Lens	Objektiv
 	Clone	Klonovat
 	Clone Stamp	Klonovací razítko
 	Close Window	Zavřít okno
-	Clumped	Shluky
+	Clumped	Shlukované
 	Coarse Dots	Hrubé tečky
 	Color Decontaminate	Odstranit barevný lem
 	Color Halftone	Barevný polotón
@@ -2672,7 +2672,7 @@ cameraData	Lens	Objektiv
 	Color Profile	Barevný profil
 	Color Range	Rozsah barev
 	Color Settings	Nastavení barev
-	Color Swatches	Barevné vzorky
+	Color Swatches	Vzorník barev
 	Color Table	Tabulka barev
 	Color indicates	Barva označuje
 	Colored Pencil	Pastelka
@@ -2690,7 +2690,7 @@ cameraData	Lens	Objektiv
 	Continue	Pokračovat
 	Contract	Zúžit
 	Contrasty	Kontrastní
-	Conté Crayon	Conté
+	Conté Crayon	Křída Conté
 	Convert to Linked	Převést na propojený
 	Convert to Profile	Převést do profilu
 	Cool	Studený
@@ -2706,7 +2706,7 @@ cameraData	Lens	Objektiv
 	Crack Depth	Hloubka prasklin
 	Crack Spacing	Rozestup prasklin
 	Craquelure	Krakeláž
-	Create By	Vytvořil
+	Create By	Vytvořit pomocí
 	Cross	Kříž
 	Cross Process	Křížové vyvolání
 	Crosshatch	Křížové šrafování
@@ -2720,7 +2720,7 @@ cameraData	Lens	Objektiv
 	Custom Branch Color	Vlastní barva větví
 	Cutout	Vystřihovánka
 	Daisies	Sedmikrásky
-	Dark Intensity	Intenzita tmavých
+	Dark Intensity	Intenzita tmy
 	Dark Rough	Tmavý hrubý
 	Dark Strokes	Tmavé tahy
 	Darken Only	Pouze ztmavit
@@ -2861,7 +2861,7 @@ cameraData	Lens	Objektiv
 	Glyph	Glyf
 	Good	Dobrá
 	Grade Balance	Vyvážení ladění
-	Grade Blending	Prolnutí ladění
+	Grade Blending	Míchání ladění
 	Grade Global	Globální ladění
 	Grade Highlights	Ladění světel
 	Grade Midtones	Ladění středních tónů
@@ -2907,7 +2907,7 @@ cameraData	Lens	Objektiv
 	Hsb	HSB
 	Hsl	HSL
 	Hsl Hue	HSL – odstín
-	Hsl Lum	HSL – svítivost
+	Hsl Lum	HSL – jas
 	Hsl Sat	HSL – sytost
 	ISO	ISO
 	ISO Speed	Citlivost ISO
@@ -2944,7 +2944,7 @@ cameraData	Lens	Objektiv
 	Layer Properties	Vlastnosti vrstvy
 	Leaf Color	Barva listů
 	Leaves Amount	Množství listů
-	Leaves Color	Barva listí
+	Leaves Color	Barva listů
 	Leaves Size	Velikost listů
 	Left Diagonal	Levá diagonála
 	Legacy	Starší
@@ -2968,7 +2968,7 @@ cameraData	Lens	Objektiv
 	Light X	Světlo X
 	Light Y	Světlo Y
 	Light Z	Světlo Z
-	Lighten Grout	Zesvětlit spáry
+	Lighten Grout	Zesvětlení spár
 	Lighten Only	Pouze zesvětlit
 	Lighting	Osvětlení
 	Lighting Effects	Světelné efekty
@@ -2983,7 +2983,7 @@ cameraData	Lens	Objektiv
 	Loop	Smyčka
 	Low	Nízká
 	Lower	Dolní
-	Lum	Svít.
+	Lum	Jas
 	Lut	LUT
 	Magnetic Lasso	Magnetické laso
 	Make	Výrobce
@@ -3140,7 +3140,7 @@ cameraData	Lens	Objektiv
 	Rectangular Selection	Obdélníkový výběr
 	Rectangular To Polar	Z pravoúhlých na polární
 	Red Cyan	Červená–azurová
-	Reduce Color Noise	Redukovat barevný šum
+	Reduce Color Noise	Redukce barevného šumu
 	Reduce Noise	Redukovat šum
 	Relief	Reliéf
 	Relink to File	Znovu propojit se souborem
@@ -3205,7 +3205,7 @@ cameraData	Lens	Objektiv
 	Set Colors	Nastavit barvy
 	Set Measurement Scale	Nastavit měřítko měření
 	Settings	Nastavení
-	Shadow	Stín
+	Shadow	Stíny
 	Shadow Amount	Míra stínů
 	Shadow Intensity	Intenzita stínů
 	Shadow Radius	Poloměr stínů
@@ -3214,7 +3214,7 @@ cameraData	Lens	Objektiv
 	Shape Blur	Rozostření tvarem
 	Sharpen Amount	Míra doostření
 	Sharpen Detail	Detail doostření
-	Sharpen Details	Doostřit detaily
+	Sharpen Details	Doostření detailů
 	Sharpen Masking	Maskování doostření
 	Sharpen Radius	Poloměr doostření
 	Sharpness	Ostrost
@@ -3228,7 +3228,7 @@ cameraData	Lens	Objektiv
 	Shortcuts	Zkratky
 	Show All	Zobrazit vše
 	Simple	Jednoduchý
-	Sine	Sinusová
+	Sine	Sinusový
 	Sketch	Skica
 	Skip	Přeskočit
 	Slice Options	Možnosti řezu
@@ -3269,7 +3269,7 @@ cameraData	Lens	Objektiv
 	Start Y	Začátek Y
 	Statistics	Statistika
 	Step Backward	Krok zpět
-	Stippled	Tečkování
+	Stippled	Tečkované
 	Stop	Zastavit
 	Stops	Zarážky
 	Strength	Síla
@@ -3354,7 +3354,7 @@ cameraData	Lens	Objektiv
 	Vine Color	Barva úponků
 	Vine With Flowers	Úponky s květy
 	Vine With Leaves	Úponky s listy
-	Violent	Prudký
+	Violent	Prudké
 	Wand	Hůlka
 	Warm	Teplý
 	Warming L B A	Oteplovací (LBA)
@@ -3363,7 +3363,7 @@ cameraData	Lens	Objektiv
 	Warmth	Teplost
 	Warning	Upozornění
 	Warp Text	Deformovat text
-	Water Paper	Vodový papír
+	Water Paper	Mokrý papír
 	Watercolor	Akvarel
 	Wave	Vlny
 	Wavelength Max	Max. vlnová délka
@@ -3395,7 +3395,7 @@ cameraRaw	Darks	Tmavé tóny
 cameraRaw	Global	Globální
 cameraRaw	Hue	Odstín
 cameraRaw	Lights	Světlé tóny
-cameraRaw	Luminance Detail	Detail luminance
+cameraRaw	Luminance Detail	Detail jasu
 cameraRaw	Masking	Maskování
 cameraRaw	Roughness	Drsnost
 cameraRaw	Tint	Nádech
