@@ -418,6 +418,44 @@ fn hit_test_and_caret() {
 }
 
 #[test]
+fn wrapped_and_forced_line_starts_use_the_following_line() {
+    use crate::layout::{byte_index, line_edge, line_index};
+
+    let mut engine = TextEngine::new();
+    let mut wrapped = point("ab cd", 12.0);
+    wrapped.shape = TextShape::Box { x: 0.0, y: 0.0, width: 20.0, height: 70.0 };
+    let layout = engine.layout(&wrapped, 72.0);
+    assert!(layout.lines.len() >= 2, "paragraph must wrap: {:?}", layout.lines);
+    let boundary = layout.lines[1].range.start;
+    assert_eq!(layout.lines[0].range.end, boundary);
+    let index = wrapped.text[..boundary].chars().count();
+    assert_eq!(line_index(&layout, byte_index(&wrapped.text, index)), 1);
+    assert_eq!(line_edge(&layout, &wrapped.text, index, false), index);
+    assert_eq!(line_edge(&layout, &wrapped.text, index, true), wrapped.text[..layout.lines[1].range.end].chars().count());
+    // The previous line's right edge shares the caret index, but a click there
+    // must still report the previous visual line.
+    let first = &layout.lines[0];
+    let (x, y) = layout.to_text(first.x1, first.baseline);
+    assert_eq!(crate::layout::hit_char(&layout, &wrapped.text, x, y).1, 0);
+
+    let text = "a\u{3}b";
+    let forced = engine.layout(&point(text, 12.0), 72.0);
+    assert_eq!(forced.lines.len(), 2);
+    let start = forced.lines[1].range.start;
+    let index = text[..start].chars().count();
+    assert_eq!(line_index(&forced, start), 1);
+    assert_eq!(line_edge(&forced, text, index, false), index);
+    assert_eq!(line_edge(&forced, text, index, true), text.chars().count());
+
+    // A normal paragraph break has distinct boundaries and retains its line.
+    let text = "a\nb";
+    let paragraph = engine.layout(&point(text, 12.0), 72.0);
+    assert_eq!(line_index(&paragraph, paragraph.lines[0].range.end), 0);
+    assert_eq!(line_index(&paragraph, paragraph.lines[1].range.start), 1);
+    assert_eq!(line_index(&paragraph, text.len()), 1);
+}
+
+#[test]
 fn empty_text_and_empty_lines() {
     let mut e = TextEngine::new();
     let l = e.layout(&point("", 12.0), 72.0);
@@ -1313,6 +1351,24 @@ fn word_and_line_navigation() {
     assert_eq!(kept, char_index(text, l.lines[1].range.start), "kept column");
     assert_eq!(jumped, char_index(text, l.lines[1].range.end), "own column");
     assert!(jumped > kept);
+}
+
+#[test]
+fn line_navigation_reaches_adjacent_line_with_large_leading() {
+    use crate::layout::{byte_index, line_step};
+
+    let mut e = TextEngine::new();
+    let text = "ab\ncd";
+    let mut t = point(text, 12.0);
+    t.runs = vec![TextRun { len: text.len(), style: CharStyle { font_family: "Inter".into(), size_pt: 12.0, leading_pt: Some(40.0), ..Default::default() } }];
+    let l = e.layout(&t, 72.0);
+
+    assert_eq!(l.lines.len(), 2);
+    assert!((l.lines[1].baseline - l.lines[0].baseline - 40.0).abs() < 0.01);
+    let next = line_step(&l, text, 1, l.caret(byte_index(text, 1)).0, 1);
+    assert_eq!(next, 4, "lineNext must reach the second line");
+    let prev = line_step(&l, text, 4, l.caret(byte_index(text, 4)).0, -1);
+    assert_eq!(prev, 1, "linePrev must reach the first line");
 }
 
 /// Thai text sample with above/below marks (sara i, mai ek, mai tho, mai han-akat, sara u).

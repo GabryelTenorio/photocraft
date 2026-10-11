@@ -79,6 +79,7 @@ async fn lists_expected_tools() {
         "session_list",
         "doc_open",
         "doc_new",
+        "doc_place",
         "doc_save",
         "doc_export",
         "doc_inspect",
@@ -359,6 +360,49 @@ async fn bridge_doc_save_without_path_forwards_app_save_for_write_back() {
     app.abort();
 }
 
+/// `tgaBits` reaches the app's `app.save` through the bridge; a value other than 24 or 32 is
+/// refused before anything is sent.
+#[tokio::test(flavor = "multi_thread")]
+async fn bridge_doc_save_forwards_targa_bits() {
+    let (addr, app) = fake_app().await;
+    let client = connect(PhotocraftMcp::bridge(&addr, CONTROL_TOKEN).unwrap()).await;
+    let saved = json_of(&call(&client, "doc_save", json!({"path": "out.tga", "tgaBits": 24})).await);
+    assert_eq!(saved, json!({"saved": {"path": "out.tga", "tgaBits": 24}}));
+    let r = call(&client, "doc_save", json!({"path": "out.tga", "tgaBits": 16})).await;
+    assert_eq!(r.is_error, Some(true), "{}", text(&r));
+    assert!(text(&r).contains("24 or 32"), "{}", text(&r));
+    client.cancel().await.unwrap();
+    app.abort();
+}
+
+/// Headless `doc_save`/`doc_export` write the TGA bits per pixel asked for (byte 16 of the
+/// header); unset, a document with an alpha channel is written as 32-bit.
+#[tokio::test(flavor = "multi_thread")]
+async fn headless_doc_save_writes_targa_bits() {
+    let dir = tmp("tga-bits");
+    let client = connect(headless_in(&dir)).await;
+    call(&client, "doc_new", json!({"width": 16, "height": 8, "background": "white"})).await;
+    for id in ["select.all", "select.saveSelection"] {
+        let r = call(&client, "command_run", json!({"id": id, "params": {}})).await;
+        assert_ne!(r.is_error, Some(true), "{}", text(&r));
+    }
+    for (tool, params, bpp) in [
+        ("doc_export", json!({"path": "auto.tga"}), 32),
+        ("doc_export", json!({"path": "flat.tga", "tgaBits": 24}), 24),
+        ("doc_save", json!({"path": "alpha.tga", "tgaBits": 32}), 32),
+    ] {
+        let r = call(&client, tool, params.clone()).await;
+        assert_ne!(r.is_error, Some(true), "{params}: {}", text(&r));
+        let bytes = std::fs::read(dir.join(params["path"].as_str().unwrap())).unwrap();
+        assert_eq!(bytes[16], bpp, "{params}");
+    }
+    let r = call(&client, "doc_export", json!({"path": "bad.tga", "tgaBits": 8})).await;
+    assert_eq!(r.is_error, Some(true), "{}", text(&r));
+    assert!(!dir.join("bad.tga").exists());
+    client.cancel().await.unwrap();
+    cleanup(&dir);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn bridge_response_budget_drops_connection_without_retrying_the_operation() {
     use photocraft_automation::{BridgeClient, budgets::MAX_RESPONSE_BYTES};
@@ -564,6 +608,45 @@ async fn filesystem_policy_rejects_absolute_and_escaping_paths_before_effects() 
     let response = call(&client, "command_run", json!({"id": "layer.smartObjects.exportContents", "params": {"path": "outside.bin"}})).await;
     assert_eq!(response.is_error, Some(true));
     assert!(text(&response).contains("ambient filesystem paths"), "{}", text(&response));
+    client.cancel().await.unwrap();
+    cleanup(&base);
+}
+
+/// #2810: a file from the read root places as a Smart Object layer; `file.placeEmbedded` itself
+/// stays refused, so `doc_place` is the only way in and the root is still the scope.
+#[tokio::test(flavor = "multi_thread")]
+async fn doc_place_is_capability_scoped() {
+    let base = tmp("place");
+    let root = base.join("workspace");
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let img = photocraft_codecs::Image::from_u8(8, 6, photocraft_codecs::ChannelLayout::Rgb, vec![42; 144]).unwrap();
+    let bytes = photocraft_codecs::encode(&img, photocraft_codecs::Format::Png, &Default::default()).unwrap();
+    std::fs::write(root.join("inside.png"), &bytes).unwrap();
+    std::fs::write(outside.join("outside.png"), bytes).unwrap();
+    let client = connect(headless_in(&root)).await;
+
+    json_of(&call(&client, "doc_new", json!({"width": 40, "height": 30})).await);
+    let placed = call(&client, "doc_place", json!({"path": "inside.png", "center": [10, 10]})).await;
+    assert_ne!(placed.is_error, Some(true), "{}", text(&placed));
+    let layers = json_of(&call(&client, "doc_inspect", json!({})).await)["layers"].as_array().unwrap().len();
+    assert_eq!(layers, 2, "the placed layer is in the document");
+    // An absolute path beneath the root is the same file (#2176), so it places too; outside it,
+    // nothing.
+    let inside = call(&client, "doc_place", json!({"path": root.join("inside.png").to_string_lossy()})).await;
+    assert_ne!(inside.is_error, Some(true), "{}", text(&inside));
+    let placed = json_of(&call(&client, "doc_inspect", json!({})).await)["layers"].as_array().unwrap().len();
+    assert_eq!(placed, 3, "the absolute path beneath the root places as well");
+    let refused = call(&client, "doc_place", json!({"path": outside.join("outside.png").to_string_lossy()})).await;
+    assert_eq!(refused.is_error, Some(true));
+    assert!(text(&refused).contains("must be inside the automation root"), "{}", text(&refused));
+    let after = json_of(&call(&client, "doc_inspect", json!({})).await)["layers"].as_array().unwrap().len();
+    assert_eq!(after, placed, "nothing outside the root was placed");
+    // The ambient command keeps its refusal: the capability-scoped method is the only way in.
+    let ambient = call(&client, "command_run", json!({"id": "file.placeEmbedded", "params": {"path": "inside.png"}})).await;
+    assert_eq!(ambient.is_error, Some(true));
+    assert!(text(&ambient).contains("ambient filesystem paths"), "{}", text(&ambient));
     client.cancel().await.unwrap();
     cleanup(&base);
 }
