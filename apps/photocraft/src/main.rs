@@ -178,8 +178,15 @@ fn main() -> eframe::Result {
             Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
             Some("--safe-gpu") => safe_gpu = true,
             Some("--in-window-menus") => in_window_menus = true,
+            // `--version --json` prints `app.capabilities` instead, so a launcher can feature-detect
+            // without starting a window. Builds without it stop at `--version` and print the plain
+            // line, so the probe is safe against every release.
             Some("--version") => {
-                println!("photocraft {}", photocraft_engine::build_info::long_version());
+                if args.next().is_some_and(|a| a == "--json") {
+                    println!("{}", photocraft_ui_egui::control::capabilities());
+                } else {
+                    println!("photocraft {}", photocraft_engine::build_info::long_version());
+                }
                 return Ok(());
             }
             // Old macOS passes a process serial number when launched from Finder.
