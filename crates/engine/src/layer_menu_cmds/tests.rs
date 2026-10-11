@@ -84,6 +84,98 @@ fn mask_apply_from_transparency_hide_selection() {
 }
 
 #[test]
+fn apply_feathered_layer_mask_preserves_soft_edge() {
+    for depth in DEPTHS {
+        let mut s = session(depth, "rgb");
+        paint(&mut s, |_, _| [1.0, 0.0, 0.0, 1.0]);
+        select_left_half(&mut s);
+        s.execute("layer.layerMask.revealSelection", json!({})).unwrap();
+        s.execute("select.deselect", json!({})).unwrap();
+        s.execute("layer.layerMask.edit", json!({"feather": 2.0})).unwrap();
+
+        let canvas = doc(&s).bounds();
+        let before_composite = photocraft_compose::render(doc(&s), canvas).px;
+        let mid_alpha = before_composite[(5 * canvas.width() + 20) as usize][3];
+        assert!(mid_alpha > 0.05 && mid_alpha < 0.95, "{depth}: mask edge is soft: {mid_alpha}");
+
+        // Apply layer mask
+        s.execute("layer.layerMask.apply", json!({})).unwrap();
+        assert!(active(&s).mask.is_none(), "mask is removed after Apply");
+
+        // Render composite after Apply matches pre-Apply within 8-bit rounding tolerance
+        let after_composite = photocraft_compose::render(doc(&s), canvas).px;
+        assert_eq!(before_composite.len(), after_composite.len());
+        for (i, (b, a)) in before_composite.iter().zip(&after_composite).enumerate() {
+            assert!((b[3] - a[3]).abs() <= 2.0 / 255.0, "{depth}: pixel {i} alpha differs: before={:?}, after={:?}", b, a);
+            for c in 0..3 {
+                assert!((b[c] * b[3] - a[c] * a[3]).abs() <= 2.0 / 255.0, "{depth}: pixel {i} channel {c} differs: before={:?}, after={:?}", b, a);
+            }
+        }
+
+        // Undo restores mask and original soft composite
+        s.execute("edit.undo", json!({})).unwrap();
+        assert!(active(&s).mask.is_some(), "mask restored after undo");
+        assert_eq!(active(&s).mask.as_ref().unwrap().feather, 2.0);
+        let restored_composite = photocraft_compose::render(doc(&s), canvas).px;
+        for (b, r) in before_composite.iter().zip(&restored_composite) {
+            for c in 0..4 {
+                assert!((b[c] - r[c]).abs() <= 1e-4, "undo restored composite exactly");
+            }
+        }
+
+        // Control: unfeathered mask preserves pixels and has sharp edge
+        s.execute("layer.layerMask.edit", json!({"feather": 0.0})).unwrap();
+        let unfeathered_before = photocraft_compose::render(doc(&s), canvas).px;
+        assert_eq!(unfeathered_before[(5 * canvas.width() + 20) as usize][3], 0.0);
+        assert_eq!(unfeathered_before[(5 * canvas.width() + 19) as usize][3], 1.0);
+        s.execute("layer.layerMask.apply", json!({})).unwrap();
+        let unfeathered_after = photocraft_compose::render(doc(&s), canvas).px;
+        for (b, a) in unfeathered_before.iter().zip(&unfeathered_after) {
+            assert!((b[3] - a[3]).abs() <= 2.0 / 255.0);
+            for c in 0..3 {
+                assert!((b[c] * b[3] - a[c] * a[3]).abs() <= 2.0 / 255.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn apply_feathered_layer_mask_matches_issue_3044_repro() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    s.execute("select.rect", json!({"x": 0, "y": 0, "width": 4, "height": 8})).unwrap();
+    s.execute("layer.layerMask.revealSelection", json!({})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    s.execute("layer.layerMask.edit", json!({"feather": 2})).unwrap();
+
+    let canvas = doc(&s).bounds();
+    let before = photocraft_compose::render(doc(&s), canvas).px;
+    // Soft transition at row 4, x=3 and x=4
+    let row4_x3 = before[4 * 8 + 3];
+    let row4_x4 = before[4 * 8 + 4];
+    assert!(row4_x3[0] > 0.99 && row4_x3[1] > 0.2 && row4_x3[1] < 0.8, "row 4 x=3 is soft: {row4_x3:?}");
+    assert!(row4_x4[0] > 0.99 && row4_x4[1] > 0.2 && row4_x4[1] < 0.8, "row 4 x=4 is soft: {row4_x4:?}");
+
+    s.execute("layer.layerMask.apply", json!({})).unwrap();
+    let after = photocraft_compose::render(doc(&s), canvas).px;
+    for (i, (b, a)) in before.iter().zip(&after).enumerate() {
+        for c in 0..4 {
+            assert!((b[c] - a[c]).abs() <= 2.0 / 255.0, "pixel {i} channel {c} differs: before={:?}, after={:?}", b, a);
+        }
+    }
+
+    s.execute("edit.undo", json!({})).unwrap();
+    let restored = photocraft_compose::render(doc(&s), canvas).px;
+    for (b, r) in before.iter().zip(&restored) {
+        for c in 0..4 {
+            assert!((b[c] - r[c]).abs() <= 1e-4, "undo restores exact pre-Apply pixels");
+        }
+    }
+}
+
+#[test]
 fn matting_commands_fix_dark_fringes() {
     for depth in DEPTHS {
         let mut s = session(depth, "rgb");

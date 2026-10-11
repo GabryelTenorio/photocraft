@@ -127,13 +127,27 @@ fn edit_rgba(s: &mut Session, label: &str, grow: i32, f: impl FnOnce(&mut Vec<[f
 fn apply_mask(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer_param(s, p)?;
     s.edit("Apply Layer Mask", |doc, _| {
+        let canvas = doc.bounds();
         let mask = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?.mask.take().ok_or_else(|| other("the layer has no layer mask"))?;
         let surf = crate::commands::paint_surface(doc, id, &Value::Null)?;
         let r = surf.content_bounds();
         if !r.is_empty() {
             let mut px = read_rgba(surf, r);
             let mut m = Vec::new();
-            mask.values_into(r, &mut m);
+            let has_feather = mask.enabled && photocraft_compose::masks::feather_sigma(mask.feather) > 0.0;
+            if has_feather {
+                let mut temp = Layer::raster("", photocraft_color::PixelFormat::RGBA8);
+                temp.id = id;
+                temp.mask = Some(mask);
+                let canvas = canvas.union(&r);
+                if let Some(s) = photocraft_compose::masks::combined_mask(&temp, canvas) {
+                    s.read_region_into(r, &mut m);
+                } else if let Some(m_temp) = &temp.mask {
+                    m_temp.values_into(r, &mut m);
+                }
+            } else {
+                mask.values_into(r, &mut m);
+            }
             for (q, k) in px.iter_mut().zip(&m) {
                 q[3] *= k;
             }
