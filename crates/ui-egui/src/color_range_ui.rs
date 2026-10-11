@@ -202,9 +202,27 @@ fn query_key(app: &PhotocraftApp, params: &Value) -> u64 {
     key.finish().max(1)
 }
 
-/// The selection mask `params` would make, on the proxy: the engine command run on a scratch
-/// session (Out Of Gamut uses the document's own proof setup).
+/// The selection mask `params` would make, on the proxy. Like the command, a new selection is
+/// limited to the document's active selection (#3313), read at each proxy pixel's centre.
 fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> Result<Vec<f32>, String> {
+    let mut mask = proxy_colors(app, proxy, k, params)?;
+    let replace = params.get("mode").and_then(Value::as_str).is_none_or(|m| m == "replace");
+    if let Some(selection) = app.session.active().and_then(|d| d.doc.selection.as_ref()).filter(|_| replace) {
+        let w = proxy.bounds().width().max(1) as usize;
+        let (k, half) = (k.max(1) as i32, k.max(1) as i32 / 2);
+        for (i, v) in mask.iter_mut().enumerate() {
+            let (x, y) = ((i % w) as i32, (i / w) as i32);
+            // Rounded to the command's GRAY8 mask, as `proxy_colors` is.
+            *v = (*v * selection.sample_channel(x * k + half, y * k + half, 0) * 255.0 + 0.5).floor() / 255.0;
+        }
+    }
+    Ok(mask)
+}
+
+/// The colours `params` pick on the proxy, ignoring any selection: the engine's colour query on
+/// the original pixels, or the command run on a scratch session (Out Of Gamut uses the
+/// document's own proof setup).
+fn proxy_colors(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> Result<Vec<f32>, String> {
     let area = proxy.bounds();
     if params.get("select").and_then(Value::as_str).unwrap_or("sampledColors") == "sampledColors" {
         // Pick on the original document, not the thumbnail's nearest retained pixel. The
@@ -921,7 +939,8 @@ mod tests {
     #[test]
     fn ok_applies_one_undo_step() {
         let mut h = harness(app_with_doc());
-        h.state_mut().run("select.rect", json!({"x": 0, "y": 20, "width": 5, "height": 5})).unwrap();
+        // The left half: Color Range picks only inside it (#3313).
+        h.state_mut().run("select.rect", json!({"x": 0, "y": 0, "width": 10, "height": 30})).unwrap();
         let past = h.state().session.active().unwrap().history.past_len();
         open(h.state_mut());
         h.run_steps(4);
@@ -930,12 +949,27 @@ mod tests {
         h.run_steps(2);
         assert!(!h.state().ui.dialogs.iter().any(|d| owns(&d.fields)), "OK closes the dialog");
         let app = h.state();
-        assert_eq!((coverage(app, 5, 5), coverage(app, 30, 5), coverage(app, 2, 22)), (1.0, 0.0, 0.0));
+        assert_eq!((coverage(app, 5, 5), coverage(app, 15, 5), coverage(app, 30, 5), coverage(app, 2, 22)), (1.0, 0.0, 0.0, 0.0));
         assert_eq!(app.session.active().unwrap().history.past_len(), past + 1, "one history step");
         assert_eq!(app.session.active().unwrap().history.undo_label(), Some("Color Range"));
         h.state_mut().run("edit.undo", json!({})).unwrap();
         let app = h.state();
-        assert_eq!((coverage(app, 5, 5), coverage(app, 2, 22)), (0.0, 1.0), "undo restores the previous selection");
+        assert_eq!((coverage(app, 5, 5), coverage(app, 2, 22), coverage(app, 15, 5)), (1.0, 1.0, 0.0), "undo restores the previous selection");
+    }
+
+    /// #3313: with a selection, the preview shows what OK selects: the colours inside it only.
+    #[test]
+    fn preview_stays_inside_the_active_selection() {
+        let mut app = app_with_doc();
+        app.run("select.rect", json!({"x": 0, "y": 0, "width": 10, "height": 30})).unwrap();
+        let doc = app.session.active().unwrap().doc.clone();
+        let proxy = crate::proxy::proxy_document(&doc, 1);
+        for select in ["reds", "sampledColors"] {
+            let p = json!({"select": select, "color": "#ff0000", "fuzziness": 40});
+            let shown = proxy_mask(&app, &proxy, 1, &p).unwrap();
+            let at = |x: usize, y: usize| shown[y * 40 + x];
+            assert_eq!((at(5, 5), at(15, 5), at(5, 22)), (1.0, 0.0, 0.0), "{select}");
+        }
     }
 
     #[test]

@@ -362,7 +362,24 @@ fn color_range(s: &mut Session, p: &Value) -> Result<Value> {
             *v = 1.0 - *v;
         }
     }
-    set_selection(s, "Color Range", area, mask, mode(p))
+    let m = mode(p);
+    if m == SelectionMode::Replace {
+        within_selection(&s.active().ok_or(EngineError::NoDocument)?.doc, area, &mut mask);
+    }
+    set_selection(s, "Color Range", area, mask, m)
+}
+
+/// Color Range with a selection picks only inside it, as in Photoshop: run it again to pick a
+/// subset of the colours (#3313). `mask` covers `area`; a feathered selection scales it. Adding,
+/// subtracting or intersecting already combines with the selection, so only a new selection
+/// (Replace) is limited.
+pub fn within_selection(doc: &Document, area: Rect, mask: &mut [f32]) {
+    if doc.selection.is_none() {
+        return;
+    }
+    for (v, s) in mask.iter_mut().zip(sel::mask_from_surface(doc.selection.as_ref(), area)) {
+        *v *= s;
+    }
 }
 
 fn modify(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
@@ -609,6 +626,14 @@ mod tests {
         s
     }
 
+    /// Color Range on a fresh canvas: with a selection it would pick only inside it (#3313).
+    fn fresh_range(s: &mut Session, p: Value) {
+        if s.active().is_some_and(|d| d.doc.selection.is_some()) {
+            s.execute("select.deselect", json!({})).unwrap();
+        }
+        s.execute("select.colorRange", p).unwrap();
+    }
+
     fn coverage(s: &Session, x: i32, y: i32) -> f32 {
         s.active().unwrap().doc.selection.as_ref().map_or(0.0, |m| m.sample_channel(x, y, 0))
     }
@@ -648,7 +673,7 @@ mod tests {
                     let doc = s.active().unwrap().doc.clone();
                     let pixels = photocraft_compose::render(&doc, doc.bounds());
                     let preview = q.coverage(&pixels.px, 24, 1.0, [0.0, 0.0]);
-                    s.execute("select.colorRange", p).unwrap();
+                    fresh_range(&mut s, p);
                     let actual = current_mask(&s.active().unwrap().doc).1;
                     for (shown, selected) in preview.iter().zip(actual) {
                         let rounded = (shown.clamp(0.0, 1.0) * 255.0 + 0.5).floor() / 255.0;
@@ -680,7 +705,7 @@ mod tests {
             let query = ColorRangeSamples::new(&s, &p).unwrap();
             let (area, px) = sample_pixels(&s, all_layers).unwrap();
             let shown = query.coverage(&px, area.width() as usize, 1.0, [0.0, 0.0]);
-            s.execute("select.colorRange", p).unwrap();
+            fresh_range(&mut s, p);
             assert_eq!(shown[7 * 40 + 7], coverage(&s, 7, 7));
             assert_eq!(shown[24 * 40 + 10], coverage(&s, 10, 24));
         }
@@ -696,9 +721,38 @@ mod tests {
         // The sampled colour itself is fully selected (as with Photoshop's eyedropper).
         assert_eq!(coverage(&s, 10, 10), 1.0);
         assert_eq!(coverage(&s, 20, 20), 0.0);
-        s.execute("select.colorRange", json!({"color": "#ff0000", "fuzziness": 100})).unwrap();
+        fresh_range(&mut s, json!({"color": "#ff0000", "fuzziness": 100}));
         assert_eq!(coverage(&s, 10, 10), 1.0);
         assert_eq!(coverage(&s, 20, 20), 0.0);
+    }
+
+    /// #3313: with a selection, Color Range picks only inside it, as Photoshop does (run it again
+    /// to pick a subset of the colours). A feathered edge keeps its softness, and adding to the
+    /// selection still reaches outside it.
+    #[test]
+    fn color_range_stays_inside_the_active_selection() {
+        let mut s = session();
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
+        s.execute("select.colorRange", json!({"color": "#ff0000", "fuzziness": 40})).unwrap();
+        assert_eq!(coverage(&s, 10, 10), 1.0, "the red square inside the selection");
+        assert_eq!(coverage(&s, 30, 10), 0.0, "the red square outside it stays out");
+        assert_eq!(coverage(&s, 2, 2), 0.0);
+        // Invert flips the colours within the selection, not the whole canvas.
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
+        s.execute("select.colorRange", json!({"color": "#ff0000", "fuzziness": 40, "invert": true})).unwrap();
+        assert_eq!((coverage(&s, 2, 2), coverage(&s, 10, 10), coverage(&s, 25, 2)), (1.0, 0.0, 0.0));
+        // A partly selected pixel keeps its partial coverage.
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
+        s.execute("select.modify.feather", json!({"radius": 3})).unwrap();
+        let edge = coverage(&s, 19, 10);
+        assert!(edge > 0.0 && edge < 1.0, "{edge}");
+        s.execute("select.colorRange", json!({"color": "#ffffff", "fuzziness": 40})).unwrap();
+        assert!((coverage(&s, 19, 10) - edge).abs() < 2.0 / 255.0, "{} vs {edge}", coverage(&s, 19, 10));
+        assert_eq!(coverage(&s, 30, 25), 0.0);
+        // Add to the selection: the new colours anywhere on the canvas join it.
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
+        s.execute("select.colorRange", json!({"color": "#ff0000", "fuzziness": 40, "mode": "add"})).unwrap();
+        assert_eq!((coverage(&s, 2, 2), coverage(&s, 30, 10)), (1.0, 1.0));
     }
 
     #[test]
@@ -747,14 +801,16 @@ mod tests {
         assert_eq!((coverage(&s, 10, 10), coverage(&s, 30, 10), coverage(&s, 10, 24)), (1.0, 1.0, 1.0));
         assert_eq!((coverage(&s, 2, 2), coverage(&s, 22, 24), coverage(&s, 32, 24)), (0.0, 0.0, 0.0));
         // Eyedropper point on the blue square; `invert` flips the result.
-        s.execute("select.colorRange", json!({"points": [[7, 22]], "fuzziness": 100, "invert": true})).unwrap();
+        fresh_range(&mut s, json!({"points": [[7, 22]], "fuzziness": 100, "invert": true}));
         assert_eq!((coverage(&s, 10, 24), coverage(&s, 10, 10), coverage(&s, 2, 2)), (0.0, 1.0, 1.0));
         // Localized clusters: picked on the left red square, a 25% range (10 px) leaves the right one.
-        s.execute("select.colorRange", json!({"points": [[10, 10]], "fuzziness": 100, "localized": true, "range": 25})).unwrap();
+        fresh_range(&mut s, json!({"points": [[10, 10]], "fuzziness": 100, "localized": true, "range": 25}));
         assert_eq!(coverage(&s, 10, 10), 1.0);
         assert!(coverage(&s, 13, 10) > 0.5);
         assert_eq!(coverage(&s, 30, 10), 0.0);
-        // One undo step per call.
+        // One undo step per call (the first undoes Color Range, the second `fresh_range`'s Deselect).
+        s.execute("edit.undo", json!({})).unwrap();
+        assert!(s.active().unwrap().doc.selection.is_none());
         s.execute("edit.undo", json!({})).unwrap();
         assert_eq!(coverage(&s, 2, 2), 1.0);
     }
@@ -775,7 +831,7 @@ mod tests {
         let run = |s: &mut Session, extra: Value| {
             let mut p = json!({"points": [[5, 5], [45, 5]], "fuzziness": 10});
             p.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
-            s.execute("select.colorRange", p).unwrap();
+            fresh_range(s, p);
             (0..5).map(|i| coverage(s, i * 10 + 5, 5)).collect::<Vec<f32>>()
         };
         assert!(run(&mut s, json!({})).iter().all(|v| *v > 0.99), "both samples span every strip");
@@ -800,19 +856,19 @@ mod tests {
         s.execute("select.colorRange", json!({"select": "reds"})).unwrap();
         assert_eq!((coverage(&s, 10, 10), coverage(&s, 30, 10)), (1.0, 1.0));
         assert_eq!((coverage(&s, 10, 24), coverage(&s, 2, 2), coverage(&s, 32, 24)), (0.0, 0.0, 0.0));
-        s.execute("select.colorRange", json!({"select": "blues"})).unwrap();
+        fresh_range(&mut s, json!({"select": "blues"}));
         assert_eq!((coverage(&s, 10, 24), coverage(&s, 10, 10)), (1.0, 0.0));
-        s.execute("select.colorRange", json!({"select": "greens"})).unwrap();
+        fresh_range(&mut s, json!({"select": "greens"}));
         assert!(s.active().unwrap().doc.selection.is_none() || coverage(&s, 10, 10) == 0.0);
         // Tones: black is a shadow, white a highlight, 50% grey (128) a midtone.
-        s.execute("select.colorRange", json!({"select": "shadows"})).unwrap();
+        fresh_range(&mut s, json!({"select": "shadows"}));
         assert_eq!((coverage(&s, 22, 24), coverage(&s, 2, 2), coverage(&s, 32, 24)), (1.0, 0.0, 0.0));
-        s.execute("select.colorRange", json!({"select": "highlights"})).unwrap();
+        fresh_range(&mut s, json!({"select": "highlights"}));
         assert_eq!((coverage(&s, 22, 24), coverage(&s, 2, 2)), (0.0, 1.0));
-        s.execute("select.colorRange", json!({"select": "midtones", "fuzziness": 0})).unwrap();
+        fresh_range(&mut s, json!({"select": "midtones", "fuzziness": 0}));
         assert_eq!((coverage(&s, 32, 24), coverage(&s, 2, 2), coverage(&s, 22, 24)), (1.0, 0.0, 0.0));
         // A wider shadow range takes the grey too.
-        s.execute("select.colorRange", json!({"select": "shadows", "tonalRange": 140, "fuzziness": 0})).unwrap();
+        fresh_range(&mut s, json!({"select": "shadows", "tonalRange": 140, "fuzziness": 0}));
         assert_eq!(coverage(&s, 32, 24), 1.0);
         // Modes combine as for the other selection commands.
         s.execute("select.colorRange", json!({"select": "reds", "mode": "add"})).unwrap();
