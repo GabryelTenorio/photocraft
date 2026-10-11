@@ -22,13 +22,9 @@ fn shift_range_follows_visible_rows_on_both_sides_of_an_expanded_group() {
     let group = s.execute("layer.groupLayers", json!({})).unwrap()["layer"].as_u64().unwrap();
     let d = s.execute("layer.new.layer", json!({"name": "D"})).unwrap()["layer"].as_u64().unwrap();
 
-    for (anchor, target, wanted) in [
-        (d, group, vec![d, group]),
-        (group, d, vec![d, group]),
-        (group, b, vec![group, c, b]),
-        (b, group, vec![group, c, b]),
-        (c, b, vec![c, b]),
-    ] {
+    for (anchor, target, wanted) in
+        [(d, group, vec![d, group]), (group, d, vec![d, group]), (group, b, vec![group, c, b]), (b, group, vec![group, c, b]), (c, b, vec![c, b])]
+    {
         select(&mut s, anchor, "replace");
         select(&mut s, target, "range");
         let mut expected = wanted;
