@@ -283,7 +283,8 @@ pub fn tga_bits_param(p: &Value, cmd: &str) -> Result<Option<photocraft_io::TgaB
 pub(crate) fn encode(doc: &Document, path: &str, save: impl Into<SaveOpts>) -> Result<(Vec<u8>, Vec<String>)> {
     crate::allocation::checkpoint("saving document")?;
     let save = save.into();
-    let mut opts = photocraft_io::ExportOptions { tiff_layers: save.tiff_layers, tga_bits: save.tga_bits, image_previews: save.image_previews, ..Default::default() };
+    let mut opts =
+        photocraft_io::ExportOptions { tiff_layers: save.tiff_layers, tga_bits: save.tga_bits, image_previews: save.image_previews, ..Default::default() };
     if let Some(q) = save.quality {
         let q = (q.clamp(0.0, 12.0) / 12.0 * 99.0 + 1.0).round() as u8;
         opts.encode.jpeg_quality = q;
