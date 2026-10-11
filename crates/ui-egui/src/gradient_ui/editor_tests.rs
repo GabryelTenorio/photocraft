@@ -6,7 +6,7 @@ use egui_kittest::{
     kittest::{NodeT, Queryable},
 };
 
-fn editor(layer: bool) -> (Harness<'static, PhotocraftApp>, Sink) {
+pub(super) fn editor(layer: bool) -> (Harness<'static, PhotocraftApp>, Sink) {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     app.run("file.new", json!({"width": 200, "height": 120})).unwrap();
     let mut params = json!({"stops": [[0, "#ff0000"], [0.5, "#00ff00"], [1, "#0000ff"]], "transparency": [[0, 25], [0.5, 60], [1, 100]]});
@@ -27,7 +27,7 @@ fn editor(layer: bool) -> (Harness<'static, PhotocraftApp>, Sink) {
     (h, sink)
 }
 
-fn click(h: &mut Harness<PhotocraftApp>, pos: Pos2) {
+pub(super) fn click(h: &mut Harness<PhotocraftApp>, pos: Pos2) {
     h.event(egui::Event::PointerMoved(pos));
     h.run_steps(1);
     h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
@@ -41,7 +41,7 @@ fn select(h: &mut Harness<PhotocraftApp>, location: f32, opacity: bool) {
     click(h, pos2(rect.left() + 8.0 + location * (rect.width() - 16.0), rect.top() + if opacity { 6.0 } else { 50.0 }));
 }
 
-fn type_number(h: &mut Harness<PhotocraftApp>, index: usize, value: &str, commit: bool) {
+pub(super) fn type_number(h: &mut Harness<PhotocraftApp>, index: usize, value: &str, commit: bool) {
     h.get_all_by_role(egui::accesskit::Role::SpinButton).nth(index).unwrap().click();
     h.run_steps(2);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -85,13 +85,15 @@ fn selected_editor_opacity_commits_once_and_delete_preserves_minimum() {
     let after = sink.fill(h.state()).unwrap();
     assert!(matches!(&after, Fill::Gradient { opacity_stops, .. } if (opacity_stops[1].1 - 0.35).abs() < 1e-5));
     assert_eq!(h.state().session.active().unwrap().history.past_len(), history + 1);
-    h.get_by_label("Delete").click();
+    let ramp = h.get_by_label("Gradient stops").rect();
+    h.get_all_by_label("Delete").find(|n| n.rect().top() > ramp.bottom()).unwrap().click();
     h.run_steps(3);
     let Fill::Gradient { stops, opacity_stops, .. } = sink.fill(h.state()).unwrap() else { panic!() };
     assert_eq!(stops.len(), 3);
     assert_eq!(opacity_stops.len(), 2);
     select(&mut h, 0.0, true);
-    assert!(h.get_by_label("Delete").accesskit_node().is_disabled());
+    let ramp = h.get_by_label("Gradient stops").rect();
+    assert!(h.get_all_by_label("Delete").find(|n| n.rect().top() > ramp.bottom()).unwrap().accesskit_node().is_disabled());
     h.state_mut().run("edit.undo", json!({})).unwrap();
     assert_eq!(sink.fill(h.state()).unwrap(), after);
     h.state_mut().run("edit.undo", json!({})).unwrap();
@@ -138,7 +140,8 @@ fn preset_editor_opacity_fields_do_not_edit_document_history() {
     select(&mut h, 0.5, true);
     type_number(&mut h, 0, "35", true);
     assert!(matches!(sink.fill(h.state()).unwrap(), Fill::Gradient { opacity_stops, .. } if (opacity_stops[1].1 - 0.35).abs() < 1e-5));
-    h.get_by_label("Delete").click();
+    let ramp = h.get_by_label("Gradient stops").rect();
+    h.get_all_by_label("Delete").find(|n| n.rect().top() > ramp.bottom()).unwrap().click();
     h.run_steps(3);
     assert!(matches!(sink.fill(h.state()).unwrap(), Fill::Gradient { stops, opacity_stops, .. } if stops.len() == 3 && opacity_stops.len() == 2));
     assert_eq!(h.state().session.active().unwrap().doc, before);

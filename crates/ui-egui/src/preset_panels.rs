@@ -327,6 +327,7 @@ pub(crate) fn browser(
         for (gi, g) in groups.iter().enumerate() {
             let open = group_open(st, panel, gi, &g.name);
             let (hr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+            hresp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &g.name));
             if hresp.hovered() {
                 ui.painter().rect_filled(hr, 2.0, t.hover.gamma_multiply(0.5));
             }
@@ -452,15 +453,15 @@ pub(crate) fn browser(
             st.sizes.insert(panel.to_string(), s);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::icons::button(ui, "trash", 24.0, false, tl!("Delete")).clicked()
+            if crate::brush_picker::named(crate::icons::button(ui, "trash", 24.0, false, tl!("Delete")), tl!("Delete")).clicked()
                 && let Some(k) = selected.clone()
             {
                 ev.push(Ev::Delete(k));
             }
-            if crate::icons::button(ui, "plus", 24.0, false, new_tip).clicked() {
+            if crate::brush_picker::named(crate::icons::button(ui, "plus", 24.0, false, new_tip), new_tip).clicked() {
                 ev.push(Ev::New);
             }
-            if crate::icons::button(ui, "folder-plus", 24.0, false, tl!("Create new group")).clicked() {
+            if crate::brush_picker::named(crate::icons::button(ui, "folder-plus", 24.0, false, tl!("Create new group")), tl!("Create new group")).clicked() {
                 ev.push(Ev::NewGroup);
             }
         });
@@ -519,27 +520,54 @@ fn canvas_drop_rect(app: &PhotocraftApp) -> egui::Rect {
 
 // ------------------------------------------------------------------ Gradients
 
-pub fn gradients_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+fn gradient_browser(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, place: Place<'_>) -> Vec<Ev> {
     let (fg, bg) = (app.session.tools.foreground, app.session.tools.background);
     let groups_src = app.session.presets.gradients.clone();
-    // Current gradient (what the Gradient tool paints), like the panel's top "recent" row.
+    let groups: Vec<GroupView> = groups_src
+        .iter()
+        .map(|g| GroupView { name: g.name.clone(), items: g.items.iter().map(|i| ItemView { key: i.name.clone(), name: i.name.clone() }).collect() })
+        .collect();
+    let mut st = std::mem::take(&mut app.ui.presets_ui);
+    let events = browser(ui, &mut st, panel, &groups, place, &mut |ui, r, gi, ii| {
+        let stops = groups_src[gi].items[ii].resolve(fg, bg);
+        paint_gradient(ui, r, &stops);
+    });
+    app.ui.presets_ui = st;
+    events
+}
+
+/// Editor/popup selection recolours the current target, never creates another layer.
+/// The sidebar retains its separate double-click and canvas-drop Apply behavior.
+pub(crate) fn gradient_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, apply_to_layer: bool, new_params: Value) -> bool {
+    let place = Place { canvas: Rect::NOTHING, max_h: 220.0, new_tip: tl!("Create new gradient") };
+    let events = gradient_browser(app, ui, panel, place);
+    let mut changed = false;
+    for e in events {
+        match &e {
+            Ev::Select(k) | Ev::Activate(k) => {
+                if run(app, "gradient.presets.select", json!({"preset": k, "applyToLayer": apply_to_layer})).is_some() {
+                    app.ui.presets_ui.selected.insert(panel.into(), k.clone());
+                    app.ui.presets_ui.selected.insert("gradients".into(), k.clone());
+                    changed = true;
+                }
+            }
+            _ => {
+                generic(app, panel, "gradient.presets", &e, new_params.clone());
+            }
+        }
+    }
+    changed
+}
+
+pub fn gradients_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let (fg, bg) = (app.session.tools.foreground, app.session.tools.background);
     let cur = app.session.presets.gradient.clone();
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 18.0), Sense::hover());
     paint_gradient(ui, r, &cur.resolve(fg, bg));
     ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, Tokens::get(ui.ctx()).card_border), egui::StrokeKind::Inside);
     ui.add_space(4.0);
-    let groups: Vec<GroupView> = groups_src
-        .iter()
-        .map(|g| GroupView { name: g.name.clone(), items: g.items.iter().map(|i| ItemView { key: i.name.clone(), name: i.name.clone() }).collect() })
-        .collect();
-    let canvas = canvas_drop_rect(app);
-    let mut st = std::mem::take(&mut app.ui.presets_ui);
-    let max_h = (ui.available_height() - 40.0).clamp(90.0, 260.0);
-    let events = browser(ui, &mut st, "gradients", &groups, Place { canvas, max_h, new_tip: tl!("Create new gradient") }, &mut |ui, r, gi, ii| {
-        let stops = groups_src[gi].items[ii].resolve(fg, bg);
-        paint_gradient(ui, r, &stops);
-    });
-    app.ui.presets_ui = st;
+    let place = Place { canvas: canvas_drop_rect(app), max_h: (ui.available_height() - 40.0).clamp(90.0, 260.0), new_tip: tl!("Create new gradient") };
+    let events = gradient_browser(app, ui, "gradients", place);
     for e in events {
         match &e {
             Ev::Select(k) => {

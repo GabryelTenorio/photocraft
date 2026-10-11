@@ -1015,6 +1015,7 @@ fn humanize(key: &str) -> String {
         "appearanceMode" => return "Appearance Mode".into(),
         "darkTheme" => return "Dark Theme".into(),
         "lightTheme" => return "Light Theme".into(),
+        "nativeGradientIcons" => return "Use PhotoCraft-native gradient icons".into(),
         _ => {}
     }
     // These controls appear only for WebP, so reuse the existing translated labels.
@@ -2859,6 +2860,39 @@ mod tests {
         assert!(!h.state().session.prefs().interface.system_title_bar);
         assert_eq!(stored(&store)["interface"]["systemTitleBar"], false);
         assert!(h.state().custom_titlebar);
+    }
+
+    #[test]
+    fn native_gradient_icons_apply_cancel_and_restart() {
+        use egui_kittest::{Harness, kittest::Queryable};
+        let (mut app, store) = app_with_store();
+        app.run("prefs.set", json!({"path": "interface.language", "value": "en"})).unwrap();
+        let id = open_preferences(&mut app, "interface");
+        let mut h = Harness::builder().with_size(vec2(1280.0, 800.0)).build_eframe(move |cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            app
+        });
+        h.run_steps(4);
+        h.get_by_label("Use PhotoCraft-native gradient icons").scroll_to_me();
+        h.run_steps(4);
+        for desired in [true, false] {
+            h.get_by_label("Use PhotoCraft-native gradient icons").click();
+            h.run_steps(4);
+            assert_eq!(h.state().session.prefs().interface.native_gradient_icons, !desired, "draft waits for Apply");
+            h.get_by_label("Apply").click();
+            h.run_steps(4);
+            assert_eq!(h.state().session.prefs().interface.native_gradient_icons, desired);
+            assert_eq!(stored(&store)["interface"]["nativeGradientIcons"], desired);
+            let (restarted, _) = app_with_saved(store.lock().unwrap().clone());
+            assert_eq!(restarted.session.prefs().interface.native_gradient_icons, desired);
+        }
+        h.get_by_label("Use PhotoCraft-native gradient icons").click();
+        h.run_steps(4);
+        h.get_by_label("Cancel").click();
+        h.run_steps(4);
+        assert!(h.state().ui.dialogs.iter().all(|d| d.id != id));
+        assert!(!h.state().session.prefs().interface.native_gradient_icons);
+        assert_eq!(stored(&store)["interface"]["nativeGradientIcons"], false);
     }
 
     #[test]

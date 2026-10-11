@@ -7,6 +7,28 @@ fn session() -> Session {
 }
 
 #[test]
+fn native_gradient_icons_persist_reset_and_preserve_legacy_defaults() {
+    let mut s = session();
+    let history = s.active().unwrap().history.past_len();
+    assert!(!s.prefs().interface.native_gradient_icons);
+    s.execute("prefs.set", json!({"path": "interface.nativeGradientIcons", "value": true})).unwrap();
+    let mut restarted = Session::new();
+    restarted.load_prefs_json(&s.prefs_to_json()).unwrap();
+    assert!(restarted.prefs().interface.native_gradient_icons);
+    assert_eq!(s.active().unwrap().history.past_len(), history);
+    s.execute("prefs.reset", json!({"path": "interface.nativeGradientIcons"})).unwrap();
+    assert!(!s.prefs().interface.native_gradient_icons);
+    let before = s.prefs().to_json();
+    for invalid in [json!("true"), json!(1), Value::Null] {
+        assert!(s.execute("prefs.set", json!({"values": {"interface.showTooltips": false, "interface.nativeGradientIcons": invalid}})).is_err());
+        assert_eq!(s.prefs().to_json(), before, "invalid updates are atomic");
+    }
+    restarted.load_prefs_json(r#"{"interface":{"showTooltips":false}}"#).unwrap();
+    assert!(!restarted.prefs().interface.native_gradient_icons);
+    assert!(!restarted.prefs().interface.show_tooltips);
+}
+
+#[test]
 fn defaults_match_photoshop() {
     let p = Preferences::default();
     assert_eq!(p.performance.history_states, 50);

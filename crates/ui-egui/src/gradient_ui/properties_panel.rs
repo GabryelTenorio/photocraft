@@ -14,22 +14,22 @@ const STYLES: [(GradientStyle, &str); 5] = [
 pub(super) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
     let document = app.session.active().map(|s| s.doc.id);
     ui.push_id(("gradient-properties", document, layer.id.0), |ui| {
-        layer_controls(app, ui, layer);
+        layer_controls(app, ui, layer, true);
     });
 }
 
 pub(super) fn editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
     let document = app.session.active().map(|s| s.doc.id);
     ui.push_id(("gradient-editor-layer", document, layer.id.0), |ui| {
-        layer_controls(app, ui, layer);
+        layer_controls(app, ui, layer, false);
     });
 }
 
-fn layer_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
+fn layer_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer, picker: bool) {
     if props_layout::section(ui, "gradient-fill-stops", "Gradient")
         && let Some(fill) = current_fill(app, layer.id)
     {
-        stops_editor_for(app, ui, Sink::Layer(layer.id), fill);
+        stops_editor(app, ui, Sink::Layer(layer.id), fill, picker);
     }
     options(app, ui, layer);
 }
@@ -40,10 +40,8 @@ fn options(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
         ui.horizontal(|ui| {
             row_label(ui, "Style");
             ui.spacing_mut().item_spacing.x = 3.0;
-            for (value, name) in STYLES {
-                if style_button(ui, value, value == style, name).clicked() {
-                    let _ = app.run(cmds::SET, json!({"layer": layer.id.0, "style": cmds::style_name(value)}));
-                }
+            if let Some(value) = style_buttons(ui, cmds::style_name(style), app.session.prefs().interface.native_gradient_icons) {
+                let _ = app.run(cmds::SET, json!({"layer": layer.id.0, "style": value}));
             }
         });
         if let Some(value) = numeric_row(ui, "angle", "Angle", angle, -180.0..=180.0, "°") {
@@ -101,6 +99,30 @@ fn numeric_row(ui: &mut egui::Ui, id: &str, name: &str, current: f32, range: std
     .inner
 }
 
+pub(super) fn style_buttons(ui: &mut egui::Ui, current: &str, native_icons: bool) -> Option<&'static str> {
+    let mut selected = None;
+    for (style, name) in STYLES {
+        let value = cmds::style_name(style);
+        let response = if native_icons {
+            let icon = match style {
+                GradientStyle::Linear => "blend",
+                GradientStyle::Radial => "circle",
+                GradientStyle::Angle => "rotate-cw",
+                GradientStyle::Reflected => "arrow-left-right",
+                GradientStyle::Diamond => "diamond",
+            };
+            icons::button(ui, icon, 25.0, value == current, name)
+        } else {
+            style_button(ui, style, value == current, name)
+        };
+        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), value == current, tl!(name)));
+        if response.clicked() {
+            selected = Some(value);
+        }
+    }
+    selected
+}
+
 /// Small procedural previews: no proprietary icon assets, colours follow the theme.
 fn style_button(ui: &mut egui::Ui, style: GradientStyle, selected: bool, name: &str) -> egui::Response {
     let t = Tokens::get(ui.ctx());
@@ -129,7 +151,6 @@ fn style_button(ui: &mut egui::Ui, style: GradientStyle, selected: bool, name: &
     }
     ui.painter().add(egui::Shape::mesh(mesh));
     ui.painter().rect_stroke(preview, 0.0, Stroke::new(1.0, t.text_dim), StrokeKind::Outside);
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), selected, tl!(name)));
     response.on_hover_text(tl!(name))
 }
 
@@ -255,24 +276,71 @@ mod tests {
     }
 
     #[test]
-    fn style_icons_edit_the_selected_layer_with_one_undo_step() {
-        let mut h = Harness::builder().with_size(vec2(280.0, 800.0)).build_ui_state(panel, app());
-        PhotocraftApp::setup_context(&h.ctx, theme::ThemeKind::ProMedium);
-        h.run_steps(3);
-        for (style, name) in STYLES.into_iter().skip(1) {
-            let before = fill(h.state());
-            let count = h.state().session.active().unwrap().history.past_len();
-            h.get_by_label(name).click();
+    fn properties_dropdown_edits_the_layer_in_both_tool_modes_and_saves_it() {
+        for classic in [false, true] {
+            let mut app = app();
+            app.ui.tool_options.gradient_classic = classic;
+            let mut h = Harness::builder().with_size(vec2(1000.0, 800.0)).build_ui_state(
+                |ui, app: &mut PhotocraftApp| {
+                    ui.set_width(280.0);
+                    panel(ui, app);
+                },
+                app,
+            );
+            PhotocraftApp::setup_context(&h.ctx, theme::ThemeKind::ProMedium);
             h.run_steps(3);
-            let after = fill(h.state());
-            assert!(matches!(&after, Fill::Gradient { style: actual, .. } if *actual == style));
-            assert_eq!(h.state().session.active().unwrap().doc.layers.len(), 2);
+            let original = fill(h.state());
+            let count = h.state().session.active().unwrap().history.past_len();
+            let arrow = h.get_by_label("Presets").rect();
+            let strip = h.get_by_label("Gradient stops").rect();
+            assert!(arrow.left() >= strip.right() && arrow.right() - strip.left() <= 280.0, "{arrow:?} beside {strip:?}");
+            assert!((arrow.center().y - (strip.top() + 28.0)).abs() < 1.0);
+            h.get_by_label("Presets").click();
+            h.run_steps(3);
+            h.get_by_label("Create new gradient").click();
+            h.run_steps(3);
+            let saved = h.state().session.presets.gradients.iter().flat_map(|g| &g.items).find(|p| p.name == "Custom").unwrap();
+            assert_eq!(saved.opacity, vec![(0.0, 0.2), (1.0, 1.0)]);
+            assert_eq!(saved.resolve([0.0; 4], [0.0; 4])[0].1, [1.0, 0.0, 0.0, 0.2]);
+            assert_eq!(fill(h.state()), original);
+            h.key_press(egui::Key::Escape);
+            h.run_steps(3);
+            h.get_by_label("Presets").click();
+            h.run_steps(3);
+            h.get_by_label("Foreground to Transparent").click();
+            h.run_steps(3);
+            assert!(matches!(fill(h.state()), Fill::Gradient { opacity_stops, .. } if opacity_stops == vec![(0.0, 1.0), (1.0, 0.0)]));
             assert_eq!(h.state().session.active().unwrap().history.past_len(), count + 1);
+            assert_eq!(h.state().session.active().unwrap().doc.layers.len(), 2);
+            assert!(h.query_by_label("Basics").is_none());
             h.state_mut().run("edit.undo", json!({})).unwrap();
-            assert_eq!(fill(h.state()), before);
-            h.state_mut().run("edit.redo", json!({})).unwrap();
-            assert_eq!(fill(h.state()), after);
-            h.run_steps(2);
+            assert_eq!(fill(h.state()), original);
+        }
+    }
+
+    #[test]
+    fn style_icons_edit_the_selected_layer_with_one_undo_step() {
+        for native_icons in [false, true] {
+            let mut app = app();
+            app.run("prefs.set", json!({"path": "interface.nativeGradientIcons", "value": native_icons})).unwrap();
+            let mut h = Harness::builder().with_size(vec2(280.0, 800.0)).build_ui_state(panel, app);
+            PhotocraftApp::setup_context(&h.ctx, theme::ThemeKind::ProMedium);
+            h.run_steps(3);
+            for (style, name) in STYLES.into_iter().skip(1) {
+                let before = fill(h.state());
+                let count = h.state().session.active().unwrap().history.past_len();
+                h.get_by_label(name).click();
+                h.run_steps(3);
+                let after = fill(h.state());
+                assert!(matches!(&after, Fill::Gradient { style: actual, .. } if *actual == style));
+                assert_eq!(h.state().session.active().unwrap().doc.layers.len(), 2);
+                assert_eq!(h.state().session.active().unwrap().history.past_len(), count + 1);
+                h.state_mut().run("edit.undo", json!({})).unwrap();
+                assert_eq!(fill(h.state()), before);
+                h.state_mut().run("edit.redo", json!({})).unwrap();
+                assert_eq!(fill(h.state()), after);
+                h.run_steps(2);
+            }
         }
     }
 

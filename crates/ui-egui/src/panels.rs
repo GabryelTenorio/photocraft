@@ -1177,25 +1177,16 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         if widgets::dropdown(ui, "gradient-mode", &mut classic, &[(false, "Gradient"), (true, "Classic gradient")], 118.0) {
                             app.ui.tool_options.gradient_classic = classic;
                         }
-                        // Live "Gradient" (a Gradient Fill layer) or "Classic gradient" (pixels):
-                        // both paint with the same engine-owned preset (#1651), and either swatch
-                        // click opens the Gradient Editor window, as in Photoshop.
+                        // Classic's ribbon opens the editor; Live is a preview. Both have a
+                        // separate dropdown for choosing a preset without leaving the tool.
                         if crate::gradient_ui::preset_swatch(app, ui) {
                             app.ui.panels.gradient_editor = true;
                         }
                         widgets::vline(ui, 22.0);
                         ui.spacing_mut().item_spacing.x = 2.0;
                         let before = app.ui.tool_options.clone();
-                        for (style, icon, tip) in [
-                            ("linear", "blend", tl!("Linear Gradient")),
-                            ("radial", "circle", tl!("Radial Gradient")),
-                            ("angle", "rotate-cw", tl!("Angle Gradient")),
-                            ("reflected", "arrow-left-right", tl!("Reflected Gradient")),
-                            ("diamond", "diamond", tl!("Diamond Gradient")),
-                        ] {
-                            if icons::button(ui, icon, 24.0, app.ui.tool_options.gradient_style == style, tip).clicked() {
-                                app.ui.tool_options.gradient_style = style.into();
-                            }
+                        if let Some(style) = crate::gradient_ui::style_buttons(ui, &app.ui.tool_options.gradient_style, app.session.prefs().interface.native_gradient_icons) {
+                            app.ui.tool_options.gradient_style = style.into();
                         }
                         ui.spacing_mut().item_spacing.x = 8.0;
                         widgets::vline(ui, 22.0);
