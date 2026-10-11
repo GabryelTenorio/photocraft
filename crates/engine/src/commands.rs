@@ -1135,6 +1135,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::gradient_fill_cmds::specs());
     v.extend(crate::solid_fill_cmds::specs());
     v.extend(crate::type_cmds::specs());
+    v.extend(crate::type_mask_cmds::specs());
     v.extend(crate::transform_cmds::specs());
     v.extend(crate::float_cmds::specs());
     v.extend(crate::vector_cmds::specs());
@@ -1152,6 +1153,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::retouch_cmds::specs());
     v.extend(crate::redeye_cmds::specs());
     v.extend(crate::image_cmds::specs());
+    v.extend(crate::perspective_crop_cmds::specs());
     v.extend(crate::selection_cmds::specs());
     v.extend(crate::magnetic_cmds::specs());
     v.extend(crate::select_extra_cmds::specs());
@@ -1208,6 +1210,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::video_cmds::specs());
     v.extend(crate::jobs::specs());
     v.extend(crate::wia_cmds::specs());
+    v.extend(crate::rasterize_style_cmds::specs());
     v.extend(crate::variables_cmds::specs());
     v.extend(crate::plugin_cmds::specs());
     v.extend(crate::group_view_cmds::specs());
