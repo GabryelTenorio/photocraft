@@ -2575,6 +2575,7 @@ cameraData	Lens	镜头
 	Dodge	减淡
 	Burn	加深
 	Sponge	海绵
+	Show rulers	显示标尺
 	New Crop Preset…	新建裁剪预设…
 	Delete Crop Preset…	删除裁剪预设…
 	Select the crop presets to delete:	选择要删除的裁剪预设：
