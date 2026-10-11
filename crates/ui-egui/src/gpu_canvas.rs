@@ -872,7 +872,7 @@ impl GpuInfo {
 
     /// Human-readable lines for Help › System Info.
     pub fn lines(&self) -> Vec<String> {
-        let or = |s: &str, d: &str| if s.is_empty() { tl!(d).to_string() } else { s.to_string() };
+        let or = |s: &str, d: &str| if s.is_empty() || (s == "auto" && d == "auto") { tl!(d).to_string() } else { s.to_string() };
         let mut v = vec![
             {
                 let template = "Graphics adapter: {adapter}";

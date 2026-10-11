@@ -758,15 +758,11 @@ fn print_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Va
 fn print_confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
     let r = app.run("file.print", params(f))?;
     app.ui.status = if r["sent"] == json!(true) {
-        {
-            let template = "Sent to the printer ({spooler})";
-            crate::i18n::fmt(tl!(template), &[("spooler", r["spooler"].as_str().unwrap_or(""))])
-        }
+        let template = "Sent to the printer ({spooler})";
+        crate::i18n::fmt(tl!(template), &[("spooler", r["spooler"].as_str().unwrap_or(""))])
     } else {
-        {
-            let template = "Printed to {path}";
-            crate::i18n::fmt(tl!(template), &[("path", r["pdf"].as_str().unwrap_or(""))])
-        }
+        let template = "Printed to {path}";
+        crate::i18n::fmt(tl!(template), &[("path", r["pdf"].as_str().unwrap_or(""))])
     };
     Ok(r)
 }

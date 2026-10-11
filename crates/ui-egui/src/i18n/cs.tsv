@@ -3490,17 +3490,17 @@ layerLabel	No Color	Žádná barva
 # Status messages and notices
 	Nothing to paste: the clipboard holds no image	Není co vložit: schránka neobsahuje obraz
 	Preferences saved	Předvolby uloženy
-	Distort and Perspective can't be applied to a path	Deformaci a perspektivu nelze použít na cestu
+	Distort and Perspective can't be applied to a path	Zkreslení a perspektivu nelze použít na cestu
 	Invalid panel layout; restored the default dock	Neplatné rozložení panelů; obnoveno výchozí ukotvení
 @plural	{n} sample point removed|{n} sample points removed	Odstraněn {n} bod měření|Odstraněny {n} body měření|Odstraněno {n} bodů měření
-	Preferences were reset: {error}	Předvolby byly obnoveny: {error}
+	Preferences were reset: {error}	Předvolby byly vráceny na výchozí hodnoty: {error}
 	Recovered {name}	Obnoveno: {name}
 	Couldn't save preferences: {error}. Retrying…	Předvolby se nepodařilo uložit: {error}. Další pokus…
 	Autosave failed: {error}	Automatické ukládání selhalo: {error}
 	Exported presets to {path}	Přednastavení exportována do {path}
 	Ran script {name}	Spuštěn skript {name}
-	Sent to the printer ({spooler})	Odesláno do tiskárny ({spooler})
-	Printed to {path}	Vytištěno do {path}
+	Sent to the printer ({spooler})	Odesláno k tisku ({spooler})
+	Printed to {path}	Vytištěno do souboru {path}
 	Exported {path} ({size})	Exportováno: {path} ({size})
 	Exported {path}	Exportováno: {path}
 	Added swatch {name}	Přidán vzorek {name}
@@ -3510,7 +3510,7 @@ layerLabel	No Color	Žádná barva
 	Clone source set at {x}, {y}	Zdroj klonování nastaven na {x}, {y}
 	Color management: {error}	Správa barev: {error}
 	Opened {url}	Otevřeno: {url}
-	No custom shape "{name}": pick one in the options bar or Window › Shapes	Vlastní tvar „{name}“ není k dispozici: vyberte ho v pruhu voleb nebo v nabídce Okna › Tvary
+	No custom shape "{name}": pick one in the options bar or Window › Shapes	Vlastní tvar „{name}“ není k dispozici: vyberte ho v panelu možností nebo v nabídce Okno › Tvary
 	Saved a copy as {path}	Kopie uložena jako {path}
 	Exported contents to {path}	Obsah exportován do {path}
 	{label} is not available: {reason}	{label} není k dispozici: {reason}
@@ -3526,10 +3526,10 @@ layerLabel	No Color	Žádná barva
 	Preferences can't be saved	Předvolby nelze uložit
 	PhotoCraft keeps retrying; until a save succeeds, preference changes are lost when it closes.	PhotoCraft se nadále pokouší o uložení; dokud nebude úspěšné, změny předvoleb se při zavření ztratí.
 	GPU retry scheduled	Naplánován další pokus o použití GPU
-	Save your work and restart PhotoCraft to retry GPU acceleration. CPU rendering remains active for this session.	Uložte práci a restartujte PhotoCraft pro další pokus o akceleraci GPU. V této relaci zůstane aktivní vykreslování pomocí CPU.
+	Save your work and restart PhotoCraft to retry GPU acceleration. CPU rendering remains active for this session.	Chcete-li znovu zkusit akceleraci GPU, uložte práci a restartujte PhotoCraft. V této relaci zůstane aktivní vykreslování pomocí CPU.
 	GPU device was lost; using the CPU renderer.	Spojení se zařízením GPU bylo ztraceno; používá se vykreslování pomocí CPU.
 	GPU error; using the CPU renderer.	Chyba GPU; používá se vykreslování pomocí CPU.
-@plural	{what} with {n} warning|{what} with {n} warnings	{what}: {n} upozornění|{what}: {n} upozornění|{what}: {n} upozornění
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} ({n} upozornění)|{what} ({n} upozornění)|{what} ({n} upozornění)
 	Couldn't open {name}: {error}	Soubor {name} se nepodařilo otevřít: {error}
 
 # Menus, tooltips and hardware information
@@ -3551,8 +3551,8 @@ layerLabel	No Color	Žádná barva
 	This Smart Object must be rasterized before proceeding. Its contents will no longer be editable. Rasterize the Smart Object?	Před pokračováním je nutné tento chytrý objekt rastrovat. Jeho obsah už nebude možné upravovat. Rastrovat chytrý objekt?
 	This fill layer must be rasterized before proceeding. Its fill content will no longer be editable. Rasterize the layer?	Před pokračováním je nutné tuto vrstvu výplně rastrovat. Její výplň už nebude možné upravovat. Rastrovat vrstvu?
 	This layer must be rasterized before proceeding.	Před pokračováním je nutné tuto vrstvu rastrovat.
-	Color Picker (Background Color)	Výběr barvy (Barva pozadí)
-	Color Picker (Foreground Color)	Výběr barvy (Barva popředí)
+	Color Picker (Background Color)	Výběr barvy (barva pozadí)
+	Color Picker (Foreground Color)	Výběr barvy (barva popředí)
 	Adwaita (Light)	Adwaita (světlý)
 	Adwaita (Dark)	Adwaita (tmavý)
 	Breeze Light	Breeze (světlý)
@@ -3562,7 +3562,7 @@ layerLabel	No Color	Žádná barva
 	Graphics adapter: {adapter}	Grafický adaptér: {adapter}
 	Backend: {backend} ({type})	Backend: {backend} ({type})
 	Driver: {driver}	Ovladač: {driver}
-	GPU backend preference: {backend}	Předvolený backend GPU: {backend}
+	GPU backend preference: {backend}	Preferovaný backend GPU: {backend}
 	Selected at launch: {backend}	Vybráno při spuštění: {backend}
 	Image compositor: {processor}	Skládání obrazu: {processor}
 	Fallback: {reason}	Náhradní režim: {reason}
@@ -3605,8 +3605,8 @@ navigator	Zoom	Zvětšení
 	Apply {option}: {state}	Použít: {option} ({state})
 	on	zapnuto
 	off	vypnuto
-	This adjustment ({key}) is kept as imported and can't be edited yet.	Tato úprava ({key}) se uchovává v importované podobě a zatím ji nelze upravovat.
-	Join the ArtCraft Discord ({url})	Připojit se na Discord ArtCraft ({url})
+	This adjustment ({key}) is kept as imported and can't be edited yet.	Tato úprava ({key}) se uchovává v importované podobě a zatím ji nelze měnit.
+	Join the ArtCraft Discord ({url})	Přidejte se na Discord ArtCraft ({url})
 	{index} of {total}	{index} z {total}
 @plural	{n} step|{n} steps	{n} krok|{n} kroky|{n} kroků
 	{shortcut} assigned.	Zkratka {shortcut} přiřazena.

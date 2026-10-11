@@ -373,6 +373,25 @@ mod tests {
     }
 
     #[test]
+    fn import_warning_punctuation_is_localized_without_changing_english() {
+        let mut app = PhotocraftApp::new(Session::new(), Services::default());
+        for (lang, expected) in [
+            (crate::i18n::Lang::EN, "Opened x.psd with 3 warnings: first warning …"),
+            (crate::i18n::Lang::from_code("cs").unwrap(), "Otevřeno: x.psd (3 upozornění): first warning …"),
+        ] {
+            crate::i18n::with_language(lang, || {
+                let what = crate::i18n::fmt(tl!("Opened {name}"), &[("name", "x.psd")]);
+                let warnings = vec!["first warning".into(), "second warning".into(), "third warning".into()];
+                io_warnings(&mut app, &what, &warnings);
+                assert_eq!(app.ui.status, expected);
+                assert_eq!(app.ui.notices.last().unwrap().lines, warnings);
+                io_warnings(&mut app, &what, &warnings[..1]);
+                assert_eq!(app.ui.status, format!("{what}: first warning"));
+            });
+        }
+    }
+
+    #[test]
     fn dismissing_a_notice_writes_its_own_preference_key() {
         let mut app = PhotocraftApp::new(Session::new(), Services::default());
         post(&mut app, "Dismissible", Vec::new(), false, Some("ui.testNoticeDismissed"));

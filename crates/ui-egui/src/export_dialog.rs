@@ -278,14 +278,9 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
         let template = "Exported {path} ({size})";
         app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path), ("size", &crate::sizing::human_bytes(bytes.len() as f64))]);
         app.ui.status_error = false;
-        crate::notices::io_warnings(
-            app,
-            &{
-                let template = "Exported {path}";
-                crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))])
-            },
-            &warnings,
-        );
+        let template = "Exported {path}";
+        let what = crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))]);
+        crate::notices::io_warnings(app, &what, &warnings);
         Ok(json!({"path": path, "bytes": bytes.len(), "warnings": warnings}))
     })
 }

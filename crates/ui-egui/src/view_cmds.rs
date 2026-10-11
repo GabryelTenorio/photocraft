@@ -1180,14 +1180,8 @@ fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
         let template = "Saved a copy as {path}";
         app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
-        crate::notices::io_warnings(
-            app,
-            &{
-                let template = "Saved a copy as {path}";
-                crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))])
-            },
-            &warnings,
-        );
+        let what = crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))]);
+        crate::notices::io_warnings(app, &what, &warnings);
         Ok(json!({"path": path, "warnings": warnings}))
     })
 }
