@@ -217,6 +217,7 @@ pub fn chosen(app: &mut PhotocraftApp) {
         o.crop_resolution = (*r).into();
         o.crop_resolution_unit = PX_PER_IN.into();
     }
+    crate::crop_ui::apply_ratio(app);
 }
 
 /// I with the Crop tool (no text field focused, which the caller checks): Front Image. Returns
@@ -227,6 +228,7 @@ pub fn keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
     }
     if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::I)) {
         front_image(app);
+        crate::crop_ui::apply_ratio(app);
         return true;
     }
     false
@@ -411,6 +413,19 @@ mod tests {
 
     /// Committing a W x H x Resolution crop resamples the frame's area to exactly W x H px and sets
     /// the resolution, in one undo step, at 8 and 16 bits.
+    #[test]
+    fn choosing_a_size_with_the_canvas_ratio_commits_without_a_resize() {
+        let mut app = app(SampleType::U8);
+        crate::crop_ui::ensure_frame(&mut app);
+        app.ui.tool_options = whr("800 px", "600 px", "92", PX_PER_IN);
+        chosen(&mut app);
+        assert_eq!(app.ui.crop_rect, Some([0.0, 0.0, 400.0, 300.0]));
+        assert!(!app.crop.default_frame, "an output size is a pending crop even when the frame fits");
+        crate::canvas::commit_crop(&mut app);
+        let doc = &app.session.active().unwrap().doc;
+        assert_eq!((doc.size, doc.resolution_dpi), (Size::new(800, 600), 92.0));
+    }
+
     #[test]
     fn commit_resamples_to_the_target_size_and_resolution() {
         for depth in [SampleType::U8, SampleType::U16] {
