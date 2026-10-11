@@ -18,6 +18,7 @@ mod flatten_background;
 mod gallery_colours;
 mod gauss_small_sigma;
 mod guide_layout_limit;
+mod guide_layout_preview;
 mod hdr_gamma_direction;
 mod jpeg_exif_resolution;
 mod keyboard_shortcut_bulk;
