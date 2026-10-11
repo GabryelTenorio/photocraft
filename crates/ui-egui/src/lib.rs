@@ -113,6 +113,7 @@ mod opacity_keys;
 pub mod outline;
 pub mod paint_mouse;
 pub mod palette;
+mod panel_docking;
 pub mod panels;
 pub mod parity;
 pub mod patch_preview;
@@ -419,6 +420,9 @@ pub struct PhotocraftApp {
     pub(crate) tool_override: Option<state::Tool>,
     /// Brush/Eraser stroke being drawn, rendered by the engine (see `canvas::LiveStroke`).
     live_stroke: Option<canvas::LiveStroke>,
+    /// A live stroke just committed with its own pixels: the canvas caches that showed it
+    /// refresh only what it drew after the step they showed (`canvas::damage_since`).
+    committed_stroke: Option<canvas::CommittedStroke>,
     /// Footprint trail of a retouching drag (see `stroke_trail`).
     trail: Option<stroke_trail::Trail>,
     /// The open menus' items, reused between frames (`menus::ItemCache`).
@@ -442,8 +446,8 @@ pub struct PhotocraftApp {
     /// A live painting stroke started on the press (`canvas_view`): the drag egui recognises later,
     /// or the click, continues or ends it rather than starting another.
     press_stroke: bool,
-    /// End of the last painting stroke: ⇧-click draws a straight line from it (#178).
-    last_stroke_end: Option<(DocId, [f64; 2])>,
+    /// Position and pen pressure at the last stroke's endpoint: ⇧-click interpolates from them (#178, #2827).
+    last_stroke_end: Option<(DocId, [f64; 3])>,
     /// Control+Alt-drag brush resize in progress (`brush_resize`, #231).
     pub(crate) brush_resize: Option<brush_resize::Resize>,
     /// A ⌘⌥⌃-click layer pick is in progress; its drag and release are swallowed (`quick_pick`).
@@ -628,6 +632,7 @@ impl PhotocraftApp {
             move_blocked: false,
             tool_override: None,
             live_stroke: None,
+            committed_stroke: None,
             trail: None,
             menu_cache: None,
             move_preview: None,
@@ -812,6 +817,9 @@ impl PhotocraftApp {
             && let Some(authorize) = self.services.automation_command.as_ref()
         {
             authorize(id, &params)?;
+        }
+        if let Some(result) = panel_docking::command(self, id, &params) {
+            return result;
         }
         if let Some(r) = transform_tool::intercept(self, id) {
             return r;
@@ -1581,7 +1589,7 @@ impl PhotocraftApp {
             if self.ui.vector_mask_target && !mask_thumbs_ui::has_vector_mask(st) {
                 self.ui.vector_mask_target = false;
             }
-            if self.ui.mask_target && !st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some()) {
+            if self.ui.mask_target && st.active_layer.and_then(|id| st.doc.layer(id)).is_none_or(|l| l.mask.is_none()) {
                 self.ui.mask_target = false;
             }
         }
@@ -1630,6 +1638,7 @@ impl PhotocraftApp {
 
     pub(crate) fn apply_theme(&mut self, ctx: &egui::Context, kind: theme::ThemeKind) {
         self.ui.theme = kind;
+        panel_docking::sync_visibility(self);
         theme::apply(ctx, kind);
         self.checker = None;
     }
