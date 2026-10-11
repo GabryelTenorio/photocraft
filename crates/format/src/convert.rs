@@ -304,6 +304,9 @@ pub(crate) struct Loader<'a> {
     pub id_map: std::collections::HashMap<u64, LayerId>,
     pub contents_id_map: std::collections::HashMap<u64, SmartContentsId>,
     pub legacy_linked_contents: std::collections::HashMap<String, SmartContentsId>,
+    /// Decoded tiles by (content hash, format): identical tiles are fetched, charged and decoded
+    /// once and shared copy-on-write, mirroring how saves deduplicate them.
+    pub tiles: std::collections::HashMap<(String, PixelFormat), Arc<Tile>>,
 }
 
 impl Loader<'_> {
@@ -332,9 +335,17 @@ impl Loader<'_> {
             if s.tile(c).is_some() {
                 return Err(FormatError::corrupt(format!("duplicate tile ({}, {})", t.tx, t.ty)));
             }
+            let key = (t.hash.clone(), f);
+            if let Some(shared) = self.tiles.get(&key) {
+                s.put_tiles([(c, shared.clone())]);
+                continue;
+            }
             let mut bytes = self.fetch.tile(&t.hash, len)?;
             swap_to_le(&mut bytes, f.sample);
             s.tile_mut(c).bytes_mut().copy_from_slice(&bytes);
+            if let Some(tile) = s.tile(c) {
+                self.tiles.insert(key, tile.clone());
+            }
         }
         Ok(s)
     }

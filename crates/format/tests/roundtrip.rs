@@ -538,3 +538,24 @@ fn a_non_finite_float_is_refused_at_save_rather_than_breaking_every_later_load()
     let back = load_from_bytes(&save_to_bytes(&doc, &SaveOptions::default()).unwrap()).unwrap();
     assert_eq!(back, doc);
 }
+
+#[test]
+fn identical_tiles_are_loaded_once_and_shared() {
+    use photocraft_geom::{Size, TileCoord};
+    use photocraft_raster::Surface;
+    use std::sync::Arc;
+    let fmt = photocraft_color::PixelFormat::RGBA8;
+    let mut s = Surface::new(fmt);
+    let solid = s.solid_tile(&[0.2, 0.4, 0.6, 1.0]);
+    s.put_tiles((0..40).flat_map(|x| (0..40).map(move |y| TileCoord::new(x, y))).map(|c| (c, solid.clone())));
+    let mut d = Document::new("solid", Size { width: 40 * 256, height: 40 * 256 }, ColorMode::Rgb, SampleType::U8);
+    d.layers.push(Layer::new("solid", LayerContent::Raster(s)));
+    let bytes = save_to_bytes(&d, &Default::default()).unwrap();
+    // 1600 references to one 256 KiB tile: a budget far below 1600 decodes still loads.
+    let opts = LoadOptions { max_total_bytes: 8 << 20, ..Default::default() };
+    let back = load_from_bytes_with(&bytes, &opts).unwrap();
+    let LayerContent::Raster(r) = &back.layers[0].content else { panic!("raster") };
+    let first = r.tile(TileCoord::new(0, 0)).unwrap();
+    assert_eq!(r.tile_count(), 1600);
+    assert!(r.tiles().all(|(_, t)| Arc::ptr_eq(t, first)));
+}
