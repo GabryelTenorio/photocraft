@@ -80,6 +80,13 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("help.reportIssue", "Report an Issue…", &["Help"], None),
     ("help.systemInfo", "System Info…", &["Help"], None),
     ("help.about", "About PhotoCraft", &["Help"], None),
+    ("help.aboutPlugins", "About Plug-ins…", &["Help"], None),
+    // Filter › Plug-ins › About Plug-ins… and Filter › G'MIC (`plugins_ui` places them).
+    ("plugins.about", "About Plug-ins…", &["Filter", "Plug-ins"], None),
+    ("gmic.refreshFilters", "Refresh Filters", &["Filter", "G'MIC"], None),
+    ("gmic.get", "About G'MIC…", &["Filter", "G'MIC"], None),
+    ("gmic.locate", "Locate G'MIC…", &[], None),
+    ("gmic.checkAgain", "Check Again", &[], None),
 ];
 
 /// Photoshop's Window › <panel> ids for the panels the shell already has, as `window.toggle.*`.
@@ -184,6 +191,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     }
     // Filter › Plug-ins (installed WebAssembly plug-ins, Install Plug-in…).
     if let Some(r) = crate::plugin_ui::menu(app, id, &params) {
+        return r;
+    }
+    // Filter › G'MIC filters, About Plug-ins.
+    if let Some(r) = crate::plugins_ui::menu(app, id, &params) {
         return r;
     }
     if id == "window.panel.brushes" {
@@ -554,6 +565,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     if let Some(e) = crate::plugin_ui::is_enabled(app, id) {
         return e;
     }
+    if let Some(e) = crate::plugins_ui::is_enabled(app, id) {
+        return e;
+    }
     if let Some(e) = crate::transform_tool::is_enabled(app, id) {
         return e;
     }
@@ -730,6 +744,7 @@ pub fn is_live(id: &str) -> bool {
         || crate::preset_panels::handles(id)
         || crate::type_panels_ui::handles(id)
         || crate::timeline_ui::handles(id)
+        || crate::plugins_ui::handles(id)
 }
 
 /// Commands outside the catalogue that belong right after a catalogue item: `(id, after)`.
@@ -798,6 +813,7 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
         }
     }
     crate::plugin_ui::insert_menu_items(app, &mut items);
+    crate::plugins_ui::insert_menu_items(app, &mut items);
     // The File quick-export command uses the format selected in Export Preferences.
     // On the web it intentionally downloads PNG until the quick-export service supports
     // the other formats; the Layer quick-export command also always produces PNG.

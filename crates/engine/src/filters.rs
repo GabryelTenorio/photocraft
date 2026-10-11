@@ -177,6 +177,10 @@ pub fn apply_filter_to_surface(
     if id == crate::plugin_cmds::RUN {
         return crate::plugin_cmds::apply_to_surface(id, params, surf, selection, canvas);
     }
+    // G'MIC catalogue filters (gmic_cmds; raw pipelines are never recorded).
+    if id == crate::gmic_cmds::FILTER {
+        return crate::gmic_cmds::apply_to_surface(id, params, surf, selection, canvas);
+    }
     let fp = params_for(id, params)?;
     let sel_bounds = selection.map(photocraft_raster::Surface::content_bounds);
     let content = surf.content_bounds();
@@ -280,7 +284,7 @@ pub(crate) fn run_filter(s: &mut Session, id: &str, p: &Value) -> Result<Value> 
 }
 
 /// Lock transparency: put the layer's alpha back after a filter, in the tiles it changed.
-fn keep_alpha(old: &photocraft_raster::Surface, new: &mut photocraft_raster::Surface) {
+pub(crate) fn keep_alpha(old: &photocraft_raster::Surface, new: &mut photocraft_raster::Surface) {
     if old.format() != new.format() || !new.format().alpha {
         return;
     }
