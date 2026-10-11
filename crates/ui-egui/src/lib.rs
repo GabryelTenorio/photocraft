@@ -898,9 +898,10 @@ impl PhotocraftApp {
         } else {
             jobs_ui::run(self, id, params)
         };
-        let creates_adjustment_or_fill = id.starts_with("layer.newAdjustmentLayer.") || id.starts_with("layer.newFillLayer.");
-        if r.is_ok() && (ADDS_LAYER_MASK.contains(&id) || creates_adjustment_or_fill) {
-            // Adding a layer mask targets it, as in Photoshop (#2166).
+        if r.is_ok() && ADDS_LAYER_MASK.contains(&id) {
+            // Adding a layer mask targets it, as in Photoshop (#2166). A new adjustment,
+            // fill or gradient layer is NOT caught here: the Properties panel should show
+            // the adjustment's own settings so the user can edit them right away (#3369).
             self.ui.mask_target = true;
             self.ui.vector_mask_target = false;
         }

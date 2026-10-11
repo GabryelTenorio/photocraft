@@ -596,10 +596,36 @@ fn selecting_mask_thumbnail_toggles_swatches_to_mask_colors_and_back() {
     click_with(&mut h, r_mask.center(), Modifiers::NONE);
     assert_eq!(h.state().session.tools.foreground, grey, "mask colors restored");
 
-    // 5. Creating a new adjustment layer targets its mask and toggles to mask colors.
+    // 5. Creating a new adjustment layer focuses the layer itself (#3369): the Properties
+    //    panel shows the adjustment's settings so they can be edited right away, and the
+    //    pixel colors stay on the swatches. The user clicks the mask thumbnail to paint on it.
     click_with(&mut h, r_layer, Modifiers::NONE);
     assert_eq!(h.state().session.tools.foreground, RED);
     h.state_mut().run("layer.newAdjustmentLayer.curves", json!({})).unwrap();
-    assert!(h.state().ui.mask_target, "new adjustment layer targets its mask");
-    assert_eq!(h.state().session.tools.foreground, grey);
+    assert!(!h.state().ui.mask_target, "new adjustment layer focuses the layer, not its mask");
+    assert_eq!(h.state().session.tools.foreground, RED);
+}
+
+/// #3369: Creating a new adjustment, fill or gradient layer focuses the layer itself (not its
+/// auto-created mask) so the Properties panel shows the adjustment's settings and the user can
+/// edit them right away. Adding a mask to an existing layer still targets the mask (#2166).
+#[test]
+fn new_adjustment_fill_and_gradient_layers_focus_the_layer_not_the_mask() {
+    for (name, command, params) in [
+        ("adjustment", "layer.newAdjustmentLayer.curves", json!({})),
+        ("adjustment-levels", "layer.newAdjustmentLayer.levels", json!({})),
+        ("solid-color fill", "layer.newFillLayer.solidColor", json!({"color": "#336699"})),
+        ("gradient fill", "layer.newFillLayer.gradient", json!({"from": "#000000", "to": "#ffffff", "angle": 0})),
+    ] {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 64, "height": 48})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        assert!(!app.ui.mask_target, "{name}: baseline — a plain layer does not target a mask");
+        app.run(command, params).unwrap();
+        assert!(!app.ui.mask_target, "{name}: the new layer is focused, not its mask");
+        assert!(!app.ui.vector_mask_target, "{name}: no vector-mask target either");
+        // Adding a mask to this layer explicitly still targets it (#2166).
+        app.run("layer.layerMask.revealAll", json!({})).unwrap();
+        assert!(app.ui.mask_target, "{name}: adding a mask to an existing layer still targets it");
+    }
 }
