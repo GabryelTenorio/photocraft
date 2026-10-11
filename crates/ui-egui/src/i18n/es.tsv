@@ -265,6 +265,8 @@
 	Layer via Cut	Capa vía corte
 	Layer From Background…	Capa a partir del fondo…
 	Layer from Background…	Capa a partir del fondo…
+	Background from Layer	Fondo a partir de capa
+	Background From Layer	Fondo a partir de capa
 	New Shape Layer	Nueva capa de forma
 	New Type Layer	Nueva capa de texto
 	New Fill Layer	Nueva capa de relleno
@@ -688,6 +690,10 @@
 	Classic Theme	Tema Clásico
 	Solarized dark	Solarized oscuro
 	Solarized Dark Theme	Tema Solarized oscuro
+	Breeze dark	Breeze oscuro
+	Breeze Dark Theme	Tema Breeze oscuro
+	Breeze light	Breeze claro
+	Breeze Light Theme	Tema Breeze claro
 	Next Theme	Tema siguiente
 	Actions	Acciones
 	Brush Settings	Ajustes del pincel
@@ -1582,6 +1588,8 @@
 	Efficiency: 100%	Eficiencia: 100%
 	Ellipse Tool	Herramienta Elipse
 	Elliptical Marquee Tool	Herramienta Marco elíptico
+	Single Row Marquee Tool	Herramienta Marco de fila única
+	Single Column Marquee Tool	Herramienta Marco de columna única
 	Emboss	Relieve
 	Eraser	Borrador
 	Eraser Tool	Herramienta Borrador
@@ -1750,6 +1758,7 @@
 	Invalid {mode} profile	Perfil {mode} no válido
 	Unnamed {mode} profile	Perfil {mode} sin nombre
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Resolución: {dpi} píxeles/pulgada
 	Doc: {w} × {h} px	Doc: {w} × {h} px
 	Frame {current} / {total}	Fotograma {current} / {total}
@@ -1902,6 +1911,7 @@
 	Show only crosshair while painting	Mostrar solo la retícula al pintar
 	Show slice numbers	Mostrar los números de sección
 	Show tooltips	Mostrar las descripciones emergentes
+	Show highlight on rollover	Mostrar resaltado al pasar el cursor
 	Show bounding box when dragging layer	Mostrar el cuadro delimitador al arrastrar la capa
 	System title bar	Barra de título del sistema
 	Show transformation values	Mostrar los valores de transformación
@@ -2009,6 +2019,7 @@
 	Create Warped Text	Crear texto deformado
 	Rasterize Smart Object	Rasterizar objeto inteligente
 	Rasterize Fill Content	Rasterizar contenido de relleno
+	Rasterize Layer Style	Rasterizar estilo de capa
 	Unlock: picking a preset replaces these settings	Desbloquear: al elegir un preajuste se reemplazan estos ajustes
 	Lock: keep these settings when picking another preset	Bloquear: conservar estos ajustes al elegir otro preajuste
 	Diameter:	Diámetro:
@@ -2511,3 +2522,5 @@ fontWeight	Italic	Cursiva
 	Previous Document	Documento anterior
 	W x H x Resolution	An. x Al. x Resolución
 	Front Image	Imagen frontal
+	Search settings…	Buscar ajustes…
+	No matching settings	No hay ajustes que coincidan
