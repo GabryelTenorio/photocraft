@@ -3571,6 +3571,31 @@ cameraRaw	Roughness	Chropowatość
 	Quick Selection found nothing there	Szybkie zaznaczanie nic tam nie znalazło
 	Object Selection found nothing there — try a tighter rectangle	Zaznaczanie obiektu nic tam nie znalazło — spróbuj ciaśniejszego prostokąta
 	No subject found — try a rectangle around the object	Nie znaleziono obiektu — spróbuj prostokąta wokół obiektu
+	Align to Canvas	Wyrównaj do płótna
+	Arrowheads	Groty strzałek
+	Bring Shape Forward	Przesuń kształt do przodu
+	Bring Shape to Front	Przenieś kształt na wierzch
+	Constrain Proportions	Zachowaj proporcje
+	Distribute Horizontally	Rozmieść poziomo
+	Distribute Vertically	Rozmieść pionowo
+	End	Koniec
+	Path Alignment	Wyrównanie ścieżek
+	Path Arrangement	Kolejność ścieżek
+	Path Operations	Operacje na ścieżkach
+	Path Options	Opcje ścieżki
+	Send Shape Backward	Przesuń kształt do tyłu
+	Send Shape to Back	Przenieś kształt na spód
+	Show Path	Pokaż ścieżkę
+	Start	Początek
+	Align Edges	Wyrównaj krawędzie
+	Unconstrained	Bez ograniczeń
+	Proportional	Proporcjonalny
+	Smooth Indents	Wygładź wcięcia
+	Concavity:	Wklęsłość:
+	Color Picker	Próbnik kolorów
+	Recent Colors	Ostatnio używane kolory
+	No recent colors	Brak ostatnio używanych kolorów
+	Color opacity	Krycie koloru
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Kliknij pierwszy punkt lub naciśnij {key}, aby zamknąć · {del} usuwa punkt · Esc anuluje
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Kliknij i prowadź wzdłuż krawędzi · kliknij, aby przypiąć punkt · {alt}-klik dla prostego odcinka · kliknij dwukrotnie, aby zamknąć
 	Fill Screen	Wypełnij ekran
@@ -3670,6 +3695,23 @@ curves	Smooth	Wygładź
 	Paint over hair or fur on the image; Alt paints the other mode	Maluj po włosach lub sierści na obrazie; Alt maluje w drugim trybie
 	Clear Brush Strokes	Wyczyść pociągnięcia pędzla
 	Show rulers	Pokaż linijki
+
+# Plural status messages and counts
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Wyeksportowano {n} próbkę do {file}|Wyeksportowano {n} próbki do {file}|Wyeksportowano {n} próbek do {file}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Zaimportowano {n} pędzel z {group}|Zaimportowano {n} pędzle z {group}|Zaimportowano {n} pędzli z {group}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Zaimportowano {n} próbkę z {file}|Zaimportowano {n} próbki z {file}|Zaimportowano {n} próbek z {file}
+@plural	Played {n} step|Played {n} steps	Odtworzono {n} krok|Odtworzono {n} kroki|Odtworzono {n} kroków
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Zaktualizowano {n} połączony obiekt inteligentny zmieniony na dysku|Zaktualizowano {n} połączone obiekty inteligentne zmienione na dysku|Zaktualizowano {n} połączonych obiektów inteligentnych zmienionych na dysku
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Zapisano dla Internetu: {n} plik|Zapisano dla Internetu: {n} pliki|Zapisano dla Internetu: {n} plików
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Usunięto {n} warstwę zapisaną w tej kompozycji. Zaktualizuj kompozycję lub usuń ostrzeżenie.|Usunięto {n} warstwy zapisane w tej kompozycji. Zaktualizuj kompozycję lub usuń ostrzeżenie.|Usunięto {n} warstw zapisanych w tej kompozycji. Zaktualizuj kompozycję lub usuń ostrzeżenie.
+@plural	{n} plane|{n} planes	{n} płaszczyzna|{n} płaszczyzny|{n} płaszczyzn
+@plural	{n} preset|{n} presets	{n} ustawienie wstępne|{n} ustawienia wstępne|{n} ustawień wstępnych
+@plural	{n} sample point removed|{n} sample points removed	Usunięto {n} punkt próbkowania|Usunięto {n} punkty próbkowania|Usunięto {n} punktów próbkowania
+@plural	{n} slice|{n} slices	{n} plasterek|{n} plasterki|{n} plasterków
+@plural	{n} step|{n} steps	{n} krok|{n} kroki|{n} kroków
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} dodatkowe ostrzeżenie dotyczące ustawień wstępnych pędzla)|{warning} (+{n} dodatkowe ostrzeżenia dotyczące ustawień wstępnych pędzla)|{warning} (+{n} dodatkowych ostrzeżeń dotyczących ustawień wstępnych pędzla)
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} z {n} ostrzeżeniem|{what} z {n} ostrzeżeniami|{what} z {n} ostrzeżeniami
+	Shape color selector	Selektor koloru kształtu
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Kliknij, aby umieścić · Alt-kliknij lub przeciągnij poza obszar roboczy, aby usunąć

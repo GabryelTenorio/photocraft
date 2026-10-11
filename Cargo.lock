@@ -4195,6 +4195,7 @@ version = "0.8.2"
 dependencies = [
  "arboard",
  "async-io",
+ "clipboard-win",
  "core-graphics2",
  "dispatch2",
  "eframe",
@@ -4224,6 +4225,7 @@ dependencies = [
  "rfd",
  "ron",
  "serde_json",
+ "tempfile",
  "winit",
  "winresource",
  "winsafe",
@@ -4448,6 +4450,7 @@ dependencies = [
  "blake3",
  "crc32fast",
  "flate2",
+ "imagesize",
  "photocraft-affinity",
  "photocraft-algo",
  "photocraft-cms",

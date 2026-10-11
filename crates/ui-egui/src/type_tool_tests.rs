@@ -1423,10 +1423,14 @@ mod multi_layer_formatting {
         let before = ids.map(|id| style(&app, id, 0));
         let mut h = controls(app, false);
         h.get_all_by_role(Role::ComboBox).next().unwrap().click();
-        h.run();
+        // Installed font previews can keep repainting as rows acquire their Arabic sample width.
+        // Advance the popup's sizing/focus passes without requiring the preview list to settle.
+        h.run_steps(2);
+        assert!(h.get_by_role(Role::TextInput).is_focused(), "opening the font menu focuses its search field");
         h.get_by_role(Role::TextInput).type_text("JetBrains");
         h.key_press(egui::Key::ArrowDown);
-        h.run();
+        h.run_steps(2);
+        assert!(h.query_by_label("JetBrains Mono").is_some(), "the filtered font remains available before accepting it");
         h.key_press(egui::Key::Enter);
         h.run();
         for i in 0..2 {

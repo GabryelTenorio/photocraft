@@ -16,6 +16,59 @@
 # letters; the trailing "…" of dialog commands is kept. Plural rule: a count is followed by the
 # singular noun in Hungarian, so every @plural entry has a single form.
 
+# Vector clipboard and shared shape controls
+	Align Edges	Élek igazítása
+	Align to Canvas	Igazítás a vászonhoz
+	Arrowheads	Nyílhegyek
+	Bring Shape Forward	Alakzat előrébb hozása
+	Bring Shape to Front	Alakzat előrehozása legfelülre
+	Color opacity	Szín átlátszatlansága
+	Concavity:	Homorúság:
+	Constrain Proportions	Arányok megtartása
+	Distribute Horizontally	Vízszintes elosztás
+	Distribute Vertically	Függőleges elosztás
+	End	Vég
+	No recent colors	Nincsenek legutóbbi színek
+	Path Alignment	Útvonal igazítása
+	Path Arrangement	Útvonalak sorrendje
+	Path Operations	Útvonalműveletek
+	Path Options	Útvonalbeállítások
+	Proportional	Arányos
+	Recent Colors	Legutóbbi színek
+	Send Shape Backward	Alakzat hátrébb küldése
+	Send Shape to Back	Alakzat hátraküldése legalulra
+	Shape color selector	Alakzat színválasztója
+	Show Path	Útvonal megjelenítése
+	Smooth Indents	Bemélyedések simítása
+	Start	Kezdet
+	Unconstrained	Korlátozás nélkül
+smartSvg	Choose executable…	Futtatható fájl kiválasztása…
+smartSvg	Choose the application used to edit this SVG:	Válassza ki az SVG szerkesztésére használt alkalmazást:
+smartSvg	Clipboard SVG does not reliably identify its source application.	A vágólapra másolt SVG nem azonosítja megbízhatóan a forrásalkalmazást.
+smartSvg	Edit SVG Smart Object	SVG intelligens objektum szerkesztése
+smartSvg	Other application	Másik alkalmazás
+smartSvg	PhotoCraft (internal editor)	PhotoCraft (belső szerkesztő)
+smartSvg	SVG editor opened. Save the SVG to update this Smart Object.	Az SVG-szerkesztő megnyílt. Mentse az SVG-t az intelligens objektum frissítéséhez.
+smartSvg	Save to the opened SVG file. Each saved change becomes one undo step in PhotoCraft.	Mentse a megnyitott SVG-fájlba. Minden mentett módosítás külön visszavonási lépés lesz a PhotoCraftban.
+smartSvg	Stop syncing this Smart Object	Az intelligens objektum szinkronizálásának leállítása
+smartSvg	Updates wait while another document or an editing dialog is active.	A frissítések várakoznak, amíg másik dokumentum vagy szerkesztési párbeszédablak aktív.
+vectorPaste	Import warnings:	Importálási figyelmeztetések:
+vectorPaste	Layers	Rétegek
+vectorPaste	Paste	Beillesztés
+vectorPaste	Paste as:	Beillesztés mint:
+vectorPaste	Path	Útvonal
+vectorPaste	Pixels	Pixel
+vectorPaste	SVG text is converted to outlines, not editable type.	Az SVG-szöveg körvonalakká alakul, nem szerkeszthető szöveggé.
+vectorPaste	Shape Layer	Alakzatréteg
+vectorPaste	Shape Layer requires one shape without group blending; use Layers to preserve this SVG	Az alakzatréteghez egyetlen alakzat szükséges csoportkeverés nélkül; az SVG megőrzéséhez használja a Rétegek módot
+vectorPaste	Smart Object	Intelligens objektum
+vectorPaste	The SVG contains no editable paths	Az SVG nem tartalmaz szerkeszthető útvonalakat
+vectorPaste	The SVG contains no editable shape	Az SVG nem tartalmaz szerkeszthető alakzatot
+vectorPaste	The SVG contains rasterised objects without editable paths	Az SVG raszterizált objektumokat tartalmaz szerkeszthető útvonalak nélkül
+vectorPaste	The SVG has incompatible fill rules; use Layers or Smart Object	Az SVG kitöltési szabályai nem kompatibilisek; használja a Rétegek vagy az Intelligens objektum módot
+vectorPaste	The SVG is too large to rasterise (24 million pixel limit)	Az SVG túl nagy a raszterizáláshoz (24 millió pixeles korlát)
+vectorPaste	The pasted shape caches exceed the clipboard cache budget; use Pixels or Smart Object	A beillesztett alakzatok gyorsítótárai meghaladják a vágólap gyorsítótárkeretét; használja a Pixel vagy az Intelligens objektum módot
+
 # Plural messages and command id overrides
 # Custom paper dimensions in Print Settings.
 	Paper Width	Papír szélessége

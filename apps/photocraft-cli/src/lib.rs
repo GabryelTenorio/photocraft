@@ -228,12 +228,6 @@ fn warn_all(err: &mut dyn Write, ws: &[String]) {
     }
 }
 
-/// The engine knows which type families aren't installed. Warn before an export
-/// uses a fallback face rather than silently changing the appearance of the text.
-fn missing_font_warnings(fonts: Vec<String>) -> Vec<String> {
-    fonts.into_iter().map(|font| format!("font '{font}' is not installed; text may render using a fallback face")).collect()
-}
-
 fn automation_workspace(args: &Args) -> Result<AuthorizedWorkspace, String> {
     AuthorizedWorkspace::new(args.get("--automation-read-root").map(Path::new), args.get("--automation-write-root").map(Path::new))
         .map_err(|error| error.to_string())
@@ -264,10 +258,7 @@ fn info(a: &Args, out: &mut dyn Write) -> R {
     let mut h = Headless::trusted_local();
     let opened = h.open(Path::new(file)).map_err(|e| e.to_string())?;
     let mut doc = h.inspect(None).map_err(|e| e.to_string())?;
-    let mut warnings = opened["warnings"].as_array().cloned().unwrap_or_default();
-    if let Some(st) = h.session.active() {
-        warnings.extend(missing_font_warnings(photocraft_engine::type_extra_cmds::missing_fonts(&st.doc)).into_iter().map(Value::String));
-    }
+    let warnings = opened["warnings"].as_array().cloned().unwrap_or_default();
     doc["warnings"] = Value::Array(warnings);
     doc["file"] = json!(file);
     // Drop per-session noise.
@@ -306,7 +297,9 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
             let o = h.open(Path::new(file)).map_err(|e| e.to_string())?;
             let ws: Vec<String> = serde_json::from_value(o["warnings"].clone()).unwrap_or_default();
             warn_all(err, &ws);
-            reported_fonts.extend(ws);
+            if let Some(st) = h.session.active() {
+                reported_fonts.extend(photocraft_engine::type_extra_cmds::missing_font_warnings(&st.doc).into_iter().filter(|w| ws.contains(w)));
+            }
         }
         ([], Some(new)) => {
             let p: Value = serde_json::from_str(new).map_err(|e| format!("bad --new JSON: {e}"))?;
@@ -326,7 +319,7 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
         let new_warnings: Vec<String> = h
             .session
             .active()
-            .map(|st| missing_font_warnings(photocraft_engine::type_extra_cmds::missing_fonts(&st.doc)))
+            .map(|st| photocraft_engine::type_extra_cmds::missing_font_warnings(&st.doc))
             .unwrap_or_default()
             .into_iter()
             .filter(|w| reported_fonts.insert(w.clone()))
@@ -342,7 +335,7 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     let remaining: Vec<String> = h
         .session
         .active()
-        .map(|st| missing_font_warnings(photocraft_engine::type_extra_cmds::missing_fonts(&st.doc)))
+        .map(|st| photocraft_engine::type_extra_cmds::missing_font_warnings(&st.doc))
         .unwrap_or_default()
         .into_iter()
         .filter(|w| reported_fonts.insert(w.clone()))
@@ -641,6 +634,7 @@ mod missing_font_warning_tests {
         assert_eq!(code, 0, "{stderr}");
         let info: Value = serde_json::from_str(&stdout).unwrap();
         assert!(info["warnings"].as_array().unwrap().iter().any(|w| w.as_str().is_some_and(|s| s.contains(family))));
+        assert_eq!(info["warnings"].as_array().unwrap().iter().filter(|w| w.as_str().is_some_and(|s| s.contains(family))).count(), 1);
         assert!(stderr.is_empty(), "info puts warnings in JSON, not stderr");
 
         let (code, _, stderr) = invoke(&["convert", &native_str, &png_str]);
@@ -653,6 +647,20 @@ mod missing_font_warning_tests {
         assert_eq!(code, 0, "{stderr}");
         assert!(stdout.is_empty());
         assert_eq!(stderr.matches(family).count(), 1);
+        assert!(stderr.contains("warning: 2 layer(s) flattened; layers, masks and blend modes are not kept"), "{stderr}");
+
+        // Opening reports the original font; commands report only newly introduced fonts.
+        let new_family = "DefinitelyMissingPhotoCraftTypeface1251New";
+        let params = json!({"x": 6, "y": 68, "text": "Another missing font", "font": new_family, "size": 20}).to_string();
+        let (code, stdout, stderr) = invoke(&["run", &native_str, "--cmd", "type.create", "--params", &params, "--out", &png_str]);
+        assert_eq!(code, 0, "{stderr}");
+        assert_eq!(stderr.matches(&format!("font '{family}'")).count(), 1);
+        assert_eq!(stderr.matches(&format!("font '{new_family}'")).count(), 1);
+        let command: Value = serde_json::from_str(&stdout).unwrap();
+        let warnings = command["warnings"].as_array().unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].as_str().is_some_and(|s| s.contains(new_family)));
+        assert!(stderr.contains("warning: 3 layer(s) flattened; layers, masks and blend modes are not kept"), "{stderr}");
 
         let _ = std::fs::remove_dir_all(&folder);
     }

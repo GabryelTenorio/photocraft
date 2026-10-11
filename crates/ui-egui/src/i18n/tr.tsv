@@ -10,6 +10,58 @@
 # Custom paper dimensions in Print Settings.
 	Paper Width	Kağıt Genişliği
 	Paper Height	Kağıt Yüksekliği
+# Vector clipboard and shared shape controls
+	Align Edges	Kenarları Hizala
+	Align to Canvas	Kanvasa Hizala
+	Arrowheads	Ok Uçları
+	Bring Shape Forward	Şekli Öne Getir
+	Bring Shape to Front	Şekli En Öne Getir
+	Color opacity	Renk opaklığı
+	Concavity:	İçbükeylik:
+	Constrain Proportions	Oranları Koru
+	Distribute Horizontally	Yatay Dağıt
+	Distribute Vertically	Dikey Dağıt
+	End	Bitiş
+	No recent colors	Son kullanılan renk yok
+	Path Alignment	Yol Hizalama
+	Path Arrangement	Yol Sıralaması
+	Path Operations	Yol İşlemleri
+	Path Options	Yol Seçenekleri
+	Proportional	Orantılı
+	Recent Colors	Son Kullanılan Renkler
+	Send Shape Backward	Şekli Arkaya Gönder
+	Send Shape to Back	Şekli En Arkaya Gönder
+	Shape color selector	Şekil rengi seçicisi
+	Show Path	Yolu Göster
+	Smooth Indents	Girintileri Yumuşat
+	Start	Başlangıç
+	Unconstrained	Kısıtlamasız
+smartSvg	Choose executable…	Çalıştırılabilir dosya seç…
+smartSvg	Choose the application used to edit this SVG:	Bu SVG'yi düzenlemek için kullanılacak uygulamayı seçin:
+smartSvg	Clipboard SVG does not reliably identify its source application.	Panodaki SVG, kaynak uygulamasını güvenilir biçimde tanımlamaz.
+smartSvg	Edit SVG Smart Object	SVG Akıllı Nesnesini Düzenle
+smartSvg	Other application	Diğer uygulama
+smartSvg	PhotoCraft (internal editor)	PhotoCraft (dahili düzenleyici)
+smartSvg	SVG editor opened. Save the SVG to update this Smart Object.	SVG düzenleyicisi açıldı. Bu Akıllı Nesneyi güncellemek için SVG'yi kaydedin.
+smartSvg	Save to the opened SVG file. Each saved change becomes one undo step in PhotoCraft.	Açılan SVG dosyasına kaydedin. Kaydedilen her değişiklik PhotoCraft'ta bir geri alma adımı olur.
+smartSvg	Stop syncing this Smart Object	Bu Akıllı Nesnenin eşitlemesini durdur
+smartSvg	Updates wait while another document or an editing dialog is active.	Başka bir belge veya düzenleme iletişim kutusu etkin olduğunda güncellemeler bekler.
+vectorPaste	Import warnings:	İçe aktarma uyarıları:
+vectorPaste	Layers	Katmanlar
+vectorPaste	Paste	Yapıştır
+vectorPaste	Paste as:	Yapıştırma biçimi:
+vectorPaste	Path	Yol
+vectorPaste	Pixels	Piksel
+vectorPaste	SVG text is converted to outlines, not editable type.	SVG metni düzenlenebilir metin yerine konturlara dönüştürülür.
+vectorPaste	Shape Layer	Şekil Katmanı
+vectorPaste	Shape Layer requires one shape without group blending; use Layers to preserve this SVG	Şekil Katmanı için grup karıştırması olmayan tek bir şekil gerekir; bu SVG'yi korumak için Katmanlar'ı kullanın
+vectorPaste	Smart Object	Akıllı Nesne
+vectorPaste	The SVG contains no editable paths	SVG düzenlenebilir yol içermiyor
+vectorPaste	The SVG contains no editable shape	SVG düzenlenebilir şekil içermiyor
+vectorPaste	The SVG contains rasterised objects without editable paths	SVG, düzenlenebilir yolları olmayan rasterleştirilmiş nesneler içeriyor
+vectorPaste	The SVG has incompatible fill rules; use Layers or Smart Object	SVG uyumsuz dolgu kuralları içeriyor; Katmanlar'ı veya Akıllı Nesne'yi kullanın
+vectorPaste	The SVG is too large to rasterise (24 million pixel limit)	SVG rasterleştirmek için çok büyük (24 milyon piksel sınırı)
+vectorPaste	The pasted shape caches exceed the clipboard cache budget; use Pixels or Smart Object	Yapıştırılan şekillerin önbellekleri pano önbellek bütçesini aşıyor; Piksel veya Akıllı Nesne'yi kullanın
 
 	Rows	Satırlar
 	Number	Sayı

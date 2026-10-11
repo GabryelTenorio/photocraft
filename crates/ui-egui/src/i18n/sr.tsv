@@ -22,6 +22,59 @@
 # are; the trailing "…" of dialog commands is kept. A count that is not an @plural entry is kept
 # out of noun agreement ("Broj: {n}", "slojeva: {n}") so every number reads correctly.
 
+# Vector clipboard, SVG Smart Object editor and shared shape controls
+	Align Edges	Poravnaj ivice
+	Align to Canvas	Poravnaj sa platnom
+	Arrowheads	Vrhovi strelica
+	Bring Shape Forward	Pomeri oblik napred
+	Bring Shape to Front	Premesti oblik na vrh
+	Color opacity	Neprozirnost boje
+	Concavity:	Udubljenost:
+	Constrain Proportions	Ograniči proporcije
+	Distribute Horizontally	Raspodeli horizontalno
+	Distribute Vertically	Raspodeli vertikalno
+	End	Kraj
+	No recent colors	Nema nedavnih boja
+	Path Alignment	Poravnanje putanja
+	Path Arrangement	Raspored putanja
+	Path Operations	Operacije nad putanjama
+	Path Options	Opcije putanje
+	Proportional	Proporcionalno
+	Recent Colors	Nedavne boje
+	Send Shape Backward	Pomeri oblik nazad
+	Send Shape to Back	Premesti oblik na dno
+	Shape color selector	Birač boja oblika
+	Show Path	Prikaži putanju
+	Smooth Indents	Izgladi udubljenja
+	Start	Početak
+	Unconstrained	Bez ograničenja
+smartSvg	Choose executable…	Izaberi izvršnu datoteku…
+smartSvg	Choose the application used to edit this SVG:	Izaberite aplikaciju za uređivanje ovog SVG-a:
+smartSvg	Clipboard SVG does not reliably identify its source application.	SVG iz ostave ne identifikuje pouzdano izvornu aplikaciju.
+smartSvg	Edit SVG Smart Object	Uredi SVG pametni objekat
+smartSvg	Other application	Druga aplikacija
+smartSvg	PhotoCraft (internal editor)	PhotoCraft (interni uređivač)
+smartSvg	SVG editor opened. Save the SVG to update this Smart Object.	SVG uređivač je otvoren. Sačuvajte SVG da biste ažurirali ovaj pametni objekat.
+smartSvg	Save to the opened SVG file. Each saved change becomes one undo step in PhotoCraft.	Sačuvajte u otvorenu SVG datoteku. Svaka sačuvana izmena postaje jedan korak opoziva u PhotoCraft-u.
+smartSvg	Stop syncing this Smart Object	Zaustavi sinhronizaciju ovog pametnog objekta
+smartSvg	Updates wait while another document or an editing dialog is active.	Ažuriranja čekaju dok je aktivan drugi dokument ili dijalog za uređivanje.
+vectorPaste	Import warnings:	Upozorenja pri uvozu:
+vectorPaste	Layers	Slojevi
+vectorPaste	Paste	Nalepi
+vectorPaste	Paste as:	Nalepi kao:
+vectorPaste	Path	Putanja
+vectorPaste	Pixels	Pikseli
+vectorPaste	SVG text is converted to outlines, not editable type.	SVG tekst se pretvara u konture, a ne u tekst koji se može uređivati.
+vectorPaste	Shape Layer	Sloj oblika
+vectorPaste	Shape Layer requires one shape without group blending; use Layers to preserve this SVG	Sloj oblika zahteva jedan oblik bez stapanja grupe; koristite Slojeve da biste sačuvali ovaj SVG
+vectorPaste	Smart Object	Pametni objekat
+vectorPaste	The SVG contains no editable paths	SVG ne sadrži putanje koje se mogu uređivati
+vectorPaste	The SVG contains no editable shape	SVG ne sadrži oblik koji se može uređivati
+vectorPaste	The SVG contains rasterised objects without editable paths	SVG sadrži rasterizovane objekte bez putanja koje se mogu uređivati
+vectorPaste	The SVG has incompatible fill rules; use Layers or Smart Object	SVG sadrži nekompatibilna pravila popune; koristite Slojeve ili Pametni objekat
+vectorPaste	The SVG is too large to rasterise (24 million pixel limit)	SVG je prevelik za rasterizaciju (ograničenje: 24 miliona piksela)
+vectorPaste	The pasted shape caches exceed the clipboard cache budget; use Pixels or Smart Object	Keševi nalepljenih oblika premašuju ograničenje keša ostave; koristite Piksele ili Pametni objekat
+
 # Guide layout dialog
 	Rows	Redovi
 	Number	Broj

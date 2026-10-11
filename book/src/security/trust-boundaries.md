@@ -35,6 +35,8 @@ TRUSTED INTERNAL STATE
 |---|---|---|
 | PSD/PSB bytes to model | `crates/psd`, then `crates/io` | lengths, dimensions, channels, nesting, decompression, offsets |
 | Raster bytes to image | `crates/codecs` | dimensions, pixels, decoded allocation, format-specific limits |
+| Vector clipboard to document | native clipboard service, `crates/io`, `crates/engine` | explicit paste only, immutable snapshot, byte/layer-cache/decoded-image budgets, SVG parser and scaled intermediate-buffer limits, no external image path/URL resolution |
+| SVG smart-object external editing | native editor service, UI session, memory-only engine commands | explicit editor selection, direct executable invocation, owned temporary files, bounded stable-save snapshots, pinned document/content/fingerprint, undoable validated replacement |
 | `.pcraft` to document | `crates/format` | archive bounds, decompressed totals, hashes, schema/version validation |
 | JSON to command | `crates/automation`, `crates/engine` | request budget, method/capability, parameter type/range, enabled state |
 | Path to filesystem effect | `crates/automation/src/files.rs`, app services | authorized root/handle, link policy, create/replace semantics |

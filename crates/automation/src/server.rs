@@ -308,8 +308,9 @@ pub struct MenuParams {
 pub struct UiSetParams {
     /// Fields for the control method `ui.set`: tool, panels, dock, dockTabs, dockWidth, colorPanel
     /// ({background: bool} picks which swatch the Color panel edits), maskTarget,
-    /// vectorMaskTarget, selectionMode, zoom, center, rotation (view angle in degrees), fit, theme (pro, proMedium, studio,
-    /// studioLight, classic, solarizedDark, adwaita, adwaitaDark, breezeLight, breezeDark, softLight, softDark), brushSection, brushTab,
+    /// vectorMaskTarget, selectionMode, zoom, center, rotation (view angle in degrees), fit, theme
+    /// (pro, proMedium, proLightGray, proLight, studio, studioLight, classic, solarizedDark,
+    /// adwaita, adwaitaDark, breezeLight, breezeDark, softLight, softDark), brushSection, brushTab,
     /// brushesView, brushPicker ([x, y] opens the Brush Preset picker there, null closes it),
     /// brushPickerName, brushPickerStroke, brushPickerTip (the picker card's parts, at least one
     /// on), brushPickerScale (the picker footer's card-scale slider, 0.15 to 2, 1 the standard),
@@ -322,9 +323,21 @@ pub struct UiSetParams {
     /// color ("matchCanvas" or "custom"), custom_color ([r, g, b]), opacity (0..100),
     /// auto_adjust, classic_mode and auto_center_preview), shapeStroke (an object patching width, align, cap, join, miterLimit,
     /// dashes, dashOffset and opacity; null disables the stroke). Shape stroke fields use
-    /// `shape.edit` names and units; colour comes from `tools.setColors`. camTransformOnDrop (bool,
-    /// the Content-Aware Move tool's Transform On Drop). tileGrid (bool, a developer overlay of the
-    /// active layer's storage tiles). Other fields are an error.
+    /// `shape.edit` names and units; colour comes from `tools.setColors` unless shapeStrokePaint
+    /// supplies an explicit paint. shapeOptions patches mode (shape, path, pixels), operation
+    /// (new, combine, subtract, intersect, exclude), blend (a blend mode name), opacity (0..100),
+    /// antiAlias, showPath, showTransform, fromCenter, constrain, alignEdges, smoothIndents and
+    /// alignCanvas (bools), pathWidth (0.5..10 screen points), pathColor ([r,g,b] bytes or null),
+    /// sizeMode (unconstrained, square, fixed, proportional), sizeWidth and sizeHeight (1..300000
+    /// document pixels; their ratio is used for proportional sizing), starRatio (inner/outer
+    /// radius fraction, 0.01..1), and arrowheads (a nested patch: start/end bools, width/length
+    /// in document pixels, 0..10000, concavity in percent, -50..50). shapeFillPaint and
+    /// shapeStrokePaint use the `shape.edit` fill grammar: hex or RGBA colour, a colour-model
+    /// object, a gradient object, a catalog pattern object, or null to disable fill/stroke. Gradient
+    /// locations/opacity stops/midpoints are fractions, scale is percent, angle is degrees;
+    /// pattern scale is percent, angle is degrees, and phase is document pixels. camTransformOnDrop
+    /// (bool) is the Content-Aware Move tool's Transform On Drop. tileGrid (bool) is a developer overlay
+    /// of the active layer's storage tiles. Other fields are an error.
     pub fields: Value,
 }
 

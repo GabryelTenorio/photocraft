@@ -10,6 +10,7 @@ use std::sync::Arc;
 use egui::{CursorIcon, CustomCursorImage, Painter, Pos2, Stroke, Vec2, vec2};
 
 mod hand;
+mod pen;
 
 /// The largest cursor bitmap (physical pixels; points on macOS, see [`native_scale`]); a larger tip
 /// paints its outline instead, with a small OS crosshair at the hotspot, and that outline trails
@@ -28,6 +29,7 @@ enum Shape {
     Crosshair { length: f32, gap: f32 },
     Hand { closed: bool },
     Outline { rings: Arc<[Vec<Vec2>]>, centre: bool },
+    Pen,
 }
 
 #[derive(Clone)]
@@ -85,6 +87,19 @@ pub(crate) fn close_path(painter: &Painter, at: Pos2) -> CursorIcon {
 
 fn close_ring() -> Vec<Vec2> {
     (0..16).map(|i| (i as f32 / 16.0 * std::f32::consts::TAU, vec2(9.0, 9.0))).map(|(a, c)| c + vec2(a.cos(), a.sin()) * 3.5).collect()
+}
+
+/// The existing Pen tool glyph, with its nib at the pointer rather than the centre of its box.
+pub(crate) fn pen(painter: &Painter, at: Pos2) -> CursorIcon {
+    let ctx = painter.ctx();
+    if cfg!(target_os = "windows")
+        && ctx.viewport_id() == egui::ViewportId::ROOT
+        && let Some(image) = cached_image(ctx, &Shape::Pen, ctx.pixels_per_point())
+    {
+        ctx.set_cursor_image(Some(image));
+        return CursorIcon::None;
+    }
+    if pen::paint(painter, at) { CursorIcon::None } else { CursorIcon::Crosshair }
 }
 
 /// Can this pass show an OS cursor bitmap? eframe's immediate viewports and its web integration
@@ -175,8 +190,8 @@ fn paint(painter: &Painter, at: Pos2, shape: &Shape) {
                     paint_crosshair(painter, at, 3.0, 0.0, stroke);
                 }
             }
-            // Only ever a bitmap: without one the OS draws its own grab cursors.
-            Shape::Hand { .. } => {}
+            // Hand and Pen have their own cursor entry points.
+            Shape::Hand { .. } | Shape::Pen => {}
         }
     }
 }
@@ -224,6 +239,7 @@ fn extent(shape: &Shape) -> Option<f32> {
             if *centre { e.max(3.0) } else { e }
         }
         Shape::Hand { .. } => hand::HALF,
+        Shape::Pen => pen::SIZE / 2.0,
     })
 }
 
@@ -271,6 +287,8 @@ fn coverage(shape: &Shape, dx: f32, dy: f32, scale: f32) -> (f32, f32) {
             let crease = (0.45 * scale + 0.5 - hand::crease(*closed, lx, ly) * scale).clamp(0.0, 1.0);
             (inside * (1.0 - crease), outline.max(inside * crease))
         }
+        // The Pen glyph is rasterized directly from the existing SVG below.
+        Shape::Pen => (0.0, 0.0),
     }
 }
 
@@ -346,6 +364,9 @@ fn ring_spans(dy: f32, r: f32, reach: f32) -> Option<[(f32, f32); 2]> {
 fn rasterize(shape: &Shape, scale: f32) -> Option<CustomCursorImage> {
     if !scale.is_finite() || scale <= 0.0 {
         return None;
+    }
+    if matches!(shape, Shape::Pen) {
+        return pen::rasterize(scale);
     }
     let extent = extent(shape)?;
     // Odd dimensions put the hotspot on the centre pixel at every DPI. Include the outline

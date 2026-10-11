@@ -303,6 +303,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // However the tool was picked (toolbar, flyout, shortcut, automation), its group's key brings
     // it back later (#2608).
     app.ui.remember_group_tool();
+    crate::shape_paint_ui::prune(app, ctx);
+    // The independent shape colour dialog owns keys until it is confirmed or cancelled.
+    if crate::shape_paint_ui::color_dialog_open(ctx) {
+        return;
+    }
     // Camera Raw is modal like Photoshop's filter dialog: no application shortcut (Save, Undo,
     // tools) runs beneath it, and it handles its own keys (Y, U, O, S). Unlike the other dialogs
     // below it covers the canvas, so canvas zoom keys are blocked too.
@@ -354,7 +359,13 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // Dialogs (and Liquify's panel while one of its controls has focus) keep canvas zoom; a
     // focused text field keeps its keys.
     let liquify_focus = app.distort.liquify.is_some() && focus != Focus::None;
-    if liquify_focus || !app.ui.dialogs.is_empty() || app.discard.is_some() {
+    if liquify_focus
+        || !app.ui.dialogs.is_empty()
+        || app.discard.is_some()
+        || app.vector_paste.is_some()
+        || app.smart_svg.modal_open()
+        || app.save_options_open()
+    {
         if focus != Focus::Text {
             nav_keys(app, ctx);
         }
@@ -368,6 +379,9 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     // Liquify / Puppet Warp / Perspective Warp: ↩ commits, Esc cancels.
     if crate::distort_ui::keys(app, ctx) {
+        return;
+    }
+    if crate::shape_canvas::keys(app, ctx) {
         return;
     }
     // Free Transform: ↩ commits, Esc cancels.
@@ -556,6 +570,8 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
         || app.ui.tool == Tool::RotateView
         || app.wide_angle.is_some()
         || app.save_options_open()
+        || app.vector_paste.is_some()
+        || app.smart_svg.modal_open()
         || app.distort.gallery.is_some()
         || ctx.any_popup_open()
         || ctx.data(|d| d.get_temp::<(egui::Id, egui::Rect)>(egui::Id::new("tool-flyout")).is_some());

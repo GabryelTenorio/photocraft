@@ -99,8 +99,11 @@ pub mod sample_cmds;
 pub mod sampler_cmds;
 pub mod select_extra_cmds;
 pub mod selection_cmds;
+mod shape_combine_cmds;
+pub mod shape_tool_cmds;
 pub mod slice_cmds;
 pub mod smart_cmds;
+pub mod smart_svg_cmds;
 pub mod smartselect_cmds;
 pub mod snap;
 pub mod solid_fill_cmds;
@@ -119,6 +122,7 @@ pub mod type_styles_cmds;
 mod variables_cmds;
 pub use variables_cmds::{export_data_sets_with, import_data_sets_text};
 pub mod vector_cmds;
+pub mod vector_paste_cmds;
 mod video_cmds;
 pub use video_cmds::render_video_with;
 pub mod vp_cmds;
@@ -385,6 +389,9 @@ pub struct Session {
     /// Shape path context menu: copied vector fill and stroke styles.
     pub path_fill_clipboard: Option<photocraft_doc::Fill>,
     pub path_stroke_clipboard: Option<photocraft_doc::ShapeStroke>,
+    /// Pattern tiles referenced by copied paints; surfaces retain their COW snapshots.
+    pub(crate) path_fill_pattern: Option<photocraft_doc::Pattern>,
+    pub(crate) path_stroke_pattern: Option<photocraft_doc::Pattern>,
     /// Colour management: proofing state, monitor profile, display transforms.
     pub color: color_cmds::ColorState,
     /// Open Edit Contents documents and the smart objects they update.

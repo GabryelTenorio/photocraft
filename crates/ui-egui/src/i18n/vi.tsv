@@ -26,6 +26,61 @@
 	Solidity:	Độ đặc:
 	Ink Characteristics	Đặc tính mực
 
+
+# Vector clipboard, embedded SVG editor and shared Shape controls
+	Align Edges	Căn cạnh
+	Align to Canvas	Căn theo khung vẽ
+	Arrowheads	Đầu mũi tên
+	Bring Shape Forward	Đưa hình lên một bậc
+	Bring Shape to Front	Đưa hình lên trên cùng
+	Color Picker	Bộ chọn màu
+	Color opacity	Độ mờ của màu
+	Concavity:	Độ lõm:
+	Constrain Proportions	Giữ tỷ lệ
+	Distribute Horizontally	Phân bố theo chiều ngang
+	Distribute Vertically	Phân bố theo chiều dọc
+	End	Cuối
+	New Path	Đường dẫn mới
+	No recent colors	Không có màu gần đây
+	Path Alignment	Căn chỉnh đường dẫn
+	Path Arrangement	Sắp xếp đường dẫn
+	Path Operations	Các phép toán đường dẫn
+	Path Options	Tùy chọn đường dẫn
+	Proportional	Theo tỷ lệ
+	Recent Colors	Màu gần đây
+	Send Shape Backward	Đưa hình xuống một bậc
+	Send Shape to Back	Đưa hình xuống dưới cùng
+	Shape color selector	Bộ chọn màu hình
+	Show Path	Hiện đường dẫn
+	Smooth Indents	Làm mịn các chỗ lõm
+	Start	Đầu
+	Unconstrained	Không ràng buộc
+smartSvg	Choose executable…	Chọn tệp thực thi…
+smartSvg	Choose the application used to edit this SVG:	Chọn ứng dụng dùng để chỉnh sửa SVG này:
+smartSvg	Clipboard SVG does not reliably identify its source application.	SVG trong bảng nhớ tạm không xác định đáng tin cậy ứng dụng nguồn của nó.
+smartSvg	Edit SVG Smart Object	Chỉnh sửa Đối tượng thông minh SVG
+smartSvg	Other application	Ứng dụng khác
+smartSvg	PhotoCraft (internal editor)	PhotoCraft (trình chỉnh sửa nội bộ)
+smartSvg	SVG editor opened. Save the SVG to update this Smart Object.	Đã mở trình chỉnh sửa SVG. Lưu SVG để cập nhật Đối tượng thông minh này.
+smartSvg	Save to the opened SVG file. Each saved change becomes one undo step in PhotoCraft.	Lưu vào tệp SVG đã mở. Mỗi lần lưu thay đổi tạo một bước hoàn tác trong PhotoCraft.
+smartSvg	Stop syncing this Smart Object	Dừng đồng bộ Đối tượng thông minh này
+smartSvg	Updates wait while another document or an editing dialog is active.	Các cập nhật sẽ chờ khi tài liệu khác hoặc hộp thoại chỉnh sửa đang hoạt động.
+vectorPaste	Import warnings:	Cảnh báo nhập:
+vectorPaste	Layers	Các lớp
+vectorPaste	Paste	Dán
+vectorPaste	Paste as:	Dán dưới dạng:
+vectorPaste	Path	Đường dẫn
+vectorPaste	Pixels	Pixel
+vectorPaste	SVG text is converted to outlines, not editable type.	Văn bản SVG được chuyển thành đường viền, không phải văn bản có thể chỉnh sửa.
+vectorPaste	Shape Layer	Lớp hình
+vectorPaste	Shape Layer requires one shape without group blending; use Layers to preserve this SVG	Lớp hình yêu cầu một hình không có hòa trộn nhóm; dùng Các lớp để giữ nguyên SVG này
+vectorPaste	Smart Object	Đối tượng thông minh
+vectorPaste	The SVG contains no editable paths	SVG không chứa đường dẫn có thể chỉnh sửa
+vectorPaste	The SVG contains no editable shape	SVG không chứa hình có thể chỉnh sửa
+vectorPaste	The SVG contains rasterised objects without editable paths	SVG chứa các đối tượng đã raster hóa không có đường dẫn có thể chỉnh sửa
+vectorPaste	The SVG has incompatible fill rules; use Layers or Smart Object	SVG có các quy tắc tô không tương thích; dùng Các lớp hoặc Đối tượng thông minh
+vectorPaste	The SVG is too large to rasterise (24 million pixel limit)	SVG quá lớn để raster hóa (giới hạn 24 triệu pixel)
+vectorPaste	The pasted shape caches exceed the clipboard cache budget; use Pixels or Smart Object	Bộ nhớ đệm hình được dán vượt quá ngân sách bộ nhớ đệm bảng nhớ tạm; dùng Pixel hoặc Đối tượng thông minh
 # Phase 3.1 — top-level menus, File menu, Edit menu
 # Custom paper dimensions in Print Settings.
 	Paper Width	Chiều rộng giấy
