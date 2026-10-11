@@ -275,6 +275,10 @@ pub fn configure(setup: &mut egui_wgpu::WgpuSetup, plan: &Plan, os: Os, sentinel
         if let Some(b) = backends(plan, os) {
             create.instance_descriptor.backends = b;
         }
+        // wgpu compiles indirect-call validation shaders inside `request_device`; Metal's compiler
+        // crashes on them on old Intel Macs (Iris Pro, GPUFamily 1), so no mode could start (#3107).
+        // PhotoCraft issues no indirect draws or dispatches. `WGPU_VALIDATION_INDIRECT_CALL=1` still wins.
+        create.instance_descriptor.flags = create.instance_descriptor.flags.difference(wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL).with_env();
         if os == Os::Windows {
             let exe = std::env::current_exe().ok();
             let env = std::env::var("WGPU_DX12_COMPILER").ok();
@@ -795,6 +799,19 @@ mod tests {
                 C::StaticDxc | C::Auto => false,
             };
             assert!(safe, "{:?}", create.instance_descriptor.backend_options.dx12.shader_compiler);
+        }
+    }
+
+    #[test]
+    fn device_creation_skips_indirect_validation_shaders() {
+        // Metal's compiler crashed on them on Intel Iris Pro, losing the device in every mode (#3107).
+        for (os, safe_gpu) in [(Os::Mac, false), (Os::Mac, true), (Os::Windows, false), (Os::Other, true)] {
+            let mut setup = egui_wgpu::WgpuSetup::without_display_handle();
+            configure(&mut setup, &plan(Auto, None, None, safe_gpu, os), os, Arc::new(Mutex::new(None)), Arc::default());
+            let egui_wgpu::WgpuSetup::CreateNew(create) = &setup else { panic!("a new instance") };
+            if std::env::var_os("WGPU_VALIDATION_INDIRECT_CALL").is_none() {
+                assert!(!create.instance_descriptor.flags.contains(wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL), "{os:?}");
+            }
         }
     }
 }
