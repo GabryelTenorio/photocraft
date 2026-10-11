@@ -1240,18 +1240,27 @@ mod tests {
     #[test]
     fn destructive_levels_dont_clip_in_32_bit() {
         // Input 15..230, gamma 1.3, output 10..245: black and white land on the output range in
-        // integer documents, but in a 32-bit document the curve runs on past it (then 0..1).
+        // integer documents. Float documents preserve the signed power curve past both ranges:
+        // 10 + sign(t) * abs(t)^(1/1.3) * 235, where t = (input - 15) / 215.
+        // These independently calculated endpoints also catch a final clamp back to 0..1.
         let params = json!({"inBlack": 15, "inWhite": 230, "gamma": 1.3, "outBlack": 10, "outWhite": 245});
-        for (depth, low, high) in [(8, 10.0, 245.0), (16, 10.0, 245.0), (32, 0.0, 255.0)] {
+        for (depth, low, high) in [(8, 10.0, 245.0), (16, 10.0, 245.0), (32, -20.308_89, 265.750_3)] {
             let mut s = crate::Session::new();
             s.execute("file.new", json!({"width": 16, "height": 16, "depth": depth, "background": "white"})).unwrap();
             s.execute("select.rect", json!({"x": 0, "y": 0, "width": 8, "height": 16})).unwrap();
             s.execute("edit.fill", json!({"color": "#000000"})).unwrap();
             s.execute("select.deselect", json!({})).unwrap();
+            let before = pixels(&s);
             s.execute("image.adjustments.levels", params.clone()).unwrap();
             let px = pixels(&s);
-            assert!((px[0][0] * 255.0 - low).abs() < 0.6, "black @{depth}: {:?}", px[0]);
-            assert!((px[1][0] * 255.0 - high).abs() < 0.6, "white @{depth}: {:?}", px[1]);
+            for (pixel, expected) in px.iter().zip([low, high, low, high]) {
+                assert!(pixel.iter().take(3).all(|v| (v * 255.0 - expected).abs() < 0.6), "@{depth}: {pixel:?}, expected {expected}/255");
+                assert_eq!(pixel[3], 1.0, "Levels preserves alpha @{depth}");
+            }
+            s.execute("edit.undo", json!({})).unwrap();
+            assert_eq!(pixels(&s), before, "undo restores the source @{depth}");
+            s.execute("edit.redo", json!({})).unwrap();
+            assert_eq!(pixels(&s), px, "redo preserves the float range @{depth}");
         }
     }
 
