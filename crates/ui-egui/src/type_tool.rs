@@ -334,6 +334,53 @@ fn insert(app: &mut PhotocraftApp, s: &str) {
     }
 }
 
+/// Typed text (not a paste): with Preferences ▸ Type ▸ Use Smart Quotes, straight quotes become
+/// typographic (Photoshop does not rewrite pasted text).
+fn insert_typed(app: &mut PhotocraftApp, s: &str) {
+    if !app.session.prefs().type_.smart_quotes {
+        return insert(app, s);
+    }
+    let prev = app.ui.text_edit.clone().and_then(|ed| {
+        let at = ed.caret.min(ed.anchor);
+        let text = current_text(app, LayerId(ed.layer))?;
+        (at > 0).then(|| text.chars().nth(at - 1)).flatten()
+    });
+    insert(app, &smart_quotes(s, prev));
+}
+
+/// Straight quotes become “ ” and ‘ ’: opening after whitespace, a bracket or a dash (or at the
+/// start of the text), closing next to a letter or another quote. `prev` is the character before
+/// the caret.
+fn smart_quotes(s: &str, mut prev: Option<char>) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        let c = match c {
+            '"' => {
+                if opens_quote(prev) {
+                    '\u{201c}'
+                } else {
+                    '\u{201d}'
+                }
+            }
+            '\'' => {
+                if opens_quote(prev) {
+                    '\u{2018}'
+                } else {
+                    '\u{2019}'
+                }
+            }
+            _ => c,
+        };
+        out.push(c);
+        prev = Some(c);
+    }
+    out
+}
+
+fn opens_quote(prev: Option<char>) -> bool {
+    prev.is_none_or(|p| p.is_whitespace() || matches!(p, '(' | '[' | '{' | '-' | '\u{2013}' | '\u{2014}'))
+}
+
 /// Alt+←/→: kern the pair before the caret by `by` (1/1000 em). No pair (caret at a text or line
 /// edge): nothing happens, like Photoshop. Not coalesced: one history step per press.
 fn kern_pair(app: &mut PhotocraftApp, id: LayerId, caret: usize, by: f32) {
@@ -476,7 +523,8 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
         };
         handled[k] = true;
         match ev {
-            egui::Event::Text(s) | egui::Event::Paste(s) => insert(app, s),
+            egui::Event::Text(s) => insert_typed(app, s),
+            egui::Event::Paste(s) => insert(app, s),
             // A bare line break from the IME is the Enter key, which the key arm handles.
             egui::Event::Ime(egui::ImeEvent::Preedit { text: s, .. } | egui::ImeEvent::Commit(s)) if s == "\n" || s == "\r" => handled[k] = false,
             egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => ime_update(app, text, false),
@@ -547,6 +595,8 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
                     }
                     Key::Enter if m.command => commit(app),
                     Key::Enter => insert(app, "\n"),
+                    // Photoshop types a tab character; layout advances it to the next tab stop.
+                    Key::Tab if !m.command && !m.alt && !m.shift => insert(app, "\t"),
                     Key::Escape if crate::type_transform::active(app) => crate::type_transform::cancel_drag(app),
                     // Preferences ▸ Type: with "Use Escape to Commit" off, Escape cancels the
                     // session (undoes it, removing a just-created layer) like the Cancel button.
@@ -820,7 +870,8 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
         // Clicks inside the menu (the search field, the scroll bar) must not close it (#1369);
         // picking a font closes it explicitly below.
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-    combo.show_ui(ui, |ui| {
+
+    let response = combo.show_ui(ui, |ui| {
         let (pass_id, focus_id, height_id) = (search_id.with("pass"), search_id.with("focus"), search_id.with("height"));
         let pass = ui.ctx().cumulative_pass_nr();
         let last_pass: Option<u64> = ui.data(|d| d.get_temp(pass_id));
@@ -861,14 +912,19 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
                 photocraft_text::served::request(f);
             }
         }
-        if enter && filtered.iter().any(|f| *f == current) {
+        let accept = enter && filtered.iter().any(|f| *f == current);
+        if accept {
             ui.data_mut(|d| d.remove::<String>(search_id));
             ui.close();
         }
+
+        let mut hovered: Option<String> = None;
         for f in filtered {
             let response = ui.add_sized(
                 [330.0, 28.0],
-                egui::Button::selectable(f == current, f).truncate().right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(100.0, 24.0))),
+                egui::Button::selectable(f == current, f)
+                    .truncate()
+                    .right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(crate::font_preview::slot_width(ui.ctx(), f), 24.0))),
             );
             if (down || up) && f == current {
                 response.scroll_to_me(Some(egui::Align::Center));
@@ -876,12 +932,16 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
             if ui.is_rect_visible(response.rect) {
                 crate::font_preview::paint(ui, f, response.rect);
             }
+            if response.hovered() {
+                hovered = Some(f.clone());
+            }
             if response.clicked() {
                 *current = f.clone();
                 // A served family not fetched yet: start now, before any text needs it.
                 photocraft_text::served::request(f);
                 changed = true;
                 ui.data_mut(|d| d.remove::<String>(search_id));
+                hovered = None;
                 ui.close();
             }
         }
@@ -894,12 +954,24 @@ pub(crate) fn family_picker_in(ui: &mut egui::Ui, salt: &str, current: &mut Stri
         } else if let Some(h) = ui.data(|d| d.get_temp::<f32>(height_id)) {
             ui.set_min_height(h.min(FONT_MENU_HEIGHT));
         }
+        if accept { None } else { hovered }
     });
+    let hovered_font = response.inner.unwrap_or_default();
+
+    if salt == "type-font" {
+        let hover_id = egui::Id::new("type-font-hover");
+        if let Some(f) = hovered_font {
+            ui.ctx().data_mut(|d| d.insert_temp(hover_id, f));
+        } else {
+            ui.ctx().data_mut(|d| d.remove::<String>(hover_id));
+        }
+    }
+
     changed
 }
 
 /// Representative for the displayed properties: the edit layer, else a selected type layer.
-fn target(app: &PhotocraftApp) -> Option<(u64, Option<[usize; 2]>)> {
+pub(crate) fn target(app: &PhotocraftApp) -> Option<(u64, Option<[usize; 2]>)> {
     if let Some(ed) = &app.ui.text_edit {
         let (a, b) = (ed.caret.min(ed.anchor), ed.caret.max(ed.anchor));
         return Some((ed.layer, (a < b).then_some([a, b])));
@@ -1626,6 +1698,29 @@ mod tests {
         commit(&mut app);
         assert_eq!(app.session.active().unwrap().doc.layers.len(), 1, "an empty type layer is removed on commit");
         assert!(app.ui.text_edit.is_none());
+    }
+
+    /// Pure smart-quote mapping: opening after whitespace, a bracket or a dash, closing next to a
+    /// letter or another quote.
+    #[test]
+    fn smart_quotes_are_typographic() {
+        assert_eq!(smart_quotes("\"Hello\"", None), "\u{201c}Hello\u{201d}");
+        assert_eq!(smart_quotes("don't", None), "don\u{2019}t");
+        assert_eq!(smart_quotes("(\"x\")", None), "(\u{201c}x\u{201d})");
+        assert_eq!(smart_quotes("--'x'", None), "--\u{2018}x\u{2019}", "a dash stays a dash, the quote opens after it");
+        assert_eq!(smart_quotes("\"\"", None), "\u{201c}\u{201d}");
+    }
+
+    /// Preferences ▸ Type ▸ Use Smart Quotes switches typed quotes (typed text only, not paste).
+    #[test]
+    fn smart_quotes_preference_controls_typed_quotes() {
+        for (smart, expected) in [(true, "hi \u{201c}you\u{201d}"), (false, "hi \"you\"")] {
+            let mut app = app();
+            app.run("prefs.set", json!({"path": "type.smartQuotes", "value": smart})).unwrap();
+            pointer_up(&mut app, [50.0, 100.0], [50.0, 100.0]);
+            insert_typed(&mut app, "hi \"you\"");
+            assert_eq!(layer_text(&app), expected, "smartQuotes={smart}");
+        }
     }
 
     #[test]

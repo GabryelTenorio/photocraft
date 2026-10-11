@@ -22,6 +22,13 @@ pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Se
 /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
 pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("ui.symmetryTransform", "Transform Symmetry", &[], None),
+    ("window.panel.group", "Change Panel Group", &[], None),
+    ("window.panel.layout", "Change Panel Layout", &[], None),
+    ("window.panel.move", "Move Panel", &[], None),
+    ("window.panel.float", "Float Panel", &[], None),
+    ("window.panel.dock", "Dock Panel", &[], None),
+    ("window.panel.activate", "Activate Panel", &[], None),
+    ("window.panel.close", "Close Panel", &[], None),
     ("file.open", "Open…", &["File"], Some("Cmd+O")),
     ("file.save", "Save", &["File"], Some("Cmd+S")),
     ("file.saveAs", "Save As…", &["File"], Some("Cmd+Shift+S")),
@@ -63,6 +70,9 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.togglePanels", "Show/Hide All Panels", &[], Some("Tab")),
     ("window.toggle.dock", "Show/Hide Panels", &[], Some("Shift+Tab")),
     ("window.toggle.options", "Options", &["Window"], None),
+    // Photoshop's Ctrl+Tab and Ctrl+Shift+Tab, on macOS too (⌘Tab belongs to the system, #2340).
+    ("window.nextDocument", "Next Document", &[], Some("Ctrl+Tab")),
+    ("window.previousDocument", "Previous Document", &[], Some("Ctrl+Shift+Tab")),
     ("window.theme.toggle", "Next Appearance Mode", &["Window"], None),
     ("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),
     ("window.theme.proMedium", "Pro Medium Gray Theme", &["Window", "Theme"], None),
@@ -72,6 +82,8 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.theme.solarizedDark", "Solarized Dark Theme", &["Window", "Theme"], None),
     ("window.theme.adwaita", "Adwaita Light Theme", &["Window", "Theme"], None),
     ("window.theme.adwaitaDark", "Adwaita Dark Theme", &["Window", "Theme"], None),
+    ("window.theme.breezeLight", "Breeze Light Theme", &["Window", "Theme"], None),
+    ("window.theme.breezeDark", "Breeze Dark Theme", &["Window", "Theme"], None),
     ("window.theme.system", "Sync with system", &["Window", "Theme"], None),
     ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),
     ("help.discord", "Join the ArtCraft Discord…", &["Help"], None),
@@ -151,6 +163,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if id == "image.crop" && crate::crop_ui::pending(app) {
         crate::canvas::commit_crop(app);
         return Ok(json!({"committed": true}));
+    }
+    if let Some(result) = crate::panel_docking::command(app, id, &params) {
+        return result;
     }
     // Help › Discord, website, GitHub, Report an Issue.
     if let Some(url) = crate::links::url_for(id) {
@@ -266,12 +281,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         }
         "file.save" => {
             // Writes back only to a layered file; a flat one goes through Save As.
-            let path = params
-                .get("path")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .or_else(|| app.session.active().and_then(|d| d.path.clone()).filter(|p| photocraft_engine::file_cmds::saves_in_place(p)));
-            app.save_as(path)
+            match params.get("path").and_then(Value::as_str) {
+                Some(path) => app.save_as(Some(path.to_string())),
+                None => match app.session.active().and_then(|d| d.path.clone()).filter(|p| photocraft_engine::file_cmds::saves_in_place(p)) {
+                    Some(path) => app.save_in_place(path),
+                    None => app.save_as(None),
+                },
+            }
         }
         "file.exit" => {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -279,6 +295,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         }
         "file.clearRecent" => {
             app.clear_recent();
+            Ok(Value::Null)
+        }
+        "file.removeRecent" => {
+            let path = params.get("path").and_then(Value::as_str).ok_or("file.removeRecent needs a \"path\"")?;
+            app.remove_recent(path);
             Ok(Value::Null)
         }
         id if id.starts_with("file.openRecent.") => {
@@ -320,7 +341,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         | "window.theme.classic"
         | "window.theme.solarizedDark"
         | "window.theme.adwaita"
-        | "window.theme.adwaitaDark" => {
+        | "window.theme.adwaitaDark"
+        | "window.theme.breezeLight"
+        | "window.theme.breezeDark" => {
             let k = crate::theme::ThemeKind::from_name(&id["window.theme.".len()..]).unwrap_or_default();
             app.set_theme(ctx, k);
             Ok(Value::Null)
@@ -430,7 +453,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 && app.session.active_index().zip(app.session.clipboard.as_ref()).is_some_and(|(i, clip)| {
                     let v = &app.ui.views[i];
                     let pz = app.point_zoom();
-                    let (hw, hh) = (app.last_canvas_rect.width() / 2.0 / pz, app.last_canvas_rect.height() / 2.0 / pz);
+                    let (hw, hh) = (app.last_canvas_rect.width() / 2.0 / pz / app.ui.view.display_aspect(), app.last_canvas_rect.height() / 2.0 / pz);
                     let r =
                         photocraft_geom::Rect::new((v.center[0] - hw) as i32, (v.center[1] - hh) as i32, (v.center[0] + hw) as i32, (v.center[1] + hh) as i32);
                     !clip.bounds.intersect(&r).is_empty()
@@ -511,6 +534,15 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
             Ok(Value::Null)
         }
+        "window.nextDocument" | "window.previousDocument" => {
+            // Tabs are in document order, so the next tab is the next document, wrapping around.
+            let n = app.session.documents().len();
+            let at = app.session.active_index().ok_or("no document open")?;
+            let to = if id == "window.nextDocument" { (at + 1) % n } else { (at + n - 1) % n };
+            app.session.set_active(to);
+            app.jobs.focus = None;
+            Ok(json!({"document": to}))
+        }
         t if t.starts_with("window.toggle.") => {
             // A shown but collapsed dock group is expanded rather than hidden (#129).
             if let Some(g) = crate::dock::Group::from_key(&t["window.toggle.".len()..]).filter(|g| g.shown(&app.ui.panels) && app.ui.dock.is_collapsed(*g)) {
@@ -586,7 +618,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     match id {
-        "file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
+        "window.panel.activate" | "window.panel.layout" => true,
+        "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
+        "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
         i if i.starts_with("file.openRecent.") => true,
         i if crate::links::url_for(i).is_some() => true,
         i if i.starts_with("window.theme.") => true,
@@ -595,6 +629,8 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         }
         i if i.starts_with("window.toggle.") => true,
         "window.togglePanels" => true,
+        // With one document open the key stays quiet, as in Photoshop, rather than reporting why.
+        "window.nextDocument" | "window.previousDocument" => app.session.active().is_some(),
         i if panel_alias(i).is_some() || workspace_name(i).is_some() => true,
         i if proof_preset(i).is_some() => app.session.active().is_some(),
         // "Custom…" is the full Proof Setup dialog.
@@ -638,6 +674,9 @@ const MODE_CHECKS: [&str; 11] = ["rgb", "grayscale", "cmyk", "lab", "multichanne
 
 /// Is a UI-level panel toggle currently on (for checkmarks)?
 fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
+    if let Some(checked) = crate::panel_docking::checked(app, id) {
+        return Some(checked);
+    }
     use photocraft_doc::{ColorMode, SampleType};
     if let Some(name) = id.strip_prefix("window.theme.").filter(|n| *n != "toggle") {
         let auto = app.session.prefs().interface.appearance_mode == photocraft_engine::prefs::AppearanceMode::Auto;
@@ -1213,7 +1252,6 @@ fn render_level(ui: &mut egui::Ui, items: &[&MenuItem], depth: usize, clicked: &
 const MENU_SEPARATOR: f32 = 9.0;
 
 fn render_level_rows(ui: &mut egui::Ui, items: &[&MenuItem], depth: usize, clicked: &mut Option<String>, nav: &mut crate::menu_nav::Nav) {
-    let t = crate::theme::Tokens::get(ui.ctx());
     let lang = crate::i18n::current();
     // Items never wrap: the menu widens to its longest label plus shortcut (translations can be
     // longer than the English).
@@ -1221,15 +1259,8 @@ fn render_level_rows(ui: &mut egui::Ui, items: &[&MenuItem], depth: usize, click
     // Rows touch, as in native menus: the dialog spacing between them made long menus a fifth
     // taller than they need to be (#402).
     ui.spacing_mut().item_spacing.y = 0.0;
-    if t.pro {
-        // Spectrum/macOS menus: blue highlight row with white text.
-        let v = &mut ui.style_mut().visuals;
-        v.widgets.hovered.weak_bg_fill = t.accent;
-        v.widgets.hovered.bg_fill = t.accent;
-        v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-        v.widgets.hovered.corner_radius = egui::CornerRadius::same(3);
-        ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
-    }
+    // Secondary menus use the exact same Spectrum hover contrast and spacing.
+    crate::widgets::style_spectrum_popup_menu(ui);
     // Walk in Photoshop order: leaves and separators at this depth; a submenu appears at the position
     // of its first child.
     let mut shown_subs: Vec<&str> = Vec::new();
@@ -1315,6 +1346,11 @@ pub fn apply_workspace(app: &mut PhotocraftApp) {
     }
     // Presets use the default group order, heights and tabs (Reset brings everything back).
     app.ui.dock = Default::default();
+    app.ui.docking_reveal = None;
+    app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
+    app.ui.docking = None;
+    app.ui.docking_hidden.clear();
+    app.ui.docking_collapsed.clear();
     app.ui.dock_tabs = Default::default();
     let p = &mut app.ui.panels;
     let (nav, color, layers, history, props) = match app.ui.workspace.as_str() {
@@ -1827,6 +1863,17 @@ mod open_recent_tests {
         assert!(!menu_items(&app).iter().any(|i| i.id.starts_with("file.openRecent.")));
         // A bad recent index errors gracefully (no panic).
         assert!(invoke(&mut app, &ctx, "file.openRecent.5", json!({})).is_err());
+
+        // Remove one entry (the Home screen's ×, #2691): the others keep their order.
+        for p in ["/tmp/c.tif", "/tmp/b.psd", "/tmp/a.png"] {
+            app.push_recent(p);
+        }
+        invoke(&mut app, &ctx, "file.removeRecent", json!({"path": "/tmp/b.psd"})).unwrap();
+        assert_eq!(app.ui.recent_files, vec!["/tmp/a.png".to_string(), "/tmp/c.tif".to_string()]);
+        assert_eq!(app.session.prefs().file_handling.recent_files, app.ui.recent_files, "removed in the preferences too");
+        invoke(&mut app, &ctx, "file.removeRecent", json!({"path": "/tmp/not-listed.png"})).unwrap();
+        assert_eq!(app.ui.recent_files.len(), 2, "a path that isn't listed changes nothing");
+        assert!(invoke(&mut app, &ctx, "file.removeRecent", json!({})).is_err(), "needs a path");
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1914,7 +1961,7 @@ mod reveal_label_tests {
             _ => "Im Ordner anzeigen",
         };
         assert_eq!(translated_menu_label(de, reveal[0]), expected);
-        // The menu catalogue (and docs/parity.md) keeps Photoshop's macOS name.
+        // The menu catalogue (and docs/parity-checklist.md) keeps Photoshop's macOS name.
         assert!(crate::menu_catalog::CATALOG.iter().any(|(_, label, _, i)| *i == id && *label == "Reveal in Finder"));
     }
 }
