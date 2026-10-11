@@ -939,7 +939,8 @@ fn remembered_brushes_never_embed_large_bitmaps() {
     assert!(ref_tip(&TipShape::Sampled(big)).is_none(), "a big sampled tip cannot be embedded");
     let small = GrayTile::from_fn(8, 8, |_, _| 1.0);
     assert!(ref_tip(&TipShape::Sampled(small.clone())).is_some(), "small tiles embed");
-    let stored = StoredTile { key: "k".into(), width: 300, height: 200, preview: Arc::new(small), full: Some(Arc::new(GrayTile::from_fn(300, 200, |_, _| 1.0))) };
+    let stored =
+        StoredTile { key: "k".into(), width: 300, height: 200, preview: Arc::new(small), full: Some(Arc::new(GrayTile::from_fn(300, 200, |_, _| 1.0))) };
     let t = ref_tip(&TipShape::Stored(stored)).expect("stored tips are remembered as references");
     assert!(matches!(t, TipShape::Stored(r) if r.full.is_none()), "a loaded full bitmap is dropped");
     assert!(ref_pattern(&Pattern::Tile(GrayTile::from_fn(PREVIEW_SIDE + 1, 4, |_, _| 1.0))).is_none());
