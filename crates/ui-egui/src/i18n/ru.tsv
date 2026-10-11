@@ -1588,6 +1588,7 @@
 	Quick Selection Tool	Быстрое выделение
 	Object Selection Tool	Выделение объектов
 	Pen Tool	Перо
+	Convert Point Tool	Преобразование узла
 	Path Selection Tool	Выделение контура
 	Direct Selection Tool	Выделение узла
 	Add Anchor Point Tool	Добавить узел
@@ -2910,3 +2911,8 @@ cameraData	Lens	Объектив
 	Select the crop presets to delete	Выберите наборы параметров кадрирования для удаления
 	Enter a name for the crop preset	Введите имя набора параметров кадрирования
 	There is no crop size or ratio to save	Нет размера или соотношения сторон кадрирования для сохранения
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Щёлкните, чтобы разместить · Alt-щелчок или перетаскивание за пределы холста для удаления
+	No document open	Документ не открыт
+	{n} of {max} sample points	{n} из {max} точек замера

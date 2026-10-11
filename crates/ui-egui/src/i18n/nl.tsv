@@ -1682,6 +1682,7 @@
 	Pen Pressure	Pendruk
 	Pen Tilt	Penkanteling
 	Pen Tool	Pengereedschap
+	Convert Point Tool	Punt-converteergereedschap
 	Photo	Foto
 	PhotoCraft website	Website van PhotoCraft
 	Picas	Pica's
@@ -3730,3 +3731,7 @@ cameraData	Lens	Lens
 	Include in playback	Opnemen in afspelen
 	Scale:	Schaal:
 	Snap to Origin	Uitlijnen op oorsprong
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Klik om te plaatsen · Alt-klik of sleep buiten het canvas om te verwijderen
+	{n} of {max} sample points	{n} van {max} steekproefpunten

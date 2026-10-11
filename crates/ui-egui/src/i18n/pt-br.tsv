@@ -1679,6 +1679,7 @@
 	Pen Pressure	Pressão da caneta
 	Pen Tilt	Inclinação da caneta
 	Pen Tool	Ferramenta Caneta
+	Convert Point Tool	Ferramenta Converter ponto
 	Photo	Foto
 	PhotoCraft website	Site do PhotoCraft
 	Picas	Paicas
@@ -2988,3 +2989,8 @@ cameraData	Lens	Lente
 	Show Original	Mostrar original
 	F cycles the views; hold X to see the image	F alterna as visualizações; segure X para ver a imagem
 	Show rulers	Mostrar réguas
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Clique para posicionar · Alt-clique ou arraste para fora da tela para remover
+	No document open	Nenhum documento aberto
+	{n} of {max} sample points	{n} de {max} pontos de amostragem
