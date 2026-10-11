@@ -47,9 +47,10 @@ const VIEW_UNIFORM_SIZE: u64 = 128;
 const VIEW_FLOATS: usize = 32;
 const TILE_UNIFORM_SIZE: u64 = 16;
 
-/// Whether this view can use the GPU canvas. Flip is still a CPU blit; rotation is a shader uniform.
-pub fn gpu_view_ok(flip: bool, _rotation: f32) -> bool {
-    !flip
+/// Whether this view can use the GPU canvas. Flip and non-square pixel aspect correction are
+/// still CPU blits (the shader's filtering assumes square pixels); rotation is a shader uniform.
+pub fn gpu_view_ok(flip: bool, _rotation: f32, aspect: f32) -> bool {
+    !flip && (aspect - 1.0).abs() < 1e-6
 }
 
 /// Parameters for drawing one document view. Positions are in egui points.
@@ -1637,9 +1638,10 @@ impl CanvasCallback {
         let p = &self.params;
         let (origin, scale) = self.placement(ppp);
         let (mode, lod) = filter_mode(scale);
-        // The pixel grid shows above 500% and lightens a dark pixel by about a quarter (the
-        // constants are shared with the CPU path, pixel_grid.rs).
-        let grid = if p.pixel_grid && crate::pixel_grid::shows_at(p.zoom) { crate::pixel_grid::STRENGTH } else { 0.0 };
+        // The pixel grid shows above 500% (the constants are shared with the CPU path,
+        // pixel_grid.rs). `p.zoom` is screen points per document pixel; the shared threshold is
+        // in device pixels, so scale by the display's pixels per point.
+        let grid = if p.pixel_grid && crate::pixel_grid::shows_at(p.zoom * ppp) { crate::pixel_grid::STRENGTH } else { 0.0 };
         let square = if style.checker_square > 0.0 { (style.checker_square * ppp).round().max(1.0) } else { 0.0 };
         let (l, d, g) = (style.checker_light, style.checker_dark, style.gamut_color);
         // 32-bit preview: linear-light gain 2^exposure (0 = off) and 1 / gamma.
@@ -2031,9 +2033,10 @@ mod tests {
         assert_eq!(VIEW_FLOATS, 32);
         assert_eq!(VIEW_UNIFORM_SIZE, 128);
         assert_eq!(VIEW_FLOATS * 4, VIEW_UNIFORM_SIZE as usize);
-        assert!(gpu_view_ok(false, 0.0));
-        assert!(gpu_view_ok(false, 45.0_f32.to_radians()));
-        assert!(!gpu_view_ok(true, 45.0_f32.to_radians()));
+        assert!(gpu_view_ok(false, 0.0, 1.0));
+        assert!(gpu_view_ok(false, 45.0_f32.to_radians(), 1.0));
+        assert!(!gpu_view_ok(true, 45.0_f32.to_radians(), 1.0));
+        assert!(!gpu_view_ok(false, 0.0, 2.0), "pixel aspect correction draws on the CPU");
         // Identity packing: rotation 0 matches the unrotated origin + scale map.
         let origin = [10.0, 20.0];
         let (scale, center) = (2.0, [40.0, 8.0]);

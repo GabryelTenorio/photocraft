@@ -48,10 +48,16 @@ real_name = "Willy Foo"
 display_name = "Willy Foo"
 sync_github_name = false
 
+[people.SilentYeti]
+sync_github_name = true
+
 [people.Elvis33LE]
 sync_github_name = true
 
 [people.stevanmarjanovic]
+sync_github_name = true
+
+[people.FinnNk]
 sync_github_name = true
 
 [people.Gotix-eg]
