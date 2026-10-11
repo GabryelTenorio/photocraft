@@ -132,10 +132,28 @@ pub(crate) fn file_name(path: &str) -> String {
     path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
 }
 
+/// Whether `path` is a TIFF that keeps all of `doc`, so a save into it loses nothing a later
+/// session could edit: see `photocraft_io::tiff_layers::holds`.
+pub fn tiff_holds(path: &str, doc: &Document) -> bool {
+    matches!(extension(path).as_deref(), Some("tif" | "tiff")) && photocraft_io::tiff_layers::holds(doc)
+}
+
 impl crate::DocState {
+    /// The file File › Save writes this document back to without asking: its own layered file
+    /// ([`saves_in_place`]), or the TIFF another app handed over as an edit copy
+    /// ([`Self::edit_in_place`]) while a TIFF holds the whole document. Any other document goes
+    /// through Save As, so a flat original is never written over (#416).
+    pub fn own_file(&self) -> Option<&str> {
+        self.path.as_deref().filter(|p| saves_in_place(p) || (self.edit_in_place && tiff_holds(p, &self.doc)))
+    }
+
     /// Complete a successful document save. File identity is not a history step; callers must
     /// finish the write first and must not call this for a copy or export.
     pub fn saved_to(&mut self, path: String) {
+        // Saved to another file: the handed-over copy is no longer this document's file.
+        if self.path.as_deref() != Some(path.as_str()) {
+            self.edit_in_place = false;
+        }
         let name = file_name(&path);
         if self.doc.name != name {
             Arc::make_mut(&mut self.doc).name = name;

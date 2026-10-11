@@ -288,11 +288,12 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
         }
         "file.save" => {
-            // Writes back only to a layered file; a flat one goes through Save As.
+            // Writes back only to a layered file, or to the edit copy another app handed over;
+            // any other flat file goes through Save As.
             let tga_bits = crate::targa_options_ui::bits_param(&params, id)?;
             match params.get("path").and_then(Value::as_str) {
                 Some(path) => app.save_as_with(Some(path.to_string()), tga_bits),
-                None => match app.session.active().and_then(|d| d.path.clone()).filter(|p| photocraft_engine::file_cmds::saves_in_place(p)) {
+                None => match app.save_target() {
                     Some(path) => app.save_in_place(path),
                     None => app.save_as_with(None, tga_bits),
                 },

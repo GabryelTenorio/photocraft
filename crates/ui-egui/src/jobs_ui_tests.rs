@@ -577,3 +577,54 @@ fn a_finished_job_beeps_when_the_preference_is_on() {
     frames_for(&mut h, 800);
     assert_eq!(BEEPS.load(Ordering::Relaxed), 1, "one beep for the finished job");
 }
+
+/// An edit copy another app handed over opens in the background like any file, after
+/// `open_paths_in_place` has returned: the mark waits for the document and lands on it, not on
+/// the document that was active meanwhile. A cancelled open leaves no mark for a later one.
+#[test]
+fn an_edit_copy_opened_in_the_background_is_marked_when_it_arrives() {
+    let mut h = app_harness();
+    let tiff = {
+        let mut s = photocraft_engine::Session::new();
+        s.execute("file.new", json!({"width": 64, "height": 48, "depth": 16})).unwrap();
+        let doc = (*s.active().unwrap().doc).clone();
+        photocraft_io::export(&doc, "x.tif", &Default::default()).unwrap().bytes
+    };
+    let path = "/tmp/photocraft-test/beach-Edit.tif";
+    h.state_mut().in_place_opens.insert(path.to_string());
+    h.state_mut().open_file(path, &tiff).unwrap();
+    assert_eq!(h.state().jobs.opens.len(), 1);
+    assert!(h.state().session.documents().iter().all(|d| !d.edit_in_place), "the document isn't there yet");
+    let t = Instant::now();
+    while !h.state().jobs.opens.is_empty() && t.elapsed() < Duration::from_secs(30) {
+        h.step();
+    }
+    h.run_steps(2);
+    let marked: Vec<(Option<&str>, bool)> = h.state().session.documents().iter().map(|d| (d.path.as_deref(), d.edit_in_place)).collect();
+    assert_eq!(marked, [(None, false), (Some(path), true)]);
+    assert!(h.state().in_place_opens.is_empty());
+    assert_eq!(h.state().save_target().as_deref(), Some(path), "File › Save writes back to it");
+
+    // File › Save as the desktop app runs it, on a worker: back to the same file, and the
+    // document is saved once the job ends
+    let gates = Gates::open();
+    h.state_mut().services.save_file = Some(gates.save(None));
+    h.state_mut().run("layer.new.layer", json!({})).unwrap();
+    assert!(h.state().session.active().unwrap().is_dirty());
+    let r = crate::menus::invoke(h.state_mut(), &egui::Context::default(), "file.save", json!({})).unwrap();
+    assert_eq!(r["pending"], true, "{r}");
+    step_until(&mut h, |a| !a.saving());
+    assert_eq!(gates.written(), [path]);
+    let st = h.state().session.active().unwrap();
+    assert_eq!((st.path.as_deref(), st.is_dirty(), st.edit_in_place), (Some(path), false, true));
+
+    let cancelled = "/tmp/photocraft-test/other-Edit.tif";
+    h.state_mut().in_place_opens.insert(cancelled.to_string());
+    h.state_mut().open_file(cancelled, &tiff).unwrap();
+    let job = h.state().jobs.opens[0].job;
+    crate::jobs_ui::cancel(h.state_mut(), job);
+    h.run_steps(3);
+    assert!(h.state().jobs.opens.is_empty());
+    assert!(h.state().in_place_opens.is_empty(), "a cancelled open leaves no mark behind");
+    assert_eq!(h.state().session.documents().len(), 2);
+}

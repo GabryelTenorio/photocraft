@@ -11,6 +11,10 @@
 //! `--in-window-menus` (or `PHOTOCRAFT_IN_WINDOW_MENUS=1`) keeps the menus inside the window on
 //! macOS instead of the macOS menu bar (`mac_menu`).
 //!
+//! `PHOTOCRAFT_EDIT_IN_PLACE=1` is for an app that hands over edit copies (LightCraft's Edit in
+//! PhotoCraft): the files on this launch's command line may be saved back in place, so File ›
+//! Save writes a TIFF among them without Save As. See `docs/edit-in-place.md`.
+//!
 //! `--control <port>` (or `PHOTOCRAFT_CONTROL_PORT`) starts a localhost JSON-lines control server.
 //! The first line must authenticate; subsequent request lines get reply lines.
 //! `{"id":1,"ok":true,"result":…}`. See `photocraft_ui_egui::control` for the methods.
@@ -158,6 +162,8 @@ fn main() -> eframe::Result {
     let mut unreadable_paths: Vec<String> = Vec::new();
     let mut safe_gpu = false;
     let mut in_window_menus = std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0");
+    // The command-line files are edit copies handed over by another app (see the module docs).
+    let edit_in_place = std::env::var_os("PHOTOCRAFT_EDIT_IN_PLACE").is_some_and(|v| !v.is_empty() && v != "0");
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
         match a.to_str() {
@@ -465,7 +471,11 @@ fn main() -> eframe::Result {
             #[cfg(target_os = "linux")]
             tablet::spawn_x11(&app.stylus.feed, display);
             // Paths on the command line (Linux/Windows file associations, `photocraft a.psd`).
-            app.open_paths(&files);
+            if edit_in_place {
+                app.open_paths_in_place(&files);
+            } else {
+                app.open_paths(&files);
+            }
             if !unreadable_paths.is_empty() {
                 use photocraft_ui_egui::i18n;
                 let line = i18n::t("{path}: the path is not valid Unicode; rename the file and open it again.");

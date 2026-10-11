@@ -653,6 +653,10 @@ pub struct PhotocraftApp {
     pub(crate) save_dirs: HashMap<photocraft_doc::DocId, std::path::PathBuf>,
     /// A save to an RGB Targa parked behind the Targa Options prompt (see `targa_options_ui`).
     pub(crate) targa_options: Option<targa_options_ui::Prompt>,
+    /// Files being opened as edit copies handed over by another app (see
+    /// [`Self::open_paths_in_place`]): the document that opens from one is marked
+    /// `DocState::edit_in_place`. A background open finishes later, hence the list.
+    pub(crate) in_place_opens: std::collections::HashSet<String>,
     /// Set once the user has agreed to quit, so the resulting close request goes through.
     pub(crate) allow_close: bool,
     /// Pen pressure/tilt from the platform (see `stylus`).
@@ -773,6 +777,7 @@ impl PhotocraftApp {
             tiff_options: None,
             save_dirs: HashMap::new(),
             targa_options: None,
+            in_place_opens: Default::default(),
             allow_close: false,
             stylus: Default::default(),
             background_jobs: false,
@@ -1191,7 +1196,14 @@ impl PhotocraftApp {
         self.save_as_step(path, None, tga_bits)
     }
 
-    /// File › Save back to the document's own layered file, recorded as a `file.save` step.
+    /// The file File › Save writes the active document back to without asking
+    /// (`DocState::own_file`): its own layered file, or the edit copy another app handed over.
+    pub(crate) fn save_target(&self) -> Option<String> {
+        self.session.active().and_then(|st| st.own_file()).map(str::to_string)
+    }
+
+    /// File › Save back to the document's own file ([`Self::save_target`]), recorded as a
+    /// `file.save` step. A TIFF keeps its layers without the TIFF Options prompt, like a PSD.
     pub(crate) fn save_in_place(&mut self, path: String) -> Result<Value, String> {
         if self.save_options_open() {
             return Err("Answer TIFF or Targa Options before starting another save".into());
@@ -1223,14 +1235,8 @@ impl PhotocraftApp {
             return Err("Answer TIFF or Targa Options before starting another save".into());
         }
         if id == "file.save" {
-            let path = self
-                .session
-                .active()
-                .ok_or("no document")?
-                .path
-                .clone()
-                .filter(|p| photocraft_engine::file_cmds::saves_in_place(p))
-                .ok_or("Save writes back only to the document's own PSD, PSB or .pcraft file")?;
+            self.session.active().ok_or("no document")?;
+            let path = self.save_target().ok_or("Save writes back only to the document's own PSD, PSB or .pcraft file")?;
             return self.save_in_place(path);
         }
         let path = params.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("Save As needs a `path`")?;

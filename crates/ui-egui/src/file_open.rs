@@ -65,11 +65,14 @@ impl PhotocraftApp {
     /// Record that the active document was just opened from `path`: File › Save writes back to it
     /// (unless it's a template or derivative preview) and it goes to the top of Open Recent.
     pub(crate) fn opened_from(&mut self, path: &str) {
+        // (taken off the list whatever happens next: the mark is for this one open)
+        let in_place = self.in_place_opens.remove(path);
         if !is_template(path)
             && let Some(st) = self.session.active_mut()
             && !st.source_read_only
         {
             st.path = Some(path.to_string());
+            st.edit_in_place = in_place;
         }
         self.push_recent(path);
     }
@@ -112,6 +115,26 @@ impl PhotocraftApp {
             match self.open_path(&abs) {
                 Ok(_) => opened += 1,
                 Err(e) => self.open_failed(&display_name(p), &e),
+            }
+        }
+        opened
+    }
+
+    /// [`Self::open_paths`] for edit copies another app handed over to be changed (the files of a
+    /// launch with `PHOTOCRAFT_EDIT_IN_PLACE` set): each document that opens is marked
+    /// `DocState::edit_in_place`, so File › Save writes back to the file instead of asking
+    /// where to save. Files opened any other way are not marked.
+    pub fn open_paths_in_place(&mut self, paths: &[String]) -> usize {
+        let mut opened = 0;
+        for p in paths {
+            let abs = absolute(p);
+            self.in_place_opens.insert(abs.clone());
+            match self.open_path(&abs) {
+                Ok(_) => opened += 1,
+                Err(e) => {
+                    self.in_place_opens.remove(&abs);
+                    self.open_failed(&display_name(p), &e);
+                }
             }
         }
         opened

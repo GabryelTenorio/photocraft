@@ -38,6 +38,16 @@ fn layered_mode(doc: &Document) -> bool {
     matches!(doc.pixel_format().mode, ColorMode::Grayscale | ColorMode::Rgb | ColorMode::Cmyk) && doc.mode != ColorMode::Multichannel && !doc.layers.is_empty()
 }
 
+/// `true` when a TIFF keeps `doc`'s colour mode and channels: the mode is one the TIFF codec
+/// writes as it is (an Indexed, Bitmap or Duotone document is written as the RGB or greyscale
+/// picture it shows, without its palette or inks; Lab and Multichannel are not written at all),
+/// and it has no alpha channels beyond transparency, which a TIFF drops. Its layers, if any, go
+/// into the layer data ([`export_layered`]) with whatever that warns about, as in a PSD; a lone
+/// Background is the flat image itself.
+pub fn holds(doc: &Document) -> bool {
+    matches!(doc.mode, ColorMode::Grayscale | ColorMode::Rgb | ColorMode::Cmyk) && !doc.layers.is_empty() && doc.channels.is_empty()
+}
+
 /// Replaces (or inserts) resource `id`; removes it when `data` is `None`.
 fn set_resource(resources: &mut Vec<ImageResource>, id: u16, data: Option<Vec<u8>>) {
     resources.retain(|r| r.id != id);

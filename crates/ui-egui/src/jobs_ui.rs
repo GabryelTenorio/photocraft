@@ -387,6 +387,12 @@ fn on_event(app: &mut PhotocraftApp, ctx: &egui::Context, e: JobEvent) {
     if e.command == OPEN_JOB {
         let Some(i) = app.jobs.opens.iter().position(|o| o.job == e.id) else { return };
         let tab = app.jobs.opens.remove(i);
+        // An open that didn't finish leaves no edit-in-place mark behind for a later open.
+        if !matches!(e.outcome, JobOutcome::Done(_))
+            && let Some(path) = &tab.path
+        {
+            app.in_place_opens.remove(path);
+        }
         match e.outcome {
             JobOutcome::Done(v) => {
                 if let Err(err) = finish_open(app, &tab.name, tab.path.as_deref(), &v, tab.slot) {

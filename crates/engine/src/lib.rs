@@ -186,6 +186,11 @@ pub struct DocState {
     pub path: Option<String>,
     /// An Affinity document (or its preview) must not acquire the native source as its Save path.
     pub source_read_only: bool,
+    /// The file is an edit copy another app handed over to be changed (`PHOTOCRAFT_EDIT_IN_PLACE`
+    /// on the launch that opened it): File › Save writes back to it without Save As while a
+    /// TIFF can hold the document (see [`DocState::own_file`]). Session state, cleared once
+    /// the document is saved to another file.
+    pub edit_in_place: bool,
     /// Increments on every change; UIs re-render when it moves.
     pub revision: u64,
     pub saved_revision: u64,
@@ -223,6 +228,7 @@ impl DocState {
             layer_anchor: active_layer,
             path,
             source_read_only: false,
+            edit_in_place: false,
             revision: 1,
             saved_revision: 1,
             last_damage: None,
