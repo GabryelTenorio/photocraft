@@ -51,7 +51,9 @@ The dev profile builds with `debug = "line-tables-only"`: panic backtraces keep 
 ### External editor flags
 
 `photocraft --wait <file>…` blocks until those files are closed: exit status 0 if any was saved,
-1 if all were closed unsaved (git `core.editor`, a photo manager's "Edit in", scripts). With
+1 if all were closed unsaved (git `core.editor`, a photo manager's "Edit in", scripts). `--single-instance` (or Preferences › General › Single Instance; off by default) hands files to
+an already running window over a token-protected loopback socket, `--wait` included;
+`--new-instance` forces a separate process. With
 `events.subscribe` on the control channel and `app.capabilities` for feature detection, this is
 described in the book's [External editor integration](../book/src/automation/external-editor.md).
 
