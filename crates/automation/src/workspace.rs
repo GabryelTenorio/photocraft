@@ -731,6 +731,7 @@ mod tests {
                 | "path.convertPoint"
                 | "path.clippingPath.set"
                 | "path.rename"
+                | "path.stroke"
                 | "select.toWorkPath"
                 | "layer.vectorMask.add"
                 | "layer.vectorMask.edit"
