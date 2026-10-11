@@ -280,7 +280,10 @@ pub fn fontconfig_cjk_scan_pending() -> bool {
 #[cfg(target_os = "linux")]
 fn fontconfig_match(script: CjkScript) -> Option<FontFile> {
     use std::ffi::OsString;
+    use std::io::Read as _;
     use std::os::unix::ffi::OsStringExt;
+
+    const MAX_FONT_BYTES: u64 = 128 << 20;
 
     let language = match script {
         CjkScript::Japanese => "ja",
@@ -304,7 +307,38 @@ fn fontconfig_match(script: CjkScript) -> Option<FontFile> {
         return None;
     }
     let family = String::from_utf8_lossy(family).trim().to_string();
-    (!family.is_empty()).then(|| FontFile { path: path.canonicalize().unwrap_or(path), family })
+    if family.is_empty() {
+        return None;
+    }
+
+    let file = std::fs::File::open(&path).ok()?;
+    let length = file.metadata().ok()?.len();
+    if length == 0 || length > MAX_FONT_BYTES {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(usize::try_from(length).ok()?).ok()?;
+    file.take(MAX_FONT_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    if u64::try_from(bytes.len()).ok()? > MAX_FONT_BYTES || !fontconfig_font_covers_sample(&bytes, &family, script) {
+        return None;
+    }
+
+    Some(FontFile { path: path.canonicalize().unwrap_or(path), family })
+}
+
+#[cfg(target_os = "linux")]
+fn fontconfig_font_covers_sample(bytes: &[u8], family: &str, script: CjkScript) -> bool {
+    use skrifa::MetadataProvider;
+
+    let index = face_index_for_family(bytes, family);
+    let Ok(font) = skrifa::FontRef::from_index(bytes, index) else { return false };
+    let sample = match script {
+        CjkScript::Japanese => "レイヤー図",
+        CjkScript::SimplifiedChinese => "图层",
+        CjkScript::TraditionalChinese => "圖層",
+        CjkScript::Korean => "카드 배경",
+    };
+    sample.chars().all(|character| font.charmap().map(character).is_some())
 }
 
 #[cfg(target_os = "linux")]
@@ -600,6 +634,25 @@ mod tests {
         let inter = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
         assert_eq!(face_index_for_family(inter, "Inter"), 0);
         assert_eq!(face_index_for_family(inter, ""), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn fontconfig_candidates_must_cover_the_requested_script() {
+        let inter = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
+        for script in [Japanese, SimplifiedChinese, TraditionalChinese, Korean] {
+            assert!(!fontconfig_font_covers_sample(inter, "Inter", script), "{script:?}");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn fontconfig_matches_cover_the_requested_script() {
+        for script in [Japanese, SimplifiedChinese, TraditionalChinese, Korean] {
+            let Some(file) = fontconfig_match(script) else { continue };
+            let bytes = std::fs::read(&file.path).expect("Fontconfig match remains readable");
+            assert!(fontconfig_font_covers_sample(&bytes, &file.family, script), "{script:?}: {}", file.path.display());
+        }
     }
 
     /// On a Mac with PingFang, the SC and TC faces are found by name (not a hard-coded index).
