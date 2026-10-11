@@ -3,7 +3,7 @@
 //! is up (egui is immediate-mode) and written once answered. The quality starts at
 //! Preferences › Export's JPEG quality (the scale Export As uses, 1–100).
 
-use crate::{ExportSettings, PhotocraftApp};
+use crate::PhotocraftApp;
 
 /// A save waiting on the JPEG Options answer.
 pub struct Prompt {
@@ -63,14 +63,14 @@ pub fn finish(app: &mut PhotocraftApp, ctx: &egui::Context, ok: bool) {
         app.ui.status_error = false;
         return;
     }
-    let settings = ExportSettings { jpeg_quality: Some(p.quality), ..Default::default() };
-    match app.with_document(p.doc, |app| app.write_document(p.path, &settings, false)) {
+    // Recorded as a `file.save` step with this quality.
+    match app.with_document(p.doc, |app| app.save_flat(p.path, Some(p.quality))) {
         Err(e) => {
             app.ui.status = crate::i18n::fmt(tl!("Save failed: {error}"), &[("error", &e)]);
             app.ui.status_error = true;
         }
-        Ok(Some(_)) => crate::discard_ui::saved_document(app, ctx, p.doc),
         // A background save releases the close prompt when it finishes (`jobs_ui`).
-        Ok(None) => {}
+        Ok(r) if r.get("pending").is_some() => {}
+        Ok(_) => crate::discard_ui::saved_document(app, ctx, p.doc),
     }
 }
