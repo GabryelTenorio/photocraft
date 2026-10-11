@@ -44,6 +44,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod cameras;
+mod chroma;
 mod color;
 mod cr2;
 mod demosaic;
@@ -69,6 +70,7 @@ mod tone;
 #[cfg(feature = "testgen")]
 pub mod testgen;
 
+pub use crate::chroma::{ChromaNoise, ColorNoise, NoiseFrame, estimate_color_noise, prophoto_luminance, reduce_color_noise};
 pub use crate::color::{Calibration, ColorInfo, Mat3};
 pub use crate::demosaic::Demosaic;
 pub use crate::develop::{DevelopOptions, Developed, RawInfo, WhiteBalance, develop_sensor, white_balance_of};
