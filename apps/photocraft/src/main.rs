@@ -20,48 +20,67 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+// On Android the crate builds the `cdylib` in lib.rs instead; this binary's desktop modules and
+// dependencies are compiled out, and `fn main` below is an empty stub. Everything desktop-only is
+// gated on `not(target_os = "android")` so the bin still type-checks for the Android target.
+#[cfg(not(target_os = "android"))]
+mod app;
+#[cfg(not(target_os = "android"))]
 mod app_dirs;
+#[cfg(not(target_os = "android"))]
 mod app_icon;
+#[cfg(not(target_os = "android"))]
 mod appearance;
-#[cfg(target_os = "macos")]
+#[cfg(all(not(target_os = "android"), target_os = "macos"))]
 mod apple_events;
+#[cfg(not(target_os = "android"))]
 mod caps_lock;
+#[cfg(not(target_os = "android"))]
 mod control_server;
+#[cfg(not(target_os = "android"))]
 mod crash_guard;
+#[cfg(not(target_os = "android"))]
 mod cursor;
+#[cfg(not(target_os = "android"))]
 mod gpu_startup;
-#[cfg(target_os = "macos")]
+#[cfg(all(not(target_os = "android"), target_os = "macos"))]
 mod mac_menu;
-#[cfg(target_os = "macos")]
+#[cfg(all(not(target_os = "android"), target_os = "macos"))]
 mod mac_window;
 // Pure logic is tested on every platform; only Linux runs the check.
-#[cfg(any(target_os = "linux", test))]
+#[cfg(all(not(target_os = "android"), any(target_os = "linux", test)))]
 mod linux_libs;
+#[cfg(not(target_os = "android"))]
 mod logging;
+#[cfg(not(target_os = "android"))]
 mod monitor_profile;
+#[cfg(not(target_os = "android"))]
 mod photoshop_settings;
+#[cfg(not(target_os = "android"))]
 mod screen_color;
+#[cfg(not(target_os = "android"))]
 mod services;
 // Windows gets pen pressure from winit (WM_POINTER); the web runner has its own listener.
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
+#[cfg(all(not(target_os = "android"), any(target_os = "macos", target_os = "linux", test)))]
 mod tablet;
+#[cfg(not(target_os = "android"))]
 mod ui_state;
 mod window_frame;
 
-use photocraft_engine::Session;
-use photocraft_ui_egui::PhotocraftApp;
-
 /// Matches the `.desktop` file and hicolor icon name, so Wayland docks pick up the icon.
+#[cfg(not(target_os = "android"))]
 const APP_ID: &str = "ai.storyteller.photocraft";
 
 /// Windows and Linux: no OS title bar; the app's top bar is the title bar, with its own caption
 /// buttons and edge resizing (`photocraft_ui_egui::titlebar`), as Photoshop does on Windows. macOS
 /// keeps its traffic lights over the integrated title strip.
+#[cfg(not(target_os = "android"))]
 const CUSTOM_TITLEBAR: bool = !cfg!(target_os = "macos");
 
 /// Whether this start draws its own title bar: Windows and Linux do, unless Preferences ›
 /// Interface › System Title Bar asks for the system's (#1271, #1316). Read from the saved
 /// preferences before the window opens; a missing or unreadable file keeps the default.
+#[cfg(not(target_os = "android"))]
 fn custom_titlebar(prefs_file: Option<&std::path::Path>) -> bool {
     let prefs: photocraft_engine::prefs::Preferences =
         prefs_file.and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
@@ -72,6 +91,7 @@ fn custom_titlebar(prefs_file: Option<&std::path::Path>) -> bool {
 /// when it still doesn't fit, `work_area::fit_window`), centred on the main monitor. Without
 /// `centered`, Windows cascades each new window from the top-left corner, so it opened at a
 /// different offset every launch (#419). Wayland compositors place windows themselves.
+#[cfg(not(target_os = "android"))]
 fn native_options(custom_titlebar: bool) -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -96,17 +116,19 @@ fn native_options(custom_titlebar: bool) -> eframe::NativeOptions {
 /// Parse a `--control` / `PHOTOCRAFT_CONTROL_PORT` value. An unparseable port is an error that
 /// names the value (issue #701): silently running with no control server leaves a launcher or
 /// agent unable to tell a typo from a successful grant.
+#[cfg(not(target_os = "android"))]
 fn parse_control_port(value: &str, source: &str) -> Result<u16, String> {
     value.trim().parse().map_err(|_| format!("{source}: `{value}` is not a valid port (expected a number from 0 to 65535)"))
 }
 
 /// Process exit status for the collected `--control` / `PHOTOCRAFT_CONTROL_PORT` errors: `None`
 /// when there are none, else 2 (a command-line usage error), never 0.
+#[cfg(not(target_os = "android"))]
 fn control_args_exit_code(errors: &[String]) -> Option<i32> {
     if errors.is_empty() { None } else { Some(2) }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "android")))]
 mod control_port_tests {
     use super::{control_args_exit_code, parse_control_port};
 
@@ -135,6 +157,7 @@ mod control_port_tests {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
@@ -348,14 +371,12 @@ fn main() -> eframe::Result {
                         services::xwayland_command(var("FLATPAK_ID").as_deref(), var("APPIMAGE").as_deref(), std::env::var_os("DISPLAY").is_some());
                 }
             }
-            let mut app = PhotocraftApp::new(Session::new(), services);
+            let mut app = app::build_app(services);
             app.integrated_titlebar = cfg!(target_os = "macos");
             app.custom_titlebar = custom_titlebar;
             // Only the title bar's free gap drags the window, never the menus (mac_window.rs).
             #[cfg(target_os = "macos")]
             mac_window::disable_native_title_drag();
-            // Long commands and file opens run as background jobs with progress and Cancel (#210).
-            app.background_jobs = std::env::var_os("PHOTOCRAFT_INLINE_JOBS").is_none();
             // Displays and their profiles (#569): wait briefly so the first frames already use
             // the right profile; a slower reading is applied when it arrives, and the shell reads
             // again when the displays may have changed.
@@ -522,7 +543,13 @@ fn main() -> eframe::Result {
     result
 }
 
-#[cfg(test)]
+/// Android: the real entry point is `android_main` in `lib.rs` (the `cdylib`, built by
+/// `cargo ndk --lib`). This stub `main` exists only so the `photocraft` binary target also
+/// type-checks for the Android target instead of failing with "no `main` function".
+#[cfg(target_os = "android")]
+fn main() {}
+
+#[cfg(all(test, not(target_os = "android")))]
 mod tests {
     #[test]
     fn window_and_panel_geometry_survive_a_restart() {
