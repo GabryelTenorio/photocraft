@@ -40,6 +40,7 @@ pub mod canvas;
 mod canvas_popup;
 pub mod canvas_tool_menu;
 pub mod channel_view;
+pub mod channel_options_ui;
 pub mod channels_panel;
 pub mod chrome_ui;
 pub mod cjk_fonts;
