@@ -307,7 +307,8 @@ fn params_contain_ambient_path(id: &str, params: &Value) -> bool {
 }
 
 fn profile_command_may_read_ambient(id: &str, params: &Value) -> bool {
-    if matches!(id, "color.profileMismatch" | "edit.colorSettings" | "view.proofSetup") {
+    // Installed-profile enumeration scans OS/user folders even with empty params.
+    if matches!(id, "color.profileMismatch" | "edit.colorSettings" | "edit.installedProfiles" | "view.proofSetup") {
         return true;
     }
     matches!(id, "edit.assignProfile" | "edit.convertToProfile" | "edit.profileInfo")
@@ -750,6 +751,23 @@ mod tests {
             authorize_engine_command("prefs.set", &serde_json::json!({"values": {"interface.language": "fr", "historyLog.filePath": "/outside/log"}})).is_err()
         );
         assert!(authorize_engine_command("prefs.set", &serde_json::json!({"path": "interface.language", "value": "fr"})).is_ok());
+    }
+
+    #[test]
+    fn installed_profiles_scans_require_trusted_filesystem_access() {
+        let mut headless = crate::Headless::new();
+        let (_, _, workspace) = roots("installed-profiles-authority");
+        let mut scoped = crate::Headless::with_workspace(workspace);
+        for params in [serde_json::json!({}), serde_json::json!({"class": "output", "colorSpace": "cmyk"}), serde_json::json!({"path": "/outside/profile.icc"})]
+        {
+            assert!(authorize_engine_command("edit.installedProfiles", &params).is_err());
+            assert!(authorize_desktop_engine_command("edit.installedProfiles", &params).is_err());
+            // A workspace grant cannot authorize implicit scans of OS/user profile folders.
+            for session in [&mut headless, &mut scoped] {
+                let error = session.command_run("edit.installedProfiles", params.clone()).unwrap_err();
+                assert!(error.to_string().contains("ambient filesystem paths"), "{error}");
+            }
+        }
     }
 
     #[test]
