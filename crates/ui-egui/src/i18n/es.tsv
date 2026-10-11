@@ -39,6 +39,8 @@
 	Right	Derecha
 	Open Recent	Archivos recientes
 	Clear Recent Files	Vaciar archivos recientes
+	Remove from Recent	Quitar de recientes
+	Remove {name} from Recent	Quitar {name} de recientes
 	Close	Cerrar
 	Minimize	Minimizar
 	Maximize	Maximizar
@@ -263,6 +265,8 @@
 	Layer via Cut	Capa vía corte
 	Layer From Background…	Capa a partir del fondo…
 	Layer from Background…	Capa a partir del fondo…
+	Background from Layer	Fondo a partir de capa
+	Background From Layer	Fondo a partir de capa
 	New Shape Layer	Nueva capa de forma
 	New Type Layer	Nueva capa de texto
 	New Fill Layer	Nueva capa de relleno
@@ -686,6 +690,10 @@
 	Classic Theme	Tema Clásico
 	Solarized dark	Solarized oscuro
 	Solarized Dark Theme	Tema Solarized oscuro
+	Breeze dark	Breeze oscuro
+	Breeze Dark Theme	Tema Breeze oscuro
+	Breeze light	Breeze claro
+	Breeze Light Theme	Tema Breeze claro
 	Next Theme	Tema siguiente
 	Actions	Acciones
 	Brush Settings	Ajustes del pincel
@@ -1530,6 +1538,7 @@
 	Blur Tool	Herramienta Desenfocar
 	Bold	Negrita
 	Brush	Pincel
+	Block	Bloque
 	Brush Pose	Postura del pincel
 	Brush Tip Shape	Forma de la punta del pincel
 	Brush Tool	Herramienta Pincel
@@ -1579,6 +1588,8 @@
 	Efficiency: 100%	Eficiencia: 100%
 	Ellipse Tool	Herramienta Elipse
 	Elliptical Marquee Tool	Herramienta Marco elíptico
+	Single Row Marquee Tool	Herramienta Marco de fila única
+	Single Column Marquee Tool	Herramienta Marco de columna única
 	Emboss	Relieve
 	Eraser	Borrador
 	Eraser Tool	Herramienta Borrador
@@ -1655,6 +1666,10 @@
 	Paints from the document's opening state	Pinta a partir del estado en que se abrió el documento.
 	Path Selection Tool	Herramienta Selección de trazado
 	Direct Selection Tool	Herramienta Selección directa
+	Add Anchor Point Tool	Herramienta Añadir punto de ancla
+	Delete Anchor Point Tool	Herramienta Eliminar punto de ancla
+	Click a segment to add an anchor point · {alt}-click an anchor to delete it	Haz clic en un segmento para añadir un punto de ancla · {alt}-clic en un punto de ancla para eliminarlo
+	Click an anchor point to delete it · {alt}-click a segment to add one	Haz clic en un punto de ancla para eliminarlo · {alt}-clic en un segmento para añadir uno
 	Pattern Overlay	Superposición de patrón
 	Pen Pressure	Presión del lápiz
 	Pen Tilt	Inclinación del lápiz
@@ -1747,6 +1762,7 @@
 	Invalid {mode} profile	Perfil {mode} no válido
 	Unnamed {mode} profile	Perfil {mode} sin nombre
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Resolución: {dpi} píxeles/pulgada
 	Doc: {w} × {h} px	Doc: {w} × {h} px
 	Frame {current} / {total}	Fotograma {current} / {total}
@@ -1785,6 +1801,7 @@
 	Cache tile size	Tamaño de tesela de caché
 	Camera Raw Defaults	Valores predeterminados de Camera Raw
 	Canvas border	Borde del lienzo
+	Show canvas dots	Mostrar puntos del lienzo
 	Canvas color	Color del lienzo
 	Canvas custom color	Color personalizado del lienzo
 	Color picker	Selector de color
@@ -1899,6 +1916,7 @@
 	Show only crosshair while painting	Mostrar solo la retícula al pintar
 	Show slice numbers	Mostrar los números de sección
 	Show tooltips	Mostrar las descripciones emergentes
+	Show highlight on rollover	Mostrar resaltado al pasar el cursor
 	Show bounding box when dragging layer	Mostrar el cuadro delimitador al arrastrar la capa
 	System title bar	Barra de título del sistema
 	Show transformation values	Mostrar los valores de transformación
@@ -2006,6 +2024,7 @@
 	Create Warped Text	Crear texto deformado
 	Rasterize Smart Object	Rasterizar objeto inteligente
 	Rasterize Fill Content	Rasterizar contenido de relleno
+	Rasterize Layer Style	Rasterizar estilo de capa
 	Unlock: picking a preset replaces these settings	Desbloquear: al elegir un preajuste se reemplazan estos ajustes
 	Lock: keep these settings when picking another preset	Bloquear: conservar estos ajustes al elegir otro preajuste
 	Diameter:	Diámetro:
@@ -2029,6 +2048,7 @@
 	Apply the pen's tilt and rotation to the tip shape	Aplicar la inclinación y la rotación del lápiz a la forma de la punta
 	Mixer Brush	Pincel mezclador
 	Mixer Brush Tool	Herramienta Pincel mezclador
+	Color Replacement Tool	Herramienta Sustitución de color
 	Wet	Húmedo
 	Mix	Mezcla
 	Wetness Jitter	Variación de humedad
@@ -2080,6 +2100,7 @@
 	Cancelled {label}	Se canceló {label}
 	Esc to cancel	Esc para cancelar
 	Opening {name}	Abriendo {name}
+	Saved {name}	Guardado: {name}
 	Saving {name}	Guardando {name}
 	A save to {name} is still running; try again when it finishes	Todavía se está guardando {name}; inténtalo de nuevo cuando termine
 	{label} is writing the file and can no longer be cancelled	{label} está escribiendo el archivo y ya no se puede cancelar
@@ -2406,6 +2427,7 @@ fontWeight	Italic	Cursiva
 	Color to Alpha…	Color a alfa…
 	Transparency Threshold	Umbral de transparencia
 	Opacity Threshold	Umbral de opacidad
+	PhotoCraft — Screen Color Picker	PhotoCraft — Selector de color de pantalla
 
 	Rasterize svg groups deeper than	Rasterizar grupos SVG con mayor profundidad
 	0 turns this threshold off; SVG groups nested deeper than 100 levels are always rasterized.	0 desactiva este umbral; los grupos SVG anidados a más de 100 niveles siempre se rasterizan.
@@ -2488,6 +2510,37 @@ fontWeight	Italic	Cursiva
 	Quick Selection found nothing there	Selección rápida no encontró nada ahí
 	Object Selection found nothing there — try a tighter rectangle	Selección de objeto no encontró nada ahí — pruebe un rectángulo más ajustado
 	No subject found — try a rectangle around the object	No se encontró ningún sujeto — pruebe un rectángulo alrededor del objeto
+	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Haz clic en el primer punto o pulsa {key} para cerrar · {del} elimina un punto · Esc cancela
+	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Haz clic y sigue un borde · haz clic para fijar un punto · {alt}-clic para un segmento recto · doble clic para cerrar
+	Follows only edges this close to the pointer ([ and ] change it)	Solo sigue bordes así de cerca del puntero ([ y ] lo cambian)
+	Higher values follow only edges that contrast sharply with their surroundings	Los valores altos solo siguen bordes con mucho contraste con su entorno
+	How often fastening points are placed by themselves	Con qué frecuencia se colocan puntos de fijación automáticamente
+	Appearance Settings…	Ajustes de apariencia…
+	Add to favorites	Añadir a favoritos
+	Remove from favorites	Quitar de favoritos
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+	Camera Data	Datos de cámara
+cameraData	Make	Marca
+cameraData	Model	Modelo
+cameraData	Date Taken	Fecha de captura
+cameraData	Exposure	Tiempo de exposición
+cameraData	F-Stop	Número f
+cameraData	ISO Speed	Sensibilidad ISO
+cameraData	Focal Length	Longitud focal
+cameraData	Focal Length (35 mm)	Longitud focal (35 mm)
+cameraData	Lens	Objetivo
+# Shared panel docking
+	Activate Panel	Activar panel
+	Change Panel Group	Cambiar grupo de paneles
+	Change Panel Layout	Cambiar disposición de paneles
+	Close Panel	Cerrar panel
+	Dock Panel	Acoplar panel
+	Float Panel	Panel flotante
+	Move Panel	Mover panel
+	Group with	Agrupar con
+	Panel menu	Menú del panel
+	Resize panel window	Cambiar tamaño de la ventana del panel
+	Resize panels	Cambiar tamaño de los paneles
 
 # Add Noise, Reduce Noise and Smart Sharpen dialog controls (Filter > Noise, Filter > Sharpen).
 	Distribution	Distribución
@@ -2506,3 +2559,11 @@ fontWeight	Italic	Cursiva
 	Previous Document	Documento anterior
 	W x H x Resolution	An. x Al. x Resolución
 	Front Image	Imagen frontal
+	New Crop Preset…	Nuevo ajuste preestablecido de recorte…
+	Delete Crop Preset…	Eliminar ajuste preestablecido de recorte…
+	Select the crop presets to delete:	Seleccione los ajustes preestablecidos de recorte que desea eliminar:
+	Select the crop presets to delete	Seleccione los ajustes preestablecidos de recorte que desea eliminar
+	Enter a name for the crop preset	Introduzca un nombre para el ajuste preestablecido de recorte
+	There is no crop size or ratio to save	No hay ningún tamaño ni proporción de recorte que guardar
+	Search settings…	Buscar ajustes…
+	No matching settings	No hay ajustes que coincidan

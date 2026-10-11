@@ -126,7 +126,7 @@ pub fn draw_grid(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, d
         }
         let st = Stroke::new(1.0, base.gamma_multiply(alpha));
         let [step_x, step_y] = steps;
-        if step_x * (xf.zoom as f64) >= 6.0 {
+        if step_x * (xf.zoom_x() as f64) >= 6.0 {
             let mut x = step_x;
             while x < w {
                 styled_line(painter, xf.to_screen(x as f32, 0.0), xf.to_screen(x as f32, h as f32), st, g.grid_style);
@@ -245,8 +245,11 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     let whole = unit == photocraft_engine::prefs::Unit::Pixels;
     let label = |v: f64, step: f64| -> String { if step >= 1.0 || whole { format!("{}", v.round() as i64) } else { crate::widgets::fmt_num2(v) } };
     for (vertical, extent) in [(false, size[0]), (true, size[1])] {
+        let p = p.with_clip_rect(if vertical { left } else { top });
         let px_per_unit = unit.to_px(1.0, dpi, extent, ppi).max(1e-9);
-        let step = nice_step(60.0 / (xf.zoom as f64 * px_per_unit).max(1e-6), whole);
+        // The top ruler runs along document x, which pixel aspect correction stretches.
+        let zoom = if vertical { xf.zoom } else { xf.zoom_x() };
+        let step = nice_step(60.0 / (zoom as f64 * px_per_unit).max(1e-6), whole);
         let (u0, u1) = if vertical {
             ruler_range(xf, left.left_top(), left.left_bottom(), 1, px_per_unit)
         } else {
@@ -284,8 +287,8 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     // Pointer position markers.
     if let Some(h) = ui.ctx().pointer_hover_pos().filter(|h| full.contains(*h)) {
         let m = Stroke::new(1.0, t.text);
-        p.line_segment([pos2(h.x, top.top()), pos2(h.x, top.bottom())], m);
-        p.line_segment([pos2(left.left(), h.y), pos2(left.right(), h.y)], m);
+        p.with_clip_rect(top).line_segment([pos2(h.x, top.top()), pos2(h.x, top.bottom())], m);
+        p.with_clip_rect(left).line_segment([pos2(left.left(), h.y), pos2(left.right(), h.y)], m);
     }
     // Drag a new guide out of a ruler; right-click to switch the ruler unit.
     let mut chosen_unit: Option<&'static str> = None;
@@ -322,6 +325,45 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ruler_ticks_labels_and_pointer_stay_out_of_the_origin_corner() {
+        let mut failures = Vec::new();
+        for theme in crate::theme::ThemeKind::ALL {
+            for (zoom, flip, rotation, width) in [(1.0, false, 0.0, 560.0), (1.0, false, 0.0, 800.0), (0.25, true, 0.0, 560.0), (2.0, false, 30.0, 560.0)] {
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+                app.run("file.new", json!({"width": 256, "height": 128})).unwrap();
+                let full = Rect::from_min_size(pos2(32.0, 32.0), vec2(width - 80.0, 320.0));
+                let corner = Rect::from_min_size(full.min, vec2(RULER, RULER));
+                let builder = egui_kittest::Harness::builder().with_size(vec2(width, 400.0));
+                let mut h = builder.build_ui_state(
+                    move |ui, app| {
+                        let rect = Rect::from_min_max(full.min + vec2(RULER, RULER), full.max);
+                        let xf = ViewXform { rect, zoom, center: [(width - 80.0) / 2.0, 160.0], flip, rotation, aspect: 1.0 };
+                        draw_rulers(app, ui, full, &xf);
+                    },
+                    app,
+                );
+                PhotocraftApp::setup_context(&h.ctx, theme);
+                h.event(egui::Event::PointerMoved(corner.center()));
+                h.run_steps(4);
+                let mut ticks = 0;
+                let mut labels = 0;
+                for shape in &h.output().shapes {
+                    if matches!(shape.shape, egui::Shape::LineSegment { .. } | egui::Shape::Text(_)) {
+                        ticks += usize::from(matches!(shape.shape, egui::Shape::LineSegment { .. }));
+                        labels += usize::from(matches!(shape.shape, egui::Shape::Text(_)));
+                        let visible = shape.shape.visual_bounding_rect().intersect(shape.clip_rect);
+                        if visible.intersect(corner.shrink(0.5)).is_positive() {
+                            failures.push(format!("{theme:?}: zoom={zoom}, flip={flip}, rotation={rotation}, {visible:?}"));
+                        }
+                    }
+                }
+                assert!(ticks > 2 && labels > 0, "rulers still draw ticks and labels");
+            }
+        }
+        assert!(failures.is_empty(), "ruler drawing overlaps the origin corner: {failures:?}");
+    }
 
     #[test]
     fn percentage_grid_spacing_uses_both_canvas_dimensions() {
@@ -471,7 +513,7 @@ mod tests {
         let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
         let top = Rect::from_min_size(rect.min, vec2(rect.width(), RULER));
         for flip in [false, true] {
-            let xf = ViewXform { rect, zoom: 1.0, center: [400.0, 300.0], flip, rotation: 0.0 };
+            let xf = ViewXform { rect, zoom: 1.0, center: [400.0, 300.0], flip, rotation: 0.0, aspect: 1.0 };
             let (u0, u1) = ruler_range(&xf, top.left_top(), top.right_top(), 0, 1.0);
             assert!(u0 <= u1, "flip={flip}: u0 ({u0}) must be <= u1 ({u1})");
             assert!(u1 - u0 > 0.0, "flip={flip}: range is empty");
