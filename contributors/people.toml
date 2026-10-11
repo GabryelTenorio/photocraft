@@ -106,3 +106,8 @@ display_name = "SyntaxError"
 
 [people.axlecoffee]
 sync_github_name = true
+
+[people.Gotix-eg]
+real_name = "Ahmed Tammam"
+display_name = "Ahmed Tammam"
+sync_github_name = true
