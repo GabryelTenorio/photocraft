@@ -76,6 +76,7 @@ pub mod filter_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod filter_preview_worker;
 mod font_preview;
+pub mod frame_tool;
 pub mod gallery_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
@@ -2161,6 +2162,9 @@ mod warp_text_dialog_tests;
 mod blend_dropdown_wheel_tests;
 
 #[cfg(test)]
+mod dropdown_press_tests;
+
+#[cfg(test)]
 mod marquee_tests;
 
 #[cfg(test)]
@@ -2174,6 +2178,8 @@ mod stamp_tests;
 
 #[cfg(test)]
 mod alt_click_tests;
+#[cfg(test)]
+mod status_bar_tests;
 #[cfg(test)]
 mod stroke_timing_tests;
 
