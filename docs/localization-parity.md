@@ -45,9 +45,9 @@ catalog).
 
 ## Other shipped languages
 
-8 more, each at 1,608 / 1,608 measured keys, status `partial` for the same reason: Traditional
-Chinese `zh-hant` (2,329 rows), Russian `ru` (2,544), Ukrainian `uk` (3,375), Czech `cs` (2,337),
-Polish `pl` (3,366), Greek `el` (3,481), Dutch `nl` (3,568), Italian `it` (2,411).
+9 more, each at 1,727 / 1,727 measured keys, status `partial` for the same reason: Traditional
+Chinese `zh-hant` (2,514 rows), Russian `ru` (2,782), Ukrainian `uk` (3,545), Czech `cs` (2,522),
+Polish `pl` (3,538), Greek `el` (3,647), Dutch `nl` (3,729), Italian `it` (2,588), Turkish `tr` (3,731).
 
 ## Cross-language gaps
 
@@ -64,5 +64,6 @@ Polish `pl` (3,366), Greek `el` (3,481), Dutch `nl` (3,568), Italian `it` (2,411
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | Added Turkish (`tr`) catalog with 100% measured UI coverage (1,727 keys, 3,731 rows) |
 | 2026-10-10 | major | First version, measured from the catalogs with the `i18n-coverage` rules |
 | 2026-10-10 | minor | Right-to-left shell layout (menu bar, title, options and status bars, toolbox and dock sides) |
