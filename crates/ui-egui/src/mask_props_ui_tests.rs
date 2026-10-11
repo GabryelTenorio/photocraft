@@ -148,6 +148,8 @@ fn vector_mask_properties_edit_density_and_feather() {
     drag(&mut h, 0, &[1.0, 0.8, 0.5]);
     let vm = h.state().session.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().vector_mask.clone().unwrap();
     assert!((vm.density - 0.5).abs() < 0.02, "density edited through the vector mask command: {}", vm.density);
+}
+
 /// Document-wide row of mask coverage (or of the layer's own red channel) across the middle.
 fn row(h: &Harness<'_, PhotocraftApp>, of_mask: bool) -> Vec<f32> {
     let s = h.state().session.active().unwrap();
