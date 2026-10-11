@@ -339,7 +339,7 @@ mod tests {
                 let mut h = builder.build_ui_state(
                     move |ui, app| {
                         let rect = Rect::from_min_max(full.min + vec2(RULER, RULER), full.max);
-                        let xf = ViewXform { rect, zoom, center: [(width - 80.0) / 2.0, 160.0], flip, rotation };
+                        let xf = ViewXform { rect, zoom, center: [(width - 80.0) / 2.0, 160.0], flip, rotation, aspect: 1.0 };
                         draw_rulers(app, ui, full, &xf);
                     },
                     app,
