@@ -683,7 +683,8 @@ fn pixel_hover_gpu_badge_single_band_and_crosshair_appear_and_clear_in_all_theme
         assert_eq!(changed.len(), (last - first + 1) as usize, "{theme:?}: one connected band");
         let rgb = inspect(&h)["hoverSample"]["rgb"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect::<Vec<_>>();
         let tone = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-        let plot = histogram.shrink(4.0);
+        // The plot spans the block edge to edge (Camera Raw's), below a 6 pt top margin.
+        let plot = Rect::from_min_max(histogram.min + vec2(1.0, 6.0), histogram.max - vec2(1.0, 0.0));
         let expected = plot.left() as f64 + tone * plot.width() as f64;
         assert!((f64::from(first + last) * 0.5 - expected).abs() <= 1.0, "{theme:?}: marker follows the pixel tone");
         assert!(area_changed(scope), "{theme:?}: vectorscope target");

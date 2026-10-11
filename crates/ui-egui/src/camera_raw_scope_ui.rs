@@ -384,8 +384,9 @@ fn graph(ui: &mut egui::Ui, d: &mut CameraRawDialog, view: &mut CameraRawScopeSt
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), tl!("Tone Histogram")));
     // Camera Raw's histogram fills its block edge to edge on the rule colour.
     ui.painter().rect_filled(rect, 0.0, crate::camera_raw_style::Acr::get(ui.ctx()).rule);
-    let plot = rect.shrink2(vec2(4.0, 8.0));
-    crate::rgb_histogram::paint(ui.painter(), plot, d.histogram(), &t);
+    // Edge to edge and down to the bottom, as Camera Raw draws it.
+    let plot = Rect::from_min_max(rect.min + vec2(1.0, 6.0), rect.max - vec2(1.0, 0.0));
+    crate::rgb_histogram::paint_with(ui.painter(), plot, d.histogram(), &t, crate::rgb_histogram::Spikes::Clip);
     let corner = 18.0;
     if let Some(sample) = d.hover_sample(false) {
         crate::rgb_histogram::paint_sample(ui.painter(), plot, sample.rgb, &t);
