@@ -7,6 +7,24 @@
 # Licensed MIT OR Apache-2.0. See LICENSE-translations.txt and ATTRIBUTION.md.
 # Product names and technology names retain their spelling.
 
+# Guide layout dialog
+	Columns	열
+	Rows	행
+	Number	개수
+	Top:	위:
+	Left:	왼쪽:
+	Bottom:	아래:
+	Right:	오른쪽:
+	Target:	대상:
+	Selected Artboards	선택한 아트보드
+	Center Columns	열 가운데 정렬
+	Clear Existing Guides	기존 안내선 지우기
+	Invalid guide layout	잘못된 안내선 레이아웃
+	Leave empty for automatic size	자동 크기를 사용하려면 비워 두세요
+	5 Columns, 3 Rows	5열, 3행
+	8 Columns	8열
+	12 Columns	12열
+
 	File	파일
 	Edit	편집
 	Image	이미지
@@ -662,6 +680,8 @@
 	Theme	테마
 	Pro Theme	프로 테마
 	Pro Medium Gray Theme	프로 중간 회색 테마
+	Pro Light Gray Theme	프로 밝은 회색 테마
+	Pro Light Theme	프로 밝은 테마
 	Studio Theme	스튜디오 테마
 	Studio Light Theme	스튜디오 밝은 테마
 	Adwaita Light Theme	Adwaita 밝은 테마
@@ -795,6 +815,9 @@
 	Bend:	구부림:
 	Bicubic	쌍입방
 	Bicubic (smooth gradients)	쌍입방(부드러운 그레이디언트)
+	Automatic	자동
+	Bicubic Smoother (enlargement)	쌍입방 더 부드럽게(확대)
+	Bicubic Sharper (reduction)	쌍입방 더 선명하게(축소)
 	Bilinear	쌍선형
 	Black	검정
 	Black & White	흑백
@@ -1475,6 +1498,7 @@
 	White Balance: As Shot	화이트 밸런스: 촬영 시 설정
 	Whites	흰색 계열
 	Width	너비
+	Slant	기울기
 	Width:	너비:
 	Work Path	작업 패스
 	Yellow	노랑
@@ -1650,6 +1674,7 @@
 	Pen Pressure	펜 압력
 	Pen Tilt	펜 기울기
 	Pen Tool	펜 도구
+	Convert Point Tool	기준점 변환 도구
 	Photo	사진
 	PhotoCraft website	PhotoCraft 웹사이트
 	Picas	파이카
@@ -1665,6 +1690,8 @@
 	Postcard	엽서
 	Poster	포스터
 	Pro (Dark)	프로(어둡게)
+	Pro (Light)	프로(밝게)
+	Pro (Light Gray)	프로(밝은 회색)
 	Pro (Medium Gray)	프로(중간 회색)
 	Protect Texture	텍스처 보호
 	Purple	보라
@@ -1859,6 +1886,8 @@
 	Preserve details	세부 정보 유지
 	Print resolution	인쇄 해상도
 	Pro	프로
+	Pro light	프로 밝게
+	Pro light gray	프로 밝은 회색
 	Pro medium	프로 중간 회색
 	Pro photo	ProPhoto
 	Quick export format	빠른 내보내기 형식
@@ -2061,6 +2090,7 @@
 	Developing {name}	{name} 현상 중
 	Cancelled {label}	{label} 작업을 취소했습니다
 	Esc to cancel	Esc 키로 취소
+	Opened {name}	{name} 열림
 	Opening {name}	{name} 여는 중
 	Saved {name}	{name} 저장됨
 	Saving {name}	{name} 저장 중
@@ -2881,6 +2911,19 @@ cameraRaw	Color	색상
 	Domed	돔
 	Domed (Inverted)	돔(반전)
 	Diagonal (Descending)	대각선(내림)
+	Contour Editor	윤곽선 편집기
+	Anti-aliased	앤티 앨리어스
+	Corner	모퉁이
+	Gloss Contour	광택 윤곽선
+	Contour	윤곽선
+	Cone - Inverted	원뿔 - 반전
+	Cove - Deep	후미 - 깊게
+	Cove - Shallow	후미 - 얕게
+	Half Round	반원
+	Ring - Double	링 - 이중
+	Rolling Slope - Descending	구르는 경사 - 내림차순
+	Rounded Steps	둥근 계단
+	Sawtooth 1	톱니 1
 
 	Red Eye Tool	적목 현상 도구
 	Red Eye	적목 현상
@@ -3068,6 +3111,19 @@ cameraData	Lens	렌즈
 	Previous Document	이전 문서
 	W x H x Resolution	폭 x 높이 x 해상도
 	Front Image	전면 이미지
+	Frame Tool	프레임 도구
+	Create a new rectangular frame	새 사각형 프레임 만들기
+	Create a new elliptical frame	새 타원형 프레임 만들기
+	Include in playback	재생에 포함
+	Perspective Crop Tool	원근 자르기 도구
+	Show Grid	격자 표시
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	상자를 드래그하거나 네 모서리를 클릭 · 모서리를 기울어진 모양의 가장자리로 드래그 · {commit} 적용 · Esc 취소
+	Artboard Tool	아트보드 도구
+	Make Portrait	세로 방향으로
+	Make Landscape	가로 방향으로
+	Add New Artboard	새 아트보드 추가
+	W	폭
+	H	높이
 	Freeform Pen Tool	자유 형태 펜 도구
 	Curvature Pen Tool	곡률 펜 도구
 	Curve Fit:	곡선 맞춤:
@@ -3079,5 +3135,28 @@ cameraData	Lens	렌즈
 	Select the crop presets to delete	삭제할 자르기 사전 설정을 선택하십시오
 	Enter a name for the crop preset	자르기 사전 설정의 이름을 입력하십시오
 	There is no crop size or ratio to save	저장할 자르기 크기나 비율이 없습니다
+	Scale:	비율:
+	Snap to Origin	원점에 스냅
 	Search settings…	설정 검색…
 	No matching settings	일치하는 설정 없음
+# Select and Mask view modes (#1754)
+	Onion Skin	어니언 스킨
+	Marching Ants	점선 윤곽
+	On Black	검정 배경
+	On White	흰색 배경
+	On Layers	레이어 위
+	Show Edge	가장자리 표시
+	Show Original	원본 표시
+	F cycles the views; hold X to see the image	F로 보기 전환, X를 누르고 있으면 이미지 표시
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	가장자리 다듬기 브러시 (R)
+	Expand Detection Area	감지 영역 확장
+	Restore Original Edge	원래 가장자리 복원
+	Paint over hair or fur on the image; Alt paints the other mode	이미지의 머리카락이나 털 위를 칠합니다. Alt는 다른 모드로 칠합니다
+	Clear Brush Strokes	브러시 획 지우기
+	Show rulers	눈금자 표시
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	클릭하여 배치 · Alt-클릭 또는 캔버스 밖으로 드래그하여 제거
+	No document open	열린 문서 없음
+	{n} of {max} sample points	{max}개 중 {n}개의 샘플 지점

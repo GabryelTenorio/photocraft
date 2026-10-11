@@ -139,6 +139,7 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
             crop_custom_ratio_width,
             crop_custom_ratio_height,
         ),
+        Tool::PerspectiveCrop => reset!(crop_width, crop_height, crop_resolution, crop_resolution_unit, perspective_crop_grid),
         Tool::Eyedropper => reset!(eyedropper_size, eyedropper_sample, eyedropper_ring),
         Tool::Pencil => reset!(pencil_auto_erase),
         Tool::BackgroundEraser => reset!(bg_sampling, bg_limits, bg_tolerance, bg_protect_fg),
@@ -164,7 +165,8 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => {
             reset!(vector_mode, shape_fill, stroke_width, shape_stroke, corner_radius, polygon_sides, line_weight)
         }
-        Tool::Ruler
+        Tool::ColorSampler
+        | Tool::Ruler
         | Tool::Note
         | Tool::Count
         | Tool::Brush
@@ -179,7 +181,10 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         | Tool::Slice
         | Tool::SliceSelect
         | Tool::AddAnchorPoint
-        | Tool::DeleteAnchorPoint => {}
+        | Tool::DeleteAnchorPoint
+        | Tool::ConvertPoint
+        | Tool::Artboard
+        | Tool::Frame => {}
     }
 }
 

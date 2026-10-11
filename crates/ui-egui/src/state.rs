@@ -63,6 +63,7 @@ impl Default for CameraRawPreviewState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Tool {
     Move,
+    Artboard,
     RectMarquee,
     EllipseMarquee,
     /// Selects one pixel row across the whole canvas at the clicked y (Photoshop's flyout only:
@@ -75,7 +76,9 @@ pub enum Tool {
     MagneticLasso,
     MagicWand,
     Crop,
+    PerspectiveCrop,
     Eyedropper,
+    ColorSampler,
     Ruler,
     Note,
     Count,
@@ -118,6 +121,9 @@ pub enum Tool {
     CurvaturePen,
     AddAnchorPoint,
     DeleteAnchorPoint,
+    /// Converts an anchor between smooth and corner, and pulls handles out of a corner
+    /// (Photoshop's Convert Point tool; also the Pen's ⌥ mode, `direct_select.rs`).
+    ConvertPoint,
     PathSelection,
     DirectSelection,
     Rectangle,
@@ -128,11 +134,13 @@ pub enum Tool {
     CustomShape,
     Slice,
     SliceSelect,
+    Frame,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 62] = [
+    pub const ALL: [Tool; 67] = [
         Tool::Move,
+        Tool::Artboard,
         Tool::RectMarquee,
         Tool::EllipseMarquee,
         Tool::SingleRowMarquee,
@@ -142,7 +150,9 @@ impl Tool {
         Tool::MagneticLasso,
         Tool::MagicWand,
         Tool::Crop,
+        Tool::PerspectiveCrop,
         Tool::Eyedropper,
+        Tool::ColorSampler,
         Tool::Ruler,
         Tool::Note,
         Tool::Count,
@@ -184,6 +194,7 @@ impl Tool {
         Tool::CurvaturePen,
         Tool::AddAnchorPoint,
         Tool::DeleteAnchorPoint,
+        Tool::ConvertPoint,
         Tool::PathSelection,
         Tool::DirectSelection,
         Tool::Rectangle,
@@ -194,11 +205,13 @@ impl Tool {
         Tool::CustomShape,
         Tool::Slice,
         Tool::SliceSelect,
+        Tool::Frame,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
             Tool::Move => "Move Tool",
+            Tool::Artboard => "Artboard Tool",
             Tool::RectMarquee => "Rectangular Marquee Tool",
             Tool::EllipseMarquee => "Elliptical Marquee Tool",
             Tool::SingleRowMarquee => "Single Row Marquee Tool",
@@ -211,6 +224,7 @@ impl Tool {
             Tool::BackgroundEraser => "Background Eraser Tool",
             Tool::MagicEraser => "Magic Eraser Tool",
             Tool::Eyedropper => "Eyedropper Tool",
+            Tool::ColorSampler => "Color Sampler Tool",
             Tool::Ruler => "Ruler Tool",
             Tool::Note => "Note Tool",
             Tool::Count => "Count Tool",
@@ -219,8 +233,10 @@ impl Tool {
             Tool::MagneticLasso => "Magnetic Lasso Tool",
             Tool::MagicWand => "Magic Wand Tool",
             Tool::Crop => "Crop Tool",
+            Tool::PerspectiveCrop => "Perspective Crop Tool",
             Tool::Slice => "Slice Tool",
             Tool::SliceSelect => "Slice Select Tool",
+            Tool::Frame => "Frame Tool",
             Tool::Gradient => "Gradient Tool",
             Tool::PaintBucket => "Paint Bucket Tool",
             Tool::Type => "Horizontal Type Tool",
@@ -252,6 +268,7 @@ impl Tool {
             Tool::CurvaturePen => "Curvature Pen Tool",
             Tool::AddAnchorPoint => "Add Anchor Point Tool",
             Tool::DeleteAnchorPoint => "Delete Anchor Point Tool",
+            Tool::ConvertPoint => "Convert Point Tool",
             Tool::PathSelection => "Path Selection Tool",
             Tool::DirectSelection => "Direct Selection Tool",
             Tool::Rectangle => "Rectangle Tool",
@@ -301,14 +318,15 @@ impl Tool {
     /// Photoshop default single-key shortcut (`'\0'` = none, e.g. the Blur group).
     pub fn key(self) -> char {
         match self {
-            Tool::Move => 'V',
+            Tool::Move | Tool::Artboard => 'V',
             Tool::RectMarquee | Tool::EllipseMarquee => 'M',
             Tool::Brush | Tool::Pencil | Tool::MixerBrush | Tool::ColorReplacement => 'B',
             Tool::Eraser | Tool::BackgroundEraser | Tool::MagicEraser => 'E',
-            Tool::Eyedropper | Tool::Ruler | Tool::Note | Tool::Count => 'I',
+            Tool::Eyedropper | Tool::ColorSampler | Tool::Ruler | Tool::Note | Tool::Count => 'I',
             Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => 'L',
             Tool::MagicWand => 'W',
-            Tool::Crop | Tool::Slice | Tool::SliceSelect => 'C',
+            Tool::Crop | Tool::PerspectiveCrop | Tool::Slice | Tool::SliceSelect => 'C',
+            Tool::Frame => 'K',
             Tool::Gradient | Tool::PaintBucket => 'G',
             Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => 'T',
             Tool::Hand => 'H',
@@ -322,7 +340,7 @@ impl Tool {
             Tool::SingleRowMarquee | Tool::SingleColumnMarquee => '\0',
             Tool::Dodge | Tool::Burn | Tool::Sponge => 'O',
             Tool::QuickSelection | Tool::ObjectSelection => 'W',
-            Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint => 'P',
+            Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint | Tool::ConvertPoint => 'P',
             Tool::PathSelection | Tool::DirectSelection => 'A',
             Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => 'U',
         }
@@ -337,6 +355,7 @@ impl Tool {
             Tool::MixerBrush => "🖌",
             Tool::Eraser => "⌫",
             Tool::Eyedropper => "💧",
+            Tool::ColorSampler => "◎",
             Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => "L",
             Tool::MagicWand => "W",
             Tool::Crop => "C",
@@ -594,6 +613,9 @@ pub struct ToolOptions {
     pub crop_resolution: String,
     #[serde(default = "default_crop_resolution_unit")]
     pub crop_resolution_unit: String,
+    /// Perspective Crop's Show Grid (`perspective_crop_ui`); it shares W, H and the resolution above.
+    #[serde(default = "yes")]
+    pub perspective_crop_grid: bool,
     /// Crop overlay (#1919): the guide in the crop box, when it shows and its orientation
     /// (Photoshop's defaults: Rule of Thirds, Auto Show Overlay). See `crop_overlay`.
     #[serde(default)]
@@ -767,6 +789,7 @@ impl Default for ToolOptions {
             crop_height: String::new(),
             crop_resolution: String::new(),
             crop_resolution_unit: default_crop_resolution_unit(),
+            perspective_crop_grid: true,
             crop_overlay: Default::default(),
             crop_overlay_show: Default::default(),
             crop_overlay_orientation: 0,
@@ -1046,6 +1069,11 @@ pub struct UiState {
     /// Slice and Slice Select tools (see `slice_ui`).
     #[serde(default)]
     pub slices: crate::slice_ui::SliceUi,
+    /// Frame tool (see `frame_tool`).
+    #[serde(default)]
+    pub frame_tool: crate::frame_tool::FrameToolUi,
+    /// Artboard tool (see `artboard_tool`).
+    pub artboard_tool: crate::artboard_tool::ArtboardToolUi,
     /// Modifier Keys panel, custom pixel aspect ratios, workspace dialogs (see `workspace_ui`).
     #[serde(default)]
     pub shell: crate::workspace_ui::ShellUi,
@@ -1114,6 +1142,9 @@ pub struct UiState {
     /// frame before the turn); 0 when upright. Committing passes it as `image.crop`'s `angle`.
     #[serde(default)]
     pub crop_angle: f64,
+    /// Perspective Crop quad being edited: TL, TR, BR, BL (document coordinates).
+    #[serde(default)]
+    pub perspective_crop: Option<[[f64; 2]; 4]>,
     pub next_id: u64,
     /// Last status message (errors from commands, hints).
     pub status: String,
@@ -1174,6 +1205,8 @@ impl Default for UiState {
             analysis: Default::default(),
             timeline: Default::default(),
             slices: Default::default(),
+            frame_tool: Default::default(),
+            artboard_tool: Default::default(),
             shell: Default::default(),
             layer_filter: Vec::new(),
             pen: None,
@@ -1205,6 +1238,7 @@ impl Default for UiState {
             magnetic: Default::default(),
             crop_rect: None,
             crop_angle: 0.0,
+            perspective_crop: None,
             next_id: 1,
             status: String::new(),
             status_error: false,
@@ -1281,11 +1315,15 @@ mod tests {
         assert!(!Tool::RedEye.is_brushlike());
         assert_eq!(Tool::from_name("patternStamp"), Some(Tool::PatternStamp));
         assert_eq!(Tool::from_name("Pattern Stamp Tool"), Some(Tool::PatternStamp));
-        assert_eq!(Tool::ALL.len(), 62);
+        assert_eq!(Tool::ALL.len(), 67);
         assert_eq!(Tool::from_name("Vertical Type Mask Tool"), Some(Tool::VerticalTypeMask));
         assert_eq!(Tool::from_name("addAnchorPoint"), Some(Tool::AddAnchorPoint));
         assert_eq!(Tool::from_name("Delete Anchor Point Tool"), Some(Tool::DeleteAnchorPoint));
         assert_eq!(Tool::DeleteAnchorPoint.key(), 'P');
+        assert_eq!(Tool::from_name("convertPoint"), Some(Tool::ConvertPoint));
+        assert_eq!(Tool::from_name("Convert Point Tool"), Some(Tool::ConvertPoint));
+        assert_eq!(Tool::ConvertPoint.key(), 'P', "it shares the Pen's key");
+        assert!(!Tool::ConvertPoint.is_brushlike());
         assert_eq!(Tool::from_name("Remove Tool"), Some(Tool::Remove));
         assert_eq!(Tool::Remove.key(), 'J');
         assert!(Tool::Remove.is_brushlike());
