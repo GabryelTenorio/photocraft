@@ -340,7 +340,6 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 if let Err(error) = confirm(app, d.id) {
                     app.ui.status = error;
                 }
-                crate::rasterize_prompt::resume(app, ctx);
             }
             Some(false) => {
                 let _ = cancel(app, d.id);

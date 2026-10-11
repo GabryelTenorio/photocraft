@@ -749,16 +749,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     return err(error);
                 }
                 let apply = req.method == "ui.dialog.apply";
-                run_waiting(app, wait, |app| {
-                    if apply {
-                        return crate::prefs_ui::apply(app, id);
-                    }
-                    let r = crate::dialogs::confirm(app, id);
-                    // A confirmed "Rasterize?" prompt goes on with its command (Warp mode) now, so
-                    // the reply already reflects it.
-                    crate::rasterize_prompt::resume(app, ctx);
-                    r
-                })
+                run_waiting(app, wait, |app| if apply { crate::prefs_ui::apply(app, id) } else { crate::dialogs::confirm(app, id) })
             }
             None => err("missing `dialog`"),
         },

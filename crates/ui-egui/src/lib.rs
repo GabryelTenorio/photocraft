@@ -459,8 +459,6 @@ pub struct PhotocraftApp {
     pub caps_lock: bool,
     /// The first digit of a two-digit opacity typed on the number keys (`opacity_keys`, #352).
     pub(crate) opacity_keys: opacity_keys::Pending,
-    /// The menu command a confirmed "Rasterize?" prompt continues with (`rasterize_prompt::resume`).
-    pub(crate) rasterize_then: Option<(String, serde_json::Value)>,
     control_rx: Option<Receiver<ControlRequest>>,
     pending_screenshots: Vec<(u64, Option<String>, Sender<ControlResponse>)>,
     /// Screenshots not yet requested from the viewport: (token, earliest time in ms, frames seen).
@@ -648,7 +646,6 @@ impl PhotocraftApp {
             alt_sampling: false,
             caps_lock: false,
             opacity_keys: None,
-            rasterize_then: None,
             control_rx: None,
             pending_screenshots: Vec::new(),
             queued_screenshots: Vec::new(),
@@ -1346,7 +1343,6 @@ impl eframe::App for PhotocraftApp {
         self.last_frame_time = now;
         self.sync_views();
         crate::type_font_preview::follow_hover(self, ctx);
-        crate::rasterize_prompt::resume(self, ctx);
         self.check_gpu(ctx);
         #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
         if self.live_tokens.poll(ctx, self.ui.theme) {

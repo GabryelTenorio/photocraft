@@ -485,12 +485,6 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         "edit.freeTransformCopy" => crate::transform_tool::begin_copy(app, ctx).map(|_| json!({"transform": app.ui.transform})),
         // Edit › Transform › Warp from the menu: interactive Warp mode (with params: the engine).
         "edit.transform.warp" | "layer.smartObjects.warp" if params.as_object().is_none_or(|o| o.is_empty()) => {
-            // Editable type can't be warped: ask to rasterize it first (#3004).
-            if id == "edit.transform.warp"
-                && let Some(dialog) = crate::rasterize_prompt::ask_before_warp(app)
-            {
-                return Ok(json!({"dialog": dialog}));
-            }
             crate::transform_tool::begin_warp(app, ctx).map(|_| json!({"transform": app.ui.transform}))
         }
         // Split warps edit the mesh of an active Warp session.
