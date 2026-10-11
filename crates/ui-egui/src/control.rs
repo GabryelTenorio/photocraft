@@ -346,12 +346,20 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
         }
         "engine.execute" | "ui.menu.invoke" => {
             let Some(id) = s("command").or(s("id")) else { return err("missing `command`") };
+            let params = p.get("params").cloned().unwrap_or(json!({}));
             // A control-channel menu click must respect the same modal gate as the native menu.
+            // Camera Raw's documented `ui` requests operate its already-open dialog rather
+            // than click a menu. Only that continuation may pass its own modal gate.
             // engine.execute is deliberately not subject to the UI's menu-click semantics.
-            if req.method == "ui.menu.invoke" && !crate::menus::modal_allows(app, id) {
+            let camera_raw_continuation = id == "filter.cameraRaw"
+                && app.camera_raw.is_some()
+                && params.as_object().is_some_and(|fields| fields.len() == 1 && fields.get("ui").is_some_and(Value::is_object))
+                && app.ui.dialogs.is_empty()
+                && app.discard.is_none()
+                && !crate::crop_ui::blocks(app, id);
+            if req.method == "ui.menu.invoke" && !camera_raw_continuation && !crate::menus::modal_allows(app, id) {
                 return err("menu command is unavailable while a modal dialog is open");
             }
-            let params = p.get("params").cloned().unwrap_or(json!({}));
             if let Some(authorize) = app.services.automation_command.as_ref()
                 && let Err(error) = authorize(id, &params)
             {
@@ -613,6 +621,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 }
                 if let Some(m) = mask_target {
                     app.ui.mask_target = m;
+                    app.ui.properties_layer = None;
                     app.ui.vector_mask_target &= !m;
                     app.sync_mask_targets();
                 }
@@ -624,6 +633,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 // Selection tools' options-bar mode: 0 New, 1 Add, 2 Subtract, 3 Intersect.
                 if let Some(m) = selection_mode {
                     app.ui.selection_mode = m.min(3) as u8;
+                }
+                if let Some(k) = theme {
+                    app.set_theme(ctx, k);
                 }
                 if let Some(v) = dock_tabs {
                     app.ui.dock_tabs = v;
@@ -661,9 +673,6 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     if let Some(r) = rotation {
                         app.ui.views[i].rotation = crate::rotate_view::wrap_deg(r as f32);
                     }
-                }
-                if let Some(k) = theme {
-                    app.set_theme(ctx, k);
                 }
                 if let Some(i) = brush_section {
                     app.ui.brush_section = (i as usize).min(crate::brush_panel::SECTIONS.len() - 1);
@@ -933,7 +942,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     // Right-click while transforming: the box's menu, as on the canvas.
                     if app.ui.transform.as_ref().is_some_and(|t| t.warp.is_none()) {
                         if down {
-                            crate::canvas_tool_menu::open_transform(app, screen_point(app, x, y));
+                            crate::canvas_tool_menu::open_transform(app, ctx, screen_point(app, x, y));
                         }
                         continue;
                     }
@@ -941,23 +950,29 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     if crate::layer_pick_ui::is_gesture(app.ui.tool, mods) {
                         if down {
                             app.ui.canvas_tool_menu = None;
-                            crate::layer_pick_ui::open(app, screen_point(app, x, y), x, y);
+                            crate::layer_pick_ui::open(app, ctx, screen_point(app, x, y), x, y);
                         }
                         continue;
                     }
                     if crate::canvas_tool_menu::pasteboard_at(app, app.ui.tool, [x, y]) {
                         if down {
-                            crate::canvas_tool_menu::open_pasteboard(app, app.ui.tool, screen_point(app, x, y));
+                            crate::canvas_tool_menu::open_pasteboard(app, ctx, app.ui.tool, screen_point(app, x, y));
                         }
                         continue;
                     }
-                    if crate::canvas_tool_menu::applies(app.ui.tool) {
+                    if crate::canvas_tool_menu::is_view_tool(app.ui.tool) {
                         if down {
-                            crate::canvas_tool_menu::open(app, app.ui.tool, screen_point(app, x, y));
+                            crate::canvas_tool_menu::open_view(app, ctx, app.ui.tool, screen_point(app, x, y), [x, y]);
                         }
                         continue;
                     }
-                    if !crate::paint_mouse::pointer_secondary(app, down, mods, screen_point(app, x, y)) {
+                    if crate::canvas_tool_menu::applies(app.ui.tool) || crate::canvas_tool_menu::editing_text(app, app.ui.tool) {
+                        if down {
+                            crate::canvas_tool_menu::open(app, ctx, app.ui.tool, screen_point(app, x, y));
+                        }
+                        continue;
+                    }
+                    if !crate::paint_mouse::pointer_secondary(app, ctx, down, mods, screen_point(app, x, y)) {
                         continue;
                     }
                 }
@@ -1260,6 +1275,109 @@ mod tests {
     }
 
     #[test]
+    fn camera_raw_control_updates_and_commits_or_cancels_an_open_raw() {
+        use photocraft_raw::testgen::{DngSpec, mosaic, scene};
+        let (w, h) = (48, 32);
+        let mut spec = DngSpec::cfa(w, h, mosaic(&scene(w, h), w, [0, 1, 1, 2], 0, 30000));
+        spec.as_shot_neutral = Some([0.5, 1.0, 0.7]);
+        let dng = spec.build();
+        for finish in ["commit", "cancel"] {
+            let services = crate::Services {
+                import: Some(Box::new(|name, bytes, depth| {
+                    photocraft_io::import_with_svg_group_depth(name, bytes, depth).map(|r| (r.document, r.warnings)).map_err(|e| e.to_string())
+                })),
+                ..Default::default()
+            };
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+            let ctx = egui::Context::default();
+            PhotocraftApp::setup_context(&ctx, Default::default());
+            app.open_bytes("control.dng", &dng).unwrap();
+            ctx.run_ui(Default::default(), |ui| crate::camera_raw_ui::show(&mut app, ui.ctx())).textures_delta.clear();
+            assert!(app.camera_raw.is_some());
+            // The raw develops in ProPhoto, so opening it also asks about the working-space
+            // mismatch. Answer that prompt through the same control path before editing.
+            assert_eq!(app.ui.dialogs.len(), 1);
+            let mismatch = app.ui.dialogs.first().unwrap();
+            assert_eq!(mismatch.fields["__prefsui"], "mismatch");
+            assert_eq!(mismatch.fields["action"], "preserve");
+            assert_eq!(mismatch.fields["applied"], "preserve");
+            let mismatch_id = mismatch.id;
+            let update = json!({"id":"filter.cameraRaw","params":{"ui":{"set":{"exposure":0.5}}}});
+            assert_eq!(call(&mut app, &ctx, "ui.menu.invoke", update.clone())["ok"], false);
+            let confirmed = call(&mut app, &ctx, "ui.dialog.confirm", json!({"dialog":mismatch_id}));
+            assert_eq!(confirmed["ok"], true, "{confirmed}");
+            assert_eq!(confirmed["result"]["action"], "preserve");
+            assert!(app.ui.dialogs.is_empty());
+            let original = app.session.active().unwrap().doc.clone();
+            let changed = call(&mut app, &ctx, "ui.menu.invoke", update);
+            assert_eq!(changed["ok"], true, "{changed}");
+            assert_eq!(changed["result"]["params"]["exposure"], 0.5);
+            assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &original), "a preview must not commit");
+            assert!(!crate::menus::modal_allows(&app, "filter.cameraRaw"), "native menu clicks stay blocked");
+            let finished = call(&mut app, &ctx, "ui.menu.invoke", json!({"id":"filter.cameraRaw","params":{"ui":{finish:true}}}));
+            assert_eq!(finished["ok"], true, "{finished}");
+            assert!(app.camera_raw.is_none());
+            if finish == "commit" {
+                assert_eq!(finished["result"]["redeveloped"], true, "{finished}");
+                assert_eq!(app.session.documents().len(), 1);
+                let st = app.session.active().unwrap();
+                assert_ne!(st.doc.id, original.id);
+                assert_eq!(st.doc.depth, photocraft_color::SampleType::U16);
+                assert_eq!(st.saved_revision, st.revision);
+            } else {
+                assert_eq!(finished["result"]["cancelled"], true);
+                assert!(app.session.documents().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn camera_raw_control_continuation_does_not_bypass_other_modal_or_command_gates() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width":16,"height":16})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("edit.fill", json!({"color":"#808080"})).unwrap();
+        let opened = call(&mut app, &ctx, "ui.menu.invoke", json!({"id":"filter.cameraRaw"}));
+        assert_eq!(opened["ok"], true, "{opened}");
+        let original = app.session.active().unwrap().doc.clone();
+        let cancel = json!({"id":"filter.cameraRaw","params":{"ui":{"cancel":true}}});
+        for request in [
+            json!({"id":"file.new"}),
+            json!({"id":"view.zoomIn"}),
+            json!({"id":"filter.cameraRaw"}),
+            json!({"id":"filter.cameraRaw","params":{"exposure":1}}),
+            json!({"id":"filter.cameraRaw","params":{"ui":null}}),
+            json!({"id":"filter.cameraRaw","params":{"ui":{},"smartFilter":{"layer":1,"index":0}}}),
+        ] {
+            let blocked = call(&mut app, &ctx, "ui.menu.invoke", request);
+            assert_eq!(blocked["ok"], false, "{blocked}");
+        }
+        app.ui.open_dialog(DialogKind::About, Default::default());
+        assert_eq!(call(&mut app, &ctx, "ui.menu.invoke", cancel.clone())["ok"], false);
+        app.ui.dialogs.clear();
+        assert!(crate::discard_ui::intercept(&mut app, "file.close", &json!({})));
+        assert_eq!(call(&mut app, &ctx, "ui.menu.invoke", cancel.clone())["ok"], false);
+        app.discard = None;
+        app.ui.tool = Tool::Crop;
+        app.ui.crop_rect = Some([1.0, 1.0, 10.0, 10.0]);
+        assert!(crate::crop_ui::blocks(&app, "filter.cameraRaw"));
+        assert_eq!(call(&mut app, &ctx, "ui.menu.invoke", cancel.clone())["ok"], false);
+        app.ui.crop_rect = None;
+        app.services.automation_command = Some(Box::new(|id, _| if id == "filter.cameraRaw" { Err("Camera Raw denied".into()) } else { Ok(()) }));
+        for ui in [json!({"set":{"exposure":1}}), json!({"commit":true}), json!({"cancel":true})] {
+            let denied = call(&mut app, &ctx, "ui.menu.invoke", json!({"id":"filter.cameraRaw","params":{"ui":ui}}));
+            assert_eq!(denied["ok"], false, "{denied}");
+            assert_eq!(denied["error"], "Camera Raw denied");
+        }
+        assert_eq!(app.camera_raw.as_ref().unwrap().params.exposure, 0.0);
+        assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &original));
+        app.services.automation_command = None;
+        assert_eq!(call(&mut app, &ctx, "ui.menu.invoke", cancel)["ok"], true);
+        assert!(app.camera_raw.is_none());
+    }
+
+    #[test]
     fn layer_style_picker_control_binds_previews_confirms_and_cancels() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         let ctx = egui::Context::default();
@@ -1491,6 +1609,33 @@ mod tests {
     }
 
     #[test]
+    fn agent_right_click_with_the_zoom_tool_opens_and_runs_the_view_menu() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width": 32, "height": 32})).unwrap();
+        app.sync_views();
+        let result = call(
+            &mut app,
+            &ctx,
+            "ui.pointer",
+            json!({"tool": "Zoom", "button": "secondary", "events": [{"kind":"down","x":8,"y":8},{"kind":"up","x":8,"y":8}]}),
+        );
+        assert_eq!(result["ok"], true);
+        assert_eq!(app.ui.canvas_tool_menu.as_ref().and_then(|m| m.anchor), Some([8.0, 8.0]));
+        let inspected = call(&mut app, &ctx, "ui.inspect", json!({}));
+        let entries = inspected.pointer("/result/canvasToolMenu/entries").and_then(Value::as_array).unwrap();
+        let ids: Vec<_> = entries.iter().filter_map(|row| row.get("id").and_then(Value::as_str)).collect();
+        assert_eq!(
+            ids,
+            ["view.zoomIn", "view.zoomOut", "view.fitOnScreen", "view.fillScreen", "view.actualPixels", "view.twoHundredPercent", "view.printSize"]
+        );
+        assert_eq!(call(&mut app, &ctx, "ui.context.choose", json!({"id":"select.all"}))["ok"], false);
+        assert_eq!(call(&mut app, &ctx, "ui.context.choose", json!({"id":"view.twoHundredPercent"}))["ok"], true);
+        assert_eq!(app.ui.views[0].zoom, 2.0);
+        assert!(app.ui.canvas_tool_menu.is_none());
+    }
+
+    #[test]
     fn agent_can_inspect_and_choose_pen_make_selection_from_full_context_menu() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         let ctx = egui::Context::default();
@@ -1644,6 +1789,18 @@ mod tests {
         let r = call(&mut app, &ctx, "ui.set", json!({"eyedropperSampleSize": 101, "eyedropperSample": "nope"}));
         assert_eq!(r["ok"], false, "{r}");
         assert_eq!(app.ui.tool_options.eyedropper_size, 1);
+    }
+
+    /// #1046: the Color Sampler tool is selectable over the control channel and reported as active.
+    #[test]
+    fn ui_set_selects_the_color_sampler_tool() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        assert_eq!(call(&mut app, &ctx, "ui.set", json!({"tool": "colorSampler"}))["ok"], true);
+        assert_eq!(app.ui.tool, Tool::ColorSampler);
+        assert_eq!(call(&mut app, &ctx, "ui.inspect", json!({}))["result"]["tool"], "ColorSampler");
+        // The `I` key group cycles through the eyedropper tools, so the sampler is on the same key.
+        assert_eq!(Tool::ColorSampler.key(), 'I');
     }
 
     /// #1919: the Crop tool's overlay menu over the control channel, reported by `ui.inspect`.
@@ -1802,6 +1959,17 @@ mod tests {
         assert_eq!(serde_json::to_value(&app.ui.panels).unwrap_or_default(), panels_before, "nothing was applied");
         // Non-numeric brushSize keeps the API's historical silent no-op (see the dispatch test).
         assert_eq!(call(&mut app, &ctx, "ui.set", json!({"brushSize": "large"}))["ok"], true);
+    }
+
+    #[test]
+    fn ui_set_theme_keeps_explicit_dock_tab_indices() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        for theme in ["adwaitaDark", "pro"] {
+            let r = call(&mut app, &ctx, "ui.set", json!({"theme": theme, "dockTabs": {"color": 0}}));
+            assert_eq!(r["ok"], true, "{r}");
+            assert_eq!(app.ui.dock_tabs.color, 0, "{theme}: explicit tab index changed");
+        }
     }
 
     #[test]

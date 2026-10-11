@@ -533,7 +533,11 @@ fn transform_again(s: &mut Session) -> Result<Value> {
 fn transform_again_copy(s: &mut Session) -> Result<Value> {
     let p = transform_again_params(s)?;
     let id = active_id(s)?;
-    s.execute("layer.duplicate", json!({"layer": id.0}))?;
+    let journal = s.journal.len();
+    // The steps are recorded (Again on a Copy is not replayable itself): with one layer selected,
+    // "duplicate the current layer" plays back on any document, a layer id only on this one.
+    let dup = if crate::layer_multi_cmds::multi(s, &Value::Null) { json!({"layer": id.0}) } else { json!({}) };
+    s.execute("layer.duplicate", dup)?;
     match s.execute("edit.transform", p) {
         Ok(r) => {
             let st = s.active_mut().ok_or(EngineError::NoDocument)?;
@@ -543,8 +547,9 @@ fn transform_again_copy(s: &mut Session) -> Result<Value> {
         }
         Err(e) => {
             // The copy (e.g. of a layer whose position is locked) couldn't be transformed: take
-            // it back, leaving nothing to redo.
+            // it back, leaving nothing to redo and no Duplicate step to record.
             s.undo();
+            s.journal.truncate(journal);
             if let Some(st) = s.active_mut() {
                 st.history.clear_redo();
             }
@@ -595,7 +600,7 @@ fn transform_again_params(s: &Session) -> Result<Value> {
 /// View › New Guide / guide moves (undoable, like Photoshop's "New Guide"/"Move Guide" states).
 fn guide_cmd(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
     let vertical = p.get("orientation").and_then(Value::as_str).unwrap_or("horizontal") == "vertical";
-    let pos = p.get("position").and_then(Value::as_f64).map(|v| v as f32);
+    let pos = p.get("position").and_then(Value::as_f64);
     let index = p.get("index").and_then(Value::as_u64).map(|v| v as usize);
     let label = match op {
         "new" => "New Guide",
@@ -1405,5 +1410,26 @@ mod tests {
         s.execute("view.clearGuides", json!({})).unwrap();
         assert!(s.active().unwrap().doc.guides.vertical.is_empty());
         assert!(s.execute("view.moveGuide", json!({"orientation": "vertical", "index": 3, "position": 1})).is_err());
+    }
+
+    /// Guides keep their exact place (#2918): 1 cm at 300 ppi through New Guide and .pcraft, and
+    /// a 1/32 px PSD position past 2^19 px, where f32 has no 1/32 steps left.
+    #[test]
+    fn guides_keep_sub_pixel_positions_through_pcraft_and_psd() {
+        let (cm, far) = (300.0 / 2.54, 600_000.031_25);
+        let mut s = session();
+        s.execute("view.newGuide", json!({"orientation": "horizontal", "position": cm})).unwrap();
+        s.execute("view.newGuide", json!({"orientation": "vertical", "position": far})).unwrap();
+        fn wide(v: impl Into<f64>) -> f64 {
+            v.into()
+        }
+        let exact = |g: &photocraft_doc::Guides| (wide(g.horizontal[0]), wide(g.vertical[0]));
+        let doc = &s.active().unwrap().doc;
+        assert_eq!(exact(&doc.guides), (cm, far));
+        let pcraft = photocraft_format::save_to_bytes(doc, &Default::default()).unwrap();
+        assert_eq!(exact(&photocraft_format::load_from_bytes(&pcraft).unwrap().guides), (cm, far));
+        let psd = photocraft_io::export(doc, "psd", &Default::default()).unwrap().bytes;
+        let back = photocraft_io::import("g.psd", &psd).unwrap().document.guides;
+        assert_eq!(wide(back.vertical[0]), far, "1032 stores 1/32 px");
     }
 }
