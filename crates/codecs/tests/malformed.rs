@@ -33,7 +33,27 @@ fn samples() -> Vec<(Format, Vec<u8>)> {
     v.push((Format::Png, encode(&img, Format::Png, &EncodeOptions { png_interlaced: true, ..Default::default() }).unwrap()));
     v.push((Format::Pnm, b"P3\n2 2\n255\n0 1 2 3 4 5 6 7 8 9 10 11\n".to_vec()));
     v.push((Format::Jpeg, encode(&synth(19, 13, ChannelLayout::Cmyk, SampleType::U8, 1, 0.3), Format::Jpeg, &EncodeOptions::default()).unwrap()));
+    // Read-only JPEG XL, synthesised by the test-only encoder. The browser build has no decoder at
+    // all, so there is nothing to throw malformed bytes at.
+    #[cfg(not(target_arch = "wasm32"))]
+    v.push((Format::Jxl, jxl_sample()));
     v
+}
+
+/// A small lossless JPEG XL codestream (the browser build's decoder stub needs no fixture).
+#[cfg(not(target_arch = "wasm32"))]
+fn jxl_sample() -> Vec<u8> {
+    use zune_core::bit_depth::BitDepth;
+    use zune_core::colorspace::ColorSpace;
+    use zune_core::options::EncoderOptions;
+    use zune_jpegxl::JxlSimpleEncoder;
+    let img = synth(19, 13, ChannelLayout::Rgb, SampleType::U8, 11, 0.3);
+    let (w, h) = img.dimensions();
+    let mut out = Vec::new();
+    JxlSimpleEncoder::new(img.data(), EncoderOptions::new(w as usize, h as usize, ColorSpace::RGB, BitDepth::Eight))
+        .encode(&mut out)
+        .expect("encode a lossless JPEG XL fixture");
+    out
 }
 
 fn no_panic(f: Format, bytes: &[u8]) {
@@ -186,11 +206,11 @@ proptest! {
     }
 
     #[test]
-    fn random_bytes_with_magic_never_panic(idx in 0usize..14, data in proptest::collection::vec(any::<u8>(), 0..1024)) {
-        let magics: [&[u8]; 14] = [
+    fn random_bytes_with_magic_never_panic(idx in 0usize..16, data in proptest::collection::vec(any::<u8>(), 0..1024)) {
+        let magics: [&[u8]; 16] = [
             b"\x89PNG\r\n\x1a\n", &[0xFF, 0xD8, 0xFF], b"II*\0", b"RIFF\0\0\0\0WEBP", b"GIF89a", b"BM",
             &[0, 0, 1, 0, 1, 0], b"P6\n", b"qoif", &[0x76, 0x2F, 0x31, 0x01], b"#?RADIANCE\n", b"P7\n", b"PF\n",
-            b"\0\0\0\x18ftypheic\0\0\0\0mif1heic",
+            b"\0\0\0\x18ftypheic\0\0\0\0mif1heic", &[0xFF, 0x0A], b"\0\0\0\x0CJXL \x0D\x0A\x87\x0A",
         ];
         let mut b = magics[idx].to_vec();
         b.extend_from_slice(&data);

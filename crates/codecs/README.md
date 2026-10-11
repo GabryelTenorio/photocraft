@@ -47,6 +47,7 @@ let out = encode(&img, Format::Tiff, &EncodeOptions::default())?;
 | FITS | yes | yes | U8, U16, F32 | Gray, RGB | no | no | no | no | no | yes (header cards) | no | built in |
 | AVIF | **no** | only with feature `avif` | U8 | RGB, RGBA | yes | no | no | no | no | no | yes | `image` + `ravif` |
 | HEIF/HEIC | with feature `heif` | **no** | U8, U16 (10/12-bit decodes to U16) | RGB, RGBA | yes (auxiliary alpha) | yes (`colr` prof) | yes | yes | no | no | n/a | `heic-rs` |
+| JPEG XL | yes (native) | **no** | U8, U16, F32 | Gray, GrayA, RGB, RGBA, CMYK, CMYK+A | yes | yes | yes (container `Exif`) | yes (container `xml `) | no | no | n/a | `jxl-oxide` |
 
 "Native" means the data is stored and read back without conversion. Anything else is converted by
 the encode plan, and `fidelity_warnings` reports the conversion when it loses information:
@@ -89,6 +90,23 @@ the same.
   needs `dav1d`, which is C. AVIF is therefore read-unsupported, and write support is gated
   behind the non-default `avif` feature. In a default build it is neither readable nor writable,
   so the symmetric guarantee holds. It is listed in `ASYMMETRIC_EXCEPTIONS`.
+* **JPEG XL (read-only, native targets).** Decoding uses `jxl-oxide`, the pure-Rust decoder that
+  `photocraft-raw` already links for the JPEG XL-compressed tiles of a DNG, so it costs no extra
+  binary size. Both file shapes open: the bare codestream (signature `FF 0A`) and the ISOBMFF
+  container, which is where EXIF (`Exif` box) and XMP (`xml ` box) live. 8-, 10/12/16-bit integer
+  and float samples keep their depth, as do grayscale, alpha and CMYK.
+  * Orientation lives in the JPEG XL **image header**, not in EXIF, and the decoder applies it, so
+    the EXIF/XMP Orientation tags are rewritten to 1 to keep an export from turning the picture a
+    second time. `DecodeOptions::keep_orientation` turns the pixels back to how they are stored and
+    keeps the tags verbatim.
+  * A file whose colour space is an ICC profile that cannot be mapped onto a built-in encoding is
+    rendered in its *own* space rather than converted: no CMS is linked in, and the embedded
+    profile therefore stays valid for the pixels it came with.
+  * The browser build leaves the decoder out (it would add 0.88 MB to a wasm with a hard
+    per-file cap), like `photocraft-raw` does for JPEG XL DNG; there a `.jxl` file is detected and
+    opening it says so. Writing needs a full JPEG XL encoder (VarDCT, XYB, container writing),
+    which the pure-Rust `zune-jpegxl` encoder does not provide, so JPEG XL is listed in
+    `ASYMMETRIC_EXCEPTIONS`.
 * **Lossy WebP.** Lossless (VP8L, via `image-webp`) is the default. `webp_lossless: false`
   writes a lossy file with our own clean-room VP8 key-frame encoder (`codecs::vp8`, from
   RFC 6386; `webp_quality` 0–100 on libwebp's scale sets the quantizer). Alpha travels losslessly
@@ -207,6 +225,8 @@ including chunks after IDAT. This budget is separate from pixels, not a total pr
 * the symmetric-capability guarantee;
 * malformed input: truncation, bit flips and proptest random bytes;
 * Adam7 PNG against progressive PNG and against the `image` crate as an oracle;
+* JPEG XL against files this suite synthesises (`zune-jpegxl`, a pure-Rust lossless encoder, plus
+  containers built around its codestream for the `Exif`/`xml ` boxes);
 * limit enforcement.
 
 If `corpus/pngsuite/*.png` exists at the repo root, every file in it is compared against the

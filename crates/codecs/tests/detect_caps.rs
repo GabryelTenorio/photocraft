@@ -192,6 +192,29 @@ fn detect_magic_avif() {
     assert_eq!(detect(b"\0\0\0\x18ftypmif1\0\0\0\0mif1avif"), Some(Format::Avif), "compatible brand");
     assert_eq!(detect(b"\0\0\0\x18ftypisom\0\0\0\0isommp41"), None, "mp4 is not avif");
 }
+
+#[test]
+fn jxl_is_detected_both_ways_and_is_never_writable() {
+    // Bare codestream and ISOBMFF container, per ISO/IEC 18181-2.
+    assert_eq!(detect(&[0xFF, 0x0A, 0x00]), Some(Format::Jxl));
+    assert_eq!(detect(b"\0\0\0\x0CJXL \x0D\x0A\x87\x0A"), Some(Format::Jxl));
+    assert_eq!(detect(b"\0\0\0\x0CJXL \x0D\x0A\x87\x0Aftypjxl "), Some(Format::Jxl));
+    assert_eq!(detect(&[0xFF]), None, "half a codestream signature");
+    assert_eq!(detect(b"\0\0\0\x0CJXL \x0D\x0A\x87"), None, "half a container signature");
+    assert_eq!(detect(b"\0\0\0\x0CJXL \x0D\x0A\x87\x0B"), None, "a wrong container magic");
+
+    for ext in ["jxl", "JXL", "photo.jxl", "IMG_0001.JXL"] {
+        assert_eq!(from_extension(ext), Some(Format::Jxl), "{ext}");
+    }
+    let c = caps(Format::Jxl);
+    assert!(c.read, "decoded on every native target");
+    assert!(!c.write, "no encoder");
+    assert!(c.animation && c.icc && c.exif && c.xmp && c.lossy);
+    assert!(!c.dpi && !c.text, "JPEG XL has no fields of its own for either");
+    assert!(ASYMMETRIC_EXCEPTIONS.iter().any(|(f, _)| *f == Format::Jxl));
+    // Either way a bare header is an error, never a panic.
+    assert!(decode_as(Format::Jxl, &[0xFF, 0x0A]).is_err());
+}
 #[test]
 fn detect_tga_heuristic() {
     // Uncompressed true-colour 2x2, 24 bpp.

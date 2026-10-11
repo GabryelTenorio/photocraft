@@ -36,11 +36,18 @@ photocraft-heif = { path = "../heif", optional = true }
 # Orientation is applied a band of rows per task on native; wasm stays single-threaded.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rayon.workspace = true
+# JPEG XL decode. Pure Rust, MIT OR Apache-2.0. Pinned exactly, like in photocraft-raw: it parses
+# untrusted files and moving the pin is a reviewed change (re-run the JXL fuzz targets). Native
+# only: photocraft-raw already links it for JPEG XL DNG, so this costs no extra binary size, but it
+# would add 0.88 MB to the browser wasm, which has a hard per-file cap (packaging/web/package.sh).
+jxl-oxide = { version = "=0.12.6", default-features = false, features = ["rayon"] }
 
 [dev-dependencies]
 proptest.workspace = true
 # Oracle decoders for cross-checking in tests only.
 image = { workspace = true, features = ["png", "jpeg", "tiff"] }
+# Lossless JPEG XL encoder, for the JPEG XL test fixtures only.
+zune-jpegxl = { version = "=0.5.2", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true

@@ -4298,6 +4298,7 @@ dependencies = [
  "image",
  "image-webp",
  "jpeg-encoder",
+ "jxl-oxide",
  "photocraft-heif",
  "png 0.18.1",
  "proptest",
@@ -4307,6 +4308,7 @@ dependencies = [
  "tiff",
  "zune-core 0.5.3",
  "zune-jpeg 0.5.15",
+ "zune-jpegxl",
 ]
 
 [[package]]
@@ -4453,6 +4455,8 @@ dependencies = [
  "roxmltree",
  "serde_json",
  "thiserror 2.0.21",
+ "zune-core 0.5.3",
+ "zune-jpegxl",
 ]
 
 [[package]]

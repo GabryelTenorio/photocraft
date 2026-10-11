@@ -23,6 +23,8 @@ pub enum Format {
     Avif,
     /// HEIF/HEIC (HEVC-coded): read-only; see [`ASYMMETRIC_EXCEPTIONS`].
     Heif,
+    /// JPEG XL (ISO/IEC 18181): read-only; see [`ASYMMETRIC_EXCEPTIONS`].
+    Jxl,
     /// FITS (Flexible Image Transport System), the astronomy format: gray or RGB image data.
     Fits,
 }
@@ -68,6 +70,14 @@ pub const ASYMMETRIC_EXCEPTIONS: &[(Format, &str)] = &[
          writing needs an HEVC encoder, and the mature ones (x265, libheif) are C, so write stays \
          unsupported. Without the feature HEIF is detected but neither read nor written.",
     ),
+    (
+        Format::Jxl,
+        "JPEG XL decode uses jxl-oxide (pure Rust, already linked for JPEG XL DNG tiles in \
+         photocraft-raw), so lossless, lossy, 8/16-bit and float files all open; writing needs a \
+         full JPEG XL encoder (VarDCT, XYB, container writing), which the pure-Rust zune-jpegxl \
+         encoder does not provide, so write stays unsupported. Without a native target (the \
+         browser build) JPEG XL is detected but neither read nor written.",
+    ),
 ];
 
 use ChannelLayout as L;
@@ -78,7 +88,7 @@ const ALL_LAYOUTS: &[ChannelLayout] = &[L::Gray, L::GrayA, L::Rgb, L::Rgba, L::C
 
 impl Format {
     /// Every format known to the crate (enabled or not).
-    pub const ALL: [Format; 15] = [
+    pub const ALL: [Format; 16] = [
         Format::Png,
         Format::Jpeg,
         Format::Tiff,
@@ -93,6 +103,7 @@ impl Format {
         Format::Hdr,
         Format::Avif,
         Format::Heif,
+        Format::Jxl,
         Format::Fits,
     ];
 
@@ -122,6 +133,7 @@ impl Format {
             Format::Hdr => "Radiance HDR",
             Format::Avif => "AVIF",
             Format::Heif => "HEIF",
+            Format::Jxl => "JPEG XL",
             Format::Fits => "FITS",
         }
     }
@@ -144,6 +156,7 @@ impl Format {
             Format::Hdr => &["hdr"],
             Format::Avif => &["avif"],
             Format::Heif => &["heic", "heif", "hif"],
+            Format::Jxl => &["jxl"],
             Format::Fits => &["fits", "fit", "fts"],
         }
     }
@@ -164,6 +177,7 @@ impl Format {
             Format::Hdr => "image/vnd.radiance",
             Format::Avif => "image/avif",
             Format::Heif => "image/heif",
+            Format::Jxl => "image/jxl",
             Format::Fits => "image/fits",
         }
     }
@@ -214,6 +228,20 @@ pub fn caps(format: Format) -> FormatCaps {
         Format::Heif => {
             FormatCaps { read: cfg!(feature = "heif"), write: false, depths: &[S::U8, S::U16], icc: true, exif: true, xmp: true, lossy: true, ..base }
         }
+        // JPEG XL decodes with jxl-oxide on native targets; the browser build leaves it out (it
+        // is still detected, and opening one says so).
+        Format::Jxl => FormatCaps {
+            read: cfg!(not(target_arch = "wasm32")),
+            write: false,
+            depths: &[S::U8, S::U16, S::F32],
+            layouts: ALL_LAYOUTS,
+            icc: true,
+            exif: true,
+            xmp: true,
+            animation: true,
+            lossy: true,
+            ..base
+        },
         Format::Fits => FormatCaps { depths: &[S::U8, S::U16, S::F32], layouts: &[L::Gray, L::Rgb], alpha: false, text: true, ..base },
     }
 }
@@ -245,6 +273,14 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     }
     if b.starts_with(b"#?RADIANCE") || b.starts_with(b"#?RGBE") {
         return Some(Format::Hdr);
+    }
+    if b.starts_with(&[0xFF, 0x0A]) {
+        return Some(Format::Jxl);
+    }
+    // The ISOBMFF container's signature box: a 12-byte box whose type is "JXL " and whose payload
+    // is the JXL container magic (0x0D 0x0A 0x87 0x0A).
+    if b.starts_with(b"\0\0\0\x0CJXL \x0D\x0A\x87\x0A") {
+        return Some(Format::Jxl);
     }
     if b.len() >= 12 && &b[4..8] == b"ftyp" {
         if is_avif_ftyp(b) {
