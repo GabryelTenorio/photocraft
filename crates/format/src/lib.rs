@@ -19,6 +19,10 @@
 //!
 //! This crate sits at L3 next to the compositor, so it does not render.
 //! Callers pass previews in [`SaveOptions`]; `photocraft-io` does that.
+//!
+//! Enable `native-zstd` for reference Zstandard compression on native and
+//! WebAssembly. WASM builds need a C compiler with WASM support. Pure Rust remains
+//! the default; both backends use the same bundle format and bounded reads.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 

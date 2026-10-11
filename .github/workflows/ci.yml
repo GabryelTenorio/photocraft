@@ -121,6 +121,12 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo test -p photocraft-heif -p photocraft-codecs -p photocraft-io --locked
 
+      - name: Test reference Zstandard
+        run: |
+          cargo test -p photocraft-codecs --lib --locked --features native-zstd native_zstd
+          cargo test -p photocraft-format --locked --features native-zstd
+          cargo clippy -p photocraft-format -p photocraft-codecs --all-targets --locked --features photocraft-format/native-zstd -- -D warnings
+
       # The same tests built with the optional craft-fonts input (crates/text/build.rs), so the
       # Japanese font tests that skip without it run here. Linux only. Keep the exact `--workspace
       # --features heif` of the Test step: any other package or feature selection resolves a
@@ -199,7 +205,9 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
       - name: Check wasm-safe crates
-        run: cargo xtask wasm
+        run: |
+          cargo xtask wasm
+          cargo check -p photocraft-format --target wasm32-unknown-unknown --locked --features native-zstd
 
   web:
     name: web build and wasm size gate
