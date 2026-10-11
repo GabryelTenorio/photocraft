@@ -70,9 +70,9 @@ fn unit_menu_items(current: Unit) -> Vec<(String, &'static str, bool)> {
     UNITS.iter().map(|&u| (tl!(unit_label(u)).to_string(), u.name(), u == current)).collect()
 }
 
-/// Right-clicking a ruler offers the length units; the chosen one's name is returned (`None` if the
-/// menu is dismissed without a pick).
-fn ruler_unit_menu(ui: &mut egui::Ui, current: Unit) -> Option<&'static str> {
+/// The length units menu that right-clicking a ruler (or Free Transform's W and H fields) opens;
+/// the chosen unit's name is returned (`None` if the menu is dismissed without a pick).
+pub(crate) fn unit_menu(ui: &mut egui::Ui, current: Unit) -> Option<&'static str> {
     crate::widgets::menu_scroll(ui, |ui| {
         ui.set_min_width(150.0);
         let mut chosen = None;
@@ -143,6 +143,22 @@ pub fn draw_grid(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, d
     }
 }
 
+/// Screen end points of a guide across `clip`: the document line x = `pos` (vertical) or
+/// y = `pos`, spanning every document point the clip rect shows. Guides belong to the document,
+/// so on a rotated view they turn with the image (#3277); unrotated this is the clip's full
+/// height (or width).
+fn guide_segment(xf: &ViewXform, clip: Rect, vertical: bool, pos: f64) -> [Pos2; 2] {
+    let axis = usize::from(vertical);
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for c in [clip.left_top(), clip.right_top(), clip.right_bottom(), clip.left_bottom()] {
+        let d = xf.to_doc(c)[axis];
+        lo = lo.min(d);
+        hi = hi.max(d);
+    }
+    let (pos, lo, hi) = (pos as f32, lo as f32, hi as f32);
+    if vertical { [xf.to_screen(pos, lo), xf.to_screen(pos, hi)] } else { [xf.to_screen(lo, pos), xf.to_screen(hi, pos)] }
+}
+
 pub(crate) fn parse_guide_color(value: &str) -> Option<Color32> {
     let value = value.strip_prefix('#')?;
     if value.len() != 6 {
@@ -163,13 +179,8 @@ pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
     let (guide, style) =
         (preview.as_ref().map(|(_, color)| *color).unwrap_or_else(|| pref_color(&g.guide_color, Color32::from_rgb(74, 255, 255))), g.guide_style);
     let line = |vertical: bool, pos: f64, color: Color32| {
-        if vertical {
-            let x = xf.to_screen(pos as f32, 0.0).x;
-            styled_line(painter, pos2(x, clip.top()), pos2(x, clip.bottom()), Stroke::new(1.0, color), style);
-        } else {
-            let y = xf.to_screen(0.0, pos as f32).y;
-            styled_line(painter, pos2(clip.left(), y), pos2(clip.right(), y), Stroke::new(1.0, color), style);
-        }
+        let [a, b] = guide_segment(xf, clip, vertical, pos);
+        styled_line(painter, a, b, Stroke::new(1.0, color), style);
     };
     if app.ui.extras.guides || preview.is_some() {
         for (vertical, list) in [(true, &guides.vertical), (false, &guides.horizontal)] {
@@ -226,11 +237,37 @@ pub fn finish_drag(app: &mut PhotocraftApp, d: GuideDrag) {
     }
 }
 
+/// The mapping the rulers measure with. Rulers are screen chrome that stays level while
+/// View › Rotate View turns the canvas, so they use the view without its rotation: the same zoom,
+/// flip and pixel aspect (ticks never stretch), anchored so that 0 sits at the screen position of
+/// the document origin as the rotated view draws it, as in Photoshop. Tilted guides then meet the
+/// rulers near their numbers. Measuring along the rotated axes instead squeezed the ticks into a
+/// few pixels (or none at 90°) and left the rest of the ruler empty (#3233).
+///
+/// The returned mapping measures from the rulers' zero point `zero` (document px, #2955): its
+/// document coordinates are distances from `zero`, and 0 sits where the canvas draws `zero`.
+fn ruler_xform(xf: &ViewXform, zero: [f64; 2]) -> ViewXform {
+    let level = ViewXform { rotation: 0.0, ..*xf };
+    let (zx, zy) = (zero[0] as f32, zero[1] as f32);
+    // The level view is an axis-aligned scale, so moving the zero point by `shift` on screen moves
+    // every point by it: re-centre on the document point that sat `shift` before the centre, then
+    // count from the zero point.
+    let shift = xf.to_screen(zx, zy) - level.to_screen(zx, zy);
+    let center = level.to_doc(xf.rect.center() - shift);
+    let center = [center[0] as f32 - zx, center[1] as f32 - zy];
+    if !(center[0].is_finite() && center[1].is_finite()) {
+        return level;
+    }
+    ViewXform { center, ..level }
+}
+
 /// Visible ruler range in ruler units, normalised to `(min, max)` so the tick loop runs for
-/// flipped or rotated views too (#1814). Shared by the renderer and its tests.
-fn ruler_range(xf: &ViewXform, a: Pos2, b: Pos2, axis: usize, px_per_unit: f64) -> (f64, f64) {
-    let d0 = xf.to_doc(a)[axis];
-    let d1 = xf.to_doc(b)[axis];
+/// flipped views too (#1814), measured from the zero point `zero`. `xf` is the canvas mapping;
+/// rotation is ignored (see [`ruler_xform`]). Shared by the renderer and its tests.
+fn ruler_range(xf: &ViewXform, a: Pos2, b: Pos2, axis: usize, px_per_unit: f64, zero: [f64; 2]) -> (f64, f64) {
+    let rxf = ruler_xform(xf, zero);
+    let d0 = rxf.to_doc(a)[axis];
+    let d1 = rxf.to_doc(b)[axis];
     let (u0, u1) = (d0 / px_per_unit, d1 / px_per_unit);
     (u0.min(u1), u0.max(u1))
 }
@@ -252,6 +289,21 @@ fn origin_drop(app: &mut PhotocraftApp, d: [f64; 2], shift: bool, origin: [f64; 
     } else {
         [crate::snap_ui::snap_guide(app, true, d[0]), crate::snap_ui::snap_guide(app, false, d[1])]
     }
+}
+
+/// Screen coordinate along the ruler (x for the top ruler, y for the left one) of the value `u`
+/// in ruler units from the zero point `zero`. The inverse of [`ruler_range`]'s mapping.
+fn ruler_pos(xf: &ViewXform, vertical: bool, u: f64, px_per_unit: f64, zero: [f64; 2]) -> f32 {
+    let px = (u * px_per_unit) as f32;
+    let rxf = ruler_xform(xf, zero);
+    if vertical { rxf.to_screen(0.0, px).y } else { rxf.to_screen(px, 0.0).x }
+}
+
+/// The number a ruler prints at the tick `v` (in ruler units). Like Photoshop, rulers show the
+/// distance from the origin, so values left of / above it read without a minus sign.
+fn ruler_label(v: f64, step: f64, whole: bool) -> String {
+    let v = v.abs();
+    if step >= 1.0 || whole { format!("{}", v.round() as i64) } else { crate::widgets::fmt_num2(v) }
 }
 
 /// Rulers along the top and left of `full` (the canvas rect before `content_rect`), with the
@@ -276,40 +328,34 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     let (dpi, size) =
         app.session.active().map_or((72.0, [1.0, 1.0]), |d| (d.doc.resolution_dpi.max(1.0) as f64, [d.doc.size.width as f64, d.doc.size.height as f64]));
     let whole = unit == photocraft_engine::prefs::Unit::Pixels;
-    // The zero point (#2955): rulers read 0 there and negative left of / above it.
+    // The zero point (#2955): rulers read 0 there and count the distance from it.
     let origin = app.session.active().map_or([0.0, 0.0], |d| d.doc.ruler_origin);
     let mut ticks = [1.0; 2];
-    let label = |v: f64, step: f64| -> String { if step >= 1.0 || whole { format!("{}", v.round() as i64) } else { crate::widgets::fmt_num2(v) } };
     for (vertical, extent) in [(false, size[0]), (true, size[1])] {
         let p = p.with_clip_rect(if vertical { left } else { top });
         let px_per_unit = unit.to_px(1.0, dpi, extent, ppi).max(1e-9);
         // The top ruler runs along document x, which pixel aspect correction stretches.
         let zoom = if vertical { xf.zoom } else { xf.zoom_x() };
         let step = nice_step(60.0 / (zoom as f64 * px_per_unit).max(1e-6), whole);
-        let o = origin[usize::from(vertical)];
         ticks[usize::from(vertical)] = step * px_per_unit / 10.0;
         let (u0, u1) = if vertical {
-            ruler_range(xf, left.left_top(), left.left_bottom(), 1, px_per_unit)
+            ruler_range(xf, left.left_top(), left.left_bottom(), 1, px_per_unit, origin)
         } else {
-            ruler_range(xf, top.left_top(), top.right_top(), 0, px_per_unit)
+            ruler_range(xf, top.left_top(), top.right_top(), 0, px_per_unit, origin)
         };
-        let (u0, u1) = (u0 - o / px_per_unit, u1 - o / px_per_unit);
         let mut v = (u0 / step).floor() * step;
         while v <= u1 {
-            let at = |u: f64| -> f32 {
-                let px = (u * px_per_unit + o) as f32;
-                if vertical { xf.to_screen(0.0, px).y } else { xf.to_screen(px, 0.0).x }
-            };
+            let at = |u: f64| -> f32 { ruler_pos(xf, vertical, u, px_per_unit, origin) };
             let c = at(v);
             if vertical {
                 p.line_segment([pos2(left.right() - RULER, c), pos2(left.right(), c)], tick);
                 // Labels stacked, as in Photoshop.
-                for (i, ch) in label(v, step).chars().enumerate() {
+                for (i, ch) in ruler_label(v, step, whole).chars().enumerate() {
                     p.text(pos2(left.left() + 3.0, c + 2.0 + i as f32 * 8.5), Align2::LEFT_TOP, ch, font.clone(), t.text_dim);
                 }
             } else {
                 p.line_segment([pos2(c, top.bottom() - RULER), pos2(c, top.bottom())], tick);
-                p.text(pos2(c + 2.0, top.top() + 1.0), Align2::LEFT_TOP, label(v, step), font.clone(), t.text_dim);
+                p.text(pos2(c + 2.0, top.top() + 1.0), Align2::LEFT_TOP, ruler_label(v, step, whole), font.clone(), t.text_dim);
             }
             for k in 1..10 {
                 let m = at(v + step * k as f64 / 10.0);
@@ -351,7 +397,7 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
             finish_drag(app, d);
         }
         resp.context_menu(|ui| {
-            if let Some(name) = ruler_unit_menu(ui, unit) {
+            if let Some(name) = unit_menu(ui, unit) {
                 chosen_unit = Some(name);
             }
         });
@@ -382,15 +428,12 @@ fn corner_origin(app: &mut PhotocraftApp, ui: &egui::Ui, resp: &egui::Response, 
         let shift = ui.input(|i| i.modifiers.shift);
         let at = origin_drop(app, xf.to_doc(pos), shift, origin, ticks);
         ui.data_mut(|d| d.insert_temp(id, at));
-        // Cross hairs along the document axes through the new zero point.
+        // Cross hairs along the document axes through the new zero point, drawn like guides so
+        // they turn with a rotated view.
         let t = Tokens::get(ui.ctx());
-        let reach = (p.clip_rect().size().length() / xf.zoom.max(1e-4)) as f64;
-        let (x, y) = (at[0], at[1]);
-        let line = |a: [f64; 2], b: [f64; 2]| {
-            p.line_segment([xf.to_screen(a[0] as f32, a[1] as f32), xf.to_screen(b[0] as f32, b[1] as f32)], Stroke::new(1.0, t.text));
-        };
-        line([x - reach, y], [x + reach, y]);
-        line([x, y - reach], [x, y + reach]);
+        for (vertical, pos) in [(true, at[0]), (false, at[1])] {
+            p.line_segment(guide_segment(xf, p.clip_rect(), vertical, pos), Stroke::new(1.0, t.text));
+        }
     }
     if resp.drag_stopped()
         && let Some(at) = ui.data_mut(|d| d.remove_temp::<[f64; 2]>(id))
@@ -506,7 +549,8 @@ mod tests {
         drag_corner_to(&mut h, full, target, egui::Modifiers::NONE);
         let o = origin(&h);
         assert!((o[0] - 100.0).abs() < 0.01 && (o[1] - 40.0).abs() < 0.01, "zero point lands under the pointer: {o:?}");
-        // The top ruler's "0" now sits at the new zero point, "-100" at the image's left edge.
+        // The top ruler's "0" now sits at the new zero point, "100" (a distance, unsigned as in
+        // Photoshop) at the image's left edge.
         h.run_steps(2);
         let labels: Vec<(String, f32)> = h
             .output()
@@ -516,7 +560,7 @@ mod tests {
             .collect();
         let near = |text: &str, x: f32| labels.iter().any(|(t, lx)| t == text && (lx - (x + 2.0)).abs() < 1.0);
         assert!(near("0", target.x), "a 0 label at the zero point: {labels:?}");
-        assert!(near("-100", xf.to_screen(0.0, 0.0).x), "-100 at the image's left edge: {labels:?}");
+        assert!(near("100", xf.to_screen(0.0, 0.0).x), "100 at the image's left edge: {labels:?}");
 
         // Mid-drag, cross hairs run through the pointer across the canvas.
         let corner = Rect::from_min_size(full.min, vec2(RULER, RULER)).center();
@@ -747,6 +791,92 @@ mod tests {
         }
     }
 
+    /// #3233: a rotated view keeps the rulers level and fully ticked at zoom scale. The top ruler
+    /// spans the same number of document pixels as the unrotated view, the ticks map back onto
+    /// its ends, and both rulers read 0 at the screen position of the (rotated) document origin,
+    /// as Photoshop does.
+    #[test]
+    fn rotated_view_keeps_full_rulers() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let (a, b) = (rect.left_top(), rect.right_top());
+        for rotation in [0.0f32, 30.0, 45.0, 90.0, -119.0, 180.0] {
+            for flip in [false, true] {
+                let xf = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip, rotation, aspect: 1.0 };
+                let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0, [0.0; 2]);
+                assert!((u1 - u0 - 1600.0).abs() < 1e-2, "rotation {rotation}: top ruler covers {u0}..{u1}");
+                let (first, last) = if flip { (u1, u0) } else { (u0, u1) };
+                assert!((ruler_pos(&xf, false, first, 1.0, [0.0; 2]) - a.x).abs() < 1e-2, "rotation {rotation}: first tick");
+                assert!((ruler_pos(&xf, false, last, 1.0, [0.0; 2]) - b.x).abs() < 1e-2, "rotation {rotation}: last tick");
+                // 0 at the projected origin, 500 document px = 500 × zoom screen px further on.
+                let origin = xf.to_screen(0.0, 0.0);
+                assert!((ruler_pos(&xf, false, 0.0, 1.0, [0.0; 2]) - origin.x).abs() < 1e-2, "rotation {rotation}: top ruler 0");
+                assert!((ruler_pos(&xf, true, 0.0, 1.0, [0.0; 2]) - origin.y).abs() < 1e-2, "rotation {rotation}: left ruler 0");
+                let dir = if flip { -1.0 } else { 1.0 };
+                assert!((ruler_pos(&xf, false, 500.0, 1.0, [0.0; 2]) - origin.x - dir * 250.0).abs() < 1e-2, "rotation {rotation}: top scale");
+                assert!((ruler_pos(&xf, true, 500.0, 1.0, [0.0; 2]) - origin.y - 250.0).abs() < 1e-2, "rotation {rotation}: left scale");
+            }
+        }
+        // Distances left of / above the origin read without a minus sign, as in Photoshop.
+        let xf = ViewXform { rect, zoom: 0.5, center: [0.0, 0.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0, [0.0; 2]);
+        assert!(u0 < -500.0 && u1 > 500.0, "the view spans the origin: {u0}..{u1}");
+        for (step, whole) in [(100.0, true), (100.0, false), (0.25, false)] {
+            let mut v = (u0 / step).floor() * step;
+            while v <= u1 {
+                let s = ruler_label(v, step, whole);
+                assert!(!s.contains('-'), "tick {v} (step {step}) is labelled {s:?}");
+                v += step;
+            }
+        }
+        assert_eq!(ruler_label(-500.0, 100.0, true), "500");
+        assert_eq!(ruler_label(-0.25, 0.25, false), "0.25");
+    }
+
+    /// #2955 with #3233: a zero point moved off the image's top-left reads 0 where the canvas draws
+    /// it, also on a rotated or flipped view, and the ruler keeps its full length and scale.
+    #[test]
+    fn rulers_count_from_the_zero_point_on_a_rotated_view() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let (a, b) = (rect.left_top(), rect.right_top());
+        let zero = [300.0, 120.0];
+        for rotation in [0.0f32, 30.0, 90.0, -119.0] {
+            for flip in [false, true] {
+                let xf = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip, rotation, aspect: 1.0 };
+                let at = xf.to_screen(zero[0] as f32, zero[1] as f32);
+                assert!((ruler_pos(&xf, false, 0.0, 1.0, zero) - at.x).abs() < 1e-2, "rotation {rotation}: top ruler 0");
+                assert!((ruler_pos(&xf, true, 0.0, 1.0, zero) - at.y).abs() < 1e-2, "rotation {rotation}: left ruler 0");
+                let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0, zero);
+                assert!((u1 - u0 - 1600.0).abs() < 1e-2, "rotation {rotation}: top ruler covers {u0}..{u1}");
+                let dir = if flip { -1.0 } else { 1.0 };
+                assert!((ruler_pos(&xf, false, 500.0, 1.0, zero) - at.x - dir * 250.0).abs() < 1e-2, "rotation {rotation}: top scale");
+            }
+        }
+        // Unrotated, ruler value u sits over document x = zero + u.
+        let xf = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        assert!((ruler_pos(&xf, false, -300.0, 1.0, zero) - xf.to_screen(0.0, 0.0).x).abs() < 1e-2);
+        assert!((ruler_pos(&xf, true, 80.0, 1.0, zero) - xf.to_screen(0.0, 200.0).y).abs() < 1e-2);
+    }
+
+    /// #3277: guides belong to the document, so a rotated view draws them along the document
+    /// line; unrotated they still span the whole clip rect.
+    #[test]
+    fn guides_turn_with_a_rotated_view() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let level = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let [a, b] = guide_segment(&level, rect, true, 500.0);
+        assert!((a.x - b.x).abs() < 1e-3 && (a.y - rect.top()).abs() < 1e-3 && (b.y - rect.bottom()).abs() < 1e-3, "{a:?} {b:?}");
+        for rotation in [30.0f32, 90.0, -119.0] {
+            let xf = ViewXform { rotation, ..level };
+            for (vertical, pos) in [(true, 500.0), (false, 900.0)] {
+                for end in guide_segment(&xf, rect, vertical, pos) {
+                    let d = xf.to_doc(end);
+                    let on_line = if vertical { d[0] } else { d[1] };
+                    assert!((on_line - pos).abs() < 1e-2, "rotation {rotation}: {end:?} maps to {d:?}, off the guide at {pos}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn ruler_range_is_normalised_when_flipped() {
         // #1814: with View > Flip Horizontal, `to_doc` negates x, so the raw
@@ -756,7 +886,7 @@ mod tests {
         let top = Rect::from_min_size(rect.min, vec2(rect.width(), RULER));
         for flip in [false, true] {
             let xf = ViewXform { rect, zoom: 1.0, center: [400.0, 300.0], flip, rotation: 0.0, aspect: 1.0 };
-            let (u0, u1) = ruler_range(&xf, top.left_top(), top.right_top(), 0, 1.0);
+            let (u0, u1) = ruler_range(&xf, top.left_top(), top.right_top(), 0, 1.0, [0.0; 2]);
             assert!(u0 <= u1, "flip={flip}: u0 ({u0}) must be <= u1 ({u1})");
             assert!(u1 - u0 > 0.0, "flip={flip}: range is empty");
         }
