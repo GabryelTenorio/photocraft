@@ -119,7 +119,7 @@ fn droplets_carry_the_actions_their_play_steps_call() {
     let dir = tmp("droplet-called");
     let inputs = images(&dir, 2, 40, 20);
     let mut s = Session::new();
-    let act = |name: &str, steps: Value| Action { name: name.into(), steps: serde_json::from_value(steps).unwrap() };
+    let act = |name: &str, steps: Value| -> Action { serde_json::from_value(json!({"name": name, "steps": steps})).unwrap() };
     s.actions.list = vec![
         act("Unrelated", json!([["image.imageRotation.180", {}]])),
         act("Rotate", json!([["image.imageRotation.90cw", {}]])),
