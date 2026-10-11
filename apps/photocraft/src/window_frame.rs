@@ -100,8 +100,7 @@ mod platform {
             return;
         };
         let (m, w) = (mi.rcMonitor, mi.rcWork);
-        let Some(height) = clamped_height((r.left, r.top, r.right, r.bottom), (m.left, m.top, m.right, m.bottom), (w.left, w.top, w.right, w.bottom))
-        else {
+        let Some(height) = clamped_height((r.left, r.top, r.right, r.bottom), (m.left, m.top, m.right, m.bottom), (w.left, w.top, w.right, w.bottom)) else {
             return;
         };
         let _ = hwnd.SetWindowPos(
