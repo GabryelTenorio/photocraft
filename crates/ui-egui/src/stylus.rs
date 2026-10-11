@@ -597,6 +597,52 @@ mod tests {
     }
 
     #[test]
+    fn tap_spanning_two_frames_recovers_click() {
+        let mut repair = AndroidTouchRecovery::default();
+        let mut down = egui::RawInput {
+            events: vec![touch(egui::TouchPhase::Start, Some(0.5))],
+            ..Default::default()
+        };
+        repair.repair(&mut down);
+        assert_eq!(down.events.len(), 1);
+        let mut up = egui::RawInput {
+            events: vec![touch(egui::TouchPhase::End, None)],
+            ..Default::default()
+        };
+        repair.repair(&mut up);
+        let buttons: Vec<bool> = up.events.iter().filter_map(|event| match event {
+            egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed, .. } => Some(*pressed),
+            _ => None,
+        }).collect();
+        assert_eq!(buttons, vec![true, false]);
+    }
+
+    #[test]
+    fn native_press_and_end_without_release_gets_one_release() {
+        let mut repair = AndroidTouchRecovery::default();
+        let mut down = egui::RawInput {
+            events: vec![
+                touch(egui::TouchPhase::Start, Some(0.5)),
+                egui::Event::PointerButton {
+                    pos: egui::pos2(1.0, 1.0),
+                    button: egui::PointerButton::Primary,
+                    pressed: true, modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        };
+        repair.repair(&mut down);
+        let mut up = egui::RawInput {
+            events: vec![touch(egui::TouchPhase::End, None)],
+            ..Default::default()
+        };
+        repair.repair(&mut up);
+        assert_eq!(up.events.iter().filter(|e| matches!(e,
+            egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: false, .. }
+        )).count(), 1);
+    }
+
+    #[test]
     fn native_pointer_buttons_are_not_duplicated() {
         let mut repair = AndroidTouchRecovery::default();
         let mut raw = egui::RawInput {
