@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use photocraft_engine::{Session, command_specs, file_cmds};
+use photocraft_engine::{Session, command_specs, file_cmds, type_extra_cmds};
 use photocraft_format::PcraftWriter;
 use photocraft_io::ExportOptions;
 use serde_json::{Value, json};
@@ -64,6 +64,20 @@ impl Headless {
         self.session.poll_jobs();
     }
 
+    /// Formatted warnings for every missing font family on the document at `index`
+    /// (the active document when `None`), or empty when none is open. Same wording
+    /// as `photocraft-cli convert/run/info` so a session reply matches a conversion.
+    fn missing_font_warnings(&self, index: Option<usize>) -> Vec<String> {
+        let docs = self.session.documents();
+        let i = index.or_else(|| self.session.active_index());
+        i.and_then(|i| docs.get(i))
+            .map(|st| type_extra_cmds::missing_fonts(&st.doc))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|font| format!("font '{font}' is not installed; text may render using a fallback face"))
+            .collect()
+    }
+
     fn doc_index(&self, index: Option<usize>) -> Result<usize, AutomationError> {
         match index {
             Some(i) if i < self.session.documents().len() => Ok(i),
@@ -95,6 +109,8 @@ impl Headless {
         if let Some(st) = self.session.active_mut() {
             st.source_read_only = o.source_read_only;
         }
+        let mut warnings = o.warnings;
+        warnings.extend(self.missing_font_warnings(Some(index)));
         let d = &self.session.documents()[index];
         Ok(json!({
             "index": index,
@@ -102,7 +118,7 @@ impl Headless {
             "width": d.doc.size.width,
             "height": d.doc.size.height,
             "layers": d.doc.layer_count(),
-            "warnings": o.warnings,
+            "warnings": warnings,
         }))
     }
 
@@ -110,6 +126,7 @@ impl Headless {
     /// saves to the document's own path.
     pub fn save(&mut self, index: Option<usize>, path: Option<&Path>, format: Option<&str>, opts: &ExportOptions) -> Result<Value, AutomationError> {
         let i = self.doc_index(index)?;
+        let font_warnings = self.missing_font_warnings(Some(i));
         let (stored_path, doc) = {
             let state = &self.session.documents()[i];
             (state.path.clone(), state.doc.clone())
@@ -133,7 +150,7 @@ impl Headless {
             }
         };
         let target_text = target.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
-        let warnings = match &self.filesystem {
+        let mut warnings = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: write authority is absent".into())),
             Filesystem::TrustedLocal => {
                 let writer = self.writers.entry(doc.id.0).or_default();
@@ -145,6 +162,7 @@ impl Headless {
                 warnings
             }
         };
+        warnings.extend(font_warnings);
         // A layered document save (PSD, PSB, OpenRaster or .pcraft) is a full write, not a flattened copy:
         // record the current revision as saved so the session stops reporting `dirty`, and make
         // the file the document's path. A flat export (PNG, JPEG, …) is a copy and leaves both
@@ -244,13 +262,27 @@ impl Headless {
         }
         // Background jobs that finished since the last request (or batch step) are applied first.
         self.sync_jobs();
-        if wait {
-            return Ok(self.session.execute(id, params)?);
+        let mut value = if wait {
+            self.session.execute(id, params)?
+        } else {
+            match self.session.start(id, params)? {
+                photocraft_engine::jobs::Started::Done(v) => v,
+                photocraft_engine::jobs::Started::Job(job) => json!({"job": job.0, "pending": true}),
+            }
+        };
+        // A type command that leaves a layer naming a font the host does not have will
+        // silently render with a fallback face; call it out in the reply so a script or
+        // agent sees the same warning `photocraft-cli convert` and `info` already emit (#3391).
+        if matches!(id, "type.create" | "type.edit" | "type.setStyle") {
+            let fonts = self.missing_font_warnings(None);
+            if !fonts.is_empty()
+                && let Value::Object(map) = &mut value
+                && let Some(a) = map.entry("warnings").or_insert_with(|| json!([])).as_array_mut()
+            {
+                a.extend(fonts.into_iter().map(Value::String));
+            }
         }
-        Ok(match self.session.start(id, params)? {
-            photocraft_engine::jobs::Started::Done(v) => v,
-            photocraft_engine::jobs::Started::Job(job) => json!({"job": job.0, "pending": true}),
-        })
+        Ok(value)
     }
 }
 
