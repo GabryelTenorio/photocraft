@@ -6777,9 +6777,10 @@ mod transform_controls_tests {
         let xf =
             ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0)), zoom: 1.0, center: [200.0, 150.0], flip: false, rotation: 0.0, aspect: 1.0 };
         let r = transform_controls_rect(&app, &xf).unwrap();
-        assert_eq!(r, Rect::from_min_max(pos2(200.0, 150.0), pos2(300.0, 210.0)));
+        assert_eq!(r.bounds, Rect::from_min_max(pos2(200.0, 150.0), pos2(300.0, 210.0)));
+        assert_eq!(r.corners[2], pos2(300.0, 210.0));
         let ctx = egui::Context::default();
-        assert!(begin_transform_controls_at(&mut app, &ctx, &xf, r.right_bottom()));
+        assert!(begin_transform_controls_at(&mut app, &ctx, &xf, r.corners[2]));
         assert_eq!(app.ui.transform.as_ref().unwrap().rect, [200.0, 150.0, 300.0, 210.0]);
     }
 
