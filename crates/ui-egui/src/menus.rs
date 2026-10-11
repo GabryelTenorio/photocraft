@@ -385,6 +385,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         "layer.layerStyle.blendingOptions" if params.as_object().is_none_or(|o| o.is_empty()) => {
             crate::layer_style::open(app, Some(crate::layer_style::BLENDING)).map(|d| json!({"dialog": d})).ok_or_else(|| "no active layer".to_string())
         }
+        // ⇧⌘> / ⇧⌘<: the selected characters while typing, else the whole type layer.
+        "type.increaseSize" | "type.decreaseSize" | "type.increaseSizeMore" | "type.decreaseSizeMore" if params.as_object().is_none_or(|o| o.is_empty()) => {
+            let p = crate::type_tool::with_target(app, json!({})).ok_or("the active layer is not a type layer")?;
+            app.run(id, p)
+        }
         // Formatting menus follow an inline text selection when editing. Outside an edit,
         // snapshot the selected type layers; explicit automation targets retain their scope.
         t if (t.starts_with("type.antiAlias.")
@@ -410,9 +415,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
             Ok(Value::Null)
         }
-        // Solid Color uses the Color Picker; other adjustment / fill controls use Properties.
+        // Solid Color fills and solid-colour shapes use the Color Picker; other adjustment /
+        // fill / shape controls use Properties.
         "layer.layerContentOptions" => {
-            if let Some(dialog) = crate::solid_fill_ui::open(app) {
+            if let Some(dialog) = crate::solid_fill_ui::open(app).or_else(|| crate::shape_fill_ui::open(app)) {
                 return Ok(json!({"dialog": dialog}));
             }
             let r = app.run(id, params)?;
