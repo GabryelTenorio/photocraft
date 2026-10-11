@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (Tilt-Shift evidence added to G2; earlier the same day: major, every known shortfall ranked from the re-measure) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: Character panel OpenType buttons landed, TYPE-218-5 stays partial) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -77,9 +77,10 @@ what an agent can't finish alone.
 
 ### G8. Type depth
 - **Missing:** type on a path (TYPE-218-1), paragraph direction UI (TYPE-218-2), complex-script
-  fallback fonts and golden tests (TYPE-218-3), variable-font axes (TYPE-218-4), OpenType panel
-  UI (TYPE-218-5), manual and optical kerning with PSD round trip (TYPE-218-6, #206), live Warp
-  Text preview (TYPE-218-7, #2689), triple/quadruple click (TYPE-218-8), "rasterize and continue"
+  fallback fonts and golden tests (TYPE-218-3), variable-font axes (TYPE-218-4), OpenType
+  Numerals and Stylistic Sets submenus (TYPE-218-5; the Character panel buttons landed
+  2026-10-11, #3752), manual and optical kerning with PSD round trip (TYPE-218-6, #206), live
+  Warp Text preview (TYPE-218-7, #2689), triple/quadruple click (TYPE-218-8), "rasterize and continue"
   for distort/perspective on type (TYPE-218-9), text free transform (#2630).
 - **Evidence:** scorecard Type: 0 done, 3 partial, 6 missing. The Type tool froze the app for
   60 s on one macOS machine (#2518).
@@ -218,6 +219,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | G8: Character panel OpenType buttons landed (TYPE-218-5, #3752); Numerals and Stylistic Sets submenus still missing |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |
