@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -65,7 +65,7 @@ what an agent can't finish alone.
 - **Estimate:** 60–100 h (2–9 h each, per the calibration).
 
 ### G7. Workspaces shown as parameter dialogs
-- **Missing:** Select and Mask workspace layout and New Document outputs
+- **Missing:** Select and Mask workspace layout
   (TOOL-214-1, Refine Hair #2671; its view modes preview live since #1754, Refine Edge Brush #2972); Content-Aware Fill workspace with a paintable sampling area
   (TOOL-214-15); Vanishing Point plane editor (TOOL-214-14); Content-Aware Scale through the
   transform box (TOOL-214-7); Puppet Warp mesh following the outline (TOOL-214-6); Content-Aware
@@ -203,6 +203,8 @@ what an agent can't finish alone.
   English in every language; browser-locale detection and CJK fonts on the web; Japanese IME on
   Windows (#590); installed Japanese fonts missing from the font list (#2330); Arabic layer names
   as tofu (#1408, #1693).
+- **Evidence (2026-10-11):** Czech dynamic UI wrappers, hardware labels and composed messages
+  translate at display sites; engine errors remain English. This does not close G13.
 - **Detail:** [`localization-parity.md`](localization-parity.md).
 - **Estimate:** 80–140 h. **Human:** native-speaker review of every catalog (none is recorded).
 
@@ -219,6 +221,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
