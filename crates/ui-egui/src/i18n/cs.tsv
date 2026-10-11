@@ -2220,6 +2220,8 @@ cameraRaw	Color	Barvy
 	Patch Tool	Nástroj záplata
 	Patch:	Záplata:
 	Lasso around an area, then drag the selection	Obtáhněte oblast lasem a pak přetáhněte výběr
+	Transform On Drop	Transformovat po upuštění
+	Scale or rotate the moved area, then press {key}	Změňte velikost nebo otočte přesunutou oblast a pak stiskněte {key}
 	Now drag the selection onto another area	Nyní přetáhněte výběr na jiné místo
 	Edit Type	Upravit text
 
@@ -2563,7 +2565,7 @@ cameraData	Lens	Objektiv
 	Freeform Pen Tool	Nástroj pero od ruky
 	Curvature Pen Tool	Nástroj pero křivosti
 	Curve Fit:	Přizpůsobení křivky:
-	Drag: draw freehand · Release on the start point: close	Tažení: kreslit od ruky · uvolnění na počátečním bodě: uzavřít
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Tažení: kreslit od ruky · {alt}+klik: rovný segment · uvolnění na počátečním bodě: uzavřít
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Kliknutí: hladký bod · dvojklik: roh · tažení bodu: přesunout · kliknutí na první bod: uzavřít · {key} dokončit
 	New Crop Preset…	Nová předvolba oříznutí…
 	Delete Crop Preset…	Odstranit předvolbu oříznutí…
@@ -3432,6 +3434,9 @@ layerLabel	No Color	Žádná barva
 	Healing Brush	Retušovací štětec
 	Spot Healing Brush	Bodový retušovací štětec
 	Smudge	Rozmazání
+	Amount:	Míra:
+	Protect:	Chránit:
+	Protect skin tones	Chránit tóny pleti
 # Select and Mask view modes (#1754)
 	Onion Skin	Cibulová slupka
 	Marching Ants	Pochodující mravenci

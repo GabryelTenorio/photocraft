@@ -2298,6 +2298,8 @@ cameraRaw	Amount	Quantità
 	Patch Tool	Strumento Toppa
 	Patch:	Toppa:
 	Lasso around an area, then drag the selection	Seleziona un'area con lazo, poi trascina la selezione
+	Transform On Drop	Trasforma al rilascio
+	Scale or rotate the moved area, then press {key}	Ridimensiona o ruota l'area spostata, poi premi {key}
 	Now drag the selection onto another area	Ora trascina la selezione su un'altra area
 	Edit Type	Modifica testo
 
@@ -2626,7 +2628,7 @@ cameraData	Lens	Obiettivo
 	Freeform Pen Tool	Strumento Penna a mano libera
 	Curvature Pen Tool	Strumento Penna curvatura
 	Curve Fit:	Adattamento curva:
-	Drag: draw freehand · Release on the start point: close	Trascina: disegna a mano libera · Rilascia sul punto iniziale: chiudi
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Trascina: disegna a mano libera · {alt}-clic: segmento retto · Rilascia sul punto iniziale: chiudi
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Click: punto morbido · Doppio click: angolo · Trascina un punto: sposta · Click primo punto: chiudi · {key} termina
 	New Crop Preset…	Nuovo predefinito di ritaglio…
 	Delete Crop Preset…	Elimina predefinito di ritaglio…
@@ -2647,6 +2649,9 @@ cameraData	Lens	Obiettivo
 	Spot Healing Brush	Pennello correttivo al volo
 	Smudge	Sfumino
 	Sponge	Spugna
+	Amount:	Quantità:
+	Protect:	Proteggi:
+	Protect skin tones	Proteggi toni pelle
 # Select and Mask view modes (#1754)
 	Onion Skin	Velina
 	Marching Ants	Formiche in marcia

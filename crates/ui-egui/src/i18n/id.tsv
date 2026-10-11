@@ -2612,6 +2612,8 @@ cameraRaw	Blending	Pembauran
 	Patch Tool	Alat Patch
 	Patch:	Patch:
 	Lasso around an area, then drag the selection	Lingkari area dengan lasso, lalu seret seleksinya
+	Transform On Drop	Transformasi saat dilepas
+	Scale or rotate the moved area, then press {key}	Skalakan atau putar area yang dipindah, lalu tekan {key}
 	Now drag the selection onto another area	Sekarang seret seleksi ke area lain
 	Rendering Mode	Mode Rendering
 	Automatic (recommended)	Otomatis (disarankan)
@@ -2959,7 +2961,7 @@ cameraData	Lens	Lensa
 	Freeform Pen Tool	Alat Pen Bebas
 	Curvature Pen Tool	Alat Pen Kelengkungan
 	Curve Fit:	Penyesuaian Kurva:
-	Drag: draw freehand · Release on the start point: close	Seret: gambar bebas · Lepas di titik awal: tutup
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Seret: gambar bebas · {alt}-klik: segmen lurus · Lepas di titik awal: tutup
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: titik halus · Klik ganda: sudut · Seret titik: pindahkan · Klik titik pertama: tutup · {key} selesai
 	New Crop Preset…	Preset Pangkas Baru…
 	Delete Crop Preset…	Hapus Preset Pangkas…
@@ -2980,6 +2982,9 @@ cameraData	Lens	Lensa
 	Spot Healing Brush	Spot Healing Brush
 	Smudge	Smudge
 	Sponge	Sponge
+	Amount:	Jumlah:
+	Protect:	Lindungi:
+	Protect skin tones	Lindungi warna kulit
 # Select and Mask view modes (#1754)
 	Onion Skin	Kulit Bawang
 	Marching Ants	Semut Berbaris

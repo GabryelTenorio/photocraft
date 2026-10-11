@@ -2165,6 +2165,8 @@ cameraRaw	Color	색상
 	Patch Tool	패치 도구
 	Patch:	패치:
 	Lasso around an area, then drag the selection	올가미로 영역을 둘러싼 다음 선택 영역을 드래그하세요
+	Transform On Drop	놓을 때 변형
+	Scale or rotate the moved area, then press {key}	이동한 영역의 크기를 조절하거나 회전한 다음 {key} 키를 누르세요
 	Now drag the selection onto another area	이제 선택 영역을 다른 영역으로 드래그하세요
 
 # Warp grid presets merged on main in #388.
@@ -3137,7 +3139,7 @@ cameraData	Lens	렌즈
 	Freeform Pen Tool	자유 형태 펜 도구
 	Curvature Pen Tool	곡률 펜 도구
 	Curve Fit:	곡선 맞춤:
-	Drag: draw freehand · Release on the start point: close	드래그: 자유롭게 그리기 · 시작점에서 놓기: 닫기
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	드래그: 자유롭게 그리기 · {alt}-클릭: 직선 세그먼트 · 시작점에서 놓기: 닫기
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	클릭: 매끄러운 점 · 더블 클릭: 모서리 · 점 드래그: 이동 · 첫 점 클릭: 닫기 · {key}: 완료
 	New Crop Preset…	새 자르기 사전 설정…
 	Delete Crop Preset…	자르기 사전 설정 삭제…
@@ -3160,6 +3162,9 @@ cameraData	Lens	렌즈
 	Smudge	손가락
 	Dodge	닷지
 	Burn	번
+	Amount:	양:
+	Protect:	보호:
+	Protect skin tones	피부톤 보호
 # Select and Mask view modes (#1754)
 	Onion Skin	어니언 스킨
 	Marching Ants	점선 윤곽

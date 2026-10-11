@@ -551,6 +551,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         | "edit.transform.perspective" => {
             // While a box is up, Scale / Rotate / Skew / Distort / Perspective (and Free Transform)
             // switch its mode; otherwise they start one in that mode.
+            if app.ui.transform.as_ref().is_some_and(|t| t.content_aware.is_some()) {
+                return Err(crate::transform_tool::CAS_ONLY_SCALES.into());
+            }
             if app.ui.transform.is_none() {
                 crate::transform_tool::begin(app, ctx)?;
             }
@@ -691,6 +694,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     if let Some(e) = crate::transform_tool::is_enabled(app, id) {
+        return e;
+    }
+    if let Some(e) = crate::crop_ui::is_enabled(app, id) {
         return e;
     }
     match id {
