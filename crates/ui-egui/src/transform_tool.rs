@@ -1308,6 +1308,21 @@ pub(crate) fn apply_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2], mods
     }
 }
 
+fn point_on_quad(quad: [[f64; 2]; 4], anchor: usize) -> [f64; 2] {
+    match anchor {
+        0 => quad[0],
+        1 => [(quad[0][0] + quad[1][0]) / 2.0, (quad[0][1] + quad[1][1]) / 2.0],
+        2 => quad[1],
+        3 => [(quad[0][0] + quad[3][0]) / 2.0, (quad[0][1] + quad[3][1]) / 2.0],
+        4 => [(quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4.0, (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4.0],
+        5 => [(quad[1][0] + quad[2][0]) / 2.0, (quad[1][1] + quad[2][1]) / 2.0],
+        6 => quad[3],
+        7 => [(quad[2][0] + quad[3][0]) / 2.0, (quad[2][1] + quad[3][1]) / 2.0],
+        8 => quad[2],
+        _ => [(quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4.0, (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4.0],
+    }
+}
+
 /// Where the reference point lands when the box goes from `quad0` to `quad`: the same place
 /// within the box, as in Photoshop, where it is attached to the bounding box (#1329). A box
 /// that has collapsed leaves it where it was.
@@ -1316,6 +1331,15 @@ fn carry_pivot(quad0: [[f64; 2]; 4], quad: [[f64; 2]; 4], pivot0: [f64; 2]) -> [
     let (Some(h0), Some(h1)) = (Homography::rect_to_quad(unit, quad0), Homography::rect_to_quad(unit, quad)) else { return pivot0 };
     let Some(inv) = h0.inverse() else { return pivot0 };
     let (u, v) = inv.apply(pivot0[0], pivot0[1]);
+    for (gu, gv, anchor) in [
+        (0.0, 0.0, 0), (0.5, 0.0, 1), (1.0, 0.0, 2),
+        (0.0, 0.5, 3), (0.5, 0.5, 4), (1.0, 0.5, 5),
+        (0.0, 1.0, 6), (0.5, 1.0, 7), (1.0, 1.0, 8),
+    ] {
+        if (u - gu).abs() < 1e-4 && (v - gv).abs() < 1e-4 {
+            return point_on_quad(quad, anchor);
+        }
+    }
     let (x, y) = h1.apply(u, v);
     if x.is_finite() && y.is_finite() { [x, y] } else { pivot0 }
 }
@@ -1897,9 +1921,46 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     transform_actions(app, &mut btns, warping);
 }
 
+fn anchor_grid_widget(ui: &mut egui::Ui, current_anchor: usize) -> Option<usize> {
+    let size = egui::vec2(16.0, 16.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let tk = crate::theme::Tokens::get(ui.ctx());
+    let painter = ui.painter();
+    painter.rect_stroke(rect, 1.0, egui::Stroke::new(1.0, tk.card_border), egui::StrokeKind::Inside);
+    let mut clicked = None;
+    let pointer = resp.interact_pointer_pos();
+    for row in 0..3 {
+        for col in 0..3 {
+            let idx = row * 3 + col;
+            let cx = rect.min.x + (col as f32 + 0.5) * (rect.width() / 3.0);
+            let cy = rect.min.y + (row as f32 + 0.5) * (rect.height() / 3.0);
+            let pt_rect = egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(3.5, 3.5));
+            if resp.clicked() && pointer.is_some_and(|p| (p.x - cx).abs() <= 3.0 && (p.y - cy).abs() <= 3.0) {
+                clicked = Some(idx);
+            }
+            if idx == current_anchor {
+                painter.rect_filled(pt_rect, 0.5, tk.accent);
+            } else {
+                painter.rect_filled(pt_rect, 0.5, tk.text_dim);
+            }
+        }
+    }
+    resp.on_hover_text(tl!("Reference point location"));
+    clicked
+}
+
 fn transform_fields(app: &mut PhotocraftApp, ui: &mut egui::Ui, t: &TransformSession) {
     let tk = crate::theme::Tokens::get(ui.ctx());
     let (sx, sy, angle, _) = readout(t);
+    let anchor_id = egui::Id::new("transform-anchor");
+    let current_anchor: usize = ui.data(|d| d.get_temp(anchor_id)).unwrap_or(4);
+    if let Some(new_anchor) = anchor_grid_widget(ui, current_anchor) {
+        ui.data_mut(|d| d.insert_temp(anchor_id, new_anchor));
+        if let Some(s) = app.ui.transform.as_mut() {
+            s.pivot = point_on_quad(s.quad, new_anchor);
+        }
+    }
+    ui.add_space(4.0);
     let lbl = |ui: &mut egui::Ui, s: &str| {
         ui.label(egui::RichText::new(s).color(tk.text_dim).size(12.0));
     };

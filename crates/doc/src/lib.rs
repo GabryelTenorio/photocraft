@@ -1077,8 +1077,24 @@ impl Document {
         (2..=names.len() + 2).map(|n| format!("{root} copy {n}")).find(|n| !names.contains(n.as_str())).unwrap_or(first)
     }
 
-    /// Top-most layer id, useful as the default active layer.
+    /// Top-most workable layer id, useful as the default active layer on file open.
     pub fn top_layer(&self) -> Option<LayerId> {
+        let walk = self.walk();
+        // Prefer the topmost visible raster layer (excluding locked Background when other layers exist).
+        for (_, _, l) in walk.iter().rev() {
+            if l.visible
+                && matches!(l.content, LayerContent::Raster(_))
+                && !(l.name == "Background" && l.locks.transparency && walk.len() > 1)
+            {
+                return Some(l.id);
+            }
+        }
+        // Fall back to topmost visible non-group/adjustment layer.
+        for (_, _, l) in walk.iter().rev() {
+            if l.visible && !matches!(l.content, LayerContent::Group(_) | LayerContent::Adjustment(_)) {
+                return Some(l.id);
+            }
+        }
         self.layers.last().map(|l| l.id)
     }
 }

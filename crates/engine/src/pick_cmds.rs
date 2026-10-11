@@ -115,17 +115,75 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({ "layer": target.0 }))
 }
 
+fn pick_in_rect(s: &mut Session, p: &Value) -> Result<Value> {
+    let x0 = p.get("x").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickInRect".into(), msg: "missing `x`".into() })? as i32;
+    let y0 = p.get("y").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickInRect".into(), msg: "missing `y`".into() })? as i32;
+    let w = p.get("width").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickInRect".into(), msg: "missing `width`".into() })? as i32;
+    let h = p.get("height").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickInRect".into(), msg: "missing `height`".into() })? as i32;
+    let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
+    let rect = Rect::from_xywh(x0.min(x0 + w), y0.min(y0 + h), w.abs().max(1) as u32, h.abs().max(1) as u32);
+    let mut hits = Vec::new();
+    let target_group = p.get("target").and_then(Value::as_str) == Some("group");
+    for (_, _, l) in doc.walk() {
+        if !l.visible || matches!(l.content, LayerContent::Group(_) | LayerContent::Adjustment(_)) {
+            continue;
+        }
+        if l.name == "Background" && l.locks.transparency && matches!(l.content, LayerContent::Raster(_)) {
+            continue;
+        }
+        let locks = doc.effective_locks(l.id);
+        if locks.all || locks.position {
+            continue;
+        }
+        if let Some(bounds) = photocraft_compose::change_bounds(l, doc.bounds())
+            && !bounds.intersect(&rect).is_empty()
+        {
+            let id = if target_group { top_group(&doc, l.id) } else { l.id };
+            if !hits.contains(&id) {
+                hits.push(id);
+            }
+        }
+    }
+    let select = p.get("select").and_then(Value::as_bool).unwrap_or(true);
+    let mode = p.get("mode").and_then(Value::as_str).unwrap_or("replace");
+    if select {
+        if mode == "replace" {
+            let _ = s.execute("select.deselectLayers", json!({}));
+            for &id in &hits {
+                let _ = s.execute("layer.select", json!({"layer": id.0, "mode": "add"}));
+            }
+        } else {
+            for &id in &hits {
+                let _ = s.execute("layer.select", json!({"layer": id.0, "mode": mode}));
+            }
+        }
+    }
+    Ok(json!({ "layers": hits.iter().map(|id| id.0).collect::<Vec<_>>() }))
+}
+
 pub fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec {
-        id: "layer.pickAt",
-        label: "Auto-Select Layer",
-        menu: &[],
-        shortcut: None,
-        params: r##"{"x":px,"y":px,"target":"layer|group"="layer","select":bool=true,"mode":"replace|toggle|add"="replace","list":bool=false (return every layer with pixels there, topmost first)} → {layer} | {layers}"##,
-        enabled: has_doc,
-        journal: false,
-        run: pick,
-    }]
+    vec![
+        CommandSpec {
+            id: "layer.pickAt",
+            label: "Auto-Select Layer",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"x":px,"y":px,"target":"layer|group"="layer","select":bool=true,"mode":"replace|toggle|add"="replace","list":bool=false (return every layer with pixels there, topmost first)} → {layer} | {layers}"##,
+            enabled: has_doc,
+            journal: false,
+            run: pick,
+        },
+        CommandSpec {
+            id: "layer.pickInRect",
+            label: "Auto-Select Layers in Rect",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"x":px,"y":px,"width":px,"height":px,"target":"layer|group"="layer","select":bool=true,"mode":"replace|add"="replace"} → {layers:[id]}"##,
+            enabled: has_doc,
+            journal: false,
+            run: pick_in_rect,
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -253,11 +311,12 @@ mod tests {
         let top = s.active().unwrap().active_layer.unwrap();
         let lock = |s: &mut Session, id: u64, locks: Value| s.execute("layer.setProps", json!({"layer": id, "locks": locks})).unwrap();
         let pick = |s: &mut Session| s.execute("layer.pickAt", json!({"x": 5, "y": 5})).unwrap()["layer"].clone();
-        assert_eq!(pick(&mut s), top.0);
-        // A position lock alone doesn't hide it from Auto-Select.
+        // A position lock alone doesn't hide it from Auto-Select without skip_locked.
         lock(&mut s, top.0, json!({"position": true}));
         assert_eq!(pick(&mut s), top.0);
-        lock(&mut s, top.0, json!({"all": true}));
+        // With skip_locked, position lock clicks through to the unlocked layer under it (#1641).
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "skip_locked": true})).unwrap()["layer"], a.0);
+        lock(&mut s, top.0, json!({"position": false, "all": true}));
         assert_eq!(pick(&mut s), a.0);
         assert_eq!(s.active().unwrap().active_layer, Some(a));
         // The right-click layer list still names it.

@@ -131,6 +131,7 @@ pub struct Drag {
     /// every Move-tool drag with a selection does (`move_ui::moves_selected_pixels_with`).
     pub sel_move: Option<bool>,
     pub lasso: Option<crate::lasso_ui::Lasso>,
+    pub move_marquee: bool,
 }
 
 impl Drag {
@@ -147,6 +148,7 @@ impl Drag {
             reposition: false,
             sel_move: None,
             lasso: None,
+            move_marquee: false,
         }
     }
 
@@ -197,13 +199,14 @@ pub fn marquee_corners(o: &crate::state::ToolOptions, d: &Drag, end: [f64; 2]) -
     ([d.start[0] - hx, d.start[1] - hy], [d.start[0] + hx, d.start[1] + hy])
 }
 
-/// The pixel rectangle a Rectangular/Elliptical Marquee drag selects so far: shown live (ants
 /// and readout) exactly as the release commits it, on whole pixel edges as in Photoshop. `None`
 /// while the gesture is still a click (it never left the press point by more than a few screen
 /// pixels at `zoom`, points per document pixel) or the rectangle has no area: a release then
 /// deselects. A one-pixel row or column is a selection (#2391).
 pub(crate) fn marquee_preview_px(o: &crate::state::ToolOptions, d: &Drag, zoom: f32) -> Option<[f64; 4]> {
-    if !matches!(d.tool, Tool::RectMarquee | Tool::EllipseMarquee) || crate::shape_dialog::is_click(d.start, &d.points, zoom) {
+    if (!matches!(d.tool, Tool::RectMarquee | Tool::EllipseMarquee) && !(d.tool == Tool::Move && d.move_marquee))
+        || crate::shape_dialog::is_click(d.start, &d.points, zoom)
+    {
         return None;
     }
     let last = d.points.last().map_or(d.start, |p| [p[0], p[1]]);
@@ -2691,6 +2694,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     let tool = match temporary {
         Some(t) => t.tool(),
         None if middle => Tool::Hand,
+        None if app.ui.tool == Tool::Pen && ui.input(|i| i.modifiers.command) => Tool::DirectSelection,
         None => app.ui.tool,
     };
     // ⌘ held: this frame's gestures go to the Move tool (`PhotocraftApp::active_tool`). The Hand
@@ -3054,6 +3058,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         if border == photocraft_engine::prefs::CanvasBorder::Line && !beyond && !crate::crop_shield::hides_outside(app) {
             painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
         }
+        if primary {
+            app.hover_doc = response.hover_pos().map(|p| xf.to_doc(p));
+        }
         crate::type_tool::draw_overlay(app, &painter, &xf);
         crate::transform_tool::draw_overlay(app, &painter, &xf);
         crate::distort_ui::draw_overlay(app, &painter, &xf);
@@ -3225,6 +3232,33 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                         painter.line_segment([p - vec2(3.0, 0.0), p + vec2(3.0, 0.0)], Stroke::new(w, c));
                         painter.line_segment([p - vec2(0.0, 3.0), p + vec2(0.0, 3.0)], Stroke::new(w, c));
                     }
+                    egui::CursorIcon::None
+                }
+                Tool::Pen => {
+                    let badge = if crate::vector_ui::can_close_pen_path(app, xf.to_doc(p)) {
+                        crate::icons::PenBadge::Close
+                    } else if crate::vector_ui::can_resume_pen_path(app, xf.to_doc(p)) {
+                        crate::icons::PenBadge::Resume
+                    } else {
+                        crate::icons::PenBadge::None
+                    };
+                    crate::icons::pen_cursor(ui.ctx(), p, badge);
+                    egui::CursorIcon::None
+                }
+                Tool::PaintBucket => {
+                    crate::icons::cursor(ui.ctx(), "paint-bucket", p, vec2(2.0, 20.0) / 24.0, 20.0);
+                    egui::CursorIcon::None
+                }
+                Tool::Lasso | Tool::PolygonLasso => {
+                    crate::icons::cursor(ui.ctx(), "lasso", p, vec2(4.0, 4.0) / 24.0, 20.0);
+                    egui::CursorIcon::None
+                }
+                Tool::DirectSelection => {
+                    crate::icons::cursor(ui.ctx(), "direct-select", p, vec2(4.0, 4.0) / 24.0, 20.0);
+                    egui::CursorIcon::None
+                }
+                Tool::PathSelection => {
+                    crate::icons::cursor(ui.ctx(), "mouse-pointer-2", p, vec2(4.0, 4.0) / 24.0, 20.0);
                     egui::CursorIcon::None
                 }
                 _ => egui::CursorIcon::Crosshair,
@@ -3914,7 +3948,7 @@ fn tool_move(app: &mut PhotocraftApp, x: f64, y: f64, pressure: f32, mods: egui:
         crate::type_tool::pointer_move(app, x, y);
     }
     if tool == Tool::Pen {
-        crate::vector_ui::pen_move(app, x, y);
+        crate::vector_ui::pen_move_with_alt(app, x, y, mods.alt);
     }
     let zoom = app.point_zoom();
     if let Some(d) = app.drag.as_mut().filter(|d| d.reposition) {
@@ -4086,6 +4120,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                 }
                 return;
             }
+
         }
         ToolEvent::Move { x, y, .. } => {
             if let Some(d) = app.guide_drag.as_mut().filter(|d| d.index.is_some()) {
@@ -4160,7 +4195,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
             }
             match tool {
                 Tool::Pen => {
-                    crate::vector_ui::pen_down(app, x, y);
+                    crate::vector_ui::pen_down_with_alt(app, x, y, mods.alt);
                     return;
                 }
                 Tool::CloneStamp | Tool::Healing if mods.alt => {
@@ -4215,7 +4250,11 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
             }
             // ⌥ flips Dodge/Burn and Blur/Sharpen for this stroke.
             let tool = crate::retouch_ui::alt_flipped(tool, mods.alt);
-            app.drag = Some(Drag::new(tool, from.unwrap_or([x, y]), points, mods, erase));
+            let mut d = Drag::new(tool, from.unwrap_or([x, y]), points, mods, erase);
+            if tool == Tool::Move && app.session.active().is_some_and(|st| st.selected_layers().is_empty()) {
+                d.move_marquee = true;
+            }
+            app.drag = Some(d);
             app.trail = None;
             app.stylus.begin_stroke();
             if from.is_some() {
@@ -4525,6 +4564,18 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
                     "paint.gradient",
                     json!({"from": [d.start[0], d.start[1]], "to": [end[0], end[1]], "style": o.gradient_style, "reverse": o.gradient_reverse, "dither": o.gradient_dither, "opacity": o.fill_opacity, "mode": o.gradient_blend_mode.label(), "target": paint_target(app)}),
                 );
+            }
+        }
+        Tool::Move if d.move_marquee => {
+            let (dx, dy) = ((end[0] - d.start[0]).abs(), (end[1] - d.start[1]).abs());
+            if dx >= 2.0 || dy >= 2.0 {
+                let x0 = d.start[0].min(end[0]);
+                let y0 = d.start[1].min(end[1]);
+                let w = (end[0] - d.start[0]).abs();
+                let h = (end[1] - d.start[1]).abs();
+                let mode = if d.modifiers.shift { "add" } else { "replace" };
+                let target = app.ui.tool_options.move_target.clone();
+                let _ = app.run("layer.pickInRect", json!({"x": x0, "y": y0, "width": w, "height": h, "target": target, "mode": mode}));
             }
         }
         Tool::Move => {
