@@ -124,8 +124,7 @@ pub fn fill(s: &mut Session, p: &Value) -> Result<Value> {
                 // The History Brush's default source: the oldest state still held.
                 None => st.history.state(0).unwrap_or_else(|| st.doc.clone()),
             };
-            let mut source_doc = (*source_doc).clone();
-            let (src, _) = crate::channel_cmds::target_surface(&mut source_doc, id, p)
+            let src = crate::channel_cmds::read_target_surface(source_doc.as_ref(), id, p)
                 .map_err(|_| EngineError::Other("the target did not exist (as pixels, a mask or a channel) in that history state".into()))?;
             Source::Pixels(area, read_rgba(src, area, "reading Fill's history source")?)
         }
@@ -351,7 +350,7 @@ fn blend_tile(bytes: &mut [u8], fmt: &photocraft_color::PixelFormat, origin: Rec
             let mut bytes = vec![0u8; bpp];
             photocraft_raster::encode_pixel(fmt, enc.get(..m.min(n)).unwrap_or(&[]), &mut bytes);
             // Keeping alpha: copy the colour samples only (alpha is the last sample).
-            let keep = if (keep_alpha || !fmt.alpha) && fmt.alpha { bpp - bpp / n.max(1) } else { bpp };
+            let keep = if keep_alpha && fmt.alpha { bpp - bpp / n.max(1) } else { bpp };
             Some((bytes, keep))
         }
         _ => None,
@@ -462,7 +461,7 @@ mod tests {
         assert!(blacks > 300 && blacks < 900, "{blacks}");
         assert!((0..40).all(|x| {
             let v = surf.rgba(x, 3)[0];
-            v < 0.01 || v > 0.99
+            !v.is_nan() && !(0.01..=0.99).contains(&v)
         }));
     }
 
@@ -487,6 +486,39 @@ mod tests {
         s.execute(CMD, json!({"contents": "white"})).unwrap();
         s.execute(CMD, json!({"contents": "contentAware", "colorAdaptation": false})).unwrap();
         assert!(close(px(&s, 17, 12), [0x33 as f32 / 255.0, 0x66 as f32 / 255.0, 0x99 as f32 / 255.0, 1.0]), "{:?}", px(&s, 17, 12));
+    }
+
+    #[test]
+    fn history_fill_reads_a_source_when_its_pixels_were_locked() {
+        // Given a white layer locked in history state 1, then unlocked and filled red.
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 16, "height": 16, "background": "white"})).unwrap();
+        s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
+        s.execute("layer.lockLayers", json!({"pixels": false})).unwrap();
+        s.execute(CMD, json!({"color": "#ff0000"})).unwrap();
+
+        // When Fill reads the locked historical pixels.
+        let result = s.execute(CMD, json!({"contents": "history", "state": 1}));
+
+        // Then it restores white; the historical lock limits edits, not reads.
+        assert!(result.is_ok(), "{result:?}");
+        assert!(close(px(&s, 8, 8), [1.0; 4]), "{:?}", px(&s, 8, 8));
+    }
+
+    #[test]
+    fn history_fill_refuses_a_locked_destination_when_source_is_unlocked() {
+        // Given an unlocked white source and a red, currently locked destination.
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 16, "height": 16, "background": "white"})).unwrap();
+        s.execute(CMD, json!({"color": "#ff0000"})).unwrap();
+        s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
+
+        // When Fill reads the unlocked source and attempts to write to the locked destination.
+        let result = s.execute(CMD, json!({"contents": "history", "state": 0}));
+
+        // Then the destination lock still rejects the edit and preserves red pixels.
+        assert!(result.is_err());
+        assert!(close(px(&s, 8, 8), [1.0, 0.0, 0.0, 1.0]), "{:?}", px(&s, 8, 8));
     }
 
     /// `cargo test -p photocraft-engine --release --lib fill_cmds::tests::timing_24mp -- --ignored --nocapture`
