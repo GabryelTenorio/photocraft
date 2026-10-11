@@ -878,7 +878,7 @@ fn dilate(s: &Map, r: f32) -> Map {
 fn contour_lut(c: &Contour) -> Option<Vec<f32>> {
     match c {
         Contour::Linear => None,
-        Contour::Custom { points, .. } => Some(crate::adjust::curve_lut(points)),
+        Contour::Custom { points, corners, .. } => Some(crate::adjust::contour_curve_lut(points, corners)),
     }
 }
 
@@ -913,6 +913,16 @@ pub fn ranged_lut(contour: &Contour, range: f32) -> Option<Vec<f32>> {
             })
             .collect(),
     )
+}
+
+/// The bevel Contour element's height transfer: the contour alone. Unlike a glow's, its Range is
+/// not a `v / range` stretch: that flattened a Linear contour at the default 50 % to a bevel half
+/// as wide as Photoshop's (a real 18 px smooth inner bevel at 136 % depth: top-edge highlight gone
+/// 15 px in, Photoshop's still 0.19 at 16 px), and dropping it lowers the bad pixels of every
+/// contour oracle (bevel-inner-contour-ramp-peak 25.9 → 21.8 %, -double-ring-aa-r70 25.2 → 21.0 %,
+/// bevel-pillow-chisel-hard-gloss-and-contour 11.4 → 7.2 %). What Range does instead is still open.
+pub fn bevel_contour_lut(c: &photocraft_doc::BevelContour) -> Vec<f32> {
+    contour_lut(&c.contour).unwrap_or_else(|| (0..4096).map(|k| k as f32 / 4095.0).collect())
 }
 
 fn apply_lut(m: Map, l: Option<Vec<f32>>) -> Map {
@@ -1480,9 +1490,9 @@ fn bevel_height(shape: &Map, b: &Bevel, g: &BevelGeom, tex: &TextureCtx, pattern
         }
         h
     };
-    // Contour element: the height profile through the contour over its range.
+    // Contour element: the height profile through the contour.
     if let Some(c) = &b.contour {
-        h = apply_lut(h, Some(ranged_lut(&c.contour, c.range).unwrap_or_else(|| (0..4096).map(|k| k as f32 / 4095.0).collect())));
+        h = apply_lut(h, Some(bevel_contour_lut(c)));
     }
     // Texture element: the pattern's luminance as extra height, scaled so a full-contrast step
     // at 100 % depth slopes like the bevel at its depth.
@@ -2800,6 +2810,16 @@ mod tests {
     }
 
     #[test]
+    fn linear_bevel_contour_leaves_the_height_alone_at_any_range() {
+        for range in [0.5, 0.7, 1.0] {
+            let lut = bevel_contour_lut(&photocraft_doc::BevelContour { contour: Contour::Linear, range, anti_alias: false });
+            for v in [0.0f32, 0.25, 0.5, 0.75, 1.0] {
+                assert!((lut_at(&lut, v) - v).abs() < 1e-3, "range {range}: {v} -> {}", lut_at(&lut, v));
+            }
+        }
+    }
+
+    #[test]
     fn bevel_contour_and_texture_shape_the_height() {
         let shape = square(40, 6, 34);
         let l = GlobalLight::default();
@@ -2812,7 +2832,11 @@ mod tests {
             photocraft_doc::adjust::CurvePoint { input: 0.5, output: 1.0 },
             photocraft_doc::adjust::CurvePoint { input: 1.0, output: 0.0 },
         ];
-        c.contour = Some(photocraft_doc::BevelContour { contour: Contour::Custom { name: "fold".into(), points: fold }, range: 1.0, anti_alias: false });
+        c.contour = Some(photocraft_doc::BevelContour {
+            contour: Contour::Custom { name: "fold".into(), points: fold, corners: vec![] },
+            range: 1.0,
+            anti_alias: false,
+        });
         let (b, _) = bevel_maps(&shape, &c, &l, &no_tex(), &PreparedPatterns::new(&[], PREPARED_PATTERN_BYTES));
         let diff: f32 = a[1].v.iter().zip(&b[1].v).map(|(x, y)| (x - y).abs()).sum();
         assert!(diff > 5.0, "{diff}");

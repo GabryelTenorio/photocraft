@@ -113,19 +113,29 @@ impl Default for QuickMaskOptions {
 pub(crate) fn fix_view(st: &mut DocState) {
     let n = st.doc.channels.len();
     let colors = color_count(&st.doc);
-    let v = &mut st.channel_view;
-    v.alpha_visible.truncate(n);
-    v.color_hidden.truncate(colors);
-    match v.target {
-        ChannelTarget::Alpha(i) if i >= n => v.target = ChannelTarget::Composite,
-        ChannelTarget::Color(k) if k >= colors || colors < 2 => v.target = ChannelTarget::Composite,
-        _ => {}
-    }
-    // Never leave the canvas showing nothing at all.
-    if v.visible_colors(colors) == 0 && !(0..n).any(|i| v.alpha_shown(i)) {
-        v.color_hidden.clear();
+    let quick = st.doc.quick_mask.is_some();
+    {
+        let v = &mut st.channel_view;
+        v.alpha_visible.truncate(n);
+        v.color_hidden.truncate(colors);
+        match v.target {
+            ChannelTarget::Alpha(i) if i >= n => v.target = ChannelTarget::Composite,
+            ChannelTarget::Color(k) if k >= colors || colors < 2 => v.target = ChannelTarget::Composite,
+            _ => {}
+        }
     }
     crate::mask_view_cmds::fix(st);
+    // An alpha/spot eye, Quick Mask, or the active layer's mask can be the only thing on the
+    // canvas (so R, G and B can all be off). Otherwise the colour channels come back.
+    let active = st.active_layer;
+    let shown = {
+        let doc = &st.doc;
+        let v = &st.channel_view;
+        (0..n).any(|i| v.alpha_shown(i)) || (quick && !v.quick_mask_hidden) || active.is_some_and(|id| doc.layer(id).is_some_and(|l| l.mask.is_some()))
+    };
+    if st.channel_view.visible_colors(colors) == 0 && !shown {
+        st.channel_view.color_hidden.clear();
+    }
 }
 
 /// Bump the revision for a view-only change without dirtying a clean document.
@@ -533,12 +543,15 @@ pub(crate) fn channel_surface_for_filter<'a>(doc: &'a mut Document, layer: Optio
     Ok(Some(surf))
 }
 
-/// Commands that edit a targeted layer mask in place of the layer: the Image › Adjustments table
-/// and the filters. A mask target enables them on any layer with a mask, so ⌘I inverts an
-/// adjustment layer's mask as in Photoshop (#780).
+/// Commands that edit a targeted layer mask in place of the layer: the Image › Adjustments table,
+/// the filters and the fills (Edit › Fill and its keys). A mask target enables them on any layer
+/// with a mask, so ⌘I inverts an adjustment layer's mask (#780) and Fill fills it (#2456) as in
+/// Photoshop.
 fn edits_mask(id: &str) -> bool {
     id.strip_prefix("image.adjustments.").is_some_and(|kind| crate::adjust_params::default_for(kind, ColorMode::Rgb).is_ok())
         || crate::filters::params_for(id, &Value::Null).is_some()
+        || id == "edit.fill"
+        || crate::fill_key_cmds::IDS.contains(&id)
 }
 
 /// The precondition of `id` when `p` targets the active layer's mask (`"target":"mask"`): the
@@ -553,7 +566,8 @@ pub(crate) fn mask_target_enabled(s: &Session, id: &str, p: &Value) -> Option<st
 /// Whether command `id` edits the targeted channel or mask when its params name no `"target"`
 /// (filters, adjustments, paint and fill commands); the shell adds its mask target to these.
 pub fn follows_target(id: &str) -> bool {
-    routed(id)
+    // Moving the selected pixels (⌘-drag, Move tool) moves the targeted mask's, not the layer's.
+    routed(id) || id == "select.float"
 }
 
 /// Commands whose target follows the Channels panel.
@@ -565,6 +579,15 @@ fn routed(id: &str) -> bool {
         || crate::fill_key_cmds::IDS.contains(&id)
         // Pasting into a targeted mask or channel (#1035).
         || matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "edit.pasteSpecial.pasteInto" | "edit.pasteSpecial.pasteOutside")
+        // Edit › Transform › Rotate/Flip turn a targeted mask or channel (#2835).
+        || matches!(
+            id,
+            "edit.transform.rotate180"
+                | "edit.transform.rotate90Cw"
+                | "edit.transform.rotate90Ccw"
+                | "edit.transform.flipHorizontal"
+                | "edit.transform.flipVertical"
+        )
         || matches!(
             id,
             "paint.cloneStamp"
@@ -641,6 +664,71 @@ pub(crate) fn restrict_to_color(before: &Document, after: &mut Document, id: Lay
         new.write_region(r, &v);
     }
     new.prune();
+}
+
+/// The colour channel Clear is limited to: the Channels panel targets a single one.
+pub(crate) fn targeted_color(s: &Session) -> Option<usize> {
+    match s.active()?.channel_view.target {
+        ChannelTarget::Color(k) => Some(k),
+        _ => None,
+    }
+}
+
+/// Clear (Delete) with colour channel `k` of layer `id` targeted (#2720): fill the selected area
+/// (or the canvas) of that channel only with the background colour's value for it, as Photoshop
+/// does. A channel has no transparency of its own, so the other channels and the layer's alpha
+/// stay; partly selected pixels blend.
+pub(crate) fn clear_color_channel(doc: &mut Document, id: LayerId, k: usize, background: [f32; 4]) -> Result<()> {
+    let canvas = doc.bounds();
+    let sel = doc.selection.clone();
+    let area = sel.as_ref().map_or(canvas, |m| m.content_bounds().intersect(&canvas));
+    let surf = crate::commands::paint_surface(doc, id, &Value::Null)?;
+    let fmt = surf.format();
+    let n = fmt.channels();
+    // The background colour in the layer's colour model, so `k` picks the right component.
+    let Some(v) = from_rgba(&fmt, [background[0], background[1], background[2], 1.0]).get(k).copied().filter(|_| k < n) else {
+        return Err(EngineError::Other(format!("no colour channel {k} in this layer")));
+    };
+    if area.is_empty() {
+        return Ok(());
+    }
+    let cover = sel.map(|m| (m.read_region(area), m.format().channels().max(1)));
+    let mut px = surf.read_region(area);
+    for (i, p) in px.chunks_exact_mut(n).enumerate() {
+        let w = cover.as_ref().map_or(1.0, |(m, mk)| m.get(i * mk).copied().unwrap_or(0.0));
+        if let Some(c) = p.get_mut(k) {
+            *c += (v - *c) * w.clamp(0.0, 1.0);
+        }
+    }
+    surf.write_region(area, &px);
+    surf.prune();
+    Ok(())
+}
+
+/// The alpha channel or Quick Mask the Channels panel targets, as `"target"` params: Clear
+/// (Delete) fills it instead of the layer (#2734).
+pub(crate) fn targeted_channel(s: &Session) -> Option<Value> {
+    let st = s.active()?;
+    let t = match st.channel_view.target {
+        ChannelTarget::Alpha(i) if i < st.doc.channels.len() => json!({ "channel": i }),
+        ChannelTarget::Composite if st.doc.quick_mask.is_some() => json!("quickMask"),
+        _ => return None,
+    };
+    Some(json!({ "target": t }))
+}
+
+/// Clear (Delete) with an alpha channel or the Quick Mask targeted (`target` from
+/// [`targeted_channel`]): fill the selected area (or the canvas) of it with the background colour,
+/// as gray, as Photoshop does. Partly selected pixels blend.
+pub(crate) fn clear_channel(doc: &mut Document, target: &Value, background: [f32; 4]) -> Result<()> {
+    let canvas = doc.bounds();
+    let sel = doc.selection.clone();
+    let area = sel.as_ref().map_or(canvas, |m| m.content_bounds().intersect(&canvas));
+    if area.is_empty() {
+        return Ok(());
+    }
+    let (surf, _) = target_surface(doc, None, target)?;
+    crate::fill_cmds::fill_color(surf, area, [background[0], background[1], background[2], 1.0], sel.as_ref())
 }
 
 /// The active document targets an alpha channel or is in Quick Mask mode, so pixel commands

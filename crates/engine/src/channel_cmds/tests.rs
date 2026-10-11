@@ -169,6 +169,49 @@ fn channel_management_and_view_state() {
 }
 
 #[test]
+fn every_colour_channel_can_hide_while_alpha_stays() {
+    let mut s = session();
+    s.execute("channel.new", json!({"fill": "white", "name": "Alpha"})).unwrap();
+    // A new channel is shown alone. Bring RGB back (the overlay), then turn the RGB eye off.
+    s.execute("channel.setVisible", json!({"channel": "composite", "visible": true})).unwrap();
+    assert!(s.active().unwrap().channel_view.alpha_shown(0));
+    assert_eq!(s.active().unwrap().channel_view.visible_colors(3), 3);
+    s.execute("channel.setVisible", json!({"channel": "composite", "visible": false})).unwrap();
+    let st = s.active().unwrap();
+    assert_eq!(st.channel_view.visible_colors(3), 0, "the RGB eye can turn R, G and B off together");
+    assert!(st.channel_view.alpha_shown(0), "Alpha stays on");
+    s.execute("channel.setVisible", json!({"channel": "composite", "visible": true})).unwrap();
+    for name in ["red", "green", "blue"] {
+        s.execute("channel.setVisible", json!({"channel": name, "visible": false})).unwrap();
+    }
+    let st = s.active().unwrap();
+    assert_eq!(st.channel_view.visible_colors(3), 0, "R, G and B can each be turned off");
+    assert!(st.channel_view.alpha_shown(0));
+}
+
+#[test]
+fn quick_mask_and_a_layer_mask_can_be_the_only_visible_channel() {
+    let mut s = session();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    s.execute("select.editInQuickMaskMode", json!({})).unwrap();
+    s.execute("channel.setVisible", json!({"channel": "composite", "visible": false})).unwrap();
+    assert_eq!(s.active().unwrap().channel_view.visible_colors(3), 0);
+    assert!(s.active().unwrap().doc.quick_mask.is_some());
+    s.execute("select.editInQuickMaskMode", json!({"on": false})).unwrap();
+    // Nothing else to show: the colour channels come back.
+    s.execute("channel.setVisible", json!({"channel": "composite", "visible": false})).unwrap();
+    assert_eq!(s.active().unwrap().channel_view.visible_colors(3), 3);
+
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+    for name in ["red", "green", "blue"] {
+        s.execute("channel.setVisible", json!({"channel": name, "visible": false})).unwrap();
+    }
+    assert_eq!(s.active().unwrap().channel_view.visible_colors(3), 0, "a transparency mask can be shown alone");
+}
+
+#[test]
 fn shortcut_slots_target_channels() {
     let mut s = session();
     s.execute("channel.new", json!({})).unwrap();
@@ -520,4 +563,54 @@ fn apply_image_and_calculations_fail_gracefully_never_panic() {
     }
     // A well-formed self-apply still works.
     assert!(s.execute("image.applyImage", json!({"source": {"channel": "composite"}})).is_ok());
+}
+
+#[test]
+fn clear_with_a_colour_channel_targeted_clears_only_that_channel() {
+    let near = |a: &[f32], b: &[f32]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-3);
+    // The Background, then a normal layer (Delete there can't make one channel transparent).
+    for duplicate in [false, true] {
+        let mut s = session_depth(16);
+        rect(&mut s, 0, 0, 20, 20, "replace");
+        s.execute("edit.fill", json!({"color": "#336699"})).unwrap();
+        s.execute("select.deselect", json!({})).unwrap();
+        if duplicate {
+            s.execute("layer.duplicate", json!({})).unwrap();
+        }
+        let (left, right) = (px(&s, 5, 5), px(&s, 30, 5));
+        s.tools.background = [0.8, 0.1, 0.9, 1.0];
+        s.execute("channel.target", json!({"channel": "red"})).unwrap();
+        rect(&mut s, 2, 2, 10, 10, "replace");
+        s.execute("edit.clear", json!({})).unwrap();
+        // Red takes the background colour's red; green, blue and transparency stay.
+        assert!(near(&px(&s, 5, 5), &[0.8, left[1], left[2], 1.0]), "duplicate {duplicate}: {:?}", px(&s, 5, 5));
+        assert!(near(&px(&s, 15, 5), &left), "outside the selection");
+        assert!(near(&px(&s, 30, 5), &right));
+        s.undo();
+        assert!(near(&px(&s, 5, 5), &left), "one undoable step");
+    }
+}
+
+#[test]
+fn clear_with_an_alpha_channel_or_quick_mask_targeted_fills_it_not_the_layer() {
+    let mut s = session_depth(16);
+    let layer = px(&s, 5, 5);
+    s.tools.background = [0.0, 0.0, 0.0, 1.0];
+    // A white Alpha 1, targeted.
+    s.execute("channel.new", json!({"fill": "white"})).unwrap();
+    rect(&mut s, 2, 2, 10, 10, "replace");
+    s.execute("edit.clear", json!({})).unwrap();
+    // The selected part of the channel takes the background colour; the layer stays.
+    assert_eq!(chan(&s, 0, 5, 5), 0.0);
+    assert_eq!(chan(&s, 0, 15, 5), 1.0, "outside the selection");
+    assert_eq!(px(&s, 5, 5), layer, "the layer is untouched");
+    s.undo();
+    assert_eq!(chan(&s, 0, 5, 5), 1.0, "one undoable step");
+    // In Quick Mask mode Delete fills the mask (black = masked), not the layer.
+    s.execute("channel.target", json!({"channel": "composite"})).unwrap();
+    s.execute("select.editInQuickMaskMode", json!({"on": true})).unwrap();
+    s.execute("edit.clear", json!({})).unwrap();
+    let q = doc(&s).quick_mask.as_ref().unwrap().surface.sample_channel(5, 5, 0);
+    assert_eq!(q, 0.0);
+    assert_eq!(px(&s, 5, 5), layer, "the layer is untouched in Quick Mask mode");
 }
