@@ -926,7 +926,8 @@ mod tests {
     #[test]
     fn spline_pressure_stays_within_input_range() {
         let pressures = [0.2_f32, 1.0, 0.4, 0.9, 0.3, 0.8];
-        let pts: Vec<StrokePoint> = pressures.iter().enumerate().map(|(i, p)| spt(i as f64 * 9.0, (i as f64 * 1.3).sin() * 15.0, *p, i as f64 * 16.0)).collect();
+        let pts: Vec<StrokePoint> =
+            pressures.iter().enumerate().map(|(i, p)| spt(i as f64 * 9.0, (i as f64 * 1.3).sin() * 15.0, *p, i as f64 * 16.0)).collect();
         let out = run_spline(&pts);
         for p in &out {
             assert!(p.pressure >= 0.2 - 1e-5 && p.pressure <= 1.0 + 1e-5, "pressure out of range: {}", p.pressure);
@@ -947,11 +948,11 @@ mod tests {
         let out = run_spline(&[pt(f64::MAX, f64::MAX), pt(-f64::MAX, 0.0), pt(f64::MAX, -f64::MAX)]);
         assert!(out.len() <= 1 + 64 * 3);
     }
-    
+
     #[test]
-        fn spline_two_points_are_one_straight_segment() {
-            let out = run_spline(&[pt(0.0, 0.0), pt(10.0, 4.0)]);
-            assert_eq!(out.len(), 2);
-            assert_eq!((out[1].x, out[1].y), (10.0, 4.0));
-        }
+    fn spline_two_points_are_one_straight_segment() {
+        let out = run_spline(&[pt(0.0, 0.0), pt(10.0, 4.0)]);
+        assert_eq!(out.len(), 2);
+        assert_eq!((out[1].x, out[1].y), (10.0, 4.0));
+    }
 }
