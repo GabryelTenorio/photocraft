@@ -506,6 +506,44 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// #3391: `serve`/`mcp` must warn when a type layer keeps a font that is not installed, the
+    /// same way the CLI already does, so a script or agent is not misled into exporting a fallback
+    /// face in silence. The warning rides the reply of `type.create` and of `doc.save`/`doc.open`.
+    #[test]
+    fn missing_font_is_warned_on_type_create_save_and_open() {
+        let dir = std::env::temp_dir().join(format!("pc-rpc-font-warn-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let psd = dir.join("card.psd");
+        let mut h = Headless::trusted_local();
+        h.handle("doc.new", json!({"width": 200, "height": 80, "background": "white"})).unwrap();
+
+        let has_font_warning = |v: &Value| {
+            v["warnings"]
+                .as_array()
+                .is_some_and(|w| w.iter().any(|m| m.as_str().is_some_and(|s| s.contains("is not installed; text may render using a fallback face"))))
+        };
+
+        let created = h
+            .handle("engine.execute", json!({"command": "type.create", "params": {"x": 10, "y": 40, "text": "Hi", "font": "NoSuchFamily123", "size": 32}}))
+            .unwrap();
+        assert!(has_font_warning(&created), "type.create must warn about the missing font: {created}");
+
+        let saved = h.handle("doc.save", json!({"path": psd.to_string_lossy()})).unwrap();
+        assert!(has_font_warning(&saved), "doc.save must warn about the missing font: {saved}");
+
+        let opened = h.handle("doc.open", json!({"path": psd.to_string_lossy()})).unwrap();
+        assert!(has_font_warning(&opened), "doc.open must warn about the missing font: {opened}");
+
+        // A command that cannot change a layer's font keeps its reply shape, warning and all.
+        let layer = h.handle("engine.execute", json!({"command": "layer.new.layer", "params": {}})).unwrap();
+        assert!(
+            !layer.to_string().contains("is not installed; text may render using a fallback face"),
+            "a non-type command must not carry the font warning: {layer}"
+        );
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn automation_preview_rejects_oversized_full_size_and_numeric_wraparound() {
         let mut h = Headless::new();

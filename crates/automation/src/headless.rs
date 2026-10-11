@@ -96,13 +96,17 @@ impl Headless {
             st.source_read_only = o.source_read_only;
         }
         let d = &self.session.documents()[index];
+        let mut warnings = o.warnings;
+        // A type layer naming an uninstalled font opens with another face silently; surface the
+        // same warning the CLI gives so a script or agent is not misled (#3391).
+        warnings.extend(photocraft_engine::type_extra_cmds::missing_font_warnings(&d.doc));
         Ok(json!({
             "index": index,
             "name": d.doc.name,
             "width": d.doc.size.width,
             "height": d.doc.size.height,
             "layers": d.doc.layer_count(),
-            "warnings": o.warnings,
+            "warnings": warnings,
         }))
     }
 
@@ -133,7 +137,7 @@ impl Headless {
             }
         };
         let target_text = target.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
-        let warnings = match &self.filesystem {
+        let mut warnings = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: write authority is absent".into())),
             Filesystem::TrustedLocal => {
                 let writer = self.writers.entry(doc.id.0).or_default();
@@ -162,6 +166,9 @@ impl Headless {
                 self.session.set_active(active);
             }
         }
+        // Exporting text set in an uninstalled font bakes the fallback face into the output; warn
+        // the same way the CLI does so an automated save is not silently wrong (#3391).
+        warnings.extend(photocraft_engine::type_extra_cmds::missing_font_warnings(&doc));
         Ok(json!({ "path": target.to_string_lossy(), "warnings": warnings }))
     }
 
@@ -245,12 +252,38 @@ impl Headless {
         // Background jobs that finished since the last request (or batch step) are applied first.
         self.sync_jobs();
         if wait {
-            return Ok(self.session.execute(id, params)?);
+            let mut result = self.session.execute(id, params)?;
+            self.annotate_font_warnings(id, &mut result);
+            return Ok(result);
         }
         Ok(match self.session.start(id, params)? {
-            photocraft_engine::jobs::Started::Done(v) => v,
+            photocraft_engine::jobs::Started::Done(mut v) => {
+                self.annotate_font_warnings(id, &mut v);
+                v
+            }
             photocraft_engine::jobs::Started::Job(job) => json!({"job": job.0, "pending": true}),
         })
+    }
+
+    /// Appends the missing-font warning to a type command's reply when the family it leaves on the
+    /// layer is not installed, so a `serve`/`mcp` caller sees the same fallback notice the CLI
+    /// already gives (#3391). Only these three commands can change a layer's font, and the warning
+    /// is added only when something is actually missing, so other replies keep their shape.
+    fn annotate_font_warnings(&self, id: &str, result: &mut Value) {
+        if !matches!(id, "type.create" | "type.setStyle" | "type.edit") {
+            return;
+        }
+        let Some(i) = self.session.active_index() else { return };
+        let warnings = photocraft_engine::type_extra_cmds::missing_font_warnings(&self.session.documents()[i].doc);
+        if warnings.is_empty() {
+            return;
+        }
+        if let Value::Object(map) = result {
+            let entry = map.entry("warnings").or_insert_with(|| Value::Array(Vec::new()));
+            if let Value::Array(arr) = entry {
+                arr.extend(warnings.into_iter().map(Value::String));
+            }
+        }
     }
 }
 

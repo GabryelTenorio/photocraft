@@ -436,6 +436,13 @@ pub fn missing_fonts(doc: &Document) -> Vec<String> {
     out
 }
 
+/// One warning line per font family a type layer names that is not installed, in the wording the
+/// CLI (`run`/`convert`/`info`) already uses. Shared so the CLI and the session servers (`serve`,
+/// `mcp`) report a font fallback the same way (#3391, follow-up to #1251).
+pub fn missing_font_warnings(doc: &Document) -> Vec<String> {
+    missing_fonts(doc).into_iter().map(|f| format!("font '{f}' is not installed; text may render using a fallback face")).collect()
+}
+
 /// Replace missing families per `map` (missing → installed; unmapped ones → the default family).
 fn replace_fonts(s: &mut Session, map: &serde_json::Map<String, Value>, all: bool) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
