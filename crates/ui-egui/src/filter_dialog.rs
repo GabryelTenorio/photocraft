@@ -187,7 +187,9 @@ fn is_pixel_param_of(command: &str, key: &str) -> bool {
 }
 
 /// Filters whose features have a fixed size in document pixels that no dialog parameter scales:
-/// per-pixel noise and dots (Add Noise, Diffuse, Mezzotint, Fibers), pixel kernels and scan lines
+/// per-pixel noise and dots (Add Noise, Diffuse, Mezzotint, Fibers, and Dust & Scratches, whose
+/// specks a proxy averages away — so the preview would show nothing removed at all, #3265 — while
+/// its radius stays in document pixels), pixel kernels and scan lines
 /// (Custom, Reduce Noise, De-Interlace, Trace Contour's one-pixel lines), fixed lengths and
 /// widths (Ripple, Oil Paint, Wind's streaks, Extrude's depth, Flame's length, width and
 /// interval) and Tree, whose branches are built from 6 px segments. On a reduced proxy those
@@ -201,6 +203,7 @@ const FULL_RESOLUTION_PREVIEW: &[&str] = &[
     "filter.render.fibers",
     "filter.pixelate.mezzotint",
     "filter.noise.addNoise",
+    "filter.noise.dustAndScratches",
     "filter.noise.reduceNoise",
     "filter.other.custom",
     "filter.video.deInterlace",
@@ -1067,6 +1070,21 @@ mod tests {
         assert!(missing.is_empty(), "missing Korean dynamic labels: {missing:#?}");
     }
 
+    /// Select and Mask's Output To lists all six of Photoshop's targets, each translated.
+    #[test]
+    fn select_and_mask_output_choices_are_translated() {
+        let spec = photocraft_engine::commands::find("select.refineEdge").unwrap().params;
+        let p = parse_spec(spec).into_iter().find(|p| p.key == "output").unwrap();
+        let Kind::Choice { options: choices, .. } = p.kind else { panic!("output is not a choice") };
+        let labels: Vec<String> = choices.iter().map(|c| source_label(c)).collect();
+        assert_eq!(labels, ["Selection", "Layer Mask", "New Layer", "New Layer With Mask", "New Document", "New Document With Mask"]);
+        for lang in crate::i18n::Lang::all().filter(|l| l.code() != "en") {
+            for label in &labels {
+                assert!(crate::i18n::has(lang, label), "{}: untranslated {label}", lang.code());
+            }
+        }
+    }
+
     #[test]
     fn preview_runs_engine_command_on_proxy() {
         let mut doc = Document::with_background(
@@ -1316,7 +1334,9 @@ mod tests {
     /// #2063: these filters drew their features in proxy pixels (noise, dots, dither, strokes,
     /// kernels, scan lines, contour lines, streaks, depths, a tree's segments), so a 1/4 preview
     /// showed them 4x larger than OK applied them. Their preview now runs at full resolution and
-    /// matches the applied result.
+    /// matches the applied result. Dust & Scratches (#3265) is the mirror image of those: a proxy
+    /// averages away the very specks the filter exists to remove, so its preview showed an
+    /// untouched image at a blocky scale.
     #[test]
     fn fixed_size_filters_preview_at_the_scale_they_apply() {
         let doc = sharp(256);
@@ -1330,6 +1350,7 @@ mod tests {
             ("filter.render.fibers", json!({})),
             ("filter.pixelate.mezzotint", json!({"type": "mediumDots"})),
             ("filter.noise.addNoise", json!({"amount": 12.5})),
+            ("filter.noise.dustAndScratches", json!({"radius": 4.0, "threshold": 0.0})),
             ("filter.noise.reduceNoise", json!({})),
             ("filter.other.custom", json!({"kernel": edge})),
             ("filter.video.deInterlace", json!({})),
