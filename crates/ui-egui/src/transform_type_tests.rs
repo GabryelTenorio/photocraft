@@ -1,6 +1,6 @@
 //! Free Transform on type layers (#2630): the Edit menu offers it, a selection doesn't narrow it
-//! (type can't be partly transformed, so the whole layer moves), and Distort / Perspective are
-//! greyed as in Photoshop until the type is rasterized.
+//! (type can't be partly transformed, so the whole layer moves). Distort / Perspective, greyed in
+//! Photoshop until the type is rasterized, work on the live type here ("Better Than PS").
 
 use serde_json::json;
 
@@ -28,17 +28,21 @@ fn select_left_half(app: &mut PhotocraftApp) {
 }
 
 #[test]
-fn type_layers_offer_free_transform_but_not_distort_or_perspective() {
+fn type_layers_offer_free_transform_distort_and_perspective() {
     let mut app = app();
     for selection in [false, true] {
         if selection {
             select_left_half(&mut app);
         }
-        for id in ["edit.freeTransform", "edit.transform.scale", "edit.transform.rotate", "edit.transform.skew"] {
+        for id in [
+            "edit.freeTransform",
+            "edit.transform.scale",
+            "edit.transform.rotate",
+            "edit.transform.skew",
+            "edit.transform.distort",
+            "edit.transform.perspective",
+        ] {
             assert!(crate::menus::is_enabled(&app, id), "{id} (selection: {selection})");
-        }
-        for id in ["edit.transform.distort", "edit.transform.perspective"] {
-            assert!(!crate::menus::is_enabled(&app, id), "{id} is greyed for editable type (selection: {selection})");
         }
     }
     // The same rows in the marquee's canvas context menu.
@@ -52,11 +56,8 @@ fn type_layers_offer_free_transform_but_not_distort_or_perspective() {
         pasteboard: false,
     };
     assert!(crate::canvas_tool_menu::available(&app, &menu, "edit.freeTransform"));
-    assert!(!crate::canvas_tool_menu::available(&app, &menu, "edit.transform.distort"));
-    assert!(!crate::canvas_tool_menu::available(&app, &menu, "edit.transform.perspective"));
-    // Rasterized, the type is pixels and can be distorted.
-    app.run("layer.rasterize.type", json!({})).unwrap();
-    assert!(crate::menus::is_enabled(&app, "edit.transform.distort") && crate::menus::is_enabled(&app, "edit.transform.perspective"));
+    assert!(crate::canvas_tool_menu::available(&app, &menu, "edit.transform.distort"));
+    assert!(crate::canvas_tool_menu::available(&app, &menu, "edit.transform.perspective"));
 }
 
 #[test]
