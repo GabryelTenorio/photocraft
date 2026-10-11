@@ -393,12 +393,7 @@ fn dragging_a_tab_onto_another_group_moves_only_that_panel() {
         .and_then(|strip| strip.tabs.iter().find(|(index, _)| *index == 1))
         .map(|(_, rect)| rect.center())
         .unwrap();
-    let destination = strips
-        .iter()
-        .find(|strip| strip.group == Group::Layers)
-        .and_then(|strip| strip.tabs.first())
-        .map(|(_, rect)| rect.center())
-        .unwrap();
+    let destination = strips.iter().find(|strip| strip.group == Group::Layers).and_then(|strip| strip.tabs.first()).map(|(_, rect)| rect.center()).unwrap();
 
     drag(&mut h, source, destination);
 
@@ -414,6 +409,38 @@ fn dragging_a_tab_onto_another_group_moves_only_that_panel() {
     assert!(source_group.contains(&"layers".to_owned()), "dropped into the destination tab group");
     assert!(!source_group.contains(&"color".to_owned()), "the source group remains intact");
     assert!(crate::panel_docking::valid(layout));
+}
+
+/// The strip shows reordered tabs by position; the drop moves the panel that was dragged, not
+/// the one at that position in the default order.
+#[test]
+fn dragging_a_reordered_tab_onto_another_group_moves_that_panel() {
+    let (mut app, _, _) = app_with_layers();
+    // Gradients (original tab 2) drawn first: Gradients | Color | Swatches | Patterns.
+    app.ui.dock.move_tab(Group::Color, 2, Some(0), true);
+    let mut h = harness(app, vec2(1200.0, 800.0), ThemeKind::ProMedium);
+    let strips = last_strips(&h.ctx);
+    let source = strips
+        .iter()
+        .find(|strip| strip.group == Group::Color)
+        .and_then(|strip| strip.tabs.iter().find(|(index, _)| *index == 2))
+        .map(|(_, rect)| rect.center())
+        .unwrap();
+    let destination = strips.iter().find(|strip| strip.group == Group::Layers).and_then(|strip| strip.tabs.first()).map(|(_, rect)| rect.center()).unwrap();
+
+    drag(&mut h, source, destination);
+
+    let layout = h.state().ui.docking.as_ref().expect("moving one native tab promotes to the shared layout");
+    fn tabs<'a>(node: &'a craft_ui::docking::Node<String>, panel: &str) -> Option<&'a [String]> {
+        match node {
+            craft_ui::docking::Node::Tabs { panels, .. } if panels.iter().any(|id| id == panel) => Some(panels),
+            craft_ui::docking::Node::Split { first, second, .. } => tabs(first, panel).or_else(|| tabs(second, panel)),
+            _ => None,
+        }
+    }
+    let moved = tabs(layout.root.as_ref().unwrap(), "gradients").unwrap();
+    assert!(moved.contains(&"layers".to_owned()), "the dragged Gradients tab joined Layers: {moved:?}");
+    assert!(!moved.contains(&"color".to_owned()), "Color stayed in its group: {moved:?}");
 }
 
 #[test]

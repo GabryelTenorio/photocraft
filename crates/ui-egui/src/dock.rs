@@ -546,7 +546,9 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
         }
         if !locked
             && app.ui.docking.is_none()
-            && let Some(tab) = resp.tab_dropped_out
+            && let Some(shown_tab) = resp.tab_dropped_out
+            // The strip uses visible indices; the drop resolves the panel by its original one.
+            && let Some(&tab) = indices.get(shown_tab)
             && let Some(p) = ui.ctx().pointer_interact_pos().or_else(|| ui.ctx().pointer_latest_pos())
         {
             tab_drops.push((g, tab, p));
