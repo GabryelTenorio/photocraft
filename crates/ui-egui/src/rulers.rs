@@ -260,6 +260,13 @@ fn ruler_pos(xf: &ViewXform, vertical: bool, u: f64, px_per_unit: f64) -> f32 {
     if vertical { rxf.to_screen(0.0, px).y } else { rxf.to_screen(px, 0.0).x }
 }
 
+/// The number a ruler prints at the tick `v` (in ruler units). Like Photoshop, rulers show the
+/// distance from the origin, so values left of / above it read without a minus sign.
+fn ruler_label(v: f64, step: f64, whole: bool) -> String {
+    let v = v.abs();
+    if step >= 1.0 || whole { format!("{}", v.round() as i64) } else { crate::widgets::fmt_num2(v) }
+}
+
 /// Rulers along the top and left of `full` (the canvas rect before `content_rect`), with the
 /// pointer position marked; dragging out of a ruler creates a guide.
 pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &ViewXform) {
@@ -282,7 +289,6 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     let (dpi, size) =
         app.session.active().map_or((72.0, [1.0, 1.0]), |d| (d.doc.resolution_dpi.max(1.0) as f64, [d.doc.size.width as f64, d.doc.size.height as f64]));
     let whole = unit == photocraft_engine::prefs::Unit::Pixels;
-    let label = |v: f64, step: f64| -> String { if step >= 1.0 || whole { format!("{}", v.round() as i64) } else { crate::widgets::fmt_num2(v) } };
     for (vertical, extent) in [(false, size[0]), (true, size[1])] {
         let px_per_unit = unit.to_px(1.0, dpi, extent, ppi).max(1e-9);
         // The top ruler runs along document x, which pixel aspect correction stretches.
@@ -300,12 +306,12 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
             if vertical {
                 p.line_segment([pos2(left.right() - RULER, c), pos2(left.right(), c)], tick);
                 // Labels stacked, as in Photoshop.
-                for (i, ch) in label(v, step).chars().enumerate() {
+                for (i, ch) in ruler_label(v, step, whole).chars().enumerate() {
                     p.text(pos2(left.left() + 3.0, c + 2.0 + i as f32 * 8.5), Align2::LEFT_TOP, ch, font.clone(), t.text_dim);
                 }
             } else {
                 p.line_segment([pos2(c, top.bottom() - RULER), pos2(c, top.bottom())], tick);
-                p.text(pos2(c + 2.0, top.top() + 1.0), Align2::LEFT_TOP, label(v, step), font.clone(), t.text_dim);
+                p.text(pos2(c + 2.0, top.top() + 1.0), Align2::LEFT_TOP, ruler_label(v, step, whole), font.clone(), t.text_dim);
             }
             for k in 1..10 {
                 let m = at(v + step * k as f64 / 10.0);
@@ -526,6 +532,20 @@ mod tests {
                 assert!((ruler_pos(&xf, true, 500.0, 1.0) - origin.y - 250.0).abs() < 1e-2, "rotation {rotation}: left scale");
             }
         }
+        // Distances left of / above the origin read without a minus sign, as in Photoshop.
+        let xf = ViewXform { rect, zoom: 0.5, center: [0.0, 0.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0);
+        assert!(u0 < -500.0 && u1 > 500.0, "the view spans the origin: {u0}..{u1}");
+        for (step, whole) in [(100.0, true), (100.0, false), (0.25, false)] {
+            let mut v = (u0 / step).floor() * step;
+            while v <= u1 {
+                let s = ruler_label(v, step, whole);
+                assert!(!s.contains('-'), "tick {v} (step {step}) is labelled {s:?}");
+                v += step;
+            }
+        }
+        assert_eq!(ruler_label(-500.0, 100.0, true), "500");
+        assert_eq!(ruler_label(-0.25, 0.25, false), "0.25");
     }
 
     /// #3277: guides belong to the document, so a rotated view draws them along the document
