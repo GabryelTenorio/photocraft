@@ -936,7 +936,7 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
     match id {
         "edit.undo" => Some(steps.is_some_and(|s| s.can_undo(&Step::of(t)))),
         "edit.redo" => Some(steps.is_some_and(|s| !s.redo.is_empty())),
-        "edit.toggleLastState" | "edit.contentAwareScale" | "edit.puppetWarp" => Some(false),
+        "edit.toggleLastState" | "history.selectState" | "edit.contentAwareScale" | "edit.puppetWarp" => Some(false),
         // Rotate and Flip turn the box (not while warping, where the mesh is the box).
         _ if box_preset(id).is_some() => Some(t.warp.is_none()),
         // Editable type can't be distorted (#2630, as #2701 rules for the menus outside a box).
@@ -969,16 +969,19 @@ fn box_preset(id: &str) -> Option<(f64, f64, f64)> {
 }
 
 /// While transforming, the box owns the history for every caller (menus, shortcuts, the control
-/// channel, MCP): Undo and Redo step through it, and Toggle Last State, which would change the
-/// document under the box, is refused. Edit › Transform's Rotate and Flip turn the box itself, as
-/// in Photoshop, instead of the layer under it; committing stays with ↩ and the options bar.
+/// channel, MCP): Undo and Redo step through it, and Toggle Last State and History state jumps,
+/// which would change the document under the box, are refused. Edit › Transform's Rotate and
+/// Flip turn the box itself, as in Photoshop, instead of the layer under it; committing stays
+/// with ↩ and the options bar.
 /// `None` for other commands or when not transforming.
 pub fn intercept(app: &mut PhotocraftApp, id: &str) -> Option<Result<serde_json::Value, String>> {
     let warping = app.ui.transform.as_ref()?.warp.is_some();
     match id {
         "edit.undo" => Some(Ok(step(app, false))),
         "edit.redo" => Some(Ok(step(app, true))),
-        "edit.toggleLastState" | "edit.contentAwareScale" | "edit.puppetWarp" => Some(Err("Commit or cancel the transform first".into())),
+        "edit.toggleLastState" | "history.selectState" | "edit.contentAwareScale" | "edit.puppetWarp" => {
+            Some(Err("Commit or cancel the transform first".into()))
+        }
         _ => {
             let (kx, ky, angle) = box_preset(id)?;
             if warping {
