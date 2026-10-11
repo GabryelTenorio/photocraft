@@ -16,8 +16,6 @@
 //! vs contact) is pure and unit-tested on every platform; the Windows glue is the gated `win`
 //! module.
 
-#![allow(unsafe_code)]
-
 use crate::{Sample, Update};
 
 /// The eraser end of the pen? The cursor's classic inverted-id bit, or its `CSR_TYPE` (Wacom tool
@@ -43,6 +41,19 @@ pub fn packet_serial(wparam: usize) -> u32 {
 /// Is this `WT_PACKET` ours? Its lParam is the context handle (other contexts share the window).
 pub fn packet_for_context(lparam: usize, hctx: usize) -> bool {
     lparam == hctx
+}
+
+/// `WTI_CURSORS` (wintab.h): the base `WTInfo` category of the cursors. Each category spans
+/// [`CURSOR_LIMIT`] slots (the cursors' 200..300; 300, `WTI_EXTENSIONS`, starts the next).
+const WTI_CURSORS: u32 = 200;
+/// How many slots one `WTInfo` category holds.
+const CURSOR_LIMIT: u32 = 100;
+
+/// The `WTInfo` category of a packet cursor's `CSR_TYPE` entry: `WTI_CURSORS` plus the cursor
+/// index, or `None` when the index leaves the cursor category ([`CURSOR_LIMIT`] slots) — a packet
+/// field must never select another category's memory.
+pub fn cursor_type_entry(cursor: u32) -> Option<u32> {
+    if cursor < CURSOR_LIMIT { Some(WTI_CURSORS + cursor) } else { None }
 }
 
 /// The pressure scale from an `AXIS` maximum (10-bit Wintab when the driver reports none).
@@ -160,8 +171,9 @@ impl PenStream {
 pub use win::Monitor;
 
 /// The Windows glue: load `wintab32.dll`, open the context, dispatch messages. Real Wintab calls,
-/// so `unsafe` (this crate is the workspace's one exception).
+/// so `unsafe`, allowed on this module alone (the crate denies it everywhere else).
 #[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
 mod win {
     use std::cell::Cell;
     use std::ffi::c_void;
@@ -177,14 +189,13 @@ mod win {
     use crate::{Error, deliver};
 
     // `wintab.h`: the default message base (`WT_PACKET`/`WT_PROXIMITY` are its offsets), the
-    // default context to copy, the cursor category and its type entry, the device's pressure and
-    // orientation axes, and the packet fields this reader asks for (in the wintab bit order).
+    // default context to copy, the cursor's type entry, the device's pressure and orientation
+    // axes, and the packet fields this reader asks for (in the wintab bit order).
     const WT_DEFBASE: u32 = 0x7FF0;
     const WT_PACKET: u32 = WT_DEFBASE;
     const WT_PROXIMITY: u32 = WT_DEFBASE + 5;
     const WTI_DEFCONTEXT: u32 = 3;
     const WTI_DEVICES: u32 = 100;
-    const WTI_CURSORS: u32 = 200;
     const DVC_NPRESSURE: u32 = 15;
     const DVC_ORIENTATION: u32 = 17;
     const CSR_TYPE: u32 = 20;
@@ -489,12 +500,13 @@ mod win {
 
     impl Data {
         /// The cursor's `CSR_TYPE`, cached per cursor index. 0 when the driver names none — or
-        /// when a hostile cursor index makes `WTI_CURSORS + cursor` overflow its category.
+        /// when the packet's cursor index leaves the cursor category ([`cursor_type_entry`]), so a
+        /// hostile field never reads another category's memory.
         fn csr_type(&self, cursor: u32) -> u32 {
             let (last, mut csr_type) = self.last_cursor.get();
             if last != cursor {
                 csr_type = 0;
-                if let Some(index) = WTI_CURSORS.checked_add(cursor) {
+                if let Some(index) = cursor_type_entry(cursor) {
                     // SAFETY: `self.wt_info` is the loaded shim's, valid for the process's life.
                     csr_type = unsafe { wt_info_entry::<u32>(self.wt_info, index, CSR_TYPE) }.unwrap_or(0);
                 }
@@ -508,6 +520,12 @@ mod win {
     /// message on to winit.
     unsafe extern "system" fn subclass_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM, _id: usize, dwref: usize) -> LRESULT {
         if msg == WM_NCDESTROY {
+            // SAFETY: Microsoft's pattern for a subclassed window being destroyed: release the
+            // subclass from inside the `WM_NCDESTROY` handler, while the window still exists.
+            // (`Monitor::drop`'s own removal covers the window outliving the monitor.)
+            unsafe {
+                let _ = RemoveWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID);
+            }
             if dwref != 0 {
                 // SAFETY: `dwref` is the `Box<Data>` `install` leaked; `WM_NCDESTROY` is the last
                 // message the window receives, so the proc frees it exactly once here, storing
@@ -588,8 +606,9 @@ mod tests {
         assert!(proximity_entering(1));
         assert!(proximity_entering(0x1234_0001));
         assert!(!proximity_entering(0));
-        // The leave message's lParam is the context handle (nonzero high word, zero low word);
-        // decoding wParam said "entering" for every message.
+        // The leave message's high word can be set — it is the hardware-proximity flag (nonzero
+        // when the cursor enters or leaves the tablet's proximity), not this context's enter
+        // flag. Decoding wParam (the context handle) said "entering" for every message.
         assert!(!proximity_entering(0x0001_0000));
         assert!(!proximity_entering(usize::MAX << 16));
     }
@@ -609,6 +628,14 @@ mod tests {
         assert!(packet_for_context(0x1234, 0x1234));
         assert!(!packet_for_context(0, 0x1234), "another context's packet on the same window");
         assert!(!packet_for_context(0x1234, 0));
+    }
+
+    #[test]
+    fn cursor_entries_stay_inside_the_cursor_category() {
+        assert_eq!(cursor_type_entry(0), Some(200));
+        assert_eq!(cursor_type_entry(99), Some(299), "the category's last slot");
+        assert_eq!(cursor_type_entry(100), None, "300 starts the extension category");
+        assert_eq!(cursor_type_entry(u32::MAX), None, "a hostile packet field reads nothing");
     }
 
     #[test]

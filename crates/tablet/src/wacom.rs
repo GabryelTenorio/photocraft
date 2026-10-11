@@ -32,9 +32,11 @@ pub fn windows_ink(exe: Option<&str>) -> Option<bool> {
     scope_ink(&text, scope)
 }
 
-/// The application scope id the driver's settings pick for `exe` (lowercased on entry).
+/// The application scope id the driver's settings pick for `exe` (lowercased on entry: scopes
+/// store the path as the driver saw it, and `current_exe()` keeps the on-disk case).
 fn application_scope(text: &str, exe: &str) -> Option<u32> {
-    let name = file_name(exe);
+    let exe = exe.to_lowercase();
+    let name = file_name(&exe);
     let (mut by_name, mut all) = (None, None);
     let mut rest = text;
     while let Some(i) = rest.find("<AppID") {
@@ -127,6 +129,26 @@ mod tests {
         assert_eq!(application_scope(DAT, r"d:\portable\PHOTOCRAFT.EXE"), Some(7));
         // An unknown application: the "All" scope.
         assert_eq!(application_scope(DAT, r"c:\apps\others\reader.exe"), Some(0));
+    }
+
+    /// Two scopes whose executables share a file name in different directories: only the
+    /// full-path match picks the right one, so it proves the match ignores case.
+    const TWO_SCOPES: &str = r#"<WacomTablet version="...">
+  <AppID5>
+    <ApplicationLongName modifier="modified">D:\Other\PhotoCraft.exe</ApplicationLongName>
+  </AppID5>
+  <AppID7>
+    <ApplicationLongName modifier="modified">C:\Apps\PhotoCraft\photocraft.exe</ApplicationLongName>
+  </AppID7>
+</WacomTablet>"#;
+
+    #[test]
+    fn the_full_path_match_ignores_case() {
+        // `current_exe()` reports the on-disk case; the full path must still win over the
+        // name-only match, which would otherwise hit AppID 5 first.
+        assert_eq!(application_scope(TWO_SCOPES, r"C:\Apps\PhotoCraft\PhotoCraft.exe"), Some(7));
+        // The stored scope's own case is ignored the same way.
+        assert_eq!(application_scope(TWO_SCOPES, r"d:\other\photocraft.EXE"), Some(5));
     }
 
     #[test]
