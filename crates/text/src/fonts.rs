@@ -762,8 +762,15 @@ pub(crate) fn collect_font_files(dir: &std::path::Path, depth: u32, limit: usize
 /// A file's bytes, unless it is larger than `max_bytes` (then not read).
 #[cfg(not(target_arch = "wasm32"))]
 fn read_font_file(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>, String> {
+    read_font_data(std::fs::File::open(path).map_err(|e| e.to_string())?, max_bytes)
+}
+
+/// An open font file's bytes, unless it is larger than `max_bytes` (then not read), or why not:
+/// the reason [`FontDb::register_font_files`] reports for it. For files opened another way, such
+/// as through a directory capability.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_font_data(file: std::fs::File, max_bytes: u64) -> Result<Vec<u8>, String> {
     use std::io::Read as _;
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let len = file.metadata().map_err(|e| e.to_string())?.len();
     if len > max_bytes {
         return Err(too_large(max_bytes));

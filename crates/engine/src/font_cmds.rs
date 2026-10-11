@@ -7,7 +7,8 @@ use serde_json::{Value, json};
 use crate::{CommandSpec, EngineError, Result};
 pub use photocraft_text::RegisteredFonts;
 
-const REGISTER: &str = "type.registerFonts";
+/// The command id. Automation runs it through its read root instead of the host path.
+pub const REGISTER: &str = "type.registerFonts";
 
 fn bad(msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: REGISTER.into(), msg: msg.into() }
@@ -19,15 +20,17 @@ pub fn specs() -> Vec<CommandSpec> {
         label: "Register Fonts",
         menu: &[],
         shortcut: None,
-        params: r##"{"path":str (a .ttf/.otf/.ttc/.otc file, or a folder searched 8 levels deep for them)} → {"families":[str],"files":n,"skipped":[{"file":str,"error":str}]}; for the whole process, no history step"##,
+        params: r##"{"path":str (a .ttf/.otf/.ttc/.otc file, or a folder searched 8 levels deep for them; over automation, under the read root)} → {"families":[str],"files":n,"skipped":[{"file":str,"error":str}]}; for the whole process, no history step"##,
         enabled: |_| Ok(()),
         // Like `type.fonts`: no document changes, so nothing to undo or record in an action.
         journal: false,
-        run: |_, p| {
-            let path = p.get("path").and_then(Value::as_str).filter(|s| !s.trim().is_empty()).ok_or_else(|| bad("`path` must name a font file or folder"))?;
-            Ok(result_json(&register_path_param(path)?))
-        },
+        run: |_, p| Ok(result_json(&register_path_param(path_param(p)?)?)),
     }]
+}
+
+/// The `path` parameter of `type.registerFonts`: a non-blank string.
+pub fn path_param(p: &Value) -> Result<&str> {
+    p.get("path").and_then(Value::as_str).filter(|s| !s.trim().is_empty()).ok_or_else(|| bad("`path` must name a font file or folder"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -49,13 +52,20 @@ pub fn register_font_path(path: &std::path::Path) -> Result<RegisteredFonts> {
     engine.fonts.register_font_path(path, photocraft_text::FontFileLimits::DEFAULT).map_err(font_error)
 }
 
+/// Registers font files already read, `(name, bytes or why they couldn't be read)`, in the shared
+/// text engine ([`photocraft_text::FontDb::register_font_files`], default limits): automation
+/// reads them through its read root. `source` names them in errors, as the client gave it.
+pub fn register_font_files(source: &str, files: Vec<(String, std::result::Result<Vec<u8>, String>)>) -> Result<RegisteredFonts> {
+    let mut engine = photocraft_text::shared().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    engine.fonts.register_font_files(source, files, photocraft_text::FontFileLimits::DEFAULT).map_err(font_error)
+}
+
 /// The `type.registerFonts` result.
 pub fn result_json(r: &RegisteredFonts) -> Value {
     let skipped: Vec<Value> = r.skipped.iter().map(|(file, error)| json!({"file": file, "error": error})).collect();
     json!({"families": r.families, "files": r.files, "skipped": skipped})
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn font_error(e: photocraft_text::FontFileError) -> EngineError {
     match e {
         photocraft_text::FontFileError::Io { .. } => EngineError::Other(e.to_string()),
@@ -136,6 +146,17 @@ mod tests {
         register(&mut s, &dir).unwrap();
         assert!(missing(&s).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn files_read_elsewhere_register_and_errors_name_the_given_source() {
+        let bytes = photocraft_testkit::fonts::renamed_font("PC3393 Engine Bytes").unwrap();
+        let r = register_font_files("fonts/brand", vec![("Bytes.ttf".into(), Ok(bytes)), ("gone.ttf".into(), Err("access denied".into()))]).unwrap();
+        assert_eq!(r.families, ["PC3393 Engine Bytes"]);
+        assert_eq!(r.skipped, [("gone.ttf".to_string(), "access denied".to_string())]);
+        assert!(listed(&mut Session::new(), "PC3393 Engine Bytes"));
+        let e = register_font_files("fonts/empty", Vec::new()).unwrap_err();
+        assert!(matches!(&e, EngineError::BadParams { .. }) && e.to_string().contains("`fonts/empty`"), "{e}");
     }
 
     #[test]

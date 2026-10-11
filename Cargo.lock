@@ -4258,6 +4258,8 @@ dependencies = [
  "photocraft-format",
  "photocraft-geom",
  "photocraft-io",
+ "photocraft-testkit",
+ "photocraft-text",
  "rmcp",
  "schemars",
  "serde",

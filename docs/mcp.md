@@ -41,6 +41,11 @@ No filesystem root is needed for the in-memory commands. External linked sources
 a file read remain refused. See the [control policy](control-protocol.md#engine-commands)
 for the shared restrictions.
 
+To use fonts that are neither bundled nor installed, `command_run` with `type.registerFonts`
+and `{"path": "fonts"}` registers a font file or folder under the read root for the rest of the
+session; the reply, limits and errors are in [Headless server](control-protocol.md#headless-server).
+In bridge mode the desktop app refuses it.
+
 `photocraft://document` and `photocraft://commands` return live JSON matching `doc_inspect`
 and `command_list`. Resource reads are uncached; tool/resource catalogs are private and cached
 for ten minutes. List/read responses include the MCP 2026-07-28 result/cache fields.
