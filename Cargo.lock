@@ -4558,6 +4558,7 @@ dependencies = [
  "photocraft-geom",
  "photocraft-psd",
  "photocraft-raster",
+ "photocraft-testkit",
  "skrifa",
 ]
 
