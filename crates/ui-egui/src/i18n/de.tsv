@@ -1277,6 +1277,24 @@
 	Override Pressure	Druck überschreiben
 	Override Rotation	Rotation überschreiben
 	Override Tilt	Neigung überschreiben
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Nach {file} exportierte Farbfelder: {n}|Nach {file} exportierte Farbfelder: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Aus {file} importierte Pinsel: {n}|Aus {file} importierte Pinsel: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Aus {group} importierte Pinsel: {n}|Aus {group} importierte Pinsel: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Aus {file} importierte Verläufe: {n}|Aus {file} importierte Verläufe: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Aus {file} importierte Farbfelder: {n}|Aus {file} importierte Farbfelder: {n}
+@plural	Played {n} step|Played {n} steps	Abgespielte Schritte: {n}|Abgespielte Schritte: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Für Web gespeicherte Dateien: {n}|Für Web gespeicherte Dateien: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Aktualisierte verknüpfte Smartobjekte nach Änderungen auf dem Datenträger: {n}|Aktualisierte verknüpfte Smartobjekte nach Änderungen auf dem Datenträger: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Gelöschte Ebenen, die in dieser Komposition gespeichert waren: {n}. Aktualisieren Sie die Komposition oder löschen Sie die Warnung.|Gelöschte Ebenen, die in dieser Komposition gespeichert waren: {n}. Aktualisieren Sie die Komposition oder löschen Sie die Warnung.
+@plural	{n} plane|{n} planes	Ebenenflächen: {n}|Ebenenflächen: {n}
+@plural	{n} preset|{n} presets	Vorgaben: {n}|Vorgaben: {n}
+@plural	{n} sample point removed|{n} sample points removed	Entfernte Farbaufnahmepunkte: {n}|Entfernte Farbaufnahmepunkte: {n}
+@plural	{n} slice|{n} slices	Slices: {n}|Slices: {n}
+@plural	{n} step|{n} steps	Schritte: {n}|Schritte: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (weitere Warnungen zu Pinselvorgaben: {n})|{warning} (weitere Warnungen zu Pinselvorgaben: {n})
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} (Warnungen: {n})|{what} (Warnungen: {n})
+
 	PRESET DETAILS	VORGABENDETAILS
 	PSD	PSD
 	Paint Overlay	Übermalung

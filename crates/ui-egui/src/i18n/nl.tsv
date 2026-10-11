@@ -1266,6 +1266,24 @@
 	Override Pressure	Druk overschrijven
 	Override Rotation	Rotatie overschrijven
 	Override Tilt	Kanteling overschrijven
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Naar {file} geëxporteerde stalen: {n}|Naar {file} geëxporteerde stalen: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Uit {file} geïmporteerde penselen: {n}|Uit {file} geïmporteerde penselen: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Uit {group} geïmporteerde penselen: {n}|Uit {group} geïmporteerde penselen: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Uit {file} geïmporteerde verlopen: {n}|Uit {file} geïmporteerde verlopen: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Uit {file} geïmporteerde stalen: {n}|Uit {file} geïmporteerde stalen: {n}
+@plural	Played {n} step|Played {n} steps	Afgespeelde stappen: {n}|Afgespeelde stappen: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Voor web opgeslagen bestanden: {n}|Voor web opgeslagen bestanden: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Bijgewerkte gekoppelde slimme objecten na wijzigingen op schijf: {n}|Bijgewerkte gekoppelde slimme objecten na wijzigingen op schijf: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Verwijderde lagen die in deze compositie waren vastgelegd: {n}. Werk de compositie bij of wis de waarschuwing.|Verwijderde lagen die in deze compositie waren vastgelegd: {n}. Werk de compositie bij of wis de waarschuwing.
+@plural	{n} plane|{n} planes	Vlakken: {n}|Vlakken: {n}
+@plural	{n} preset|{n} presets	Voorinstellingen: {n}|Voorinstellingen: {n}
+@plural	{n} sample point removed|{n} sample points removed	Verwijderde monsterpunten: {n}|Verwijderde monsterpunten: {n}
+@plural	{n} slice|{n} slices	Segmenten: {n}|Segmenten: {n}
+@plural	{n} step|{n} steps	Stappen: {n}|Stappen: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (extra waarschuwingen over penseelvoorinstellingen: {n})|{warning} (extra waarschuwingen over penseelvoorinstellingen: {n})
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} (waarschuwingen: {n})|{what} (waarschuwingen: {n})
+
 	PRESET DETAILS	DETAILS VOORINSTELLING
 	PSD	PSD
 	Paint Overlay	Verfbedekking

@@ -768,6 +768,24 @@
 	Override Pressure	Παράκαμψη πίεσης
 	Override Rotation	Παράκαμψη περιστροφής
 	Override Tilt	Παράκαμψη κλίσης
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Δείγματα χρώματος που εξήχθησαν στο {file}: {n}|Δείγματα χρώματος που εξήχθησαν στο {file}: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Πινέλα που εισήχθησαν από το {file}: {n}|Πινέλα που εισήχθησαν από το {file}: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Πινέλα που εισήχθησαν από την ομάδα {group}: {n}|Πινέλα που εισήχθησαν από την ομάδα {group}: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Διαβαθμίσεις που εισήχθησαν από το {file}: {n}|Διαβαθμίσεις που εισήχθησαν από το {file}: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Δείγματα χρώματος που εισήχθησαν από το {file}: {n}|Δείγματα χρώματος που εισήχθησαν από το {file}: {n}
+@plural	Played {n} step|Played {n} steps	Βήματα που αναπαράχθηκαν: {n}|Βήματα που αναπαράχθηκαν: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Αρχεία που αποθηκεύτηκαν για τον ιστό: {n}|Αρχεία που αποθηκεύτηκαν για τον ιστό: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Συνδεδεμένα έξυπνα αντικείμενα που ενημερώθηκαν μετά από αλλαγές στον δίσκο: {n}|Συνδεδεμένα έξυπνα αντικείμενα που ενημερώθηκαν μετά από αλλαγές στον δίσκο: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Διαγραμμένα επίπεδα που είχαν καταγραφεί σε αυτή τη σύνθεση: {n}. Ενημερώστε τη σύνθεση ή διαγράψτε την προειδοποίηση.|Διαγραμμένα επίπεδα που είχαν καταγραφεί σε αυτή τη σύνθεση: {n}. Ενημερώστε τη σύνθεση ή διαγράψτε την προειδοποίηση.
+@plural	{n} plane|{n} planes	Επίπεδα χώρου: {n}|Επίπεδα χώρου: {n}
+@plural	{n} preset|{n} presets	Προρυθμίσεις: {n}|Προρυθμίσεις: {n}
+@plural	{n} sample point removed|{n} sample points removed	Σημεία δειγματοληψίας που αφαιρέθηκαν: {n}|Σημεία δειγματοληψίας που αφαιρέθηκαν: {n}
+@plural	{n} slice|{n} slices	Τμήματα: {n}|Τμήματα: {n}
+@plural	{n} step|{n} steps	Βήματα: {n}|Βήματα: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (επιπλέον προειδοποιήσεις προρυθμίσεων πινέλων: {n})|{warning} (επιπλέον προειδοποιήσεις προρυθμίσεων πινέλων: {n})
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} (προειδοποιήσεις: {n})|{what} (προειδοποιήσεις: {n})
+
 	PRESET DETAILS	ΛΕΠΤΟΜΕΡΕΙΕΣ ΠΡΟΕΠΙΛΟΓΗΣ
 	Pattern Size	Μέγεθος μοτίβου
 	Perspective Warp is not active	Ο μετασχηματισμός προοπτικής δεν είναι ενεργός

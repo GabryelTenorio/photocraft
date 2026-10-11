@@ -1447,6 +1447,24 @@
 	Close Tab Group	Закрити групу вкладок
 
 # New Document dialog
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Зразки, експортовані до {file}: {n}|Зразки, експортовані до {file}: {n}|Зразки, експортовані до {file}: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Пензлі, імпортовані з {file}: {n}|Пензлі, імпортовані з {file}: {n}|Пензлі, імпортовані з {file}: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Пензлі, імпортовані з {group}: {n}|Пензлі, імпортовані з {group}: {n}|Пензлі, імпортовані з {group}: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Градієнти, імпортовані з {file}: {n}|Градієнти, імпортовані з {file}: {n}|Градієнти, імпортовані з {file}: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Зразки, імпортовані з {file}: {n}|Зразки, імпортовані з {file}: {n}|Зразки, імпортовані з {file}: {n}
+@plural	Played {n} step|Played {n} steps	Відтворені кроки: {n}|Відтворені кроки: {n}|Відтворені кроки: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Файли, збережені для вебу: {n}|Файли, збережені для вебу: {n}|Файли, збережені для вебу: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Оновлені пов’язані смарт-об’єкти після змін на диску: {n}|Оновлені пов’язані смарт-об’єкти після змін на диску: {n}|Оновлені пов’язані смарт-об’єкти після змін на диску: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Видалені шари, записані в цій композиції: {n}. Оновіть композицію або скиньте попередження.|Видалені шари, записані в цій композиції: {n}. Оновіть композицію або скиньте попередження.|Видалені шари, записані в цій композиції: {n}. Оновіть композицію або скиньте попередження.
+@plural	{n} plane|{n} planes	Площини: {n}|Площини: {n}|Площини: {n}
+@plural	{n} preset|{n} presets	Набори: {n}|Набори: {n}|Набори: {n}
+@plural	{n} sample point removed|{n} sample points removed	Видалені точки вимірювання: {n}|Видалені точки вимірювання: {n}|Видалені точки вимірювання: {n}
+@plural	{n} slice|{n} slices	Фрагменти: {n}|Фрагменти: {n}|Фрагменти: {n}
+@plural	{n} step|{n} steps	Кроки: {n}|Кроки: {n}|Кроки: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (додаткові попередження про набори пензлів: {n})|{warning} (додаткові попередження про набори пензлів: {n})|{warning} (додаткові попередження про набори пензлів: {n})
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} (попередження: {n})|{what} (попередження: {n})|{what} (попередження: {n})
+
 	PRESET DETAILS	ПАРАМЕТРИ НАБОРУ
 	BLANK DOCUMENT PRESETS ({n})	НАБОРИ ПОРОЖНІХ ДОКУМЕНТІВ ({n})
 	Create a new document or open an existing file.	Створіть новий документ або відкрийте наявний файл.

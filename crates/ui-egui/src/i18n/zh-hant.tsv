@@ -1288,6 +1288,24 @@
 	Override Pressure	覆寫壓力
 	Override Rotation	覆寫旋轉
 	Override Tilt	覆寫傾斜
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	已匯出至 {file} 的色票數量：{n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	從 {file} 匯入的筆刷數量：{n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	從 {group} 匯入的筆刷數量：{n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	從 {file} 匯入的漸層數量：{n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	從 {file} 匯入的色票數量：{n}
+@plural	Played {n} step|Played {n} steps	已播放的步驟數：{n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	已儲存供網頁使用的檔案數：{n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	已更新磁碟上變更的連結智慧型物件數：{n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	此構圖記錄的圖層中已刪除的數量：{n}。請更新構圖或清除警告。
+@plural	{n} plane|{n} planes	平面數：{n}
+@plural	{n} preset|{n} presets	預設集數量：{n}
+@plural	{n} sample point removed|{n} sample points removed	已移除的取樣點數：{n}
+@plural	{n} slice|{n} slices	切片數：{n}
+@plural	{n} step|{n} steps	步驟數：{n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning}（另有 {n} 項筆刷預設集警告）
+@plural	{what} with {n} warning|{what} with {n} warnings	{what}（警告數：{n}）
+
 	PRESET DETAILS	預設集詳細資料
 	PSD	PSD
 	Paint Overlay	繪畫覆蓋

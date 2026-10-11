@@ -185,9 +185,15 @@ fn plural_keys(sources: &[(PathBuf, String)]) -> BTreeSet<Key> {
             rest = rest.get(at + 4..).unwrap_or("");
             let Some(end) = call_end(rest) else { break };
             let args = rest.get(..end).unwrap_or("");
-            let forms = quoted_strings(args);
-            if forms.len() >= 2 {
-                keys.insert(Key { context: "@plural".into(), source: format!("{}|{}", forms[0], forms[1]) });
+            let arguments = split_arguments(args);
+            if let (Some(one), Some(other)) = (arguments.get(2), arguments.get(3)) {
+                let one = one.trim();
+                let other = other.trim();
+                if let (Some(one), Some(other)) =
+                    (one.strip_prefix('"').and_then(|s| s.strip_suffix('"')), other.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
+                {
+                    keys.insert(Key { context: "@plural".into(), source: format!("{}|{}", unescape_rust_string(one), unescape_rust_string(other)) });
+                }
             }
             rest = rest.get(end + 1..).unwrap_or("");
         }
@@ -543,6 +549,19 @@ mod tests {
     fn plural_keys_come_from_source_calls() {
         let sources = vec![(PathBuf::from("ui.rs"), r#"trn(lang, count, "{n} layer", "{n} layers");"#.into())];
         assert!(plural_keys(&sources).contains(&Key { context: "@plural".into(), source: "{n} layer|{n} layers".into() }));
+    }
+
+    #[test]
+    fn plural_keys_ignore_literals_in_count_expressions_and_dynamic_forms() {
+        let sources = vec![(
+            PathBuf::from("ui.rs"),
+            r#"
+            trn(lang, result["files"].as_array().map_or(0, Vec::len) as u64, "Saved {n} file", "Saved {n} files");
+            trn(lang, result["count"].as_u64().unwrap_or(0), one, other);
+        "#
+            .into(),
+        )];
+        assert_eq!(plural_keys(&sources), BTreeSet::from([Key { context: "@plural".into(), source: "Saved {n} file|Saved {n} files".into() }]));
     }
 
     #[test]

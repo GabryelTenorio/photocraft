@@ -1466,6 +1466,24 @@
 	Close Tab Group	Закрыть группу вкладок
 
 # New Document dialog
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Образцы, экспортированные в {file}: {n}|Образцы, экспортированные в {file}: {n}|Образцы, экспортированные в {file}: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Кисти, импортированные из {file}: {n}|Кисти, импортированные из {file}: {n}|Кисти, импортированные из {file}: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Кисти, импортированные из {group}: {n}|Кисти, импортированные из {group}: {n}|Кисти, импортированные из {group}: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Градиенты, импортированные из {file}: {n}|Градиенты, импортированные из {file}: {n}|Градиенты, импортированные из {file}: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Образцы, импортированные из {file}: {n}|Образцы, импортированные из {file}: {n}|Образцы, импортированные из {file}: {n}
+@plural	Played {n} step|Played {n} steps	Воспроизведённые шаги: {n}|Воспроизведённые шаги: {n}|Воспроизведённые шаги: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Файлы, сохранённые для веба: {n}|Файлы, сохранённые для веба: {n}|Файлы, сохранённые для веба: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Обновлённые связанные смарт-объекты, изменённые на диске: {n}|Обновлённые связанные смарт-объекты, изменённые на диске: {n}|Обновлённые связанные смарт-объекты, изменённые на диске: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Удалённые слои, записанные в этой композиции: {n}. Обновите композицию или сбросьте предупреждение.|Удалённые слои, записанные в этой композиции: {n}. Обновите композицию или сбросьте предупреждение.|Удалённые слои, записанные в этой композиции: {n}. Обновите композицию или сбросьте предупреждение.
+@plural	{n} plane|{n} planes	Плоскости: {n}|Плоскости: {n}|Плоскости: {n}
+@plural	{n} preset|{n} presets	Наборы: {n}|Наборы: {n}|Наборы: {n}
+@plural	{n} sample point removed|{n} sample points removed	Удалённые точки замера: {n}|Удалённые точки замера: {n}|Удалённые точки замера: {n}
+@plural	{n} slice|{n} slices	Фрагменты: {n}|Фрагменты: {n}|Фрагменты: {n}
+@plural	{n} step|{n} steps	Шаги: {n}|Шаги: {n}|Шаги: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (дополнительные предупреждения о наборах кистей: {n})|{warning} (дополнительные предупреждения о наборах кистей: {n})|{warning} (дополнительные предупреждения о наборах кистей: {n})
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} (предупреждения: {n})|{what} (предупреждения: {n})|{what} (предупреждения: {n})
+
 	PRESET DETAILS	ПАРАМЕТРЫ НАБОРА
 	BLANK DOCUMENT PRESETS ({n})	НАБОРЫ ПУСТЫХ ДОКУМЕНТОВ ({n})
 	Create a new document or open an existing file.	Создайте новый документ или откройте существующий файл.

@@ -1283,6 +1283,24 @@
 	Override Pressure	Anular presión
 	Override Rotation	Anular rotación
 	Override Tilt	Anular inclinación
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Muestras exportadas a {file}: {n}|Muestras exportadas a {file}: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Pinceles importados de {file}: {n}|Pinceles importados de {file}: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Pinceles importados de {group}: {n}|Pinceles importados de {group}: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Degradados importados de {file}: {n}|Degradados importados de {file}: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Muestras importadas de {file}: {n}|Muestras importadas de {file}: {n}
+@plural	Played {n} step|Played {n} steps	Pasos reproducidos: {n}|Pasos reproducidos: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Archivos guardados para web: {n}|Archivos guardados para web: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Objetos inteligentes vinculados actualizados tras cambios en disco: {n}|Objetos inteligentes vinculados actualizados tras cambios en disco: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Capas registradas por esta composición que se han eliminado: {n}. Actualiza la composición o borra el aviso.|Capas registradas por esta composición que se han eliminado: {n}. Actualiza la composición o borra el aviso.
+@plural	{n} plane|{n} planes	Planos: {n}|Planos: {n}
+@plural	{n} preset|{n} presets	Ajustes preestablecidos: {n}|Ajustes preestablecidos: {n}
+@plural	{n} sample point removed|{n} sample points removed	Puntos de muestra eliminados: {n}|Puntos de muestra eliminados: {n}
+@plural	{n} slice|{n} slices	Sectores: {n}|Sectores: {n}
+@plural	{n} step|{n} steps	Pasos: {n}|Pasos: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (avisos adicionales de ajustes preestablecidos de pincel: {n})|{warning} (avisos adicionales de ajustes preestablecidos de pincel: {n})
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} (avisos: {n})|{what} (avisos: {n})
+
 	PRESET DETAILS	DETALLES DEL AJUSTE PREESTABLECIDO
 	PSD	PSD
 	Paint Overlay	Superposición de pintura

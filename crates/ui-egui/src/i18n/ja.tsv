@@ -1284,6 +1284,24 @@
 	Override Pressure	筆圧を上書き
 	Override Rotation	回転を上書き
 	Override Tilt	傾きを上書き
+# Counted status messages
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	{file} に書き出したスウォッチ数: {n}
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	{file} から読み込んだブラシ数: {n}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{group} から読み込んだブラシ数: {n}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	{file} から読み込んだグラデーション数: {n}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{file} から読み込んだスウォッチ数: {n}
+@plural	Played {n} step|Played {n} steps	再生したステップ数: {n}
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Web 用に保存したファイル数: {n}
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	ディスク上の変更を反映したリンクされたスマートオブジェクト数: {n}
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	このコンポジションに記録されたレイヤーのうち、削除された数: {n}。コンポジションを更新するか、警告を解除してください。
+@plural	{n} plane|{n} planes	平面数: {n}
+@plural	{n} preset|{n} presets	プリセット数: {n}
+@plural	{n} sample point removed|{n} sample points removed	削除したサンプルポイント数: {n}
+@plural	{n} slice|{n} slices	スライス数: {n}
+@plural	{n} step|{n} steps	ステップ数: {n}
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning}（ブラシプリセットの警告がほかに {n} 件）
+@plural	{what} with {n} warning|{what} with {n} warnings	{what}（警告数: {n}）
+
 	PRESET DETAILS	プリセットの詳細
 	PSD	PSD
 	Paint Overlay	ペイントオーバーレイ
