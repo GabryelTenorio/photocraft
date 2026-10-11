@@ -2628,3 +2628,13 @@ cameraData	Lens	Obiettivo
 	Apply mask to layer before removing?	Applicare la maschera al livello prima di rimuoverla?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Il livello o la sua maschera è cambiato. Trascina di nuovo la maschera nel cestino.
 	Delete the vector mask?	Eliminare la maschera vettoriale?
+# Select and Mask view modes (#1754)
+	Onion Skin	Velina
+	Marching Ants	Formiche in marcia
+	On Black	Su nero
+	On White	Su bianco
+	On Layers	Su livelli
+	Show Edge	Mostra bordo
+	Show Original	Mostra originale
+	F cycles the views; hold X to see the image	F scorre le viste; tieni premuto X per vedere l'immagine
+	Show rulers	Mostra righelli

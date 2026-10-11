@@ -2565,3 +2565,13 @@ cameraData	Lens	Objektiv
 	Apply mask to layer before removing?	Použít masku na vrstvu před odstraněním?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Vrstva nebo její maska se změnila. Přetáhněte masku do koše znovu.
 	Delete the vector mask?	Odstranit vektorovou masku?
+# Select and Mask view modes (#1754)
+	Onion Skin	Cibulová slupka
+	Marching Ants	Pochodující mravenci
+	On Black	Na černé
+	On White	Na bílé
+	On Layers	Na vrstvách
+	Show Edge	Zobrazit okraj
+	Show Original	Zobrazit originál
+	F cycles the views; hold X to see the image	F přepíná zobrazení; podržením X uvidíte obraz
+	Show rulers	Zobrazit pravítka

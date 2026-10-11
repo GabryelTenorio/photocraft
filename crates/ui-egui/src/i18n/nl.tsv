@@ -3717,6 +3717,16 @@ cameraData	Lens	Lens
 	Apply mask to layer before removing?	Masker toepassen op laag voordat het wordt verwijderd?
 	The layer or its mask changed. Drag the mask onto the Trash again.	De laag of het masker is gewijzigd. Sleep het masker opnieuw naar de prullenbak.
 	Delete the vector mask?	Het vectormasker verwijderen?
+# Select and Mask view modes (#1754)
+	Onion Skin	Uienschil
+	Marching Ants	Mierenmars
+	On Black	Op zwart
+	On White	Op wit
+	On Layers	Op lagen
+	Show Edge	Rand tonen
+	Show Original	Origineel tonen
+	F cycles the views; hold X to see the image	F wisselt de weergaven; houd X ingedrukt om de afbeelding te zien
+	Show rulers	Linialen tonen
 	Frame Tool	Kadergereedschap
 	Create a new rectangular frame	Nieuw rechthoekig kader maken
 	Create a new elliptical frame	Nieuw ovaal kader maken

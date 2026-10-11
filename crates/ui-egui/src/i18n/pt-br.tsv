@@ -2981,3 +2981,13 @@ cameraData	Lens	Lente
 	Apply mask to layer before removing?	Aplicar a máscara à camada antes de removê-la?
 	The layer or its mask changed. Drag the mask onto the Trash again.	A camada ou a máscara mudou. Arraste a máscara para a Lixeira novamente.
 	Delete the vector mask?	Excluir a máscara vetorial?
+# Select and Mask view modes (#1754)
+	Onion Skin	Papel vegetal
+	Marching Ants	Formigas marchando
+	On Black	Sobre preto
+	On White	Sobre branco
+	On Layers	Sobre camadas
+	Show Edge	Mostrar borda
+	Show Original	Mostrar original
+	F cycles the views; hold X to see the image	F alterna as visualizações; segure X para ver a imagem
+	Show rulers	Mostrar réguas

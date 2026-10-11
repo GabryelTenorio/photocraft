@@ -2974,3 +2974,13 @@ cameraData	Lens	Objectif
 	Apply mask to layer before removing?	Appliquer le masque au calque avant de le supprimer ?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Le calque ou son masque a changé. Faites de nouveau glisser le masque sur la corbeille.
 	Delete the vector mask?	Supprimer le masque vectoriel ?
+# Select and Mask view modes (#1754)
+	Onion Skin	Pelure d'oignon
+	Marching Ants	Fourmis en marche
+	On Black	Sur fond noir
+	On White	Sur fond blanc
+	On Layers	Sur les calques
+	Show Edge	Afficher le bord
+	Show Original	Afficher l'original
+	F cycles the views; hold X to see the image	F fait défiler les vues ; maintenez X pour voir l'image
+	Show rulers	Afficher les règles
