@@ -2984,6 +2984,7 @@ cameraData	Lens	Objectif
 	Snap to Origin	Aligner sur l'origine
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
+	Loading fonts…	Chargement des polices…
 	Apply mask to layer before removing?	Appliquer le masque au calque avant de le supprimer ?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Le calque ou son masque a changé. Faites de nouveau glisser le masque sur la corbeille.
 # Select and Mask view modes (#1754)
