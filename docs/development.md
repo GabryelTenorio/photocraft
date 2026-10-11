@@ -41,7 +41,7 @@ cargo run --release -p photocraft -- --control 7878 --control-token-file .privat
 cargo test --workspace                                     # everything
 cargo xtask ci                                             # fmt + clippy + tests + layers + wasm
 cargo xtask stats                                          # tests and lines per crate
-cargo xtask parity                                         # Photoshop menu coverage -> docs/parity.md
+cargo xtask parity                                         # Photoshop menu coverage -> docs/parity-checklist.md
 ```
 
 Image code is slow at `opt-level 0`, so the workspace profile builds dependencies at `opt-level 2`. Use `--release` for anything interactive.
@@ -253,7 +253,7 @@ intents, black point compensation). It ships CC0 built-in profiles, including a 
 ## Menu parity
 
 `cargo xtask parity` compares Photoshop's menu tree (`crates/ui-egui/src/menu_catalog.rs`) with
-the live command registry (`menus::is_live`) and rewrites [`docs/parity.md`](parity.md). The test
+the live command registry (`menus::is_live`) and rewrites [`docs/parity-checklist.md`](parity-checklist.md). The test
 `parity::tests::parity_does_not_regress` fails if the live count drops below `parity::FLOOR`.
 
 `cargo xtask i18n-coverage` prints the UI translation coverage for each language in the
@@ -315,7 +315,7 @@ cargo xtask perf --update-baseline   # also write perf/baseline.json from this r
   class, commit, date and load average.
 - `crates/io/tests/corpus.rs`: the corpus floors (every `Source { .. }` constant).
 - The prefs audit: `Preferences` fields that no code reads (target 0, #204), plus counts taken
-  from the tree (never-crash attribute coverage, `docs/parity.md`).
+  from the tree (never-crash attribute coverage, `docs/parity-checklist.md`).
 
 **Perf runs.** `xtask perf` builds the benches in release (`perf_scenarios`, `interactive_bench`,
 `fx_bench`, `bevel_bench`, `type_bench`, `large_image_bench`, and `layout_bench` once it exists), runs each with
@@ -351,7 +351,7 @@ trunk build --release              # writes ../../dist/web (index.html, .js glue
 trunk serve --release              # dev server on http://127.0.0.1:8765
 ```
 
-Any static file server works for `dist/web`, for example `python3 -m http.server 8765` run inside that directory. Trunk downloads the matching `wasm-bindgen` and `wasm-opt` itself. `trunk build --release` uses the `wasm-release` Cargo profile (`data-cargo-profile` in `index.html`: fat LTO, opt-level "s" except the pixel crates). The `.wasm` is about 18.8 MiB raw, 7.8 MiB gzipped and 5.6 MiB with Brotli; serve it with compression. Keep it under 24 MiB (`packaging/web/package.sh` enforces this; Cloudflare's per-file cap is 25 MiB). Pull-request CI also builds the actual browser app with the same pinned Trunk version as the release job and runs `packaging/web/package.sh`, including the relative-URL and 24 MiB checks. The `web build and wasm size gate` check runs on main and on PRs that change something the web build compiles or packages (`apps/photocraft-web`, `packaging/web`, crate sources and manifests, `Cargo.toml`/`Cargo.lock`, the CI workflow), and reports the resulting wasm size in the Actions job summary. The web build never embeds craft-fonts (see Fonts above). To see where the bytes go, run `twiggy top -n 40` on `target/wasm32-unknown-unknown/wasm-release/photocraft-web.wasm` (before wasm-opt strips the names).
+Any static file server works for `dist/web`, for example `python3 -m http.server 8765` run inside that directory. Trunk downloads the matching `wasm-bindgen` and `wasm-opt` itself. `trunk build --release` uses the `wasm-release` Cargo profile (`data-cargo-profile` in `index.html`: fat LTO, opt-level "z" for `photocraft-ui-egui`, "s" for other crates except pixel processing, which keeps level 3). The UI override reduces browser code size while retaining the speed-oriented settings for filters and compositing. Serve the `.wasm` with compression; its raw size varies with the source and compiler. Keep it under 24 MiB (`packaging/web/package.sh` enforces this; Cloudflare's per-file cap is 25 MiB). Pull-request CI also builds the actual browser app with the same pinned Trunk version as the release job and runs `packaging/web/package.sh`, including the relative-URL and 24 MiB checks. The `web build and wasm size gate` check runs on main and on PRs that change something the web build compiles or packages (`apps/photocraft-web`, `packaging/web`, crate sources and manifests, `Cargo.toml`/`Cargo.lock`, the CI workflow), and reports the resulting wasm size in the Actions job summary. The web build never embeds craft-fonts (see Fonts above). To see where the bytes go, run `twiggy top -n 40` on `target/wasm32-unknown-unknown/wasm-release/photocraft-web.wasm` (before wasm-opt strips the names).
 
 URL flags: `?webgl` forces the WebGL2 backend, and `?cpu` forces the CPU canvas path.
 
