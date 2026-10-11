@@ -124,6 +124,7 @@ mod panel_docking;
 pub mod panels;
 pub mod parity;
 pub mod patch_preview;
+pub(crate) mod pattern_fill_ui;
 pub mod pattern_preview;
 pub mod perspective_crop_ui;
 pub mod perspective_ui;
@@ -167,6 +168,7 @@ pub mod swatches_ui;
 pub mod symmetry_ui;
 mod tab_strip;
 pub mod targa_options_ui;
+pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
 mod timeline_ui;
@@ -582,6 +584,8 @@ pub struct PhotocraftApp {
     /// Live Layer Style dialog preview: (key over revision + style fields, preview or validation error).
     pub(crate) style_preview: Option<(u64, Result<std::sync::Arc<Document>, String>)>,
     pub(crate) solid_fill_preview: Option<solid_fill_ui::Preview>,
+    /// Live Pattern Fill dialog preview (pattern_fill_ui).
+    pub(crate) pattern_fill_preview: Option<pattern_fill_ui::Preview>,
     /// Shape fill Color Picker preview (shape_fill_ui).
     pub(crate) shape_fill_preview: Option<shape_fill_ui::Preview>,
     /// Liquify dialog, Puppet Warp and Perspective Warp sessions (distort_ui).
@@ -749,6 +753,7 @@ impl PhotocraftApp {
             style_preview: None,
             text_style_preview: None,
             solid_fill_preview: None,
+            pattern_fill_preview: None,
             shape_fill_preview: None,
             distort: Default::default(),
             gradient: Default::default(),
@@ -1482,6 +1487,7 @@ impl eframe::App for PhotocraftApp {
         monitor_status::poll(self, ctx);
         // Control requests and persisted preferences can change the language in this frame.
         i18n::sync_context(ctx, &self.session.prefs().interface.language);
+        type_tool::sync_font_names(ctx, self.session.prefs().type_.show_font_names_in_english);
         // A window bigger than its display (1440 × 900 on 1366 × 768) runs under the taskbar:
         // maximize it into the work area once (#315).
         work_area::fit_window(ctx);
@@ -1554,6 +1560,8 @@ impl eframe::App for PhotocraftApp {
             return;
         }
         let t0 = gpu_canvas::now_ms();
+        // A text field's right-click menu, before any field is drawn (text_field_menu.rs).
+        text_field_menu::show(&ctx);
         // Each painting tool keeps its own brush (#218), so switch the active tool's brush in
         // before anything this frame reads it (the cursor, the options bar, a stroke).
         paint_mouse::sync_tool_brush(self);
@@ -1883,6 +1891,8 @@ impl PhotocraftApp {
         theme::install_fonts(ctx);
         egui_extras::install_image_loaders(ctx);
         theme::apply(ctx, kind);
+        // Right-click in any text field: its Cut / Copy / Paste menu (text_field_menu.rs).
+        ctx.add_plugin(text_field_menu::TextFieldMenu);
         // egui's own ⌘+ / ⌘- / ⌘0 scale the whole interface; PhotoCraft zooms the canvas instead
         // (shortcuts.rs), like Photoshop.
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
