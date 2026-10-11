@@ -6,7 +6,7 @@
 
 use photocraft_geom::Point;
 
-use crate::brush::{BrushSettings, Control, Dynamic, Smoothing};
+use crate::brush::{BrushSettings, Control, Dynamic, Smoothing, TipShape};
 use crate::rng::{rand_signed, rand01, stream};
 use crate::{Dab, StrokePoint};
 
@@ -443,6 +443,46 @@ pub fn base_diameter(b: &BrushSettings, s: &StepInput) -> f32 {
     b.size * f
 }
 
+/// The deepest notch, in pixels, that a hard round tip may leave between two neighbouring dabs
+/// along the edge of a stroke ([`DabBuilder::smooth_edges`]).
+pub const EDGE_NOTCH_PX: f64 = 0.5;
+
+/// Whether `b`'s dabs are plain round stamps at full Flow that differ only in where they land (no
+/// scattering, no random size, roundness, opacity or colour per dab, no step-counted Fade, no
+/// per-tip texture or Dual Brush, no wet edges or grain), so placing them closer changes nothing
+/// but the stroke's edge. Below full Flow the dabs' overlaps build the stroke up (the rings of a
+/// low-Flow stroke), so their spacing is left as set.
+pub fn edge_spacing_applies(b: &BrushSettings) -> bool {
+    let fades = |d: &Dynamic| d.control == Control::Fade;
+    let random = |d: &Dynamic| d.jitter > 0.0 || fades(d);
+    let sd = &b.shape_dynamics;
+    let tr = &b.transfer;
+    matches!(b.tip, TipShape::Round)
+        && b.spacing_enabled
+        && b.flow >= 1.0
+        && !(tr.enabled && tr.flow.is_active())
+        && !b.build_up
+        && !b.wet_edges
+        && !b.noise
+        && b.roundness >= 0.99
+        && !(sd.enabled && (random(&sd.size) || sd.roundness.is_active()))
+        && !b.scattering.enabled
+        && !(b.texture.enabled && b.texture.each_tip)
+        && !b.dual_brush.enabled
+        && !(b.color_dynamics.enabled && b.color_dynamics.per_tip)
+        && !(tr.enabled && [&tr.opacity, &tr.flow, &tr.wetness, &tr.mix].into_iter().any(random))
+}
+
+/// The longest step, in pixels, that keeps the notch between two round dabs of `diameter`
+/// within [`EDGE_NOTCH_PX`]: two circles of radius `r` that far apart leave a notch of
+/// `r - sqrt(r² - (step / 2)²)` where they cross. A softer tip's rim hides a notch up to a fifth of
+/// its width (`(1 - hardness) · r`), so it may keep its steps longer (`None`: no limit).
+pub fn edge_step_limit(diameter: f64, hardness: f64) -> Option<f64> {
+    let r = diameter / 2.0;
+    let notch = EDGE_NOTCH_PX + (1.0 - hardness.clamp(0.0, 1.0)) * r * 0.2;
+    (r.is_finite() && notch < r).then(|| 2.0 * (2.0 * r * notch - notch * notch).max(0.0).sqrt())
+}
+
 /// Builds the primary dabs of a step (Shape Dynamics, Scattering, Transfer, Color, Texture depth).
 #[derive(Clone, Debug)]
 pub struct DabBuilder {
@@ -451,17 +491,34 @@ pub struct DabBuilder {
     /// Per-stroke colour (Color Dynamics with per-tip off), computed at the first step.
     stroke_color: Option<[f32; 4]>,
     next_index: u64,
+    /// See [`DabBuilder::smooth_edges`].
+    smooth_edges: bool,
 }
 
 impl DabBuilder {
     pub fn new(brush: &BrushSettings) -> Self {
-        Self { brush: brush.clone(), seed: brush.seed, stroke_color: None, next_index: 0 }
+        Self { brush: brush.clone(), seed: brush.seed, stroke_color: None, next_index: 0, smooth_edges: false }
+    }
+
+    /// Large hard round tips at Photoshop's 25 % spacing leave a scalloped edge: two dabs of a
+    /// 400 px tip a quarter of their width apart notch the edge by 6 px between them (#3240).
+    /// With this on, an eligible brush ([`edge_spacing_applies`]: full Flow, so extra dabs add
+    /// nothing but coverage at the edge) takes shorter steps when its Spacing would notch the
+    /// edge more than [`EDGE_NOTCH_PX`]. The painting tools turn it on; the tools that pick up or
+    /// sample per dab (Smudge, Mixer Brush, retouching) don't.
+    pub fn smooth_edges(mut self) -> Self {
+        self.smooth_edges = self.brush.spacing_enabled && edge_spacing_applies(&self.brush);
+        self
     }
 
     pub fn step_len(&self, p: &StrokePoint) -> f64 {
         let s = StepInput { point: *p, direction: 0.0, initial_direction: 0.0, step: 0 };
         let d = base_diameter(&self.brush, &s).max(1.0);
-        f64::from(d * self.brush.spacing.max(0.01)).max(0.5)
+        let set = f64::from(d * self.brush.spacing.max(0.01)).max(0.5);
+        match self.smooth_edges.then(|| edge_step_limit(f64::from(d), f64::from(self.brush.hardness))).flatten() {
+            Some(limit) => set.min(limit.max(0.5)),
+            None => set,
+        }
     }
 
     pub fn build(&mut self, s: &StepInput, out: &mut Vec<Dab>) {
@@ -542,6 +599,7 @@ impl DabBuilder {
                 opacity = scalar(&tr.opacity, s, r(stream::OPACITY));
                 flow *= scalar(&tr.flow, s, r(stream::FLOW));
             }
+
             let (wet, mix) = if tr.enabled { (scalar(&tr.wetness, s, r(stream::WET)), scalar(&tr.mix, s, r(stream::MIX))) } else { (1.0, 1.0) };
             if b.pressure_opacity && !(tr.enabled && tr.opacity.control != Control::Off) {
                 opacity *= s.point.pressure.clamp(0.0, 1.0);
@@ -662,6 +720,12 @@ pub struct DabGenerator {
 }
 
 impl DabGenerator {
+    /// Smooth edges for large hard round tips ([`DabBuilder::smooth_edges`]).
+    pub fn smooth_edges(mut self) -> Self {
+        self.builder = self.builder.smooth_edges();
+        self
+    }
+
     /// Does the stroke change with time while the pointer is held still (airbrush Build-up, or
     /// smoothing still catching up)? The canvas then keeps feeding it the held point.
     pub fn wants_time(&self) -> bool {

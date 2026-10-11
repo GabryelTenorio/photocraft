@@ -556,6 +556,14 @@ impl StrokeRenderer {
         }
     }
 
+    /// Shorter steps for a smooth edge on large hard round tips, at the same build-up
+    /// ([`crate::dynamics::DabBuilder::smooth_edges`]). The painting tools (Brush, Pencil, Eraser)
+    /// use it; tools that pick up or sample per dab don't.
+    pub fn smooth_edges(mut self) -> Self {
+        self.generator = self.generator.smooth_edges();
+        self
+    }
+
     /// Keep a copy of every primary dab (for tests and sequential tools).
     pub fn record_dabs(mut self) -> Self {
         self.all_dabs = Some(Vec::new());
@@ -835,6 +843,25 @@ impl StrokeRenderer {
         }
         if all { bounds } else { dmg }
     }
+}
+
+/// [`render_stroke`] for the painting tools: the stroke with [`StrokeRenderer::smooth_edges`].
+pub fn render_paint_stroke(
+    target: &mut Surface,
+    brush: &BrushSettings,
+    points: &[StrokePoint],
+    selection: Option<&Surface>,
+    lock_transparency: bool,
+    zoom: f32,
+) -> Rect {
+    if points.is_empty() {
+        return Rect::EMPTY;
+    }
+    let pre = target.clone();
+    let mut r = StrokeRenderer::new(brush, Some(target.format()), zoom).smooth_edges();
+    r.push(points);
+    r.finish();
+    r.composite(&pre, target, selection, lock_transparency, true)
 }
 
 /// Render a whole stroke onto `target` (one-shot). Returns the damaged rectangle.

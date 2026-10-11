@@ -10,7 +10,7 @@ use photocraft_doc::LayerContent;
 use photocraft_geom::Rect;
 use photocraft_paint::mixer::{MixerSettings, apply_mixer_stroke};
 use photocraft_paint::replace::{Limits, ReplaceMode, ReplaceSettings, Sampling, apply_color_replacement};
-use photocraft_paint::{BrushPreset, BrushSettings, GrayTile, Stroke, StrokePoint, StrokeRenderer, TipShape, render_stroke};
+use photocraft_paint::{BrushPreset, BrushSettings, GrayTile, Stroke, StrokePoint, StrokeRenderer, TipShape, render_paint_stroke};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
@@ -283,23 +283,23 @@ fn stroke_with(s: &mut Session, cmd: &str, p: &Value, label: &str, brush: BrushS
                     .iter()
                     .filter(|p| crate::symmetry_cmds::SymmetryAxis::has_distinct_mirror(&pts, p))
                     .map(|p| {
-                        let mut renderer = StrokeRenderer::new(&brush, Some(surf.format()), zoom);
+                        let mut renderer = StrokeRenderer::new(&brush, Some(surf.format()), zoom).smooth_edges();
                         renderer.push(p);
                         renderer.finish();
                         renderer
                     })
                     .collect();
                 if copies.is_empty() {
-                    render_stroke(surf, &brush, &pts, sel.as_ref(), lock, zoom)
+                    render_paint_stroke(surf, &brush, &pts, sel.as_ref(), lock, zoom)
                 } else {
                     let pre = surf.clone();
-                    let mut original = StrokeRenderer::new(&brush, Some(surf.format()), zoom);
+                    let mut original = StrokeRenderer::new(&brush, Some(surf.format()), zoom).smooth_edges();
                     original.push(&pts);
                     original.finish();
                     original.composite_union_many(&copies, &pre, surf, sel.as_ref(), lock)
                 }
             } else {
-                render_stroke(surf, &brush, &pts, sel.as_ref(), lock, zoom)
+                render_paint_stroke(surf, &brush, &pts, sel.as_ref(), lock, zoom)
             };
             Ok(damage)
         })
@@ -486,9 +486,10 @@ impl LiveStroke {
         if pencil && flag(p, "autoErase", false) {
             apply_auto_erase(&mut brush, surf, pts.first(), fg, s.tools.background);
         }
-        let renderer = StrokeRenderer::new(&brush, Some(surf.format()), zoom);
+        let renderer = StrokeRenderer::new(&brush, Some(surf.format()), zoom).smooth_edges();
         let symmetry = s.active().and_then(|st| st.symmetry.clone());
-        let mirrors: Vec<_> = (0..symmetry.as_ref().map_or(0, |s| s.mirror_count())).map(|_| StrokeRenderer::new(&brush, Some(surf.format()), zoom)).collect();
+        let mirrors: Vec<_> =
+            (0..symmetry.as_ref().map_or(0, |s| s.mirror_count())).map(|_| StrokeRenderer::new(&brush, Some(surf.format()), zoom).smooth_edges()).collect();
         let mirror_distinct = vec![false; mirrors.len()];
         let pre = surf.clone();
         let mut live = Self {

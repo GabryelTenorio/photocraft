@@ -1151,3 +1151,135 @@ fn half_coverage_radius_is_the_tips_50_percent_contour() {
     assert_eq!(half_coverage_radius(10.5, 1.0), 10.5);
     assert!(half_coverage_radius(10.5, f32::NAN).is_finite());
 }
+
+// ---------- smooth edges for large hard tips (#3240) ----------
+
+/// How far the top edge of a horizontal stroke wanders (the 50 % coverage contour, in pixels)
+/// over columns `x0..x1`.
+fn top_edge_ripple(s: &Surface, x0: i32, x1: i32, h: i32) -> f32 {
+    let mut ys = Vec::new();
+    for x in x0..x1 {
+        let mut prev = 0.0;
+        for y in 0..h {
+            let a = s.rgba(x, y)[3];
+            if a >= 0.5 {
+                ys.push(y as f32 - 1.0 + if a - prev > 1e-6 { (0.5 - prev) / (a - prev) } else { 0.0 });
+                break;
+            }
+            prev = a;
+        }
+    }
+    assert!(!ys.is_empty(), "no edge found");
+    ys.iter().fold(f32::MIN, |m, &v| m.max(v)) - ys.iter().fold(f32::MAX, |m, &v| m.min(v))
+}
+
+/// A 400 px stroke left to right through y = 260, sampled every 25 px like a mouse drag.
+fn wide_stroke() -> Vec<StrokePoint> {
+    (0..=40).map(|i| StrokePoint::new(250.0 + i as f64 * 25.0, 260.0, 1.0)).collect()
+}
+
+fn paint_smooth(b: &BrushSettings, pts: &[StrokePoint]) -> (Surface, usize) {
+    let mut s = Surface::new(PixelFormat::RGBA32F);
+    let mut r = StrokeRenderer::new(b, Some(s.format()), 1.0).smooth_edges();
+    r.push(pts);
+    r.finish();
+    let n = r.dab_count();
+    crate::render::render_paint_stroke(&mut s, b, pts, None, false, 1.0);
+    (s, n)
+}
+
+#[test]
+fn edge_step_limit_keeps_the_notch_between_dabs_to_half_a_pixel() {
+    use crate::dynamics::{EDGE_NOTCH_PX, edge_step_limit};
+    for d in [20.0, 100.0, 400.0, 2500.0] {
+        let step = edge_step_limit(d, 1.0).unwrap();
+        let r = d / 2.0;
+        let notch = r - (r * r - (step / 2.0) * (step / 2.0)).sqrt();
+        assert!((notch - EDGE_NOTCH_PX).abs() < 1e-6, "{d}: notch {notch}");
+    }
+    // A softer rim hides more: by 80 % hardness a 400 px tip keeps Photoshop's 25 %.
+    assert!(edge_step_limit(400.0, 0.8).unwrap() > 0.25 * 400.0);
+    assert!(edge_step_limit(400.0, 0.9).unwrap() > edge_step_limit(400.0, 1.0).unwrap());
+    // Tips too small for a notch, and nonsense, have no limit.
+    assert_eq!(edge_step_limit(1.0, 1.0), None);
+    assert_eq!(edge_step_limit(f64::NAN, 1.0), None);
+    assert_eq!(edge_step_limit(f64::INFINITY, 1.0), None);
+    assert!(edge_step_limit(400.0, f64::NAN).is_none_or(|s| s.is_finite()));
+}
+
+#[test]
+fn only_plain_full_flow_round_tips_get_smooth_edge_spacing() {
+    use crate::dynamics::edge_spacing_applies;
+    let b = BrushSettings { size: 400.0, hardness: 1.0, ..brush() };
+    assert!(edge_spacing_applies(&b));
+    // Pen pressure on size is a control, not a random per-dab change: still eligible.
+    let mut pressure = b.clone();
+    pressure.shape_dynamics.enabled = true;
+    pressure.shape_dynamics.size.control = Control::PenPressure;
+    assert!(edge_spacing_applies(&pressure));
+    let mut not = vec![
+        BrushSettings { flow: 0.3, ..b.clone() },
+        BrushSettings { spacing_enabled: false, ..b.clone() },
+        BrushSettings { build_up: true, ..b.clone() },
+        BrushSettings { wet_edges: true, ..b.clone() },
+        BrushSettings { noise: true, ..b.clone() },
+        BrushSettings { roundness: 0.5, ..b.clone() },
+        BrushSettings { tip: TipShape::Sampled(GrayTile::from_fn(4, 4, |_, _| 1.0)), ..b.clone() },
+    ];
+    let mut jitter = b.clone();
+    jitter.shape_dynamics.enabled = true;
+    jitter.shape_dynamics.size.jitter = 0.2;
+    let mut fade = pressure.clone();
+    fade.shape_dynamics.size.control = Control::Fade;
+    let mut scatter = b.clone();
+    scatter.scattering.enabled = true;
+    let mut dual = b.clone();
+    dual.dual_brush.enabled = true;
+    let mut colour = b.clone();
+    colour.color_dynamics.enabled = true;
+    colour.color_dynamics.per_tip = true;
+    let mut transfer = b.clone();
+    transfer.transfer.enabled = true;
+    transfer.transfer.opacity.jitter = 0.5;
+    let mut texture = b.clone();
+    texture.texture.enabled = true;
+    texture.texture.each_tip = true;
+    not.extend([jitter, fade, scatter, dual, colour, transfer, texture]);
+    for (i, n) in not.iter().enumerate() {
+        assert!(!edge_spacing_applies(n), "case {i} should keep its spacing");
+    }
+}
+
+#[test]
+fn a_large_hard_stroke_has_a_smooth_edge() {
+    let b = BrushSettings { size: 400.0, hardness: 1.0, ..brush() };
+    let pts = wide_stroke();
+    // The scallops of #3240: 400 px dabs 100 px apart notch the edge by 6 px.
+    let plain = paint(&b, &pts, 0, 0);
+    assert!(top_edge_ripple(&plain, 500, 1000, 520) > 5.0);
+    let (smooth, n) = paint_smooth(&b, &pts);
+    let ripple = top_edge_ripple(&smooth, 500, 1000, 520);
+    assert!(ripple < 0.5, "{ripple} px");
+    assert!(n < 4 * dabs_of(&b, &pts).len(), "{n} dabs: no more than the edge needs");
+    // Full flow: the extra dabs add nothing inside the stroke.
+    for (x, y) in [(750, 260), (750, 120), (400, 260)] {
+        assert_eq!(plain.rgba(x, y)[3], smooth.rgba(x, y)[3], "({x}, {y})");
+    }
+}
+
+#[test]
+fn strokes_smooth_edges_leave_alone_keep_their_dabs() {
+    let pts = wide_stroke();
+    // Below full Flow the overlaps build the stroke up, as in Photoshop: same dabs, same pixels.
+    for b in [BrushSettings { size: 400.0, hardness: 1.0, flow: 0.3, ..brush() }, BrushSettings { size: 400.0, hardness: 0.5, ..brush() }] {
+        let (smooth, n) = paint_smooth(&b, &pts);
+        assert_eq!(n, dabs_of(&b, &pts).len(), "flow {} hardness {}", b.flow, b.hardness);
+        assert_eq!(smooth.read_region(Rect::new(0, 0, 1500, 520)), paint(&b, &pts, 0, 0).read_region(Rect::new(0, 0, 1500, 520)));
+    }
+    // Without the switch (Smudge, Mixer Brush, retouching), nothing changes either.
+    let b = BrushSettings { size: 400.0, hardness: 1.0, ..brush() };
+    let mut plain = StrokeRenderer::new(&b, Some(PixelFormat::RGBA32F), 1.0);
+    plain.push(&pts);
+    plain.finish();
+    assert_eq!(plain.dab_count(), dabs_of(&b, &pts).len());
+}
