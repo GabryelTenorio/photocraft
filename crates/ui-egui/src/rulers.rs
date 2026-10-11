@@ -143,19 +143,30 @@ pub fn draw_grid(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, d
     }
 }
 
+/// Screen end points of a guide across `clip`: the document line x = `pos` (vertical) or
+/// y = `pos`, spanning every document point the clip rect shows. Guides belong to the document,
+/// so on a rotated view they turn with the image (#3277); unrotated this is the clip's full
+/// height (or width).
+fn guide_segment(xf: &ViewXform, clip: Rect, vertical: bool, pos: f64) -> [Pos2; 2] {
+    let axis = usize::from(vertical);
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for c in [clip.left_top(), clip.right_top(), clip.right_bottom(), clip.left_bottom()] {
+        let d = xf.to_doc(c)[axis];
+        lo = lo.min(d);
+        hi = hi.max(d);
+    }
+    let (pos, lo, hi) = (pos as f32, lo as f32, hi as f32);
+    if vertical { [xf.to_screen(pos, lo), xf.to_screen(pos, hi)] } else { [xf.to_screen(lo, pos), xf.to_screen(hi, pos)] }
+}
+
 pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, doc: &Document) {
     let clip = painter.clip_rect();
     let drag = app.guide_drag;
     let g = &app.session.prefs().guides_grid_and_slices;
     let (guide, style) = (pref_color(&g.guide_color, Color32::from_rgb(74, 255, 255)), g.guide_style);
     let line = |vertical: bool, pos: f64, color: Color32| {
-        if vertical {
-            let x = xf.to_screen(pos as f32, 0.0).x;
-            styled_line(painter, pos2(x, clip.top()), pos2(x, clip.bottom()), Stroke::new(1.0, color), style);
-        } else {
-            let y = xf.to_screen(0.0, pos as f32).y;
-            styled_line(painter, pos2(clip.left(), y), pos2(clip.right(), y), Stroke::new(1.0, color), style);
-        }
+        let [a, b] = guide_segment(xf, clip, vertical, pos);
+        styled_line(painter, a, b, Stroke::new(1.0, color), style);
     };
     if app.ui.extras.guides {
         for (vertical, list) in [(true, &doc.guides.vertical), (false, &doc.guides.horizontal)] {
@@ -212,13 +223,32 @@ pub fn finish_drag(app: &mut PhotocraftApp, d: GuideDrag) {
     }
 }
 
+/// The mapping the rulers measure with. Rulers are screen chrome that stays level while
+/// View › Rotate View turns the canvas, so they use the view without its rotation: the same zoom,
+/// flip and pixel aspect, and the same document point under the centre of the canvas. Measuring
+/// along the rotated axes instead squeezed the ticks into a few pixels (or none at 90°) and left
+/// the rest of the ruler empty (#3233).
+fn ruler_xform(xf: &ViewXform) -> ViewXform {
+    ViewXform { rotation: 0.0, ..*xf }
+}
+
 /// Visible ruler range in ruler units, normalised to `(min, max)` so the tick loop runs for
-/// flipped or rotated views too (#1814). Shared by the renderer and its tests.
+/// flipped views too (#1814). `xf` is the canvas mapping; rotation is ignored (see
+/// [`ruler_xform`]). Shared by the renderer and its tests.
 fn ruler_range(xf: &ViewXform, a: Pos2, b: Pos2, axis: usize, px_per_unit: f64) -> (f64, f64) {
-    let d0 = xf.to_doc(a)[axis];
-    let d1 = xf.to_doc(b)[axis];
+    let rxf = ruler_xform(xf);
+    let d0 = rxf.to_doc(a)[axis];
+    let d1 = rxf.to_doc(b)[axis];
     let (u0, u1) = (d0 / px_per_unit, d1 / px_per_unit);
     (u0.min(u1), u0.max(u1))
+}
+
+/// Screen coordinate along the ruler (x for the top ruler, y for the left one) of the value `u`
+/// in ruler units. The inverse of [`ruler_range`]'s mapping.
+fn ruler_pos(xf: &ViewXform, vertical: bool, u: f64, px_per_unit: f64) -> f32 {
+    let px = (u * px_per_unit) as f32;
+    let rxf = ruler_xform(xf);
+    if vertical { rxf.to_screen(0.0, px).y } else { rxf.to_screen(px, 0.0).x }
 }
 
 /// Rulers along the top and left of `full` (the canvas rect before `content_rect`), with the
@@ -256,10 +286,7 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
         };
         let mut v = (u0 / step).floor() * step;
         while v <= u1 {
-            let at = |u: f64| -> f32 {
-                let px = (u * px_per_unit) as f32;
-                if vertical { xf.to_screen(0.0, px).y } else { xf.to_screen(px, 0.0).x }
-            };
+            let at = |u: f64| -> f32 { ruler_pos(xf, vertical, u, px_per_unit) };
             let c = at(v);
             if vertical {
                 p.line_segment([pos2(left.right() - RULER, c), pos2(left.right(), c)], tick);
@@ -461,6 +488,43 @@ mod tests {
                 assert_eq!((doc.guides.vertical.clone(), moved), (vec![50.0], true), "{tool:?}, guides locked: the layer moves");
             } else {
                 assert_eq!((doc.guides.vertical.clone(), moved), (vec![65.0], false), "{tool:?}: the guide moves, the layer stays");
+            }
+        }
+    }
+
+    /// #3233: a rotated view keeps the rulers level and fully ticked. The top ruler spans the
+    /// same number of document pixels as the unrotated view, the ticks map back onto its ends,
+    /// and the reading under the canvas centre is the document point at the centre.
+    #[test]
+    fn rotated_view_keeps_full_rulers() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let (a, b) = (rect.left_top(), rect.right_top());
+        for rotation in [0.0f32, 45.0, 90.0, -119.0, 180.0] {
+            let xf = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip: false, rotation, aspect: 1.0 };
+            let (u0, u1) = ruler_range(&xf, a, b, 0, 1.0);
+            assert!((u1 - u0 - 1600.0).abs() < 1e-2, "rotation {rotation}: top ruler covers {u0}..{u1}");
+            assert!((ruler_pos(&xf, false, u0, 1.0) - a.x).abs() < 1e-2, "rotation {rotation}: first tick");
+            assert!((ruler_pos(&xf, false, u1, 1.0) - b.x).abs() < 1e-2, "rotation {rotation}: last tick");
+            assert!((ruler_pos(&xf, true, 700.0, 1.0) - rect.center().y).abs() < 1e-2, "rotation {rotation}: left ruler centre");
+        }
+    }
+
+    /// #3277: guides belong to the document, so a rotated view draws them along the document
+    /// line; unrotated they still span the whole clip rect.
+    #[test]
+    fn guides_turn_with_a_rotated_view() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let level = ViewXform { rect, zoom: 0.5, center: [1000.0, 700.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let [a, b] = guide_segment(&level, rect, true, 500.0);
+        assert!((a.x - b.x).abs() < 1e-3 && (a.y - rect.top()).abs() < 1e-3 && (b.y - rect.bottom()).abs() < 1e-3, "{a:?} {b:?}");
+        for rotation in [30.0f32, 90.0, -119.0] {
+            let xf = ViewXform { rotation, ..level };
+            for (vertical, pos) in [(true, 500.0), (false, 900.0)] {
+                for end in guide_segment(&xf, rect, vertical, pos) {
+                    let d = xf.to_doc(end);
+                    let on_line = if vertical { d[0] } else { d[1] };
+                    assert!((on_line - pos).abs() < 1e-2, "rotation {rotation}: {end:?} maps to {d:?}, off the guide at {pos}");
+                }
             }
         }
     }
