@@ -6203,7 +6203,8 @@ mod transform_controls_tests {
         app.sync_views();
         app.ui.tool = Tool::Move;
         app.ui.tool_options.move_show_transform = true;
-        let xf = ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(200.0, 200.0)), zoom: 1.0, center: [100.0, 100.0], flip: false, rotation: 0.0 };
+        let xf =
+            ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(200.0, 200.0)), zoom: 1.0, center: [100.0, 100.0], flip: false, rotation: 0.0, aspect: 1.0 };
 
         let r = transform_controls_rect(&app, &xf).expect("visible shape controls");
         assert!(app.ui.transform.is_none(), "no transform session is needed for hover");
@@ -6216,7 +6217,8 @@ mod transform_controls_tests {
             (r.center_bottom(), egui::CursorIcon::ResizeVertical),
             (r.right_center(), egui::CursorIcon::ResizeHorizontal),
             (r.left_center(), egui::CursorIcon::ResizeHorizontal),
-            (pos2(r.center().x, r.top() - 12.0), egui::CursorIcon::Alias),
+            // Between handles: the rotation band (a point above the top-centre handle is that handle).
+            (pos2(r.left() + r.width() * 0.25, r.top() - 12.0), egui::CursorIcon::Alias),
         ] {
             assert_eq!(transform_controls_cursor(r, p), Some(expected), "hover at {p:?}");
             assert!(transform_controls_hit(r, p), "same region must start a transform");
