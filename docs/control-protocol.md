@@ -226,6 +226,47 @@ toolbox colour as `backgroundColor: [r,g,b]` (0..1), so reusing it does not foll
 changes. Up to 256 presets are kept. Invalid saved entries are skipped independently; other
 presets and preferences still load. Automatic Recent configurations are separate follow-up work.
 
+## Shape tools
+
+Shape tools use `ui.set {shapeOptions: {mode: "shape"|"path"|"pixels",
+operation: "new"|"combine"|"subtract"|"intersect"|"exclude", blend: "Normal"|…,
+opacity: 0..100, antiAlias: bool, pathWidth: 0.5..10, pathColor: [r,g,b]|null,
+showPath: bool, showTransform: bool, fromCenter: bool, constrain: bool, alignCanvas: bool,
+sizeMode: "unconstrained"|"square"|"fixed"|"proportional", sizeWidth: 1..300000,
+sizeHeight: 1..300000, alignEdges: bool, starRatio: 0.01..1, smoothIndents: bool,
+arrowheads: {start: bool, end: bool, width: 0..10000, length: 0..10000, concavity: -50..50}}}`.
+Size dimensions and arrowhead width/length are document pixels. Concavity is percent.
+`showTransform` defaults to true: the selected shape layer shows eight resize controls in Move
+and Shape tools (Shape mode). The Move toolbar checkbox or Shape Path Options can hide them.
+`ui.pointer` presses on these controls enter the same Free Transform session as native input;
+  Ctrl/Command corner drags distort (`ui.pointer` uses `modifiers.command: true`), Shift frees
+  proportions, Enter applies, and Esc cancels. Shape tools capture presses within six screen pixels
+  of a visible grip; other presses still create shapes. Move also supports rotation outside the frame.
+Fixed mode uses the configured dimensions; proportional mode uses their aspect ratio.
+Align Edges rounds the drag endpoints to the pixel grid and can be disabled for subpixel geometry.
+Shift/Alt/Shift+Alt held at the start add/subtract/intersect with the active shape or Work Path.
+Modifiers held while dragging still constrain proportions or draw from the centre.
+Widths and lengths are pixels; path display settings affect the overlay only. Unknown keys and
+invalid values reject the complete call. Pixel drags dispatch `shape.drawPixels` and respect the
+active selection, paint target and layer locks. Pixel drawing bounds are limited to 8 GiB of
+stored tiles on 64-bit targets and 2 GiB on 32-bit targets; oversized draws fail before painting.
+`path.align` and `path.arrange` address complete
+path components, including holes, by their indices in `Path::components()`.
+
+`ui.set {shapeFillPaint: fill|null, shapeStrokePaint: fill|null}` configures independent tool
+defaults using the same Solid/Gradient/Pattern JSON as `shape.create`. Null disables that paint.
+These settings do not change the document or global foreground/background colours. `shapeStroke`
+changes width, caps, joins and dash defaults while retaining the existing paint default.
+
+Paint JSON retains solid alpha/model colours; gradient `opacityStops`, `midpoints`, `offset`,
+`dither`, `align`; pattern `id`, `angle`, `link`, `phase` alongside legacy stops/name/scale.
+Shape create/edit resolves document or preset pattern tiles and embeds them in the same undo step.
+Compound Boolean operands are canonicalized under a 16M coverage-pixel tracing budget at 4x;
+oversized operands fail without changing the document.
+Layer Combine Shapes commands merge selected shape layers when neither `layer` nor `subpath`
+is supplied, retaining the frontmost layer's style and position. Explicit parameters retain
+single-layer/component behavior.
+
 ## Snapping
 
 With View › Snap on, tool gestures snap to the View › Snap To targets (guides and grid while they
@@ -508,45 +549,6 @@ Missing actions, recursive calls and nesting beyond 16 levels fail visibly; a ch
 the parent before its next step. Every nested command retains the normal automation permission check.
 Existing recordings containing expanded commands remain unchanged; remove those steps and record
 the named call again if desired.
-
-Shape tools use `ui.set {shapeOptions: {mode: "shape"|"path"|"pixels",
-operation: "new"|"combine"|"subtract"|"intersect"|"exclude", blend: "Normal"|…,
-opacity: 0..100, antiAlias: bool, pathWidth: 0.5..10, pathColor: [r,g,b]|null,
-showPath: bool, showTransform: bool, fromCenter: bool, constrain: bool, alignCanvas: bool,
-sizeMode: "unconstrained"|"square"|"fixed"|"proportional", sizeWidth: 1..300000,
-sizeHeight: 1..300000, alignEdges: bool, starRatio: 0.01..1, smoothIndents: bool,
-arrowheads: {start: bool, end: bool, width: 0..10000, length: 0..10000, concavity: -50..50}}}`.
-Size dimensions and arrowhead width/length are document pixels. Concavity is percent.
-`showTransform` defaults to true: the selected shape layer shows eight resize controls in Move
-and Shape tools (Shape mode). The Move toolbar checkbox or Shape Path Options can hide them.
-`ui.pointer` presses on these controls enter the same Free Transform session as native input;
-  Ctrl/Command corner drags distort (`ui.pointer` uses `modifiers.command: true`), Shift frees
-  proportions, Enter applies, and Esc cancels. Shape tools capture presses within six screen pixels
-  of a visible grip; other presses still create shapes. Move also supports rotation outside the frame.
-Fixed mode uses the configured dimensions; proportional mode uses their aspect ratio.
-Align Edges rounds the drag endpoints to the pixel grid and can be disabled for subpixel geometry.
-Shift/Alt/Shift+Alt held at the start add/subtract/intersect with the active shape or Work Path.
-Modifiers held while dragging still constrain proportions or draw from the centre.
-Widths and lengths are pixels; path display settings affect the overlay only. Unknown keys and
-invalid values reject the complete call. Pixel drags dispatch `shape.drawPixels` and respect the
-active selection, paint target and layer locks. Pixel drawing bounds are limited to 8 GiB of
-stored tiles on 64-bit targets and 2 GiB on 32-bit targets; oversized draws fail before painting.
-`path.align` and `path.arrange` address complete
-path components, including holes, by their indices in `Path::components()`.
-
-`ui.set {shapeFillPaint: fill|null, shapeStrokePaint: fill|null}` configures independent tool
-defaults using the same Solid/Gradient/Pattern JSON as `shape.create`. Null disables that paint.
-These settings do not change the document or global foreground/background colours. `shapeStroke`
-changes width, caps, joins and dash defaults while retaining the existing paint default.
-
-Paint JSON retains solid alpha/model colours; gradient `opacityStops`, `midpoints`, `offset`,
-`dither`, `align`; pattern `id`, `angle`, `link`, `phase` alongside legacy stops/name/scale.
-Shape create/edit resolves document or preset pattern tiles and embeds them in the same undo step.
-Compound Boolean operands are canonicalized under a 16M coverage-pixel tracing budget at 4x;
-oversized operands fail without changing the document.
-Layer Combine Shapes commands merge selected shape layers when neither `layer` nor `subpath`
-is supplied, retaining the frontmost layer's style and position. Explicit parameters retain
-single-layer/component behavior.
 
 ## Shared panel docking
 
