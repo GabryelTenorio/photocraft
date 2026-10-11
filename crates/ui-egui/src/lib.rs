@@ -32,6 +32,7 @@ pub mod brush_preview;
 pub mod brush_resize;
 pub mod brush_sections;
 pub mod brushes_tab;
+mod cam_transform;
 mod camera_raw_detail_ui;
 mod camera_raw_preview_ui;
 mod camera_raw_scope_ui;
@@ -990,6 +991,7 @@ impl PhotocraftApp {
 
     pub fn sync_views(&mut self) {
         type_transform::cancel_stale(self);
+        crate::cam_transform::cancel_stale(self);
         crate::lasso_ui::cancel_stale(self);
         crate::crop_ui::cancel_stale(self);
         let ids: Vec<DocId> = self.session.documents().iter().map(|d| d.doc.id).collect();
@@ -1602,6 +1604,11 @@ impl eframe::App for PhotocraftApp {
         // Each painting tool keeps its own brush (#218), so switch the active tool's brush in
         // before anything this frame reads it (the cursor, the options bar, a stroke).
         paint_mouse::sync_tool_brush(self);
+        // A unit typed into a value field (`1in` in a px field) converts at the active document's
+        // resolution, as in Photoshop.
+        let ppi = self.session.prefs().units_and_rulers.point_size.per_inch();
+        let dpi = self.session.active().map_or(72.0, |d| f64::from(d.doc.resolution_dpi.max(1.0)));
+        crate::widgets::set_field_resolution(&ctx, dpi, ppi);
         // View › Screen Mode › Full Screen Mode: only the image, on black (F or Esc returns).
         screen_picker::show(&ctx);
         if screen_picker::busy(&ctx) && screen_picker::showing(&ctx) {
