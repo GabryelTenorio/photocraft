@@ -245,8 +245,12 @@ pub struct UiSetParams {
     /// cropOverlayOrientation (0..3), cropShield (an object patching show_cropped_area, enabled,
     /// color ("matchCanvas" or "custom"), custom_color ([r, g, b]), opacity (0..100),
     /// auto_adjust, classic_mode and auto_center_preview), shapeStroke (an object patching width, align, cap, join, miterLimit,
-    /// dashes, dashOffset and opacity; null disables the stroke). Shape stroke fields use
-    /// `shape.edit` names and units; colour comes from `tools.setColors`. Other fields are an error.
+    /// dashes, dashOffset and opacity; null disables the stroke), shapeOptions (an object patching
+    /// Shape tool mode, operation, pixel drawing, sizing, path display, alignment, stars and arrowheads),
+    /// shapeFillPaint and shapeStrokePaint (independent Solid / Gradient / Pattern paint JSON as in
+    /// `shape.create`, or null for No Color). These shape fields set tool defaults, without editing
+    /// the document or foreground/background colours. Shape stroke fields use `shape.edit` names
+    /// and units and retain the existing stroke paint default. Other fields are an error.
     pub fields: Value,
 }
 
