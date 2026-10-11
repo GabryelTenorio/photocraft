@@ -4283,7 +4283,6 @@ version = "0.8.2"
 dependencies = [
  "photocraft-automation",
  "photocraft-codecs",
- "photocraft-doc",
  "photocraft-engine",
  "photocraft-format",
  "photocraft-io",

@@ -785,7 +785,8 @@ pub fn psd_to_document_with(file: &PsdFile, ctl: &photocraft_raster::Interrupt) 
             .collect();
         for (id, role) in roles {
             doc.metadata.text.push((format!("{}{}", crate::comps_map::ARTBOARD_ROLE_PREFIX, id.0), role));
-            doc.metadata.text.push((format!("photocraft.artboard-role-source.{}", id.0), "file".to_owned()));        }
+            doc.metadata.text.push((format!("photocraft.artboard-role-source.{}", id.0), "file".to_owned()));
+        }
         // Layer › Link Layers: resource 1026 holds one group id per layer record (0 = unlinked).
         if let Some(Ok(photocraft_psd::resources::ResourceData::LayerGroupInfo(groups))) =
             file.resources.iter().find(|r| r.id == ids::LAYER_GROUP_INFO).and_then(photocraft_psd::resources::ImageResource::parsed)
