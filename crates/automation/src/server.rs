@@ -250,7 +250,8 @@ pub struct UiSetParams {
     /// shapeFillPaint and shapeStrokePaint (independent Solid / Gradient / Pattern paint JSON as in
     /// `shape.create`, or null for No Color). These shape fields set tool defaults, without editing
     /// the document or foreground/background colours. Shape stroke fields use `shape.edit` names
-    /// and units and retain the existing stroke paint default. Other fields are an error.
+    /// and units and retain the existing stroke paint default. camTransformOnDrop (bool,
+    /// the Content-Aware Move tool's Transform On Drop). Other fields are an error.
     pub fields: Value,
 }
 

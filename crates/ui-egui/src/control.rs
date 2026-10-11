@@ -89,7 +89,7 @@ pub enum Outcome {
 /// field's value is validated before the first one is applied, so a typo, an unknown field, a
 /// bad value or a bad nested key can't reply with success while nothing — or only half of it —
 /// changed (#412).
-pub const UI_SET_FIELDS: [&str; 36] = [
+pub const UI_SET_FIELDS: [&str; 37] = [
     "tool",
     "panels",
     "dock",
@@ -126,6 +126,7 @@ pub const UI_SET_FIELDS: [&str; 36] = [
     "shapeOptions",
     "shapeFillPaint",
     "shapeStrokePaint",
+    "camTransformOnDrop",
 ];
 
 /// Most clicks one `ui.click` may queue (#982). Each click is a press and a release that the app
@@ -458,6 +459,8 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     None => None,
                 };
                 let eyedropper_ring = bool_field(p, "eyedropperRing")?;
+                // Content-Aware Move's Transform On Drop checkbox.
+                let cam_transform_on_drop = bool_field(p, "camTransformOnDrop")?;
                 // The Crop tool's overlay menu (#1919).
                 let crop_overlay = match p.get("cropOverlay") {
                     Some(v) => Some(v.as_str().and_then(crate::crop_overlay::CropOverlay::from_id).ok_or_else(|| {
@@ -641,6 +644,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 }
                 if let Some(ring) = eyedropper_ring {
                     app.ui.tool_options.eyedropper_ring = ring;
+                }
+                if let Some(on) = cam_transform_on_drop {
+                    app.ui.tool_options.cam_transform_on_drop = on;
                 }
                 if let Some(k) = crop_overlay {
                     app.ui.tool_options.crop_overlay = k;
@@ -1225,6 +1231,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "magnetic": app.ui.magnetic,
         "textEdit": app.ui.text_edit,
         "typeTransform": app.ui.type_transform,
+        "camTransform": app.ui.cam_transform,
         "layerMenu": app.ui.layer_menu,
         "brushPicker": app.ui.brush_picker.map(|pos| json!({
             "pos": pos,
