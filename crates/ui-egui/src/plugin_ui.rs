@@ -66,6 +66,10 @@ pub fn menu(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<
     }
     let mut fixed = Map::new();
     fixed.insert("id".into(), json!(pid));
+    // The dotted line the canvas draws between two `point` params (`plugin_points`).
+    if let Some(g) = &m.guide {
+        fixed.insert("__guide".into(), json!([g.from, g.to]));
+    }
     let d = crate::filter_dialog::open_with_spec(app, "plugin.run", &m.name, &m.params_notation(), fixed);
     Some(Ok(json!({"dialog": d})))
 }

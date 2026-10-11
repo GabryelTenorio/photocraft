@@ -37,6 +37,9 @@ pub enum Kind {
     /// A `"#rrggbb"` colour (`color`, or `color=#rrggbb` with a default), picked with a swatch.
     /// Without a default the param stays unset until a colour is picked.
     Color(Option<[f32; 3]>),
+    /// A point `[x, y]` in percent of the canvas (`point=[x,y]`, a plug-in `point` param): two
+    /// fields in the dialog and a handle dragged on the canvas (`plugin_points`).
+    Point([f32; 2]),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -109,6 +112,8 @@ pub fn parse_spec(spec: &str) -> Vec<Param> {
             Kind::Color(crate::color_picker_ui::parse_hex(default))
         } else if v == "doc" {
             Kind::Document
+        } else if let Some(d) = v.strip_prefix("point") {
+            Kind::Point(parse_point(d.trim_start_matches('=')))
         } else if v == "json" || v.starts_with("layer id") || v.starts_with('[') || v.starts_with('{') {
             Kind::Json
         } else if let Some(n) = v.strip_prefix("int[").and_then(|r| r.strip_suffix(']')).and_then(|n| n.parse().ok()) {
@@ -128,6 +133,23 @@ pub fn parse_spec(spec: &str) -> Vec<Param> {
         out.push(Param { key, kind });
     }
     out
+}
+
+/// `[x,y]` of a `point=[x,y]` default; the canvas centre when it is missing or malformed.
+fn parse_point(s: &str) -> [f32; 2] {
+    let nums: Vec<f32> = s.trim().trim_start_matches('[').trim_end_matches(']').split(',').filter_map(|n| n.trim().parse().ok()).collect();
+    match nums.as_slice() {
+        [x, y] if x.is_finite() && y.is_finite() => [x.clamp(0.0, 100.0), y.clamp(0.0, 100.0)],
+        _ => [50.0, 50.0],
+    }
+}
+
+/// The parameter spec a dialog's fields follow: its own (`__spec`, plug-ins) or its command's.
+pub(crate) fn spec_of(f: &Map<String, Value>) -> Option<String> {
+    match f.get("__spec").and_then(Value::as_str) {
+        Some(s) => Some(s.to_string()),
+        None => photocraft_engine::commands::find(f.get("__command").and_then(Value::as_str)?).map(|c| c.params.to_string()),
+    }
 }
 
 /// The inside of the spec's leading `{…}` object. Notes after it, like `→ {…}` results or
@@ -353,6 +375,7 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
             Kind::Grid(n) => json!((0..*n).map(|i| i64::from(i == *n / 2)).collect::<Vec<_>>()),
             Kind::Color(Some(rgb)) => json!(crate::color_picker_ui::hex(*rgb)),
             Kind::Color(None) => continue,
+            Kind::Point(p) => json!(p),
             // Colour inputs come from the current swatches, so the proxy preview matches the result.
             Kind::Json if p.key == "foreground" => json!(app.session.tools.foreground),
             Kind::Json if p.key == "background" => json!(app.session.tools.background),
@@ -456,6 +479,7 @@ pub fn open_with_spec(app: &mut PhotocraftApp, command: &str, label: &str, spec:
             Kind::Bool(default) => json!(default),
             Kind::Int { default } => json!(default),
             Kind::Color(Some(rgb)) => json!(crate::color_picker_ui::hex(*rgb)),
+            Kind::Point(p) => json!(p),
             _ => continue,
         };
         fields.insert(p.key, v);
@@ -516,13 +540,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let t = Tokens::get(ui.ctx());
     let cmd = f.get("__command").and_then(Value::as_str).unwrap_or_default().to_string();
     // Plug-in dialogs carry their own spec (from the plug-in's manifest).
-    let spec = match f.get("__spec").and_then(Value::as_str) {
-        Some(s) => s.to_string(),
-        None => match photocraft_engine::commands::find(&cmd) {
-            Some(c) => c.params.to_string(),
-            None => return,
-        },
-    };
+    let Some(spec) = spec_of(f) else { return };
     if crate::select_mask_view::owns(f) {
         crate::select_mask_view::controls(ui, f);
     }
@@ -670,6 +688,21 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                     }
                     crate::color_picker_ui::request_field(f, &p.key, &crate::color_picker_ui::title_for(&name));
                 }
+            }
+            Kind::Point(default) => {
+                // The same value the canvas handle drags (`plugin_points`), so the two stay in sync.
+                let [mut x, mut y] = crate::plugin_points::value(f, &p.key).unwrap_or(default);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        crate::widgets::value_field(ui, &mut y, 0.0..=100.0, "%", 64.0);
+                        ui.label(egui::RichText::new("Y").color(t.text_dim));
+                        crate::widgets::value_field(ui, &mut x, 0.0..=100.0, "%", 64.0);
+                        ui.label(egui::RichText::new("X").color(t.text_dim));
+                    });
+                });
+                let r = |v: f32| (v.clamp(0.0, 100.0) * 100.0).round() / 100.0;
+                f.insert(p.key, json!([r(x), r(y)]));
             }
             Kind::Int { default } => {
                 let mut v = f.get(&p.key).and_then(Value::as_f64).unwrap_or(default as f64) as f32;
@@ -1834,5 +1867,26 @@ mod tests {
         open(&mut app, "image.rotation.arbitrary").unwrap();
         let fields = &app.ui.dialogs.last().unwrap().fields;
         assert_eq!(fields["direction"], json!("cw"), "Explicit default matching first option is preserved");
+    }
+
+    #[test]
+    fn point_params_open_with_their_defaults_and_pass_through_unchanged() {
+        let spec = r#"{"start":point=[12,12.5],"end":point=[88,62],"bad":point=[1],"amount":0..100=50}"#;
+        let kinds: Vec<Kind> = parse_spec(spec).into_iter().map(|p| p.kind).collect();
+        assert_eq!(
+            kinds,
+            [Kind::Point([12.0, 12.5]), Kind::Point([88.0, 62.0]), Kind::Point([50.0, 50.0]), Kind::Range { min: 0.0, max: 100.0, default: 50.0 }]
+        );
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let mut fixed = Map::new();
+        fixed.insert("id".into(), json!("org.example.bolt"));
+        open_with_spec(&mut app, "plugin.run", "Bolt", spec, fixed);
+        let fields = &mut app.ui.dialogs.last_mut().unwrap().fields;
+        assert_eq!(fields["start"], json!([12.0, 12.5]));
+        fields.insert("end".into(), json!([33.25, 70.0]));
+        let params = params_of(fields);
+        assert_eq!(params["start"], json!([12.0, 12.5]));
+        assert_eq!(params["end"], json!([33.25, 70.0]), "a point value reaches the command unchanged");
+        assert_eq!(params["id"], json!("org.example.bolt"));
     }
 }

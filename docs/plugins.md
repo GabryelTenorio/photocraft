@@ -100,6 +100,7 @@ exports. All integers are `i32` unless noted; pointers are offsets into the modu
   except the zero-width joiner and non-joiner, and at least one character must be visible.
   `kind`: `"filter"` (the only kind in v1).
 - `params`: in dialog order. Names are `[A-Za-z0-9_]`, not starting with `_`, not `id`/`layer`.
+  Types: `number`, `int`, `bool`, `choice` and `point` (below).
   The host validates the user's values before calling: missing values take the default, numbers are
   clamped to `min..max` (ints rounded), a wrong type or an unknown choice is an error.
 - `overlap` (0–256): pixels of context the filter needs around each output pixel (a blur radius).
@@ -107,6 +108,29 @@ exports. All integers are `i32` unless noted; pointers are offsets into the modu
   off-canvas layer content), and keeps only the inner rectangle of the result.
 - `area`: `"content"` (default) filters the layer's non-transparent bounds grown by `overlap`;
   `"canvas"` filters the whole canvas, including transparent pixels (for generators).
+
+#### Points on the canvas: `point` and `guide`
+
+A `point` parameter is a position the user picks on the image. Its value is `[x, y]` in **percent of
+the canvas width and height** (0–100), like the other position-style numbers, so it does not depend
+on the document size. `default` is required: two numbers, each within 0–100.
+
+```json
+"params": {
+  "start": {"type": "point", "default": [12, 12]},
+  "end":   {"type": "point", "default": [88, 62]}
+},
+"guide": {"from": "start", "to": "end"}
+```
+
+- While the plug-in's dialog is open, every point shows a handle on the canvas. Pressing near a
+  handle drags it; pressing elsewhere on the image moves the first point there. The dialog's X / Y
+  fields and the live preview follow the handle as it moves.
+- `guide` (optional) names two different `point` parameters: the canvas draws a dotted line between
+  them. A manifest whose `guide` names a missing or non-`point` parameter is rejected.
+- The plug-in receives the value as an array in `params`, e.g. `{"start": [12.0, 12.0], …}`. The
+  host clamps both coordinates to 0–100; anything other than an array of two numbers is an error.
+- In the registry notation (`plugin.list` `params`) a point reads `"start":point=[12,12]`.
 
 ### Pixels
 

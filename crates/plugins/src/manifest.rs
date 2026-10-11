@@ -9,6 +9,8 @@ use crate::{Error, Result};
 pub const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 /// Most parameters a plug-in may declare.
 pub const MAX_PARAMS: usize = 64;
+/// Range of a `point` coordinate: percent of the canvas width or height.
+pub const POINT_RANGE: (f64, f64) = (0.0, 100.0);
 /// Largest neighbourhood (`overlap`) a plug-in may ask for, in pixels.
 pub const MAX_OVERLAP: u32 = 256;
 
@@ -56,6 +58,9 @@ pub enum ParamSpec {
         #[serde(default)]
         default: Option<String>,
     },
+    /// A point on the canvas, `[x, y]` in percent of the canvas width and height (0-100): a
+    /// draggable handle on the canvas while the dialog is open.
+    Point { default: [f64; 2] },
 }
 
 fn int_min() -> i64 {
@@ -88,6 +93,23 @@ pub struct Manifest {
     pub overlap: u32,
     #[serde(default)]
     pub area: Area,
+    /// Optional dotted guide line the dialog draws on the canvas between two `point` params.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guide: Option<Guide>,
+}
+
+/// A dotted line between two `point` parameters (`"guide": {"from": "start", "to": "end"}`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Guide {
+    pub from: String,
+    pub to: String,
+}
+
+/// Clamps a point to the canvas: each coordinate into [`POINT_RANGE`] (non-finite values are `None`).
+pub fn clamp_point(x: f64, y: f64) -> Option<[f64; 2]> {
+    let (lo, hi) = POINT_RANGE;
+    (x.is_finite() && y.is_finite()).then(|| [x.clamp(lo, hi), y.clamp(lo, hi)])
 }
 
 impl Manifest {
@@ -136,7 +158,19 @@ impl Manifest {
                         return Err(Error::Manifest(format!("parameter `{k}`: default is not one of the options")));
                     }
                 }
+                ParamSpec::Point { default } => {
+                    let (lo, hi) = POINT_RANGE;
+                    if !default.iter().all(|v| v.is_finite() && (lo..=hi).contains(v)) {
+                        return Err(Error::Manifest(format!("parameter `{k}`: point default must be two numbers in {lo}-{hi}")));
+                    }
+                }
                 _ => {}
+            }
+        }
+        if let Some(g) = &self.guide {
+            let is_point = |name: &str| self.params.iter().any(|(k, s)| k == name && matches!(s, ParamSpec::Point { .. }));
+            if g.from == g.to || !is_point(&g.from) || !is_point(&g.to) {
+                return Err(Error::Manifest("`guide` must name two different `point` parameters".into()));
             }
         }
         Ok(())
@@ -163,6 +197,7 @@ impl Manifest {
                     }
                     format!("\"{k}\":\"{}\"", opts.join("|"))
                 }
+                ParamSpec::Point { default: [x, y] } => format!("\"{k}\":point=[{x},{y}]"),
             })
             .collect();
         format!("{{{}}}", parts.join(","))
@@ -206,6 +241,16 @@ impl Manifest {
                         json!(s)
                     }
                 },
+                ParamSpec::Point { default: [x, y] } => {
+                    let [x, y] = match v {
+                        None => [*x, *y],
+                        Some(v) => match v.as_array().map(Vec::as_slice) {
+                            Some([x, y]) => [x.as_f64().ok_or_else(|| wrong("[x, y]"))?, y.as_f64().ok_or_else(|| wrong("[x, y]"))?],
+                            _ => return Err(wrong("an array [x, y]")),
+                        },
+                    };
+                    json!(clamp_point(x, y).ok_or_else(|| wrong("two finite numbers"))?)
+                }
             };
             out.insert(k.clone(), resolved);
         }
@@ -387,6 +432,70 @@ mod tests {
         }
         assert!(Manifest::parse(&[0xff, 0xfe]).is_err());
         assert!(Manifest::parse(&vec![b' '; MAX_MANIFEST_BYTES + 1]).is_err());
+    }
+
+    fn with_points(params: Value, guide: Value) -> Result<Manifest> {
+        let mut m = json!({"id": "org.example.bolt", "name": "Bolt", "kind": "filter", "params": params});
+        if !guide.is_null() {
+            m["guide"] = guide;
+        }
+        Manifest::parse(m.to_string().as_bytes())
+    }
+
+    #[test]
+    fn point_params_parse_with_a_guide() {
+        // A raw string: `json!` would sort the keys, and the dialog order is the manifest's.
+        let m = Manifest::parse(
+            br#"{"id":"org.example.bolt","name":"Bolt","kind":"filter",
+                "params":{"start":{"type":"point","default":[12,12]},"end":{"type":"point","default":[88,62.5]},
+                          "glow":{"type":"number","min":0,"max":1,"default":0.5}},
+                "guide":{"from":"start","to":"end"}}"#,
+        )
+        .unwrap();
+        assert_eq!(m.params[0].1, ParamSpec::Point { default: [12.0, 12.0] });
+        assert_eq!(m.guide, Some(Guide { from: "start".into(), to: "end".into() }));
+        assert_eq!(m.params_notation(), r#"{"start":point=[12,12],"end":point=[88,62.5],"glow":0..1=0.5}"#);
+        // Points without a guide are fine too.
+        let params = json!({"start": {"type": "point", "default": [12, 12]}, "end": {"type": "point", "default": [88, 62.5]}});
+        assert_eq!(with_points(params, Value::Null).unwrap().guide, None);
+    }
+
+    #[test]
+    fn rejects_bad_point_params_and_guides() {
+        let pt = |d: Value| json!({"start": {"type": "point", "default": d}, "end": {"type": "point", "default": [1, 1]}});
+        // Wrong length, wrong type, out of range.
+        for d in [json!([1]), json!([1, 2, 3]), json!([]), json!(["a", 1]), json!(5), json!([-1, 50]), json!([50, 100.5]), json!([101, 0])] {
+            assert!(with_points(pt(d.clone()), Value::Null).is_err(), "{d}");
+        }
+        assert!(with_points(json!({"p": {"type": "point"}}), Value::Null).is_err(), "a point needs a default");
+        // Edges of the range are allowed.
+        assert!(with_points(pt(json!([0, 100])), Value::Null).is_ok());
+        let params = json!({"start": {"type": "point", "default": [0, 0]}, "end": {"type": "point", "default": [1, 1]}, "n": {"type": "number", "min": 0, "max": 1, "default": 0}});
+        for g in [
+            json!({"from": "start", "to": "nowhere"}),
+            json!({"from": "nowhere", "to": "end"}),
+            json!({"from": "start", "to": "n"}),
+            json!({"from": "start", "to": "start"}),
+            json!({"from": "start"}),
+            json!([1, 2]),
+        ] {
+            assert!(with_points(params.clone(), g.clone()).is_err(), "{g}");
+        }
+    }
+
+    #[test]
+    fn point_values_are_clamped_and_type_checked() {
+        let m = with_points(json!({"start": {"type": "point", "default": [12, 12]}}), Value::Null).unwrap();
+        let get = |v: Value| m.resolve_params(&json!({"start": v})).map(|p| p["start"].clone());
+        assert_eq!(get(Value::Null).unwrap(), json!([12.0, 12.0]));
+        assert_eq!(get(json!([33.25, 70])).unwrap(), json!([33.25, 70.0]), "in range: passed through unchanged");
+        assert_eq!(get(json!([-5, 250])).unwrap(), json!([0.0, 100.0]));
+        for bad in [json!([1]), json!([1, 2, 3]), json!(["1", 2]), json!(5), json!({"x": 1, "y": 2})] {
+            assert!(get(bad.clone()).is_err(), "{bad}");
+        }
+        assert_eq!(clamp_point(150.0, -0.5), Some([100.0, 0.0]));
+        assert_eq!(clamp_point(f64::NAN, 1.0), None);
+        assert_eq!(clamp_point(1.0, f64::INFINITY), None);
     }
 
     fn with_name(name: &str) -> Result<Manifest> {
