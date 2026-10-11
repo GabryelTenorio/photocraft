@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: brush engine, dynamics, pressure, smoothing, cursors, retouch tools and feel audited from source and open issues) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (Windows pen: tilt, rotation, eraser end and coalesced pressure through the Windows Ink reader) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -41,9 +41,9 @@ tablets against Photoshop side by side.
 | Global pressure curve in Preferences | done | #2195 |
 | Per-control pressure curves | missing | TOOL-213-11 |
 | Quick taps keep their pressure | partial | #1967 fixed one case; tap paints a full blob (#1798), tap sensitivity (#1933) |
-| Smooth pressure on Windows | partial | "jumpy" (#2046) |
-| Tilt and rotation drive angle/roundness | partial | macOS, X11, web; not Windows; rotation not applied (#1301) |
-| Eraser end of the pen switches to Eraser | partial | macOS; flipped Wacom on Windows not (#2285) |
+| Smooth pressure on Windows | partial | every coalesced `WM_POINTER` frame now reaches the stroke (`tablet/src/ink.rs`); not yet verified on hardware (#2046) |
+| Tilt and rotation drive angle/roundness | partial | macOS, X11, web, Windows (Ink and Wintab readers, not yet verified on hardware); rotation not applied (#1301) |
+| Eraser end of the pen switches to Eraser | partial | macOS; Windows through the Ink and Wintab readers, not yet verified on hardware (#2285) |
 
 ## Stroke quality and feel
 
@@ -111,3 +111,4 @@ tablets against Photoshop side by side.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-10 | major | First version, from a source audit and the open issues |
+| 2026-10-12 | minor | Windows pen rows: Windows Ink reader (tilt, rotation, eraser end, coalesced pressure) |

@@ -4,9 +4,12 @@
 //! Sources, by platform (eframe 0.36.2, egui-winit 0.36.2, winit 0.30.13):
 //!
 //! - **Windows**: winit turns `WM_POINTER` pen and touch input into `WindowEvent::Touch` with a
-//!   normalised force (`POINTER_PEN_INFO::pressure / 1024`); egui-winit forwards it as
-//!   `egui::Event::Touch { force }` alongside the emulated pointer. [`Stylus::update`] reads it.
-//!   winit drops the pen's tilt and rotation, so those stay 0.
+//!   normalised force (`POINTER_PEN_INFO::pressure / 1024`) and drops tilt, rotation, the eraser
+//!   end and the coalesced frames. The desktop app therefore installs a pen reader from the
+//!   `photocraft-tablet` crate (Windows Ink, or Wintab when the driver serves it) that writes full
+//!   samples into the [`StylusFeed`], and turns [`Stylus::touch_force`] off so the pen doesn't
+//!   reach the stroke twice. Without a reader, [`Stylus::update`] reads egui's
+//!   `egui::Event::Touch { force }` (pressure only).
 //! - **Web**: eframe forwards touch force but not pen pointer events, so the web runner listens
 //!   to `pointerdown`/`pointermove` itself and writes `pressure`, `tiltX`, `tiltY`, `twist` and
 //!   the eraser button of `pointerType == "pen"` events into the [`StylusFeed`].
@@ -120,6 +123,9 @@ pub struct Stylus {
     pub(crate) tool_before_eraser: Option<crate::state::Tool>,
     /// Force of the touch/pen contact currently down (egui `Event::Touch`).
     touch: Option<f32>,
+    /// Read pen pressure from egui's touch force (winit's `WM_POINTER` force on Windows). Off once
+    /// a platform pen reader feeds full samples for the same pen.
+    pub touch_force: bool,
     /// The contact ended this frame: keep its force for this frame's last tool events, clear next frame.
     lifted: bool,
     /// This frame's pen samples, oldest first (the feed's queue and the touch forces).
@@ -152,6 +158,7 @@ impl Default for Stylus {
             end: None,
             tool_before_eraser: None,
             touch: None,
+            touch_force: true,
             lifted: false,
             frame: Vec::new(),
             prev: None,
@@ -185,7 +192,7 @@ impl Stylus {
         }
         self.frame = self.feed.drain();
         self.current = None;
-        for e in events {
+        for e in events.iter().filter(|_| self.touch_force) {
             if let egui::Event::Touch { phase, force, .. } = e {
                 match phase {
                     egui::TouchPhase::Start | egui::TouchPhase::Move => {
@@ -523,6 +530,25 @@ mod tests {
         assert_eq!(s.pressure(), 0.4);
         s.update(&[]);
         assert_eq!(s.pressure(), 1.0);
+    }
+
+    #[test]
+    fn a_platform_reader_replaces_touch_force() {
+        // Windows with the Ink reader installed: winit still reports the pen as touch force, but
+        // the reader's samples (with tilt) are the only ones that reach the stroke.
+        let mut s = Stylus { touch_force: false, ..Default::default() };
+        s.feed.set(Some(PenSample { pressure: 0.2, tilt_x: 30.0, ..Default::default() }));
+        s.feed.set(Some(PenSample { pressure: 0.6, tilt_x: 30.0, ..Default::default() }));
+        s.update(&[touch(egui::TouchPhase::Start, Some(0.9)), touch(egui::TouchPhase::Move, Some(0.95))]);
+        let frame: Vec<(f32, f32)> = s.frame.iter().map(|p| (p.pressure, p.tilt_x)).collect();
+        assert_eq!(frame, [(0.2, 30.0), (0.6, 30.0)], "no tilt-less touch samples in between");
+        assert_eq!(s.pressure(), 0.6);
+        // Lifting: the touch end is the reader's business too; the feed's hover decides.
+        s.feed.set(Some(PenSample { pressure: 0.0, tilt_x: 30.0, ..Default::default() }));
+        s.update(&[touch(egui::TouchPhase::End, None)]);
+        s.feed.set(None);
+        s.update(&[]);
+        assert_eq!(s.pressure(), 1.0, "back to the mouse once the pen leaves");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G12: Windows Ink pen reader with tilt, rotation, eraser end and coalesced pressure) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -187,9 +187,9 @@ what an agent can't finish alone.
 ## Hardware gaps
 
 ### G12. Pen tablets and display hardware
-- **Missing:** tilt and rotation on Windows (pressure only, via WM_POINTER; no WinTab); native
-  Wayland tablet-v2 (#79; the pen does not click on GNOME 50, #2622, KDE #2297); eraser end on
-  flipped Wacom pens (#2285); HDR/EDR output (Photoshop has "Precise Color Management for HDR
+- **Missing:** hardware verification of the Windows pen readers (Windows Ink and Wintab now
+  read tilt, rotation, the eraser end and every coalesced pressure frame); native Wayland
+  tablet-v2 (#79; the pen does not click on GNOME 50, #2622, KDE #2297); HDR/EDR output (Photoshop has "Precise Color Management for HDR
   Display"); monitor profile detection off macOS and live profile changes; Touch Bar (macOS
   Intel only, low value); 3D mice.
 - **Detail:** [`hardware-parity.md`](hardware-parity.md).
@@ -221,6 +221,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | G12: Windows Ink pen reader (tilt, rotation, eraser end, coalesced pressure); hardware verification remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |

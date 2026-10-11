@@ -5,18 +5,22 @@
 //!   each `NSEvent` (`pressure`, `tilt`, `rotation`, `subtype`, and `pointingDeviceType` from
 //!   proximity events) before winit sees the event, so every pointer event the UI handles already
 //!   has its pen sample. AppKit's block-based monitor API needs Objective-C interop, so
-//!   `macos.rs` — like `wintab.rs` — allows `unsafe` (craftrules never-crash: an isolated, tested
-//!   helper crate).
+//!   `macos.rs` — like `ink.rs` and `wintab.rs` — allows `unsafe` (craftrules never-crash: an
+//!   isolated, tested helper crate).
 //! - **Linux X11** ([`x11::spawn`]): a second, pure-Rust X connection (x11rb) selects XInput2
 //!   raw events on the root window and maps the tablet device's valuators ("Abs Pressure",
 //!   "Abs Tilt X/Y", "Abs Rotary Z") to samples. Raw events reach every client that asks, also
 //!   while winit holds the pointer grab of a drag. No `unsafe`.
-//! - **Windows**: the pen normally rides Windows Ink — winit turns `WM_POINTER` pen frames into
-//!   touch with a normalised force. When the driver serves Wintab instead (the Wacom driver's
-//!   "Use Windows Ink" checkbox off, read from its settings file by [`wacom`]), the desktop app
-//!   installs [`wintab::Monitor`], which subclasses the window and reads `WT_PACKET` pressure,
-//!   tilt and barrel rotation (and the eraser end) into the same feed. Needs `unsafe` interop
-//!   like the AppKit monitor.
+//! - **Windows Ink** (`ink::Monitor`, the default for every vendor's pen): winit turns a
+//!   `WM_POINTER` pen frame into touch with a normalised force and drops the rest, so a window
+//!   subclass reads each message's `POINTER_PEN_INFO` history (pressure, tilt, barrel rotation,
+//!   the eraser end, hover, and the frames the system coalesced between messages) and passes the
+//!   message on to winit unchanged.
+//! - **Wintab** (`wintab::Monitor`): when the driver serves Wintab instead (the Wacom driver's
+//!   "Use Windows Ink" checkbox off, read from its settings file by `wacom`), the desktop app
+//!   installs this reader, which subclasses the window and reads `WT_PACKET` pressure, tilt and
+//!   barrel rotation (and the eraser end) into the same feed. Both need `unsafe` interop like the
+//!   AppKit monitor.
 //! - **Wayland**: not covered. The `zwp_tablet_v2` protocol has to be bound on winit's own
 //!   `wl_display` connection (the tablet events name winit's `wl_surface`), which needs
 //!   `unsafe` foreign-display interop, and binding it makes compositors stop emulating the
@@ -25,8 +29,8 @@
 //!   through Xwayland when a pen is attached, and the X11 reader applies.
 //!
 //! The platform glue only reads raw values and hands them to the pure mapping in [`appkit`],
-//! [`xi`] and [`wintab`] (whose Windows-only glue is gated inside the module), which normalise,
-//! clamp and track pen state and are tested on every platform.
+//! [`xi`], [`ink`] and [`wintab`] (whose Windows-only glue is gated inside each module), which
+//! normalise, clamp and track pen state and are tested on every platform.
 //!
 //! A sample is reported through a callback: `Some(sample)` while a pen is in use (hovering or
 //! touching), `None` when the pointer is a mouse again.
@@ -34,6 +38,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod appkit;
+// Pure mapping (tested everywhere); only the Windows glue inside is gated.
+pub mod ink;
 pub mod xi;
 
 #[cfg(target_os = "macos")]

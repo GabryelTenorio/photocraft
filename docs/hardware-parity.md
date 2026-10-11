@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: GPU, pen tablets, displays, gestures per platform against Photoshop 2026) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (Windows pen: the Windows Ink reader brings tilt, barrel rotation, the eraser end and coalesced pressure frames; Wintab reader) · **Target:** Adobe Photoshop 2026
 
 Each hardware feature Photoshop 2026 (27.11.0) uses, per platform, against PhotoCraft. Photoshop
 side: its bundle (Metal and OpenCL paths, "Precise Color Management for HDR Display" and EDR
@@ -9,7 +9,7 @@ strings, Touch Bar resources, pen pressure/tilt strings) and Adobe's GPU FAQ. Ph
 `engine/src/display_color.rs`, `apps/photocraft/src/monitor_profile.rs`.
 
 **Summary (estimated):** ~50% ready. GPU compositing and colour-managed display are solid; pen
-input is uneven by platform (Windows lacks tilt/rotation, Wayland is broken) and there is no HDR
+input is uneven by platform (Windows readers not yet verified on hardware, Wayland is broken) and there is no HDR
 output. Remaining: 80–150 h (gap G12). Human: tablets (Wacom, XP-Pen, Huion) on each OS and an
 HDR display to verify.
 
@@ -28,11 +28,11 @@ HDR display to verify.
 
 | Feature | Photoshop | macOS | Windows | Linux X11 | Linux Wayland | Web |
 |---|---|---|---|---|---|---|
-| Pressure | yes | yes (AppKit monitor) | yes (WM_POINTER), jumpy (#2046) | yes (XInput2) | via Xwayland only; GNOME 50 pen doesn't click (#2622), KDE (#2297) | yes |
-| Tilt | yes | yes | **no** | yes | no | yes |
-| Barrel rotation | yes | yes (not applied to tip angle, #1301) | no | partial | no | yes (twist) |
-| Eraser end | yes | yes | no (#2285) | partial | no | partial |
-| WinTab driver mode | yes | – | no | – | – | – |
+| Pressure | yes | yes (AppKit monitor) | yes: Windows Ink reader (`ink.rs`, every coalesced `WM_POINTER` frame, #2046) or Wintab (`wintab.rs`); not yet verified on hardware | yes (XInput2) | via Xwayland only; GNOME 50 pen doesn't click (#2622), KDE (#2297) | yes |
+| Tilt | yes | yes | yes (Ink `tiltX/tiltY`, Wintab orientation); not yet verified on hardware | yes | no | yes |
+| Barrel rotation | yes | yes (not applied to tip angle, #1301) | yes (Ink `rotation`, Wintab `orTwist`); not yet verified on hardware | partial | no | yes (twist) |
+| Eraser end | yes | yes | yes (Ink inverted/eraser flags, Wintab cursor type; #2285); not yet verified on hardware | partial | no | partial |
+| WinTab driver mode | yes | – | yes (follows the Wacom driver's "Use Windows Ink" checkbox; `PHOTOCRAFT_WINTAB`) | – | – | – |
 | Pressure curve | Windows Ink / driver | global curve in Preferences (#2195) | same | same | same | same |
 
 ## Displays and colour
@@ -62,3 +62,4 @@ HDR display to verify.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-10 | major | First version |
+| 2026-10-12 | minor | Windows pen: Windows Ink reader (tilt, rotation, eraser end, coalesced pressure) beside the Wintab reader |

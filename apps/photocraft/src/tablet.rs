@@ -3,10 +3,10 @@
 //! winit 0.30 drops tablet data, so `photocraft-tablet` reads it beside winit (an AppKit local
 //! event monitor; XInput2 raw events on a second X connection) and this module writes each sample
 //! into the UI's [`StylusFeed`], where the canvas reads it exactly like the web runner's Pointer
-//! Events and automation's simulated pen. On Windows, winit forwards `WM_POINTER` (Windows Ink)
-//! pressure as touch force; when the driver serves Wintab instead — the Wacom driver's "Use
-//! Windows Ink" checkbox off, read from its settings file (`wacom::windows_ink`) — this module installs
-//! the Wintab reader too, and `PHOTOCRAFT_WINTAB=1` forces it on (`=0` keeps it off).
+//! Events and automation's simulated pen. On Windows exactly one reader runs: the Windows Ink
+//! reader (`WM_POINTER` pen frames, every vendor's default), or the Wintab reader when the driver
+//! serves Wintab instead — the Wacom driver's "Use Windows Ink" checkbox off, read from its
+//! settings file (`wacom::windows_ink`); `PHOTOCRAFT_WINTAB=1` forces Wintab (`=0` keeps Ink).
 //!
 //! Wayland compositors give a pen only to clients that bind the tablet protocol
 //! (`zwp_tablet_v2`), which winit 0.30 doesn't (and binding it on winit's connection needs
@@ -52,12 +52,28 @@ pub fn wintab_wanted(var: impl Fn(&str) -> Option<String>, use_ink: Option<bool>
     }
 }
 
-/// Install the Wintab reader on the window (`hwnd` from eframe's window handle; the window's
-/// thread). Keep the result until the event loop returns. On failure this logs why: the pen then
-/// paints like a mouse (the driver's own synthesized input still moves and clicks).
+/// The Windows pen reader in use, held only so it lives: dropping it removes its window subclass.
 #[cfg(target_os = "windows")]
-pub fn install_windows(feed: &StylusFeed, hwnd: isize) -> Option<photocraft_tablet::wintab::Monitor> {
-    photocraft_tablet::wintab::Monitor::install(hwnd as *mut _, sink(feed.clone())).map_err(|e| log::warn!("{e}")).ok()
+pub enum WindowsReader {
+    /// `WM_POINTER` pen frames (Windows Ink).
+    Ink { _monitor: photocraft_tablet::ink::Monitor },
+    /// `WT_PACKET`s (the driver serves Wintab).
+    Wintab { _monitor: photocraft_tablet::wintab::Monitor },
+}
+
+/// Install the Windows pen reader on the window (`hwnd` from eframe's window handle; the window's
+/// thread): Wintab when `wintab` ([`wintab_wanted`]), Windows Ink otherwise. Keep the result
+/// until the event loop returns. On failure this logs why: the pen then paints like a mouse at
+/// winit's touch force (Ink) or the driver's synthesized input (Wintab).
+#[cfg(target_os = "windows")]
+pub fn install_windows(feed: &StylusFeed, hwnd: isize, wintab: bool) -> Option<WindowsReader> {
+    let hwnd = hwnd as *mut std::ffi::c_void;
+    let reader = if wintab {
+        photocraft_tablet::wintab::Monitor::install(hwnd, sink(feed.clone())).map(|m| WindowsReader::Wintab { _monitor: m })
+    } else {
+        photocraft_tablet::ink::Monitor::install(hwnd, sink(feed.clone())).map(|m| WindowsReader::Ink { _monitor: m })
+    };
+    reader.map_err(|e| log::warn!("{e}")).ok()
 }
 
 /// The display server to open the window on: the session's own, except Xwayland on Wayland when
