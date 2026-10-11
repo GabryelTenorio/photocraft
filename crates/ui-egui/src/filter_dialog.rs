@@ -361,7 +361,7 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
         fields.insert(p.key, v);
     }
     restore_remembered(app, command, spec.params, &mut fields);
-    if command == crate::blur_pins::COMMAND {
+    if crate::blur_pins::handles(command) {
         crate::blur_pins::init(app, &mut fields);
     }
     if command == "image.rotation.arbitrary" {
