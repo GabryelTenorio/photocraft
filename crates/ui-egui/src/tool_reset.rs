@@ -136,10 +136,13 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
             crop_overlay_show,
             crop_overlay_orientation,
             crop_shield,
+            crop_custom_ratio_width,
+            crop_custom_ratio_height,
         ),
         Tool::Eyedropper => reset!(eyedropper_size, eyedropper_sample, eyedropper_ring),
         Tool::Pencil => reset!(pencil_auto_erase),
         Tool::BackgroundEraser => reset!(bg_sampling, bg_limits, bg_tolerance, bg_protect_fg),
+        Tool::ColorReplacement => reset!(cr_mode, cr_sampling, cr_limits, cr_tolerance, cr_anti_alias),
         Tool::MagicEraser => reset!(tolerance, anti_alias, contiguous, sample_all_layers, magic_eraser_opacity),
         Tool::Gradient => reset!(gradient_style, gradient_reverse, gradient_dither, gradient_classic, gradient_blend_mode, fill_opacity),
         Tool::PaintBucket => reset!(bucket_fill_pattern, fill_opacity, tolerance, anti_alias, contiguous, sample_all_layers),
@@ -173,7 +176,9 @@ pub fn reset_options(o: &mut ToolOptions, tool: Tool) {
         | Tool::PathSelection
         | Tool::DirectSelection
         | Tool::Slice
-        | Tool::SliceSelect => {}
+        | Tool::SliceSelect
+        | Tool::AddAnchorPoint
+        | Tool::DeleteAnchorPoint => {}
     }
 }
 
