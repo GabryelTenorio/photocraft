@@ -164,6 +164,31 @@ fn show_transformation_values_off_hides_the_readout() {
     }
 }
 
+/// #204: the Free Transform readout (#1767) follows Show Transformation Values too.
+#[test]
+fn show_transformation_values_off_hides_the_free_transform_readout() {
+    use crate::canvas::{ToolEvent, tool_event};
+    for shown in [false, true] {
+        let mut h = harness(Tool::Move);
+        let app = h.state_mut();
+        app.run("prefs.set", json!({"path": "tools.showTransformationValues", "value": shown})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("select.all", json!({})).unwrap();
+        app.run("edit.fill", json!({"color": "#3366cc"})).unwrap();
+        app.run("select.deselect", json!({})).unwrap();
+        app.ui.extras.snap = false;
+        crate::menus::invoke(app, &egui::Context::default(), "edit.freeTransform", json!({})).unwrap();
+        // Move the box by dragging inside it (away from the centre pivot), then hover there.
+        tool_event(app, ToolEvent::Down { x: 100.0, y: 100.0, pressure: 1.0 }, Modifiers::NONE);
+        tool_event(app, ToolEvent::Move { x: 130.0, y: 120.0, pressure: 1.0 }, Modifiers::NONE);
+        assert!(crate::transform_tool::live_readout(h.state()).is_some(), "a live readout to show");
+        let at = screen(&h, 130.0, 120.0);
+        h.event(egui::Event::PointerMoved(at));
+        h.run_steps(2);
+        assert_eq!(h.query_by_label("ΔX:").is_some(), shown, "shown: {shown}");
+    }
+}
+
 #[test]
 fn alt_draws_from_the_centre_and_shift_alt_a_centred_circle() {
     let mut h = harness(Tool::RectMarquee);
