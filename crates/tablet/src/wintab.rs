@@ -6,8 +6,11 @@
 //! opens a context on the window (`CXO_MESSAGES`), subclasses it for `WT_PACKET` and
 //! `WT_PROXIMITY`, and reports each reading through the same callback as the other platforms —
 //! pen in range (hovering or touching) is `Some`, back to mouse is `None`. The DLL is loaded
-//! dynamically, so a machine without a Wintab driver fails [`Monitor::install`] cleanly. Tilt is
-//! not read (packets would need `PK_ORIENTATION`).
+//! dynamically, so a machine without a Wintab driver fails [`Monitor::install`] cleanly. Packets
+//! ask for `PK_ORIENTATION`: a tilt-capable pen's azimuth/altitude become the sample's
+//! `tilt_x`/`tilt_y` and the barrel rotation of an Art Pen or 4D mouse (orTwist) its `rotation`.
+//! Drivers that report no orientation axes — most plain pens — leave both at zero, so nothing
+//! depends on a tilt-capable device.
 //!
 //! As in `appkit` and `xi`, all decoding (message parameters, pressure scale, eraser bits, hover
 //! vs contact) is pure and unit-tested on every platform; the Windows glue is the gated `win`
@@ -52,6 +55,72 @@ fn pressure_unit(pressure: u32, pressure_max: f32) -> f32 {
     if pressure_max > 0.0 && pressure_max.is_finite() { (pressure as f32 / pressure_max).clamp(0.0, 1.0) } else { 0.0 }
 }
 
+/// The orientation axes' maxima from `WTI_DEVICES`/`DVC_ORIENTATION` (`AXIS[3]`: azimuth,
+/// altitude, twist), in the driver's own units (tenths of a degree). All zero when the driver
+/// reports no such axes — a pen without tilt or barrel rotation — which maps everything to zero.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct OrientationScales {
+    pub azimuth: f32,
+    pub altitude: f32,
+    pub twist: f32,
+}
+
+impl OrientationScales {
+    /// The three `AXIS.ax_max` (an absent or negative axis reads as 0).
+    pub fn new(axes: [i32; 3]) -> Self {
+        let f = |ax_max: i32| if ax_max > 0 { ax_max as f32 } else { 0.0 };
+        Self { azimuth: f(axes[0]), altitude: f(axes[1]), twist: f(axes[2]) }
+    }
+}
+
+/// The device's report ranges, read once at install from `WTI_DEVICES`: the pressure axis'
+/// maximum as the divisor for 0..1 ([`pressure_scale`]) and the orientation axes'.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Scales {
+    pub pressure_max: f32,
+    pub orientation: OrientationScales,
+}
+
+/// One packet's decoded fields: what the stream reads out of a `WT_PACKET`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Reading {
+    pub cursor: u32,
+    pub pressure: u32,
+    /// `ORIENTATION`: `(azimuth, altitude, twist)`, in the axes' own units (tenths of a degree);
+    /// all zero for a pen without orientation.
+    pub orientation: (i32, i32, i32),
+}
+
+/// A packet's `ORIENTATION` fields as `(tilt_x, tilt_y, rotation)` in [`Sample`]'s conventions
+/// (tilt in degrees, W3C signs; rotation in degrees clockwise 0..360). Pure, so every corner is
+/// unit-tested on every platform; [`Sample::sanitized`] clamps downstream regardless.
+///
+/// Wintab: `orAzimuth` is an angle about the tablet's normal, 0 pointing away from the user;
+/// `orAltitude` the angle off the tablet surface (0 lying flat, the axis range perpendicular,
+/// its sign saying which way up the pen is held — Qt takes its absolute value too). The pen axis
+/// is that direction in (x right, y away from the user, z out of the tablet); the tilt is its
+/// angle off the vertical per axis, with Wintab's +y flipped to the sample's towards-the-user.
+/// `orTwist` is the barrel rotation, which the driver counts the other way around, so it is
+/// negated exactly like Qt's `rotation = 360 - orTwist / 10` — a direction verified with a real
+/// Art Pen (QTBUG-39570) and matched by Krita's own Wintab reader.
+///
+/// A zero `azimuth`/`altitude` or `twist` maximum maps that axis to zero: that is how a driver
+/// granting no orientation fields degrades, and stray fields from such a driver stay ignored.
+pub fn orientation(azimuth: i32, altitude: i32, twist: i32, scales: OrientationScales) -> (f32, f32, f32) {
+    // Barrel twist, clockwise-positive: 0 with no twist axis (or for a pen that reports none).
+    let rotation = if scales.twist > 0.0 { (360.0 * (1.0 - twist as f32 / scales.twist)).rem_euclid(360.0) } else { 0.0 };
+    if !(scales.azimuth > 0.0 && scales.altitude > 0.0) {
+        return (0.0, 0.0, rotation);
+    }
+    let az = std::f32::consts::TAU * azimuth as f32 / scales.azimuth;
+    let alt = (std::f32::consts::FRAC_PI_2 * altitude.unsigned_abs() as f32 / scales.altitude).min(std::f32::consts::FRAC_PI_2);
+    let (sin_az, cos_az) = az.sin_cos();
+    let (sin_alt, cos_alt) = alt.sin_cos();
+    let tilt_x = (sin_az * cos_alt).atan2(sin_alt).to_degrees();
+    let tilt_y = -(cos_az * cos_alt).atan2(sin_alt).to_degrees();
+    (tilt_x, tilt_y, rotation)
+}
+
 /// The pen state the `WT_PACKET`/`WT_PROXIMITY` stream drives; pure, so every transition is
 /// unit-tested on every platform.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -62,15 +131,19 @@ pub struct PenStream {
 
 impl PenStream {
     /// One `WT_PACKET`: pressure > 0 is contact, pressure 0 in range is hover, anything else (a
-    /// stale serial) leaves the sample alone.
-    pub fn packet(&mut self, cursor: u32, csr_type: u32, pressure: u32, pressure_max: f32) -> Update {
-        let eraser = is_eraser(cursor, csr_type);
-        if pressure > 0 {
+    /// stale serial) leaves the sample alone. Tilt and barrel rotation ride along either way (the
+    /// Art Pen's twist matters at contact; hover carries it for the brush cursor).
+    pub fn packet(&mut self, reading: Reading, csr_type: u32, scales: Scales) -> Update {
+        let eraser = is_eraser(reading.cursor, csr_type);
+        let (azimuth, altitude, twist) = reading.orientation;
+        let (tilt_x, tilt_y, rotation) = orientation(azimuth, altitude, twist, scales.orientation);
+        if reading.pressure > 0 {
             self.in_range = true;
-            return Update::Set(Some(Sample { pressure: pressure_unit(pressure, pressure_max), tilt_x: 0.0, tilt_y: 0.0, rotation: 0.0, eraser }));
+            let pressure = pressure_unit(reading.pressure, scales.pressure_max);
+            return Update::Set(Some(Sample { pressure, tilt_x, tilt_y, rotation, eraser }));
         }
         if self.in_range {
-            return Update::Set(Some(Sample { pressure: 0.0, eraser, ..Sample::default() }));
+            return Update::Set(Some(Sample { pressure: 0.0, tilt_x, tilt_y, rotation, eraser }));
         }
         Update::Keep
     }
@@ -104,8 +177,8 @@ mod win {
     use crate::{Error, deliver};
 
     // `wintab.h`: the default message base (`WT_PACKET`/`WT_PROXIMITY` are its offsets), the
-    // default context to copy, the cursor category and its type entry, the device's pressure
-    // axis, and the packet fields this reader asks for (in the wintab bit order).
+    // default context to copy, the cursor category and its type entry, the device's pressure and
+    // orientation axes, and the packet fields this reader asks for (in the wintab bit order).
     const WT_DEFBASE: u32 = 0x7FF0;
     const WT_PACKET: u32 = WT_DEFBASE;
     const WT_PROXIMITY: u32 = WT_DEFBASE + 5;
@@ -113,13 +186,15 @@ mod win {
     const WTI_DEVICES: u32 = 100;
     const WTI_CURSORS: u32 = 200;
     const DVC_NPRESSURE: u32 = 15;
+    const DVC_ORIENTATION: u32 = 17;
     const CSR_TYPE: u32 = 20;
     const PK_CURSOR: u32 = 0x0020;
     const PK_BUTTONS: u32 = 0x0040;
     const PK_X: u32 = 0x0080;
     const PK_Y: u32 = 0x0100;
     const PK_NORMAL_PRESSURE: u32 = 0x0400;
-    const PKT_FIELDS: u32 = PK_CURSOR | PK_BUTTONS | PK_X | PK_Y | PK_NORMAL_PRESSURE;
+    const PK_ORIENTATION: u32 = 0x1000;
+    const PKT_FIELDS: u32 = PK_CURSOR | PK_BUTTONS | PK_X | PK_Y | PK_NORMAL_PRESSURE | PK_ORIENTATION;
     /// `CXO_MESSAGES`: want `WT_*` messages; deliberately without `CXO_SYSTEM` (the driver's own
     /// system context keeps moving the cursor and clicking, which is what the unchecked box
     /// promises).
@@ -179,7 +254,7 @@ mod win {
         sys_sens_y: i32,
     }
 
-    /// `AXIS` (wintab.h): a device axis range (the pressure scale).
+    /// `AXIS` (wintab.h): a device axis range (the pressure and orientation scales).
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
     #[allow(clippy::upper_case_acronyms)]
@@ -190,7 +265,20 @@ mod win {
         ax_resolution: u32,
     }
 
-    /// One packet, the fields of `PKT_FIELDS` in bit order.
+    /// `ORIENTATION` (wintab.h): the transducer's azimuth and altitude about the tablet normal
+    /// and its barrel twist, each in tenths of a degree (all zero when the pen reports none).
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    #[allow(clippy::upper_case_acronyms)]
+    struct ORIENTATION {
+        azimuth: i32,
+        altitude: i32,
+        twist: i32,
+    }
+
+    /// One packet, the fields of `PKT_FIELDS` in bit order. `WTPacket` writes only the fields the
+    /// driver grants, so the rest of a `default()` packet stays zero — an ungranted
+    /// `PK_ORIENTATION` reads as no tilt rather than stale data.
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
     struct Packet {
@@ -199,13 +287,14 @@ mod win {
         x: u32,
         y: u32,
         pressure: u32,
+        orientation: ORIENTATION,
     }
 
-    // The structs mirror wintab.h (LOGCONTEXTW 212 bytes, AXIS 16, the packet prefix 20); a
-    // mismatch would silently misread driver memory, so it must not compile.
-    const _: () = assert!(std::mem::size_of::<LOGCONTEXT>() == 212 && std::mem::size_of::<AXIS>() == 16 && std::mem::size_of::<Packet>() == 20);
+    // The structs mirror wintab.h (LOGCONTEXTW 212 bytes, AXIS 16, the packet 32); a mismatch
+    // would silently misread driver memory, so it must not compile.
+    const _: () = assert!(std::mem::size_of::<LOGCONTEXT>() == 212 && std::mem::size_of::<AXIS>() == 16 && std::mem::size_of::<Packet>() == 32);
 
-    /// The proc's state: the callback, the calls and context, the pressure scale, and the pen
+    /// The proc's state: the callback, the calls and context, the report scales, and the pen
     /// state between messages. Only the window's thread touches it.
     struct Data {
         callback: Box<dyn Fn(Option<Sample>)>,
@@ -213,7 +302,7 @@ mod win {
         wtpacket: WTPacketFn,
         wt_close: WTCloseFn,
         hctx: HCTX,
-        pressure_max: f32,
+        scales: Scales,
         /// The last packet's cursor index and its `CSR_TYPE` (queried once per cursor:
         /// `WT_PROXIMITY` names no cursor, so packets are where the types are learned).
         last_cursor: Cell<(u32, u32)>,
@@ -330,8 +419,12 @@ mod win {
             lc.pkt_data = PKT_FIELDS;
             lc.pkt_mode = 0;
             lc.move_mask = PK_X | PK_Y;
-            // The driver's Tip-Feel'ed output range (0..ax_max).
+            // The driver's Tip-Feel'ed output range (0..ax_max), and the azimuth/altitude/twist
+            // ranges: absent for a pen without tilt or barrel rotation (`DVC_ORIENTATION` then
+            // reports no size and the zeros map everything to zero).
             let pressure_max = pressure_scale(dll.entry::<AXIS>(WTI_DEVICES, DVC_NPRESSURE).map_or(0, |axis| axis.ax_max));
+            let orientation_axes = dll.entry::<[AXIS; 3]>(WTI_DEVICES, DVC_ORIENTATION).unwrap_or([AXIS::default(); 3]);
+            let scales = Scales { pressure_max, orientation: OrientationScales::new(orientation_axes.map(|axis| axis.ax_max)) };
 
             // SAFETY: the name/fields above satisfy the spec; `hwnd` is the live window the
             // caller keeps alive; `lc` lives for the call; the context is closed in `Drop` (or at
@@ -349,7 +442,7 @@ mod win {
                 wtpacket: dll.wtpacket,
                 wt_close: dll.wt_close,
                 hctx,
-                pressure_max,
+                scales,
                 last_cursor: Cell::new((u32::MAX, 0)),
                 stream: Cell::new(PenStream::default()),
                 freed,
@@ -442,8 +535,13 @@ mod win {
                     // asked for. A failed read is ignored: one unread packet must not lift the
                     // pen mid-stroke.
                     if unsafe { (data.wtpacket)(data.hctx, packet_serial(wparam.0), &mut pkt as *mut Packet as *mut c_void) } != 0 {
+                        let reading = Reading {
+                            cursor: pkt.cursor,
+                            pressure: pkt.pressure,
+                            orientation: (pkt.orientation.azimuth, pkt.orientation.altitude, pkt.orientation.twist),
+                        };
                         let mut stream = data.stream.get();
-                        let update = stream.packet(pkt.cursor, data.csr_type(pkt.cursor), pkt.pressure, data.pressure_max);
+                        let update = stream.packet(reading, data.csr_type(pkt.cursor), data.scales);
                         data.stream.set(stream);
                         if let Update::Set(sample) = update {
                             deliver(&*data.callback, sample);
@@ -469,6 +567,21 @@ mod win {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A packet with just a pressure (no orientation fields): the plain-pen case.
+    fn reading(pressure: u32) -> Reading {
+        Reading { pressure, ..Reading::default() }
+    }
+
+    /// A packet with orientation fields filled in.
+    fn oriented(pressure: u32, azimuth: i32, altitude: i32, twist: i32) -> Reading {
+        Reading { pressure, orientation: (azimuth, altitude, twist), ..Reading::default() }
+    }
+
+    /// Scales for a plain pen: the given pressure divisor, no orientation axes.
+    fn plain_scales(pressure_max: f32) -> Scales {
+        Scales { pressure_max, ..Scales::default() }
+    }
 
     #[test]
     fn proximity_reads_the_low_word_of_lparam_not_wparam() {
@@ -527,24 +640,93 @@ mod tests {
         let mut pen = PenStream::default();
         let hover = Update::Set(Some(Sample { pressure: 0.0, ..Sample::default() }));
         // A packet with no pen in range reports nothing.
-        assert_eq!(pen.packet(0, 0, 0, 1023.0), Update::Keep);
+        assert_eq!(pen.packet(reading(0), 0, plain_scales(1023.0)), Update::Keep);
         // Entering: hovering, no pressure yet; a hover packet keeps the pen alive.
         assert_eq!(pen.proximity(true), hover);
-        assert_eq!(pen.packet(0, 0, 0, 1023.0), hover);
+        assert_eq!(pen.packet(reading(0), 0, plain_scales(1023.0)), hover);
         // Contact: the pressure is the sample.
         let contact = |u| match u {
             Update::Set(Some(s)) => s,
             other => panic!("expected a sample, got {other:?}"),
         };
-        let s = contact(pen.packet(0, 0x0802, 512, 1024.0));
+        let s = contact(pen.packet(reading(512), 0x0802, plain_scales(1024.0)));
         assert_eq!((s.pressure, s.eraser), (0.5, false));
-        let s = contact(pen.packet(0, 0x082a, 1024, 1024.0));
+        let s = contact(pen.packet(reading(1024), 0x082a, plain_scales(1024.0)));
         assert!(s.eraser && s.pressure == 1.0, "{s:?}");
         // Leaving ends the pen (the mouse takes over): a stray zero-pressure packet after the
         // leave must stay silent, or the mouse would paint at the pen's zero.
         assert_eq!(pen.proximity(false), Update::Set(None));
-        assert_eq!(pen.packet(0, 0x082a, 0, 1024.0), Update::Keep);
+        assert_eq!(pen.packet(reading(0), 0x082a, plain_scales(1024.0)), Update::Keep);
         // Re-entering reports hover again.
         assert_eq!(pen.proximity(true), hover);
+    }
+
+    #[test]
+    fn orientation_maps_azimuth_and_altitude_to_tilt() {
+        let axes = OrientationScales { azimuth: 3600.0, altitude: 900.0, twist: 0.0 };
+        let tilt = |azimuth, altitude| {
+            let (tilt_x, tilt_y, _) = orientation(azimuth, altitude, 0, axes);
+            (tilt_x, tilt_y)
+        };
+        let near = |(x, y): (f32, f32), want: (f32, f32)| (x - want.0).abs() < 0.01 && (y - want.1).abs() < 0.01;
+        // Perpendicular (the full altitude range) is no tilt at any azimuth.
+        for azimuth in [0, 900, 1800, 2700] {
+            assert!(near(tilt(azimuth, 900), (0.0, 0.0)), "azimuth {azimuth}");
+        }
+        // A pen leaning 45° in the azimuth's direction: +x tilts right, +y towards the user.
+        assert!(near(tilt(900, 450), (45.0, 0.0)), "azimuth east leans right");
+        assert!(near(tilt(0, 450), (0.0, -45.0)), "azimuth north (away) leans up the screen");
+        assert!(near(tilt(1800, 450), (0.0, 45.0)), "azimuth south leans towards the user");
+        assert!(near(tilt(2700, 450), (-45.0, 0.0)), "azimuth west leans left");
+        // The altitude's sign (an upside-down pen) tilts the same way, like Qt's absolute value.
+        assert_eq!(tilt(900, -450), tilt(900, 450));
+        // Out-of-range fields clamp to perpendicular, the most a packet can mean.
+        assert!(near(tilt(900, 9000), (0.0, 0.0)));
+        // A zero azimuth or altitude maximum is "no orientation axes": zero tilt, even with
+        // stray fields in the packet (the ask: zero axes must give zero tilt).
+        for zero in [OrientationScales { azimuth: 0.0, ..axes }, OrientationScales { altitude: 0.0, ..axes }] {
+            assert_eq!(orientation(900, 450, 0, zero), (0.0, 0.0, 0.0), "{zero:?}");
+        }
+        assert_eq!(orientation(900, 450, 0, OrientationScales::default()), (0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn twist_maps_to_clockwise_rotation() {
+        let axes = OrientationScales { twist: 3600.0, ..OrientationScales::default() };
+        let rotation = |twist| orientation(0, 0, twist, axes).2;
+        // The driver counts twist the other way around, so Qt's negation (`360 - twist/10`) is
+        // what makes 90/180/270 read as a pen turned clockwise by 270/180/90.
+        assert_eq!(rotation(0), 0.0);
+        assert_eq!(rotation(900), 270.0);
+        assert_eq!(rotation(1800), 180.0);
+        assert_eq!(rotation(2700), 90.0);
+        assert!((rotation(3599) - 0.1).abs() < 0.001, "just under a full turn");
+        // No twist axis (a pen without barrel rotation), or an out-of-range field: zero or in
+        // range, never a panic or a NaN.
+        assert_eq!(orientation(0, 0, 900, OrientationScales::default()).2, 0.0);
+        for twist in [9999, -1, i32::MIN, i32::MAX] {
+            let r = orientation(0, 0, twist, axes).2;
+            assert!(r.is_finite() && (0.0..=360.0).contains(&r), "{twist} -> {r}");
+        }
+    }
+
+    #[test]
+    fn packets_carry_tilt_and_rotation() {
+        let mut pen = PenStream::default();
+        let full = Scales { pressure_max: 1024.0, orientation: OrientationScales { azimuth: 3600.0, altitude: 900.0, twist: 3600.0 } };
+        let contact = |u| match u {
+            Update::Set(Some(s)) => s,
+            other => panic!("expected a sample, got {other:?}"),
+        };
+        // A pen leaning 45° east at half pressure.
+        let s = contact(pen.packet(oriented(512, 900, 450, 0), 0x0802, full));
+        assert!((s.pressure - 0.5).abs() < 0.001 && (s.tilt_x - 45.0).abs() < 0.01 && s.tilt_y.abs() < 0.01, "{s:?}");
+        // Hovering reports the same tilt and the barrel twist.
+        let s = contact(pen.packet(oriented(0, 900, 450, 900), 0x0802, full));
+        assert!(s.pressure == 0.0 && (s.tilt_x - 45.0).abs() < 0.01, "{s:?}");
+        assert!((s.rotation - 270.0).abs() < 0.01, "{s:?}");
+        // A plain pen (no orientation axes) still reads zero tilt and rotation.
+        let s = contact(pen.packet(reading(512), 0x0802, plain_scales(1024.0)));
+        assert!(s.tilt_x == 0.0 && s.tilt_y == 0.0 && s.rotation == 0.0, "{s:?}");
     }
 }
