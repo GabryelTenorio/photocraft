@@ -1283,10 +1283,25 @@ impl PhotocraftApp {
         Ok(tiff_layers == Some(false) || (!layered(path) && (plain_raster(&st.doc).is_none() || st.path.as_deref().is_some_and(layered))))
     }
 
+    /// Refuse to save the active document as OpenRaster when the archive would drop data it
+    /// cannot hold. ORA has no adjustment layers, layer styles, group masks, clipping masks or
+    /// vector masks, so rewriting the document's own `.ora` (or adopting one) would lose them
+    /// for good (#3806) — the save is refused, leaving the file and the dirty state untouched.
+    fn refuse_lossy_ora(&self, path: &str) -> Result<(), String> {
+        let st = self.session.active().ok_or("no document")?;
+        if photocraft_engine::file_cmds::extension(path).as_deref() == Some("ora") && photocraft_engine::file_cmds::ora_would_lose_data(&st.doc) {
+            return Err(format!(
+                "{path} drops data OpenRaster cannot hold (adjustment layers, layer styles, group, clipping or vector masks); save as .pcraft, .psd or .psb, or flatten the document first"
+            ));
+        }
+        Ok(())
+    }
+
     /// Writes the active document to a known path. `tiff_layers` is the TIFF Options answer:
     /// `Some(false)` discards the layers and saves a copy. `tga_bits` is the Targa bits per
     /// pixel (`None`: 32 with an alpha channel or transparency, else 24).
     fn write_save(&mut self, path: String, tiff_layers: Option<bool>, tga_bits: Option<photocraft_io::TgaBits>) -> Result<Value, String> {
+        self.refuse_lossy_ora(&path)?;
         let copy = self.saves_copy(&path, tiff_layers)?;
         let settings = ExportSettings { tiff_layers: tiff_layers.unwrap_or(ExportSettings::default().tiff_layers), tga_bits, ..self.save_settings() };
         match self.write_document(path.clone(), &settings, copy)? {
@@ -1392,6 +1407,7 @@ impl PhotocraftApp {
             path.or_else(|| state.path.clone().filter(|p| photocraft_engine::file_cmds::saves_in_place(p)))
                 .ok_or("pass `path`: a save without one writes back only to the document's own PSD, PSB or .pcraft file")?
         };
+        self.refuse_lossy_ora(&target)?;
         let reply = |path: &str, warnings: &[String]| json!({"path": path, "warnings": warnings});
         // #2017: the File › Save worker path, so the encode doesn't block the frame loop.
         if self.background_jobs

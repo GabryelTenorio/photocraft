@@ -128,6 +128,14 @@ pub fn tiff_would_write_layers(doc: &Document) -> bool {
     photocraft_io::tiff_layers::would_write_layers(doc)
 }
 
+/// Whether saving `doc` as OpenRaster would drop editable data the format cannot hold:
+/// adjustment layers (left out), layer styles, group masks, clipping masks and vector masks.
+/// [`saves_in_place`] still counts `.ora` as a layered format, so the save paths must refuse
+/// overwriting an original with such a lossy archive (#3806).
+pub fn ora_would_lose_data(doc: &Document) -> bool {
+    photocraft_io::ora_would_lose_data(doc)
+}
+
 pub(crate) fn file_name(path: &str) -> String {
     path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
 }

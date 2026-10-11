@@ -133,6 +133,12 @@ impl Headless {
             }
         };
         let target_text = target.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
+        if file_cmds::extension(target_text).as_deref() == Some("ora") && file_cmds::ora_would_lose_data(&doc) {
+            return Err(AutomationError::BadRequest(format!(
+                "{} drops data OpenRaster cannot hold (adjustment layers, layer styles, group, clipping or vector masks); save as .pcraft, .psd or .psb, or flatten the document first",
+                target.display()
+            )));
+        }
         let warnings = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: write authority is absent".into())),
             Filesystem::TrustedLocal => {

@@ -743,6 +743,17 @@ fn only_layered_files_save_in_place() {
     assert_eq!(extension("my.dir/name"), None);
 }
 
+/// #3806: `.ora` still counts as a layered file, but a document holding data OpenRaster drops
+/// (here an adjustment layer) is flagged so the save paths refuse to overwrite the original.
+#[test]
+fn openraster_save_refuses_when_it_would_drop_layers() {
+    let mut s = session(8, 8, 8);
+    assert!(!ora_would_lose_data(doc(&s)), "a plain layered document ORA holds faithfully");
+    assert!(saves_in_place("art.ora"));
+    s.execute("layer.newAdjustmentLayer.invert", json!({})).unwrap();
+    assert!(ora_would_lose_data(doc(&s)), "an adjustment layer would be left out");
+}
+
 #[test]
 fn templates_open_untitled_without_their_path() {
     assert!(is_template("dir/card.PSDT") && !is_template("card.psd") && !is_template("psdt"));

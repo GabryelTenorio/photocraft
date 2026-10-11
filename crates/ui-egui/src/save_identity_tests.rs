@@ -183,6 +183,38 @@ fn automation_flat_save_is_a_copy() {
     assert_eq!(st.saved_revision, st.revision);
 }
 
+/// #3806: a document holding data OpenRaster drops (here an adjustment layer) must not be written
+/// over its own `.ora` (File › Save) or to a new `.ora` (Save As): the save is refused, so the
+/// file, identity and dirty state are untouched. Save As to a lossless format is the way out.
+#[test]
+fn lossy_openraster_save_is_refused_and_keeps_the_document_dirty() {
+    let ctx = egui::Context::default();
+    let mut app = app();
+    // A layered document still saves to `.ora` while it holds nothing ORA would drop.
+    app.save_as(Some("art.ora".into())).unwrap();
+    assert_eq!(app.session.active().unwrap().path.as_deref(), Some("art.ora"));
+    app.run("layer.newAdjustmentLayer.invert", json!({})).unwrap();
+    assert!(app.session.active().unwrap().is_dirty());
+    let before = identity(&app);
+
+    // File › Save back to the document's own `.ora` is refused: nothing is written.
+    let err = menus::invoke(&mut app, &ctx, "file.save", json!({})).unwrap_err();
+    assert!(err.contains("OpenRaster") && err.contains("art.ora"), "{err}");
+    assert_eq!(identity(&app), before, "the refused save changed nothing");
+    assert!(app.session.active().unwrap().is_dirty());
+
+    // Save As to an `.ora` path is refused too; the identity and dirty state stay put.
+    assert!(menus::invoke(&mut app, &ctx, "file.saveAs", json!({"path": "other.ora"})).is_err());
+    assert_eq!(identity(&app), before);
+    assert!(app.session.active().unwrap().is_dirty());
+
+    // Save As to a lossless format still works and clears dirty.
+    menus::invoke(&mut app, &ctx, "file.saveAs", json!({"path": "art.pcraft"})).unwrap();
+    let st = app.session.active().unwrap();
+    assert_eq!(st.path.as_deref(), Some("art.pcraft"));
+    assert!(!st.is_dirty());
+}
+
 /// Preferences › File Handling › Image Previews reaches the exporter of Save As, Save and
 /// automation saves: Always and Ask When Saving embed the PSD thumbnail, Never doesn't.
 #[test]

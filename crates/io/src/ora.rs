@@ -637,6 +637,24 @@ impl Writer<'_> {
     }
 }
 
+/// `true` when saving `doc` as OpenRaster would drop editable data this format cannot hold.
+///
+/// The merged image keeps the document's look, but these layer features are left out or not
+/// written at all, so a save over the document's own `.ora` would lose them for good (#3806):
+/// adjustment layers (left out), layer styles, group masks, clipping masks and vector masks.
+/// Features ORA bakes into the layer pixels (pixel masks, fill opacity, non-raster content) are
+/// not counted: their appearance survives, so the save is not refused.
+pub fn would_lose_data(doc: &Document) -> bool {
+    doc.walk().iter().any(|(_, _, layer)| {
+        matches!(layer.content, LayerContent::Adjustment(_))
+            || !layer.effects.items.is_empty()
+            || layer.effects.psd_raw.is_some()
+            || layer.clipped
+            || layer.vector_mask.as_ref().is_some_and(|m| m.enabled)
+            || (matches!(layer.content, LayerContent::Group(_)) && layer.mask.as_ref().is_some_and(|m| m.enabled))
+    })
+}
+
 pub(crate) fn export(doc: &Document) -> Result<ExportResult> {
     if !matches!(doc.mode, ColorMode::Rgb | ColorMode::Grayscale) {
         return Err(IoError::Unsupported("OpenRaster holds RGB layers; convert the document to RGB or Grayscale first".into()));

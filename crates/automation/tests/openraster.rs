@@ -56,6 +56,30 @@ fn layered_documents_save_reopen_and_save_in_place_as_openraster() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// #3806: an agent save over an `.ora` must not silently drop adjustment layers either: the save
+/// is refused, the document stays dirty, and saving to the native format is the way out.
+#[test]
+fn an_agent_save_refuses_a_lossy_openraster() {
+    let dir = tmp("lossy");
+    let path = dir.join("art.ora");
+    let path_str = path.to_str().unwrap();
+    let mut h = Headless::trusted_local();
+    h.handle("doc.new", json!({"width": 20, "height": 20, "background": "white"})).unwrap();
+    h.handle("doc.save", json!({"path": path_str})).unwrap();
+    exec(&mut h, "layer.newAdjustmentLayer.invert", json!({}));
+    assert!(h.session.active().unwrap().is_dirty());
+
+    let err = h.handle("doc.save", json!({})).unwrap_err();
+    assert!(err.to_string().contains("OpenRaster"), "{err}");
+    assert!(h.session.active().unwrap().is_dirty(), "a refused save leaves the document dirty");
+    assert_eq!(h.session.active().unwrap().path.as_deref(), Some(path_str));
+
+    let native = dir.join("art.pcraft");
+    h.handle("doc.save", json!({"path": native.to_str().unwrap()})).unwrap();
+    assert!(!h.session.active().unwrap().is_dirty(), "saving to the native format is a full save");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn a_corrupt_openraster_file_reports_an_error() {
     let dir = tmp("corrupt");

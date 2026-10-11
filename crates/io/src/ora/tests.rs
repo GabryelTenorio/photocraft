@@ -152,6 +152,39 @@ fn other_layer_kinds_are_rendered_or_left_out() {
     assert_eq!(solid.content_bounds(), back.bounds());
 }
 
+/// #3806: `would_lose_data` flags the editable layer data ORA drops (adjustment layers, layer
+/// styles, group / clipping / vector masks), and nothing else — a plain layered document, pixel
+/// masks and fill opacity are baked or kept, so they do not refuse a save.
+#[test]
+fn would_lose_data_reports_what_openraster_drops() {
+    assert!(!would_lose_data(&doc(SampleType::U8)), "a plain layered document is fine");
+
+    let mut d = Document::new("k.ora", CANVAS, ColorMode::Rgb, SampleType::U8);
+    d.layers.push(block("Base", PixelFormat::RGBA8, 0, 0, 8, 8, 0));
+    d.layers.push(Layer::new("Invert", LayerContent::Adjustment(Adjustment::Invert)));
+    assert!(would_lose_data(&d), "an adjustment layer is left out");
+
+    d.layers.pop();
+    let mut clipped = block("Clipped", PixelFormat::RGBA8, 0, 0, 8, 8, 1);
+    clipped.clipped = true;
+    d.layers.push(clipped);
+    assert!(would_lose_data(&d), "a clipping mask is not saved");
+    d.layers.pop();
+
+    let mut style = block("Style", PixelFormat::RGBA8, 0, 0, 8, 8, 2);
+    style.effects.psd_raw = Some(std::sync::Arc::new(vec![0u8; 1]));
+    d.layers.push(style);
+    assert!(would_lose_data(&d), "a layer style is not saved");
+    d.layers.pop();
+
+    // Baked features do not refuse a save: a pixel mask is folded into the pixels and a fill
+    // layer is rendered, so their appearance survives.
+    let mut masked = block("Masked", PixelFormat::RGBA8, 0, 0, 8, 8, 3);
+    masked.mask = Some(LayerMask::hide_all());
+    d.layers.push(masked);
+    assert!(!would_lose_data(&d), "a pixel mask is applied, not dropped");
+}
+
 #[test]
 fn grayscale_saves_as_rgb_and_cmyk_is_refused() {
     let mut g = Document::new("g.ora", CANVAS, ColorMode::Grayscale, SampleType::U8);
