@@ -437,7 +437,7 @@ fn curve_drag_moves_the_existing_point_without_creating_another() {
     let ctx = h.ctx.clone();
     menu(h.state_mut(), &ctx, json!({"ui":{"set":{"pointCurve":[[0,0],[128,128],[255,255]]}}})).unwrap();
     h.run_steps(3);
-    let a = pos2(graph.left() + 128.0 / 255.0 * 260.0, graph.bottom() - 128.0 / 255.0 * 260.0);
+    let a = pos2(graph.left() + 128.0 / 255.0 * graph.width(), graph.bottom() - 128.0 / 255.0 * graph.height());
     let b = a + vec2(40.0, -32.0);
     drag(&mut h, a, b);
     let points = inspect(&h)["params"]["pointCurve"].clone();
@@ -452,6 +452,10 @@ fn open_curve(h: &mut Harness<'_, PhotocraftApp>) -> Rect {
     h.run_steps(16);
     h.get_by_label(photocraft_ui_egui::i18n::tr(lang, "Curve")).click();
     h.run_steps(16);
+    // Camera Raw opens the Curve on its parametric view; these tests edit the point curve.
+    let ctx = h.ctx.clone();
+    menu(h.state_mut(), &ctx, json!({"ui":{"layout":{"curve":"point"}}})).unwrap();
+    h.run_steps(4);
     rect(h, "curveRect")
 }
 fn curve_at(graph: Rect, point: [f32; 2]) -> Pos2 {
@@ -723,9 +727,9 @@ fn sampler_list_replacement_and_operations_cannot_silently_cancel_each_other() {
 
 /// Alt-drags the slider under the only visible `label` and returns the inspected dialog.
 fn alt_drag_slider(h: &mut Harness<'_, PhotocraftApp>, label: &str) -> Value {
-    // The label sits above its 18 pt slider track.
-    let text = h.get_by_label(label).rect();
-    let at = pos2(text.left() + 80.0, text.bottom() + 12.0);
+    // The slider (its track) carries the label.
+    let track = h.get_by_label(label).rect();
+    let at = pos2(track.left() + 80.0, track.center().y);
     let alt = Modifiers { alt: true, ..Modifiers::NONE };
     press(h, at, true, alt);
     for n in 1..=3 {
@@ -746,8 +750,11 @@ fn alt_drag_diagnostics_follow_light_tone_sliders_not_same_named_ones() {
     assert_eq!(during["overlayRevision"], during["previewRevision"], "Light tone sliders drive Alt diagnostics");
 
     let mut h = fixture(ThemeKind::Pro);
-    h.get_by_label(tr("Light")).click();
-    h.run_steps(12);
+    // Close Light and Color (open first, as in Camera Raw) so the Curve's sliders are in view.
+    for panel in ["Light", "Color"] {
+        h.get_by_role_and_label(egui::accesskit::Role::Button, tr(panel)).click();
+        h.run_steps(12);
+    }
     h.get_by_label(tr("Curve")).click();
     h.run_steps(12);
     // The Curve section's Highlights shares its label with the Light tone slider.
