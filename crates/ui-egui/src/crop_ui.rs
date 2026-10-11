@@ -380,6 +380,14 @@ pub fn pending(app: &PhotocraftApp) -> bool {
         && (app.crop.doc.is_none() || app.crop.doc == app.session.active().map(|st| st.doc.id))
 }
 
+/// Switch tools after committing a crop frame the user has changed in the toolbar.
+pub fn switch_tool(app: &mut PhotocraftApp, tool: Tool) {
+    if app.ui.tool != tool && pending(app) {
+        crate::canvas::commit_crop(app);
+    }
+    app.ui.tool = tool;
+}
+
 /// Menu commands Photoshop greys out while a crop is pending (#1918), until it is committed or
 /// cancelled. Checked item by item in Photoshop 27.11: everything except Close, Save, Save As,
 /// Save a Copy; Undo, Redo, Toggle Last State, Search; Image › Crop (which commits the frame); the
@@ -960,6 +968,23 @@ mod tests {
         app.ui.tool = Tool::Brush;
         ensure_frame(&mut app);
         assert_eq!(app.ui.crop_rect, None);
+    }
+
+    #[test]
+    fn toolbar_tool_switch_commits_a_changed_crop_frame() {
+        let mut app = app(SampleType::U8);
+        app.ui.crop_rect = Some([20.0, 10.0, 120.0, 70.0]);
+        app.crop.default_frame = false;
+        claim(&mut app);
+        assert!(pending(&app));
+
+        switch_tool(&mut app, Tool::Brush);
+
+        let state = app.session.active().unwrap();
+        assert_eq!(app.ui.tool, Tool::Brush);
+        assert_eq!(state.doc.size, Size::new(100, 60));
+        assert_eq!(state.history.past_len(), 1, "the crop is one undo step");
+        assert!(app.ui.crop_rect.is_none());
     }
 
     #[test]
