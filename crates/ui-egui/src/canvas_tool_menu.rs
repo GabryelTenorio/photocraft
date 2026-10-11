@@ -247,9 +247,9 @@ pub fn entry_enabled(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) 
     if menu.pasteboard {
         return PASTEBOARD_MENU.iter().flatten().any(|(_, id)| *id == command);
     }
-    // Warp needs a layer or selection box: a lone mask, channel or path keeps the plain box.
+    // Warp needs a layer, selection or path box: a lone mask or channel keeps the plain box.
     if menu.transform && command == "edit.transform.warp" {
-        return app.ui.transform.as_ref().is_some_and(|t| t.warp.is_none() && t.target.is_none() && t.path.is_none());
+        return app.ui.transform.as_ref().is_some_and(|t| t.warp.is_none() && t.target.is_none());
     }
     if menu.transform || menu.tool != Tool::Pen {
         return crate::menus::is_enabled(app, command);
