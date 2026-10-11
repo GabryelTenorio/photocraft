@@ -1,0 +1,50 @@
+[package]
+name = "photocraft-android"
+description = "PhotoCraft on Android tablets (eframe NativeActivity, wgpu/Vulkan, stylus pressure)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The `android_main` entry point needs `#[unsafe(no_mangle)]`, so this crate can't inherit the
+# workspace's `forbid`; like photocraft-tablet it denies `unsafe` and allows it in one file.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+photocraft-engine = { workspace = true }
+photocraft-io = { workspace = true }
+photocraft-codecs = { workspace = true }
+photocraft-doc = { workspace = true }
+photocraft-ui-egui = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "android-native-activity"] }
+android_logger = "0.15"
+# The type of `NativeOptions::android_app`; same version as winit's (Cargo.lock).
+android-activity = { version = "0.6", features = ["native-activity"] }
+
+# cargo-apk: `cargo apk build -p photocraft-android --lib --release`
+[package.metadata.android]
+package = "ai.storyteller.photocraft"
+build_targets = ["aarch64-linux-android"]
+[package.metadata.android.sdk]
+min_sdk_version = 29
+# 34: from 35 on Android forces edge-to-edge and the status bar covers the menu bar.
+target_sdk_version = 34
+[package.metadata.android.application]
+label = "PhotoCraft"
+[package.metadata.android.application.activity]
+config_changes = "orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+# File dialogs browse shared storage directly (src/browser.rs), which needs "All files access".
+[[package.metadata.android.uses_permission]]
+name = "android.permission.MANAGE_EXTERNAL_STORAGE"
