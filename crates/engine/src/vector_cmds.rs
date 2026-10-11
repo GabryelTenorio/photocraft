@@ -511,7 +511,17 @@ pub fn transform_shape(sh: &mut ShapeLayer, a: &Affine) {
                 }
                 LiveShape::Ellipse { rect } => LiveShape::Ellipse { rect: r(rect) },
                 LiveShape::Polygon { rect, sides, star_ratio } => LiveShape::Polygon { rect: r(rect), sides, star_ratio },
-                LiveShape::Line { from, to, weight } => LiveShape::Line { from: pt(from), to: pt(to), weight },
+                LiveShape::Line { from, to, weight } => {
+                    // Live-shape edits regenerate the line's filled bar from its parameters.
+                    // Keep the weight in sync with a positive scale of the path, or an
+                    // unchanged endpoint edit unexpectedly restores the old thickness (#3063).
+                    // A line's width scales perpendicular to its direction.
+                    let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+                    let old_length = dx.hypot(dy);
+                    let new_length = (dx * m0).hypot(dy * m3);
+                    let width_scale = if old_length > 0.0 && new_length > 0.0 { m0 * m3 * old_length / new_length } else { m0.min(m3) };
+                    LiveShape::Line { from: pt(from), to: pt(to), weight: weight * width_scale }
+                }
             })
         }
         // Flips and 90° turns keep rectangles, ellipses and lines live (Image Rotation): the new
@@ -701,9 +711,14 @@ fn shape_edit(s: &mut Session, p: &Value) -> Result<Value> {
             // Explicit radii on a plain rectangle keep it a (now rounded) rectangle.
             let kind = if kind == "rect" && radii(p).is_some_and(|r| r.iter().any(|v| *v > 0.0)) { "roundedRect".to_string() } else { kind };
             let l = live_from_params(CMD, &kind, p, sh.live.as_ref())?;
-            sh.path = vector::shapes::live_path(&l);
-            sh.live = Some(l);
-            sh.psd_raw = None;
+            // A transformed live shape's path may carry nonuniform corner scaling
+            // that its scalar radii cannot represent. Re-entering unchanged values
+            // must not regenerate the outline and silently discard that geometry.
+            if sh.live.as_ref() != Some(&l) {
+                sh.path = vector::shapes::live_path(&l);
+                sh.live = Some(l);
+                sh.psd_raw = None;
+            }
         }
         if let Some(m) = nums::<6>(p, "transform") {
             transform_shape(sh, &Affine { m });
@@ -910,7 +925,7 @@ fn transform_target(s: &Session, name: &str, layer: Option<LayerId>) -> Result<P
     let l = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
     match &l.content {
         LayerContent::Shape(sh) => Ok(sh.path.clone()),
-        _ => l.vector_mask.as_ref().map(|v| v.path.clone()).ok_or_else(|| EngineError::Other("active layer has no shape path or vector mask".into())),
+        _ => l.vector_mask.as_ref().map(|v| v.path.clone()).ok_or_else(|| EngineError::Other("target layer has no shape path or vector mask".into())),
     }
 }
 
@@ -1002,6 +1017,7 @@ fn path_transform(s: &mut Session, p: &Value) -> Result<Value> {
         let (tx, ty) = (number("translateX", 0.0)?, number("translateY", 0.0)?);
         let (sx, sy) = (number("scaleX", 1.0)?, number("scaleY", 1.0)?);
         let angle = number("angle", 0.0)?;
+        // An explicit `layer` parameter determines both the transformed path and its pivot (#3062).
         let path = transform_target(s, &name, layer_id)?;
         let (x0, y0, x1, y1) = path.control_bounds().ok_or_else(|| bad(CMD, "path has no points to transform"))?;
         let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
