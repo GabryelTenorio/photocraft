@@ -2,6 +2,7 @@ use super::*;
 
 mod linked_saves;
 mod selection;
+mod stack_cache;
 
 const DEPTHS: [u64; 3] = [8, 16, 32];
 const W: i32 = 64;
