@@ -5,7 +5,10 @@
 .DESCRIPTION
   Produces, in $env:DIST (default: dist/release):
     photocraft-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
-    photocraft-<version>-windows-<arch>-portable.zip   photocraft.exe + photocraft-cli.exe + portable.txt
+    photocraft-<version>-windows-<arch>-portable.zip   photocraft.exe + photocraft-cli.exe + portable.txt + models\
+
+  Both carry models\birefnet-lite.onnx (Select Subject's high quality mode), downloaded once into
+  $env:PHOTOCRAFT_MODEL_CACHE (default: <target>\models) and checked against its sha256.
 
   The binaries link the C runtime statically (+crt-static), so neither the MSI nor the portable
   zip needs the Visual C++ redistributable. Signing is delegated to sign.ps1 (skipped with a
@@ -63,7 +66,7 @@ if (-not $SkipBuild) {
   [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:PHOTOCRAFT_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p photocraft -p photocraft-cli --features heif --target $Target }
+  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p photocraft -p photocraft-cli --features heif,ml --target $Target }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
@@ -88,6 +91,28 @@ $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin 'photocraft.exe'), (Join-Path $Bin 'photocraft-cli.exe') $Stage
+
+# ---- AI model ----------------------------------------------------------------------------------
+# Weights are never committed: fetch the pinned file once, verify it, and stage it in models\ with
+# its licence. Keep these in step with SUBJECT_MODEL in crates/ml/src/lib.rs.
+$Model = @{
+  File   = 'birefnet-lite.onnx'
+  Url    = 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx'
+  Sha256 = '5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333'
+}
+$ModelCache = if ($env:PHOTOCRAFT_MODEL_CACHE) { $env:PHOTOCRAFT_MODEL_CACHE } else { Join-Path $TargetDir 'models' }
+New-Item -ItemType Directory -Force -Path $ModelCache | Out-Null
+$ModelPath = Join-Path $ModelCache $Model.File
+if (-not (Test-Path $ModelPath) -or (Get-FileHash -Algorithm SHA256 $ModelPath).Hash -ne $Model.Sha256.ToUpperInvariant()) {
+  Write-Output "==> downloading $($Model.File)"
+  Invoke-WebRequest -Uri $Model.Url -OutFile "$ModelPath.part" -UserAgent 'Photocraft-dev'
+  $got = (Get-FileHash -Algorithm SHA256 "$ModelPath.part").Hash
+  if ($got -ne $Model.Sha256.ToUpperInvariant()) { Remove-Item -Force "$ModelPath.part"; throw "$($Model.File): sha256 $got, expected $($Model.Sha256)" }
+  Move-Item -Force "$ModelPath.part" $ModelPath
+}
+$StageModels = Join-Path $Stage 'models'
+New-Item -ItemType Directory -Force -Path $StageModels | Out-Null
+Copy-Item $ModelPath, (Join-Path $Root 'packaging\models\LICENSE-BiRefNet.txt') $StageModels
 
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'photocraft.exe') (Join-Path $Stage 'photocraft-cli.exe')
 
@@ -151,6 +176,7 @@ $Portable = Join-Path $TargetDir "windows-package\photocraft-$Version-windows-$A
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage '*.exe') $Portable
+Copy-Item -Recurse $StageModels $Portable
 foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }

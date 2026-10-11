@@ -11,3 +11,6 @@ target/
 /craft-fonts
 *.log
 __pycache__/
+
+# AI model weights are never committed (installers ship them; see crates/ml and ATTRIBUTION.md).
+*.onnx

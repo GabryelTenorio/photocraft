@@ -97,6 +97,7 @@ fn points(p: &Value) -> Vec<(f32, f32)> {
 /// Auto-Enhance for Quick Selection: a light edge refinement that flows the edge towards image
 /// edges and removes blockiness.
 const ENHANCE: RefineParams = RefineParams { radius: 4.0, smart_radius: true, smooth: 15.0, feather: 0.0, contrast: 25.0, shift_edge: 0.0 };
+const SUBJECT_EDGE: RefineParams = RefineParams { radius: 3.0, smart_radius: true, smooth: 0.0, feather: 0.0, contrast: 12.0, shift_edge: 0.0 };
 
 fn quick_selection(s: &mut Session, p: &Value) -> Result<Value> {
     let pts = points(p);
@@ -137,8 +138,66 @@ fn object_selection(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn select_subject(s: &mut Session, p: &Value) -> Result<Value> {
-    let region = with_sampler(s, b(p, "sampleAllLayers", true), |smp, doc| subject::select_subject(smp, doc.bounds()))?;
-    apply(s, "Select Subject", region, mode(p, "replace"))
+    let (all_layers, m) = (b(p, "sampleAllLayers", true), mode(p, "replace"));
+    match p.get("quality").and_then(Value::as_str).unwrap_or("fast") {
+        "fast" => {
+            let region = with_sampler(s, all_layers, |smp, doc| {
+                let canvas = doc.bounds();
+                let region = subject::select_subject(smp, canvas)?;
+                matting::refine_mask(smp, &matting::region_reader(&region), region.bbox, canvas, &SUBJECT_EDGE)
+            })?;
+            apply(s, "Select Subject", region, m)
+        }
+        "high" => select_subject_model(s, all_layers, m),
+        q => Err(bad("select.subject", &format!("unknown quality `{q}` (fast|high)"))),
+    }
+}
+
+/// Longest side the composite is read at for the model (it then sees 1024 × 1024).
+#[cfg(feature = "ml")]
+const MODEL_READ_PX: usize = 2048 * 2048;
+
+/// Select Subject, high quality: the on-device BiRefNet-lite model (`photocraft-ml`), as a
+/// background job (loading the model and running it take tens of seconds on a CPU). The model
+/// sees the picture inside any flat margins; smaller objects than the main subject(s) are dropped,
+/// and the probabilities are resampled to full resolution and the edge snapped to the image like
+/// the fast mode's.
+#[cfg(feature = "ml")]
+fn select_subject_model(s: &mut Session, all_layers: bool, m: SelectionMode) -> Result<Value> {
+    use photocraft_ml::{MlError, SUBJECT_INPUT, SubjectModel};
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let (doc, layer) = (std::sync::Arc::clone(&d.doc), d.active_layer);
+    let ml = |e: MlError| match e {
+        MlError::Cancelled => EngineError::Cancelled,
+        e => EngineError::Other(format!("Select Subject (high quality): {e}")),
+    };
+    crate::jobs::run(
+        s,
+        "Select Subject",
+        true,
+        move |ctx| {
+            ctx.progress(0.0, "Loading the AI model");
+            let model = SubjectModel::shared().map_err(ml)?;
+            ctx.check()?;
+            ctx.progress(0.15, "Finding the subject");
+            with_doc_sampler(&doc, layer, all_layers, |smp, doc| -> Result<Option<Region>> {
+                let canvas = doc.bounds();
+                let window = subject::subject_window(smp, canvas);
+                let img = smp.rgb_scaled(window, photocraft_algo::segment::scale_for(window, MODEL_READ_PX));
+                let mut prob = model.predict(&img.px, img.w, img.h, &|| ctx.cancelled()).map_err(ml)?;
+                ctx.progress(0.9, "Refining the edges");
+                subject::keep_main_subjects(&mut prob, SUBJECT_INPUT, SUBJECT_INPUT);
+                let Some(r) = subject::region_from_probability(&prob, SUBJECT_INPUT, SUBJECT_INPUT, window) else { return Ok(None) };
+                Ok(matting::refine_mask(smp, &matting::region_reader(&r), r.bbox, canvas, &SUBJECT_EDGE))
+            })
+        },
+        move |s, region| apply(s, "Select Subject", region, m),
+    )
+}
+
+#[cfg(not(feature = "ml"))]
+fn select_subject_model(_: &mut Session, _: bool, _: SelectionMode) -> Result<Value> {
+    Err(EngineError::Other("Select Subject's high quality mode needs a PhotoCraft build with AI models (the `ml` feature)".into()))
 }
 
 fn focus_area(s: &mut Session, p: &Value) -> Result<Value> {
@@ -264,7 +323,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.subject",
             "Subject",
             ["Select"],
-            r##"{"sampleAllLayers":bool=true,"mode":"replace|add|subtract|intersect"="replace"}"##,
+            r##"{"quality":"fast|high"="fast" (high: the on-device AI model, a background job of tens of seconds; needs a build with the `ml` feature and the model installed),"sampleAllLayers":bool=true,"mode":"replace|add|subtract|intersect"="replace"}"##,
             has_doc,
             select_subject
         ),
@@ -443,14 +502,38 @@ mod tests {
     }
 
     #[test]
+    fn select_subject_quality_is_validated_and_a_missing_model_is_an_error() {
+        let (mut s, _) = disc(8);
+        let e = s.execute("select.subject", json!({"quality": "ultra"})).unwrap_err();
+        assert!(e.to_string().contains("quality"), "{e}");
+        // No model next to the test binary (or no `ml` feature): a clear error, the selection
+        // and history untouched.
+        if std::env::var_os("PHOTOCRAFT_MODELS_DIR").is_none() {
+            let e = s.execute("select.subject", json!({"quality": "high"})).unwrap_err();
+            assert!(e.to_string().contains("high quality"), "{e}");
+            assert!(s.active().unwrap().doc.selection.is_none());
+        }
+    }
+
+    #[test]
     fn select_subject_centred_object() {
-        let (mut s, inside) = disc(8);
-        assert!(s.is_enabled("select.subject"));
-        s.execute("select.subject", json!({})).unwrap();
-        let v = sel_iou(&s, 200, 160, inside);
-        assert!(v > 0.9, "IoU {v}");
-        s.execute("edit.undo", json!({})).unwrap();
-        assert!(s.active().unwrap().doc.selection.is_none());
+        for depth in [8, 16, 32] {
+            let (mut s, inside) = disc(depth);
+            assert!(s.is_enabled("select.subject"));
+            s.execute("select.subject", json!({})).unwrap();
+            let v = sel_iou(&s, 200, 160, inside);
+            assert!(v > 0.9, "depth {depth}: IoU {v}");
+            let soft = (0..160)
+                .flat_map(|y| (0..200).map(move |x| (x, y)))
+                .filter(|(x, y)| {
+                    let c = cov(&s, *x, *y);
+                    c > 0.0 && c < 1.0
+                })
+                .count();
+            assert!(soft > 0, "depth {depth}: subject edge has no partial coverage");
+            s.execute("edit.undo", json!({})).unwrap();
+            assert!(s.active().unwrap().doc.selection.is_none());
+        }
     }
 
     /// A vertical Gaussian-blurred edge at x = 40 (warm left, cool right) with the left half selected.

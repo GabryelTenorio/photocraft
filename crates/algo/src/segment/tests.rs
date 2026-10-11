@@ -498,6 +498,137 @@ fn select_subject_finds_centred_object() {
 }
 
 #[test]
+fn boundary_prior_skips_a_subject_cut_off_by_the_frame() {
+    // Sides: 1 left, 2 top, 4 right, 8 bottom; colours on a line.
+    let sides = [1u8, 2, 8, 0, 8, 8, 9];
+    let colour = [0.0f32, 3.0, 80.0, 0.0, 5.0, 82.0, 1.0];
+    let d = |a: usize, b: usize| (colour[a] - colour[b]).abs();
+    // Background recurs round the frame; the subject's colour shows on the bottom side only.
+    assert_eq!(subject::background_border(&sides, &d), vec![true, true, false, false, true, false, true]);
+    // A frame whose sides all differ keeps the whole border, as the paper's prior does.
+    let colour = [0.0f32, 50.0, 100.0, 150.0];
+    let d = |a: usize, b: usize| (colour[a] - colour[b]).abs();
+    assert_eq!(subject::background_border(&[1, 2, 4, 8], &d), vec![true; 4]);
+}
+
+#[test]
+fn select_subject_reaches_the_frame_edge_it_is_cut_off_by() {
+    // A subject running out of the bottom of the frame (a portrait's shoulders, say).
+    let (img, truth) = disc_scene(200, 150, 100.0, 135.0, 60.0, 11);
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let reg = subject::select_subject(&s, Rect::new(0, 0, 200, 150)).unwrap();
+    let v = iou(&reg, &truth, 200, 150);
+    assert!(v > 0.85, "IoU {v}");
+    // The bottom row under the subject is selected, the background beside it is not.
+    assert!(reg.at(100, 149) >= 0.5 && reg.at(5, 149) < 0.5, "{} {}", reg.at(100, 149), reg.at(5, 149));
+}
+
+/// `img` placed at `(ox, oy)` on a white `w × h` canvas (a photo layer on a larger document).
+fn on_white(img: &RgbImage, w: usize, h: usize, ox: usize, oy: usize) -> RgbImage {
+    RgbImage::from_fn(w, h, |x, y| if x >= ox && y >= oy && x - ox < img.w && y - oy < img.h { img.at(x - ox, y - oy) } else { [1.0; 3] })
+}
+
+#[test]
+fn content_window_trims_flat_margins_only() {
+    let (photo, _) = disc_scene(60, 40, 30.0, 20.0, 10.0, 3);
+    let img = on_white(&photo, 100, 50, 25, 4);
+    let s = ImageSampler { img: &img, origin: (10, 20) };
+    let canvas = Rect::new(10, 20, 110, 70);
+    assert_eq!(subject::flat_margins(&img).0, [25, 4, 15, 6]);
+    // Found on full-resolution pixels, or on 3×3 blocks and then snapped to the exact edge.
+    for step in [1, 3] {
+        let coarse = img.downsample(step);
+        assert_eq!(subject::content_window(&s, canvas, &coarse, step), Some(Rect::new(35, 24, 95, 64)), "step {step}");
+    }
+    // A photo with no margins, a blank canvas, and an object on a plain white backdrop (the
+    // backdrop belongs to the scene) keep the whole frame.
+    assert_eq!(subject::flat_margins(&photo).0, [0; 4]);
+    assert_eq!(subject::flat_margins(&RgbImage::from_fn(30, 30, |_, _| [1.0; 3])).0, [0; 4]);
+    let product = RgbImage::from_fn(80, 60, |x, y| {
+        let (dx, dy) = (x as f32 - 40.0, y as f32 - 30.0);
+        if dx * dx + dy * dy < 400.0 { [0.8, 0.2, 0.1] } else { [1.0; 3] }
+    });
+    assert_eq!(subject::flat_margins(&product).0, [0; 4]);
+}
+
+#[test]
+fn select_subject_ignores_a_white_canvas_round_the_photo() {
+    // A busy photo (the disc on noise) in the middle of a wider white document: the subject is
+    // the disc, not the whole photo rectangle.
+    let (photo, truth) = disc_scene(160, 150, 80.0, 75.0, 40.0, 12);
+    let (w, h, ox) = (320usize, 150usize, 80usize);
+    let img = on_white(&photo, w, h, ox, 0);
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    let reg = subject::select_subject(&s, Rect::new(0, 0, w as i32, h as i32)).unwrap();
+    let truth: Vec<bool> = (0..w * h).map(|i| (i % w).checked_sub(ox).is_some_and(|x| x < 160 && truth[(i / w) * 160 + x])).collect();
+    let v = iou(&reg, &truth, w, h);
+    assert!(v > 0.85, "IoU {v}");
+    assert!(reg.at(ox as i32 + 3, 3) < 0.5, "photo corner selected");
+}
+
+#[test]
+fn probability_maps_upsample_to_soft_regions() {
+    // A 4 × 2 map: right half certain, left half not; over a 40 × 20 window at (5, 7).
+    let prob = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0];
+    let window = Rect::new(5, 7, 45, 27);
+    let r = subject::region_from_probability(&prob, 4, 2, window).unwrap();
+    assert!(r.at(40, 15) > 0.99 && r.at(8, 15) < 0.01);
+    // Bilinear between the halves: the edge is soft, and the box is trimmed to what's selected.
+    let mid = r.at(25, 15);
+    assert!(mid > 0.0 && mid < 1.0, "{mid}");
+    assert!(r.bbox.x0 > window.x0 && r.bbox.x1 == window.x1);
+    // Nothing likely, mismatched sizes, empty windows and NaNs give nothing, never a panic.
+    assert!(subject::region_from_probability(&[0.2; 8], 4, 2, window).is_none());
+    assert!(subject::region_from_probability(&prob, 3, 2, window).is_none());
+    assert!(subject::region_from_probability(&prob, 4, 2, Rect::new(0, 0, 0, 5)).is_none());
+    assert!(subject::region_from_probability(&[f32::NAN; 8], 4, 2, window).is_none());
+}
+
+#[test]
+fn main_subjects_drop_small_objects_but_keep_peers() {
+    // A 60 × 20 map: a big object (400 px), a small one (16 px) and a soft fringe round each.
+    let (w, h) = (60, 20);
+    let blob = |x0: usize, y0: usize, s: usize, p: &mut Vec<f32>| {
+        for y in y0..y0 + s {
+            for x in x0..x0 + s {
+                p[y * w + x] = 0.95;
+            }
+        }
+        for x in x0..x0 + s {
+            p[(y0 + s) * w + x] = 0.3; // fringe just below
+        }
+    };
+    let mut p = vec![0.0f32; w * h];
+    blob(2, 0, 18, &mut p);
+    blob(40, 2, 4, &mut p);
+    subject::keep_main_subjects(&mut p, w, h);
+    assert_eq!(p[5 * w + 5], 0.95, "the main object stays");
+    assert_eq!(p[18 * w + 5], 0.3, "with its soft fringe");
+    assert_eq!((p[3 * w + 41], p[6 * w + 41]), (0.0, 0.0), "the small object and its fringe go");
+    // Two objects of similar size both stay.
+    let mut p = vec![0.0f32; w * h];
+    blob(2, 0, 15, &mut p);
+    blob(35, 0, 12, &mut p);
+    subject::keep_main_subjects(&mut p, w, h);
+    assert!(p[5 * w + 5] > 0.9 && p[5 * w + 40] > 0.9);
+    // Nothing likely, or a wrong size: unchanged, never a panic.
+    let mut q = vec![0.2f32; 12];
+    subject::keep_main_subjects(&mut q, 4, 3);
+    assert_eq!(q, vec![0.2; 12]);
+    subject::keep_main_subjects(&mut q, 5, 3);
+}
+
+#[test]
+fn subject_window_is_inside_flat_margins() {
+    let (photo, _) = disc_scene(60, 40, 30.0, 20.0, 10.0, 3);
+    let img = on_white(&photo, 100, 50, 25, 4);
+    let s = ImageSampler { img: &img, origin: (0, 0) };
+    assert_eq!(subject::subject_window(&s, Rect::new(0, 0, 100, 50)), Rect::new(25, 4, 85, 44));
+    let p = ImageSampler { img: &photo, origin: (0, 0) };
+    assert_eq!(subject::subject_window(&p, Rect::new(0, 0, 60, 40)), Rect::new(0, 0, 60, 40));
+}
+
+#[test]
 fn saliency_highlights_the_object() {
     let (img, truth) = disc_scene(120, 90, 60.0, 45.0, 22.0, 8);
     let sal = subject::saliency(&img);

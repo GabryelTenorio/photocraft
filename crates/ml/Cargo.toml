@@ -1,0 +1,23 @@
+[package]
+name = "photocraft-ml"
+description = "Optional on-device machine-learning models for PhotoCraft (pure-Rust ONNX inference with tract)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+# Native only: the models are hundreds of MB and take tens of seconds on all cores, which a browser
+# tab can't offer (and tract's randomness needs a JavaScript backend there). On wasm every model
+# call is `MlError::Unsupported`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Pure-Rust ONNX inference (no C++ runtime). Pinned exactly: the model graph is validated against
+# this version; moving the pin is a reviewed change (re-run the ignored model test).
+tract-onnx = "=0.23.8"
+# Matrix products on all cores.
+tract-linalg = { version = "=0.23.8", features = ["multithread-mm"] }
+
+[lints]
+workspace = true

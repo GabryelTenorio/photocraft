@@ -69,10 +69,42 @@ pub(crate) fn sample_rgba8(s: &Session, all_layers: bool) -> Result<(Rect, Vec<[
     }
 }
 
+/// The Magic Wand's `sampleSize` (Photoshop's Sample Size, shared with the Eyedropper): 1 (Point
+/// Sample) or the side of the averaged square.
+fn sample_size(p: &Value) -> Result<u32> {
+    let size = match p.get("sampleSize") {
+        None | Some(Value::Null) => return Ok(1),
+        Some(v) => crate::sample_cmds::size_param("select.magicWand", &json!({ "size": v })),
+    };
+    size.map_err(|e| match e {
+        EngineError::BadParams { cmd, msg } => EngineError::BadParams { cmd, msg: msg.replace("`size`", "`sampleSize`") },
+        e => e,
+    })
+}
+
+/// The colour the wand matches with an averaged Sample Size: the [`crate::sample_cmds::average`]
+/// of the `size`×`size` square around the seed, clipped to `area`, taken in the document's colour
+/// model and depth as the Eyedropper takes it. `None` for a Point Sample or a seed off the canvas.
+fn wand_target(doc: &Document, px: &[[f32; 4]], area: Rect, x: i32, y: i32, size: u32) -> Option<[f32; 4]> {
+    if size <= 1 {
+        return None;
+    }
+    let r = crate::sample_cmds::sample_rect(f64::from(x), f64::from(y), size, area)?;
+    let w = area.width() as usize;
+    let mut sq = Vec::with_capacity(r.width() as usize * r.height() as usize);
+    for yy in r.y0..r.y1 {
+        let o = (yy - area.y0) as usize * w;
+        sq.extend_from_slice(px.get(o + (r.x0 - area.x0) as usize..o + (r.x1 - area.x0) as usize)?);
+    }
+    Some(crate::sample_cmds::average(&sq, crate::sample_cmds::averaging_model(doc), doc.depth))
+}
+
 fn magic_wand(s: &mut Session, p: &Value) -> Result<Value> {
     let (x, y) = (f(p, "x", 0.0).floor() as i32, f(p, "y", 0.0).floor() as i32);
-    let (area, img) = sample_rgba8(s, b(p, "sampleAllLayers", false))?;
-    let region = sel::wand_region(&img, area, (x, y), f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true));
+    let size = sample_size(p)?;
+    let (area, img) = sample_pixels(s, b(p, "sampleAllLayers", false))?;
+    let target = wand_target(&s.active().ok_or(EngineError::NoDocument)?.doc, &img, area, x, y, size);
+    let region = sel::wand_region_f32_target(&img, area, (x, y), target, f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true));
     drop(img);
     let m = mode(p);
     let selected = s.edit("Magic Wand", |doc, _| {
@@ -542,7 +574,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.magicWand",
             "Magic Wand",
             [],
-            r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect"="replace"}"##,
+            r##"{"x":px,"y":px,"tolerance":0..255=32,"sampleSize":"point"|1|3|5|11|31|51|101=1 (match the average of the size×size square around the click, as the Eyedropper samples),"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect"="replace"}"##,
             has_doc,
             magic_wand
         ),
@@ -625,6 +657,71 @@ mod tests {
         assert_eq!(coverage(&s, 10, 10), 0.0);
         s.execute("select.magicWand", json!({"x": 7, "y": 7, "contiguous": false, "antiAlias": false})).unwrap();
         assert_eq!(coverage(&s, 30, 10), 1.0);
+    }
+
+    #[test]
+    fn magic_wand_sample_size_matches_the_average_around_the_click() {
+        // A fine checker of two greys (noise, as in a photo) next to white.
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 40, "height": 30})).unwrap();
+        s.edit("paint", |doc, _| {
+            let bg = doc.layers[0].surface_mut().unwrap();
+            for y in 0..30 {
+                for x in 0..20 {
+                    let v = (if (x + y) % 2 == 0 { 100.0 } else { 160.0 }) / 255.0;
+                    bg.fill_rect(Rect::new(x, y, x + 1, y + 1), &[v, v, v, 1.0]);
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+        // Point Sample: 100 ± 40 misses the 160 pixels, and same-grey pixels only touch diagonally.
+        s.execute("select.magicWand", json!({"x": 5, "y": 5, "tolerance": 40, "antiAlias": false})).unwrap();
+        assert_eq!(coverage(&s, 5, 5), 1.0);
+        assert_eq!(coverage(&s, 6, 5), 0.0);
+        assert_eq!(coverage(&s, 7, 5), 0.0);
+        // 3 by 3 Average: (5·100 + 4·160) / 9 ≈ 127 ± 40 takes the whole checker, not the white.
+        for (size, contiguous) in [(json!(3), true), (json!(5), false)] {
+            s.execute("select.magicWand", json!({"x": 5, "y": 5, "tolerance": 40, "sampleSize": size, "contiguous": contiguous, "antiAlias": false})).unwrap();
+            for (x, y) in [(0, 0), (6, 5), (19, 29), (12, 17)] {
+                assert_eq!(coverage(&s, x, y), 1.0, "({x}, {y}) size {size}");
+            }
+            assert_eq!(coverage(&s, 30, 5), 0.0);
+        }
+        // "point" is a Point Sample; tolerance 0 with an average still selects the clicked pixel.
+        s.execute("select.magicWand", json!({"x": 5, "y": 5, "tolerance": 40, "sampleSize": "point", "antiAlias": false})).unwrap();
+        assert_eq!(coverage(&s, 6, 5), 0.0);
+        for contiguous in [true, false] {
+            s.execute("select.magicWand", json!({"x": 5, "y": 5, "tolerance": 0, "sampleSize": 3, "contiguous": contiguous, "antiAlias": false})).unwrap();
+            assert_eq!(coverage(&s, 5, 5), 1.0);
+            assert_eq!(coverage(&s, 6, 5), 0.0);
+        }
+        // Squares are clipped to the canvas; bad sizes are errors, not crashes.
+        s.execute("select.magicWand", json!({"x": 0, "y": 0, "tolerance": 40, "sampleSize": 101, "antiAlias": false})).unwrap();
+        assert_eq!(coverage(&s, 0, 0), 1.0);
+        for bad in [json!(4), json!(-3), json!("huge"), json!(1e40), json!([3])] {
+            let e = s.execute("select.magicWand", json!({"x": 5, "y": 5, "sampleSize": bad})).unwrap_err();
+            assert!(e.to_string().contains("sampleSize"), "{e}");
+        }
+    }
+
+    #[test]
+    fn magic_wand_keeps_sub_8_bit_differences_in_high_bit_depth_documents() {
+        for depth in [16, 32] {
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width": 20, "height": 10, "depth": depth})).unwrap();
+            s.edit("paint", |doc, _| {
+                let surface = doc.layers[0].surface_mut().unwrap();
+                surface.fill_rect(Rect::new(0, 0, 10, 10), &[0.5, 0.25, 0.75, 1.0]);
+                surface.fill_rect(Rect::new(10, 0, 20, 10), &[0.501, 0.25, 0.75, 1.0]);
+                Ok(())
+            })
+            .unwrap();
+
+            s.execute("select.magicWand", json!({"x": 5, "y": 5, "tolerance": 0, "antiAlias": false})).unwrap();
+            assert_eq!(coverage(&s, 5, 5), 1.0, "depth {depth}");
+            assert_eq!(coverage(&s, 15, 5), 0.0, "depth {depth}");
+        }
     }
 
     #[test]

@@ -40,7 +40,10 @@
     <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="PhotoCraft" />
+      <Directory Id="INSTALLFOLDER" Name="PhotoCraft">
+        <!-- On-device AI models (Select Subject's high quality mode), found by photocraft-ml. -->
+        <Directory Id="MODELSFOLDER" Name="models" />
+      </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
@@ -51,6 +54,7 @@
 
     <Feature Id="Main" Title="PhotoCraft" Level="1">
       <ComponentGroupRef Id="PhotocraftFiles" />
+      <ComponentGroupRef Id="PhotocraftModels" />
     </Feature>
 
     <!-- The setup wizard: WixUI_InstallDir without its licence page (the code is MIT OR
@@ -146,6 +150,16 @@
 
       <Component Id="PhotocraftCli">
         <File Id="PhotocraftCliExe" Source="$(var.BinDir)\photocraft-cli.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Staged by package.ps1 (downloaded and checked against the sha256 in crates/ml). -->
+    <ComponentGroup Id="PhotocraftModels" Directory="MODELSFOLDER">
+      <Component Id="SubjectModel">
+        <File Id="SubjectModelOnnx" Source="$(var.BinDir)\models\birefnet-lite.onnx" KeyPath="yes" />
+      </Component>
+      <Component Id="SubjectModelLicense">
+        <File Id="SubjectModelLicenseTxt" Source="$(var.BinDir)\models\LICENSE-BiRefNet.txt" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>

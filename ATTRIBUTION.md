@@ -56,6 +56,15 @@ The other built-in ICC profiles and the generated LUT looks are produced by code
 (`crates/cms/src/builtin.rs`, `crates/cms/src/lutfile.rs`) and dedicated to the public domain
 (CC0-1.0); they are not separate files.
 
+## Shipped with the app, not committed
+
+Model weights are too large for the repository; installers put them in `models/` next to the
+executable (see `crates/ml`), with their license file beside them.
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `models/birefnet-lite.onnx` (224 MB, sha256 `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333`) | BiRefNet-lite subject segmentation model (fp32 ONNX), used by Select Subject's high quality mode | Peng Zheng et al. (BiRefNet); ONNX export by onnx-community | [ZhengPeng7/BiRefNet](https://github.com/ZhengPeng7/BiRefNet), export [onnx-community/BiRefNet_lite-ONNX](https://huggingface.co/onnx-community/BiRefNet_lite-ONNX) | MIT, Copyright (c) 2024 ZhengPeng, [`LICENSE-BiRefNet.txt`](packaging/models/LICENSE-BiRefNet.txt). Note: its training data includes DIS5K, whose own terms restrict commercial use of the dataset; whether that reaches the weights is an open question for maintainers |
+
 ## Documentation and README
 
 | Path | Title | Author | Source | License |

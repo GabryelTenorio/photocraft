@@ -247,15 +247,62 @@ impl Region {
 /// byte mark per pixel, then anti-aliases just the edges inside the touched bounding box.
 /// Matches [`magic_wand`] for 8-bit sources. `None` if the seed is outside `area`.
 pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32, contiguous: bool, anti_alias: bool) -> Option<Region> {
+    let tol = (tolerance + 1e-3).floor().max(0.0) as i32;
+    wand_region_by(img, area, seed, None, contiguous, anti_alias, |target, p| {
+        (target[3] == 0 && p[3] == 0) || (0..4).all(|c| (p[c] as i32 - target[c] as i32).abs() <= tol)
+    })
+}
+
+/// Magic Wand on floating-point RGBA pixels. Unlike [`wand_region`], this preserves the source
+/// precision, so nearby 16-bit and 32-bit colours do not become identical after 8-bit rounding.
+pub fn wand_region_f32(img: &[[f32; 4]], area: Rect, seed: (i32, i32), tolerance: f32, contiguous: bool, anti_alias: bool) -> Option<Region> {
+    wand_region_f32_target(img, area, seed, None, tolerance, contiguous, anti_alias)
+}
+
+/// [`wand_region_f32`] comparing pixels with `target` (straight RGBA) rather than the seed pixel
+/// when given: Photoshop's Sample Size, where the colour matched is the average of a square
+/// around the click. The seed pixel is always selected, so a click never selects nothing.
+pub fn wand_region_f32_target(
+    img: &[[f32; 4]],
+    area: Rect,
+    seed: (i32, i32),
+    target: Option<[f32; 4]>,
+    tolerance: f32,
+    contiguous: bool,
+    anti_alias: bool,
+) -> Option<Region> {
+    let tolerance = if tolerance.is_finite() { tolerance.clamp(0.0, 255.0) } else { 0.0 };
+    let tol = tolerance / 255.0 + 1e-7;
+    let target = target.map(|t| t.map(|v| if v.is_finite() { v } else { 0.0 }));
+    wand_region_by(img, area, seed, target, contiguous, anti_alias, |target, p| {
+        (target[3] == 0.0 && p[3] == 0.0) || (0..4).all(|c| (p[c] - target[c]).abs() <= tol)
+    })
+}
+
+/// Flood (or global) match of pixels `similar` to `target` (the seed pixel when `None`); the seed
+/// pixel itself is always included. `similar` must treat two fully transparent pixels as equal:
+/// copying a selection can leave RGB under zero alpha, and those invisible colours must not split
+/// a transparent region into pieces, as if the copied source were still visible.
+fn wand_region_by<T: Copy + Sync>(
+    img: &[T],
+    area: Rect,
+    seed: (i32, i32),
+    target: Option<T>,
+    contiguous: bool,
+    anti_alias: bool,
+    similar: impl Fn(T, T) -> bool + Copy + Sync,
+) -> Option<Region> {
     if !area.contains(seed.0, seed.1) {
         return None;
     }
     let (w, h) = (area.width() as usize, area.height() as usize);
-    let target = img[(seed.1 - area.y0) as usize * w + (seed.0 - area.x0) as usize];
-    let tol = (tolerance + 1e-3).floor().max(0.0) as i32;
-    // Copying a selection can leave RGB under zero alpha. Those invisible colours must not
-    // split a transparent region into pieces, as if the copied source were still visible.
-    let similar = |p: [u8; 4]| (target[3] == 0 && p[3] == 0) || (0..4).all(|c| (p[c] as i32 - target[c] as i32).abs() <= tol);
+    let len = w.checked_mul(h)?;
+    if img.len() != len {
+        return None;
+    }
+    let (sx, sy) = ((seed.0 - area.x0) as usize, (seed.1 - area.y0) as usize);
+    let seed_px = *img.get(sy * w + sx)?;
+    let target = target.unwrap_or(seed_px);
     let mut marks = vec![0u8; w * h];
     let (mut bx0, mut by0, mut bx1, mut by1) = (usize::MAX, usize::MAX, 0usize, 0usize);
     if contiguous {
@@ -267,10 +314,10 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
                 continue;
             }
             let (mut l, mut r) = (x, x);
-            while l > 0 && marks[row + l - 1] == 0 && similar(img[row + l - 1]) {
+            while l > 0 && marks[row + l - 1] == 0 && similar(target, img[row + l - 1]) {
                 l -= 1;
             }
-            while r + 1 < w && marks[row + r + 1] == 0 && similar(img[row + r + 1]) {
+            while r + 1 < w && marks[row + r + 1] == 0 && similar(target, img[row + r + 1]) {
                 r += 1;
             }
             marks[row + l..=row + r].fill(255);
@@ -282,7 +329,7 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
                 let nrow = ny * w;
                 let mut in_run = false;
                 for nx in l..=r {
-                    let ok = marks[nrow + nx] == 0 && similar(img[nrow + nx]);
+                    let ok = marks[nrow + nx] == 0 && similar(target, img[nrow + nx]);
                     if ok && !in_run {
                         stack.push((nx, ny));
                     }
@@ -294,7 +341,7 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
         let scan = |y: usize, row: &mut [u8]| -> Option<(usize, usize)> {
             let mut span: Option<(usize, usize)> = None;
             for (x, m) in row.iter_mut().enumerate() {
-                if similar(img[y * w + x]) {
+                if similar(target, img[y * w + x]) {
                     *m = 255;
                     span = Some(span.map_or((x, x), |(a, _)| (a, x)));
                 }
@@ -312,6 +359,10 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
             if let Some((a, b)) = sp {
                 (bx0, bx1, by0, by1) = (bx0.min(*a), bx1.max(*b), by0.min(y), by1.max(y));
             }
+        }
+        if let Some(m) = marks.get_mut(sy * w + sx) {
+            *m = 255;
+            (bx0, bx1, by0, by1) = (bx0.min(sx), bx1.max(sx), by0.min(sy), by1.max(sy));
         }
     }
     if bx0 == usize::MAX {
@@ -825,6 +876,22 @@ mod tests {
     }
 
     #[test]
+    fn wand_region_f32_preserves_sub_8_bit_colour_differences() {
+        let area = Rect::new(0, 0, 4, 1);
+        let px = [[0.5, 0.25, 0.75, 1.0], [0.501, 0.25, 0.75, 1.0], [0.5, 0.25, 0.75, 1.0], [0.5, 0.25, 0.75, 0.0]];
+        let contiguous = wand_region_f32(&px, area, (0, 0), 0.0, true, false).unwrap();
+        assert_eq!(contiguous.at(0, 0), 1.0);
+        assert_eq!(contiguous.at(1, 0), 0.0);
+        assert_eq!(contiguous.at(2, 0), 0.0);
+
+        let global = wand_region_f32(&px, area, (0, 0), 0.0, false, false).unwrap();
+        assert_eq!(global.at(0, 0), 1.0);
+        assert_eq!(global.at(1, 0), 0.0);
+        assert_eq!(global.at(2, 0), 1.0);
+        assert_eq!(global.at(3, 0), 0.0);
+    }
+
+    #[test]
     fn wand_tolerance() {
         let px = img(10, 1, |x, _| [x as f32 * 10.0 / 255.0, 0.0, 0.0, 1.0]);
         let m = magic_wand(&px, Rect::new(0, 0, 10, 1), (0, 0), 25.0, true, false);
@@ -1273,6 +1340,24 @@ mod tests {
             }
         }
         assert!(wand_region(&img, area, (0, 0), 10.0, true, true).is_none());
+    }
+
+    #[test]
+    fn wand_target_matches_an_explicit_colour_and_keeps_the_seed() {
+        // Left half 0.2, right half 0.6; the target 0.55 matches only the right half.
+        let area = Rect::new(0, 0, 10, 4);
+        let px: Vec<[f32; 4]> = (0..40).map(|i| if i % 10 < 5 { [0.2, 0.2, 0.2, 1.0] } else { [0.6, 0.6, 0.6, 1.0] }).collect();
+        let t = Some([0.55, 0.55, 0.55, 1.0]);
+        // Global: the right half plus the clicked pixel, even though it is far from the target.
+        let g = wand_region_f32_target(&px, area, (1, 1), t, 20.0, false, false).unwrap();
+        assert_eq!((g.at(1, 1), g.at(2, 1), g.at(7, 2)), (1.0, 0.0, 1.0));
+        // Contiguous from the left half: only the clicked pixel.
+        let c = wand_region_f32_target(&px, area, (1, 1), t, 20.0, true, false).unwrap();
+        assert_eq!((c.at(1, 1), c.at(2, 1), c.at(7, 2)), (1.0, 0.0, 0.0));
+        // No target is the seed pixel, as `wand_region_f32`; non-finite targets don't panic.
+        assert_eq!(wand_region_f32_target(&px, area, (1, 1), None, 20.0, true, false), wand_region_f32(&px, area, (1, 1), 20.0, true, false));
+        assert!(wand_region_f32_target(&px, area, (1, 1), Some([f32::NAN; 4]), 20.0, false, true).is_some());
+        assert!(wand_region_f32_target(&px, area, (10, 1), t, 20.0, false, false).is_none());
     }
 
     #[test]

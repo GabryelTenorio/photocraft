@@ -10,6 +10,9 @@ workspace = true
 [features]
 # Real-file corpus tests (opt-in; `cargo xtask test-corpus`). Fail when the corpus is missing.
 corpus = []
+# On-device AI models (the optional photocraft-ml crate, pure-Rust tract inference): Select
+# Subject's high quality mode. Not default; official desktop builds enable it (`--features ml`).
+ml = ["dep:photocraft-ml"]
 
 [dependencies]
 photocraft-geom = { workspace = true }
@@ -37,6 +40,7 @@ flate2 = { workspace = true }
 # Photoshop `.kys` shortcut sets (`edit.keyboardShortcuts` `importKys`); already in the tree
 # through photocraft-ui-egui and usvg.
 roxmltree = "0.20"
+photocraft-ml = { workspace = true, optional = true }
 
 [dev-dependencies]
 photocraft-affinity = { workspace = true, features = ["synth"] }

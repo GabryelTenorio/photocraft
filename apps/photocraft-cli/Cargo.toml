@@ -10,6 +10,10 @@ build = "build.rs"
 # Open HEIC/HEIF photos (the optional photocraft-heif crate). Not default so distributors choose
 # it; official builds (CI, packaging/, release) build with `--features heif`.
 heif = ["photocraft-codecs/heif"]
+# On-device AI models (Select Subject high quality; the optional photocraft-ml crate). Not default
+# so distributors choose it; official desktop builds enable it with the model file installed in
+# `models/` next to the executable.
+ml = ["photocraft-engine/ml"]
 
 [lints]
 workspace = true

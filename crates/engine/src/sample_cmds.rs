@@ -179,7 +179,7 @@ pub fn sample_color(doc: &Document, active: Option<LayerId>, x: f64, y: f64, siz
 /// composited in RGB (see `photocraft_compose`), and the profile's RGB → CMYK → RGB round trip
 /// is not exact (deep shadows move by several levels), so averaging in CMYK would make a 3×3
 /// sample of a flat area differ from its Point Sample. Their composite RGB is averaged instead.
-fn averaging_model(doc: &Document) -> ColorMode {
+pub(crate) fn averaging_model(doc: &Document) -> ColorMode {
     match doc.pixel_format().mode {
         ColorMode::Cmyk => ColorMode::Rgb,
         m => m,

@@ -380,6 +380,18 @@ some form. "A professional could switch for daily work": roughly **25–35%**. T
 **many months** of focused work, and some areas need product decisions rather than effort.
 Confidence: moderate — the next users of 0.2.x will move these numbers either way.
 
+2026-10-10: the ML backend has started. `photocraft-ml` (L4, behind the engine's and apps'
+optional `ml` feature) runs BiRefNet-lite (MIT; 224 MB fp32 ONNX, never committed, installed in
+`models/` next to the executable) with tract, pure Rust. `select.subject {"quality":"high"}` runs
+it as a background job: on a 3120×4160 phone photo (Windows laptop, 16 threads) about 40 s
+including the first model load, and the selection matches Photoshop's Select Subject by eye
+(person with shoes and glasses, gaps between arms and torso, a bag beside them left out). The
+fast classical mode stays the default; it now ignores flat margins round a placed photo and no
+longer forces a subject cut off by the frame to background. Magic Wand gained Sample Size and
+compares 16/32-bit samples at source precision. Open: speed (ONNX Runtime measured 13–19 s on
+the same CPU, DirectML ran out of GPU memory), the DIS5K training-data licence question
+(ATTRIBUTION.md), MSI/CI packaging of the model untested.
+
 ### By dimension
 
 2026-10-10: Iris Blur pin preparation, saturated-distance evaluation and trailing

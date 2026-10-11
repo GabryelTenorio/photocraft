@@ -1039,16 +1039,16 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     Tool::MagicWand => {
                         selection_mode_buttons(app, ui);
                         widgets::vline(ui, 22.0);
+                        // Shared with the Eyedropper, as in Photoshop.
+                        opt_label(ui, tl!("Sample Size:"));
+                        widgets::dropdown(ui, "wand-sample-size", &mut app.ui.tool_options.eyedropper_size, &crate::eyedropper_ui::size_options(), 130.0);
                         opt_label(ui, tl!("Tolerance"));
                         widgets::value_field(ui, &mut app.ui.tool_options.tolerance, 0.0..=255.0, "", 58.0);
                         widgets::checkbox(ui, &mut app.ui.tool_options.anti_alias, tl!("Anti-alias"));
                         widgets::checkbox(ui, &mut app.ui.tool_options.contiguous, tl!("Contiguous"));
                         widgets::checkbox(ui, &mut app.ui.tool_options.sample_all_layers, tl!("Sample All Layers"));
                         widgets::vline(ui, 22.0);
-                        if widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
-                            let r = app.run("select.subject", json!({}));
-                            crate::retouch_ui::report_smart_result(app, r, tl!("No subject found — try Object Selection or the Lasso"));
-                        }
+                        crate::retouch_ui::select_subject_button(app, ui, tl!("No subject found — try Object Selection or the Lasso"));
                         if widgets::secondary_button(ui, tl!("Select and Mask…"), 0.0).clicked() {
                             let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
                         }

@@ -2858,3 +2858,6 @@ fontWeight	Italic	Italique
 	Front Image	Image de premier plan
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
+
+# Select Subject quality (Fast / High quality with the on-device AI model).
+	High quality (AI)	Haute qualité (IA)

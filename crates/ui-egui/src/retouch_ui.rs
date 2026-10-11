@@ -263,6 +263,18 @@ pub fn report_smart_result(app: &mut PhotocraftApp, res: Result<Value, String>, 
     }
 }
 
+/// Select Subject's quality menu and button (Photoshop's Device / Cloud choice): Fast is the
+/// classical segmentation, High quality the on-device AI model, run as a background job.
+pub fn select_subject_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, empty_msg: &str) {
+    let choices = [("fast".to_string(), tl!("Fast")), ("high".to_string(), tl!("High quality (AI)"))];
+    crate::widgets::dropdown(ui, "subject-quality", &mut app.ui.tool_options.subject_quality, &choices, 150.0);
+    if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
+        let quality = app.ui.tool_options.subject_quality.clone();
+        let r = app.run("select.subject", json!({ "quality": quality }));
+        report_smart_result(app, r, empty_msg);
+    }
+}
+
 /// ⌥-click with Clone Stamp / Healing Brush sets the source.
 pub fn set_source(app: &mut PhotocraftApp, x: f64, y: f64) {
     app.ui.clone_source = Some([x.round(), y.round()]);
@@ -412,19 +424,13 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             crate::widgets::checkbox(ui, &mut o.enhance_edge, tl!("Enhance Edge"));
             opt(ui, &crate::i18n::fmt(tl!("{key} to subtract"), &[("key", &crate::shortcuts::pretty("Alt"))]));
             crate::widgets::vline(ui, 22.0);
-            if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
-                let r = app.run("select.subject", json!({}));
-                report_smart_result(app, r, tl!("No subject found — try Object Selection or the Lasso"));
-            }
+            select_subject_button(app, ui, tl!("No subject found — try Object Selection or the Lasso"));
         }
         Tool::ObjectSelection => {
             crate::widgets::checkbox(ui, &mut o.sample_all_layers, tl!("Sample All Layers"));
             opt(ui, tl!("Drag a rectangle around the object"));
             crate::widgets::vline(ui, 22.0);
-            if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
-                let r = app.run("select.subject", json!({}));
-                report_smart_result(app, r, tl!("No subject found — try a rectangle around the object"));
-            }
+            select_subject_button(app, ui, tl!("No subject found — try a rectangle around the object"));
         }
         Tool::RedEye => {
             opt(ui, tl!("Pupil Size"));

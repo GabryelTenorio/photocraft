@@ -604,6 +604,9 @@ pub struct ToolOptions {
     /// currentAndBelowNoAdjustments (`document.sampleColor`'s `sampleLayer`).
     #[serde(default = "default_eyedropper_sample")]
     pub eyedropper_sample: String,
+    /// Select Subject's quality: fast (classical) | high (the on-device AI model).
+    #[serde(default = "default_subject_quality")]
+    pub subject_quality: String,
     /// Eyedropper › Show Sampling Ring.
     #[serde(default = "yes")]
     pub eyedropper_ring: bool,
@@ -733,8 +736,13 @@ impl Default for ToolOptions {
             eyedropper_size: 1,
             eyedropper_sample: default_eyedropper_sample(),
             eyedropper_ring: true,
+            subject_quality: default_subject_quality(),
         }
     }
+}
+
+fn default_subject_quality() -> String {
+    "fast".into()
 }
 
 /// Edit › Transform's mode: what a handle drag does with no modifier keys held.
