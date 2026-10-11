@@ -171,6 +171,9 @@ pub struct Pass<'a> {
     pub d: Option<Slot>,
     pub mode: BlendMode,
     pub opacity: f32,
+    /// The layer's Fill where it isn't folded into `opacity`: the final blend of a plain layer
+    /// (`Kernel::Blend`), so the special eight can apply it inside the blend. 1 elsewhere.
+    pub fill: f32,
     /// Layer pixels (raster / text / shape / smart cache / fill cache).
     pub tex: Option<TexUse<'a>>,
     /// Colour outside `tex` (the surface's default pixel), the solid fill colour, or the effect
@@ -232,6 +235,7 @@ impl<'a> Pass<'a> {
             d: None,
             mode: BlendMode::Normal,
             opacity: 1.0,
+            fill: 1.0,
             tex: None,
             color: [0.0; 4],
             mask: None,
@@ -277,6 +281,19 @@ pub struct Plan<'a> {
     pub root: Slot,
     /// Effect layers in dependency order (a group's inner effect layers come first).
     pub fx: Vec<FxLayer<'a>>,
+    /// Complete root stack units, where only the accumulated backdrop remains live.
+    pub checkpoints: Vec<Checkpoint>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Checkpoint {
+    /// First root layer included after occlusion pruning.
+    pub layer_start: usize,
+    /// Root layers below this boundary (including the complete clipping unit).
+    pub layer_end: usize,
+    /// Resume at this pass with `slot` restored.
+    pub pass_end: usize,
+    pub slot: Slot,
 }
 
 /// Document-level inputs of a plan.
@@ -318,7 +335,7 @@ pub fn plan(doc: &Document) -> Result<Plan<'_>, Unsupported> {
     // Start at the topmost layer that hides everything beneath it (an opaque fill layer): the
     // layers below can't change the result, so they cost no passes or uploads.
     let start = doc.layers.iter().rposition(|l| photocraft_compose::occludes_below(l, doc.mode)).unwrap_or(0);
-    let root = p.stack(doc.layers.get(start..).unwrap_or(&doc.layers), root)?;
+    let root = p.stack_inner(doc.layers.get(start..).unwrap_or(&doc.layers), root, Some(start))?;
     Ok(p.finish(root))
 }
 
@@ -328,6 +345,7 @@ struct Planner<'a> {
     refs: Vec<u32>,
     cx: DocCtx<'a>,
     fx: Vec<FxLayer<'a>>,
+    checkpoints: Vec<Checkpoint>,
 }
 
 /// Coverage source of an effect paint (`kind` in `fs_fxpaint`); flags refine it.
@@ -362,7 +380,8 @@ pub const F_FIRST: u32 = 2048;
 pub const F_CHANNELS: u32 = 4096;
 /// Lab document: Normal blending mixes in CIELAB (`psblend::LAB_MIX`).
 pub const F_LAB: u32 = 65536;
-/// 32-bit float document: Linear Dodge (Add) and Divide don't clip at 1 (`psblend::HDR`).
+/// 32-bit float document: Linear Dodge (Add) and Divide don't clip at 1, and the non-separable
+/// modes clip only below 0 (`psblend::HDR`).
 pub const F_HDR: u32 = 262144;
 /// `Lerp`: A rounded to `p0.x` steps per unit (adjustment results on integer documents).
 pub const F_QUANT: u32 = 32768;
@@ -396,11 +415,11 @@ pub const SHAPE_MAP: usize = usize::MAX;
 
 impl<'a> Planner<'a> {
     fn new(cx: DocCtx<'a>) -> Self {
-        Planner { passes: Vec::new(), free: Vec::new(), refs: Vec::new(), cx, fx: Vec::new() }
+        Planner { passes: Vec::new(), free: Vec::new(), refs: Vec::new(), cx, fx: Vec::new(), checkpoints: Vec::new() }
     }
 
     fn finish(self, root: Slot) -> Plan<'a> {
-        Plan { passes: self.passes, slots: self.refs.len() as u32, root, fx: self.fx }
+        Plan { passes: self.passes, slots: self.refs.len() as u32, root, fx: self.fx, checkpoints: self.checkpoints }
     }
 
     fn alloc(&mut self) -> Slot {
@@ -444,7 +463,11 @@ impl<'a> Planner<'a> {
     }
 
     /// composite_stack: returns the new backdrop (consumes `backdrop`).
-    fn stack(&mut self, layers: &'a [Layer], mut backdrop: Slot) -> Result<Slot, Unsupported> {
+    fn stack(&mut self, layers: &'a [Layer], backdrop: Slot) -> Result<Slot, Unsupported> {
+        self.stack_inner(layers, backdrop, None)
+    }
+
+    fn stack_inner(&mut self, layers: &'a [Layer], mut backdrop: Slot, root_start: Option<usize>) -> Result<Slot, Unsupported> {
         let mut i = 0;
         while i < layers.len() {
             let base = &layers[i];
@@ -465,6 +488,11 @@ impl<'a> Planner<'a> {
                 }
             }
             i = j.max(i + 1);
+            if let Some(start) = root_start
+                && self.refs.iter().enumerate().all(|(slot, &refs)| refs == u32::from(slot == backdrop as usize))
+            {
+                self.checkpoints.push(Checkpoint { layer_start: start, layer_end: start.saturating_add(i), pass_end: self.passes.len(), slot: backdrop });
+            }
         }
         Ok(backdrop)
     }
@@ -670,7 +698,8 @@ impl<'a> Planner<'a> {
             p.a = Some(backdrop);
             p.b = Some(content);
             p.mode = layer.blend;
-            p.opacity = opacity;
+            p.opacity = layer.opacity;
+            p.fill = layer.fill_opacity;
             return Ok(self.emit(p));
         }
 
@@ -703,7 +732,8 @@ impl<'a> Planner<'a> {
         p.a = Some(if clip.is_some() { self.retain(backdrop) } else { backdrop });
         p.b = Some(content);
         p.mode = layer.blend;
-        p.opacity = opacity;
+        p.opacity = layer.opacity;
+        p.fill = layer.fill_opacity;
         p.flags = gamma_flag(layer);
         p.extra[3] = photocraft_compose::text_gamma(layer);
         p.clip = clip;
@@ -821,6 +851,10 @@ impl<'a> Planner<'a> {
     }
 
     fn fill(&self, p: &mut Pass<'a>, f: &Fill, frame: photocraft_geom::Rect) -> Result<(), Unsupported> {
+        // The RGB shader cannot interpolate or dither native ink channels.
+        if self.cx.mode == photocraft_color::ColorMode::Cmyk && !matches!(f, Fill::Pattern { .. }) {
+            return Err(Unsupported("native CMYK fill (composited on the CPU)".into()));
+        }
         match f {
             Fill::Solid(c) => {
                 let rgb = c.to_rgb();
@@ -835,8 +869,11 @@ impl<'a> Planner<'a> {
                 p.params[0] = [angle, scale, if *reverse { 1.0 } else { 0.0 }, style_index(*style)];
                 let c = frame;
                 p.params[1] = [c.x0 as f32, c.y0 as f32, c.width() as f32, c.height() as f32];
-                // p2.xy: centre offset; p2.w: dither (the shared position hash, see the shader).
-                p.params[2] = [offset.0, offset.1, 0.0, if *dither { 1.0 } else { 0.0 }];
+                // p2.xy: centre offset; p2.z: the depth's levels a dithered pixel is rounded to
+                // (0: float, compose::gradient_fill::render_quantized); p2.w: dither (the shared
+                // position hash, see the shader).
+                let quantum = photocraft_compose::adjustment_quantum(self.cx.depth).unwrap_or(0.0);
+                p.params[2] = [offset.0, offset.1, quantum, if *dither { 1.0 } else { 0.0 }];
                 let ramp = photocraft_compose::gradient_fill::Ramp::new(f);
                 let mut rows = vec![[0.0f32; 4096]; 4];
                 for k in 0..4096 {
@@ -1505,7 +1542,9 @@ pub fn adjustment_program(adj: &Adjustment, transfer: Transfer, depth: photocraf
         Adjustment::BrightnessContrast { brightness, contrast, legacy: true } => {
             let c = contrast.clamp(-100.0, 99.0);
             let k = if c >= 0.0 { 1.0 / (1.0 - c / 100.0) } else { 1.0 + c / 100.0 };
-            p[0] = [brightness / 255.0, k, 0.0, 0.0];
+            // Brightness before contrast when it is raised, after it when lowered (compose::adjust).
+            let (pre, post) = if c >= 0.0 { (brightness / 255.0, 0.0) } else { (0.0, brightness / 255.0) };
+            p[0] = [pre, k, photocraft_compose::adjust::LEGACY_PIVOT, post];
             (4, p, None)
         }
         Adjustment::BrightnessContrast { brightness, contrast, .. } => {
@@ -1682,6 +1721,26 @@ mod tests {
     use photocraft_geom::Size;
 
     #[test]
+    fn native_cmyk_fills_fall_back_only_without_a_valid_cache() {
+        use photocraft_doc::{FillCache, GradientStyle};
+        for depth in photocraft_color::SampleType::ALL {
+            for fill in [Fill::Solid(Color::WHITE), Fill::gradient(vec![(0.0, Color::BLACK), (1.0, Color::WHITE)], 0.0, 1.0, GradientStyle::Linear, false)] {
+                let mut doc = Document::new("CMYK", photocraft_geom::Size::new(3, 2), photocraft_color::ColorMode::Cmyk, depth);
+                doc.layers.push(Layer::new("Fill", LayerContent::Fill(fill.clone())));
+                assert!(plan(&doc).unwrap_err().0.contains("native CMYK fill"));
+                doc.layers[0].visible = false;
+                assert!(plan(&doc).is_ok());
+                doc.layers[0].visible = true;
+                doc.layers[0].fill_cache = Some(FillCache { fill, surface: photocraft_raster::Surface::new(doc.pixel_format()) });
+                assert!(plan(&doc).is_ok());
+                doc.layers[0].fill_cache.as_mut().unwrap().fill = Fill::Solid(Color::TRANSPARENT);
+                assert!(plan(&doc).is_err());
+                doc.mode = photocraft_color::ColorMode::Rgb;
+                assert!(plan(&doc).is_ok());
+            }
+        }
+    }
+    #[test]
     fn outer_glow_plan_knocks_out_see_through_fill() {
         use photocraft_doc::{Contour, FxCommon, GlowSource, GlowTechnique};
 
@@ -1722,6 +1781,36 @@ mod tests {
             let a = Adjustment::ColorLookup { name: "x".into(), lut: Some(std::sync::Arc::new(vec![0.5; 24])), size, tetrahedral: false, dither: false };
             let (kind, _, rows) = adjustment_program(&a, Transfer::Srgb, SampleType::U8);
             assert_eq!((kind, rows.is_none()), (0, true), "size {size}");
+        }
+    }
+
+    #[test]
+    fn root_checkpoints_have_only_one_live_input_and_keep_clips_whole() {
+        for mode in [BlendMode::Normal, BlendMode::PassThrough] {
+            let mut d = Document::with_background("t", Size::new(32, 24), ColorMode::Rgb, SampleType::U8, Color::WHITE);
+            let mut clip = Layer::new("clip", LayerContent::Fill(Fill::Solid(Color::rgba(0.2, 0.3, 0.7, 0.4))));
+            clip.clipped = true;
+            let mut group = Layer::group(
+                "group",
+                vec![
+                    Layer::new("fill", LayerContent::Fill(Fill::Solid(Color::rgba(0.9, 0.1, 0.3, 0.6)))),
+                    Layer::new("invert", LayerContent::Adjustment(Adjustment::Invert)),
+                ],
+            );
+            group.blend = mode;
+            d.layers.extend([group, clip, Layer::new("top", LayerContent::Adjustment(Adjustment::Invert))]);
+            let plan = plan(&d).unwrap();
+            assert_eq!(plan.checkpoints.iter().map(|c| c.layer_end).collect::<Vec<_>>(), vec![1, 3, 4]);
+            for checkpoint in &plan.checkpoints {
+                let mut written = std::collections::HashSet::from([checkpoint.slot]);
+                for pass in &plan.passes[checkpoint.pass_end..] {
+                    for input in [pass.a, pass.b, pass.c, pass.d].into_iter().flatten() {
+                        assert!(written.contains(&input), "a suffix must not need another saved slot: {checkpoint:?}");
+                    }
+                    written.insert(pass.dst);
+                }
+                assert!(written.contains(&plan.root));
+            }
         }
     }
 
