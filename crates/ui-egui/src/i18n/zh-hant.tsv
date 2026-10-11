@@ -19,6 +19,25 @@
 # kept. Full-width punctuation (，。：) inside sentences; half-width parentheses and the " · "
 # separators as in the English.
 
+# Guide layout dialog
+	Columns	欄
+	Rows	列
+	Number	數量
+	Margin	邊界
+	Top:	上:
+	Left:	左:
+	Bottom:	下:
+	Right:	右:
+	Target:	目標:
+	Selected Artboards	選取的工作區域
+	Center Columns	欄置中
+	Clear Existing Guides	清除現有參考線
+	Invalid guide layout	參考線版面配置無效
+	Leave empty for automatic size	留白以自動設定大小
+	5 Columns, 3 Rows	5欄，3列
+	8 Columns	8欄
+	12 Columns	12欄
+
 	File	檔案
 	Edit	編輯
 	Image	影像
@@ -40,8 +59,15 @@
 	New from Clipboard	從剪貼簿新增
 	Open…	開啟…
 	Open As…	開啟為…
+	Open EXR Parts…	開啟 EXR 分段…
+	Add beauty precomp from the AOVs	從 AOV 預合成美麗通道
+	Both	兩者
+	Left	左
+	Right	右
 	Open Recent	最近開啟的檔案
 	Clear Recent Files	清除最近檔案
+	Remove from Recent	從最近檔案中移除
+	Remove {name} from Recent	從最近檔案中移除 {name}
 	Close	關閉
 	Minimize	最小化
 	Maximize	最大化
@@ -89,6 +115,8 @@
 	Import	匯入
 	Browse…	瀏覽…
 	Reveal in Finder	在 Finder 中顯示
+	Show in Explorer	在檔案總管中顯示
+	Show in Folder	在資料夾中顯示
 	File Info…	檔案資訊…
 	Print…	列印…
 	Print One Copy	列印一份拷貝
@@ -264,6 +292,8 @@
 	Layer via Cut	剪下的圖層
 	Layer From Background…	從背景建立圖層…
 	Layer from Background…	從背景建立圖層…
+	Background from Layer	從圖層建立背景
+	Background From Layer	從圖層建立背景
 	New Shape Layer	新增形狀圖層
 	New Type Layer	新增文字圖層
 	New Fill Layer	新增填滿圖層
@@ -591,6 +621,10 @@
 	100%	100%
 	200%	200%
 	75%	75%
+	80%	80%
+	85%	85%
+	90%	90%
+	95%	95%
 	125%	125%
 	150%	150%
 	175%	175%
@@ -672,10 +706,15 @@
 	New Workspace…	新增工作區…
 	Delete Workspace…	刪除工作區…
 	Reset Workspace	重設工作區
+	Reset Tool	重設工具
+	Reset All Tools	重設所有工具
+	Reset all tools to their default settings?	要將所有工具重設為預設設定嗎？
 	Lock Workspace	鎖定工作區
 	Theme	主題
 	Pro Theme	專業主題
 	Pro Medium Gray Theme	專業中灰主題
+	Pro Light Gray Theme	專業淺灰主題
+	Pro Light Theme	專業淺色主題
 	Studio Theme	工作室主題
 	Studio Light Theme	工作室淺色主題
 	Adwaita Light Theme	Adwaita 淺色主題
@@ -683,6 +722,10 @@
 	Classic Theme	經典主題
 	Solarized dark	Solarized 深色
 	Solarized Dark Theme	Solarized 深色主題
+	Breeze dark	Breeze 深色
+	Breeze Dark Theme	Breeze 深色主題
+	Breeze light	Breeze 淺色
+	Breeze Light Theme	Breeze 淺色主題
 	Next Theme	下一個主題
 	Actions	動作
 	Brush Settings	筆刷設定
@@ -804,6 +847,9 @@
 	Bend:	彎曲：
 	Bicubic	雙三次
 	Bicubic (smooth gradients)	雙三次 (平滑漸層)
+	Automatic	自動
+	Bicubic Smoother (enlargement)	雙三次 (較平滑) (放大)
+	Bicubic Sharper (reduction)	雙三次 (較銳利) (縮小)
 	Bilinear	雙線性
 	Black	黑色
 	Black & White	黑白
@@ -814,7 +860,6 @@
 	Blending Options	混合選項
 	Blue	藍色
 	Blue, Red, Yellow	藍色、紅色、黃色
-	Both	兩者
 	Both Axes	兩軸
 	Bottom	下
 	Brightness	亮度
@@ -1133,7 +1178,6 @@
 	Leading	行距
 	Leading (set to the font size × auto-leading when Auto)	行距 (自動時設為字體大小 × 自動行距)
 	Leave as is (don't color manage)	保持原樣 (不進行色彩管理)
-	Left	左
 	Left align text	文字靠左對齊
 	Length:	長度：
 	Level	層級
@@ -1305,6 +1349,7 @@
 	Record ● a sequence of edits, then play ▶ it on any document.	錄製 ● 一連串編輯，然後在任何文件上播放 ▶。
 	Red	紅色
 	Redefine style by current selection	依目前選取項目重新定義樣式
+	Refine	調整
 	Reflected Gradient	反射性漸層
 	Registration Marks	對齊標記
 	Regular	標準
@@ -1343,7 +1388,6 @@
 	Restore All	全部還原
 	Restore Defaults	還原預設值
 	Restrictive (Web)	限制 (網頁)
-	Right	右
 	Right align text	文字靠右對齊
 	Rigid	剛性
 	Rotate:	旋轉：
@@ -1527,6 +1571,8 @@
 	Blur Tool	模糊工具
 	Bold	粗體
 	Brush	筆刷
+	Pencil	鉛筆
+	Block	區塊
 	Brush Pose	筆刷姿勢
 	Brush Tip Shape	筆尖形狀
 	Brush Tool	筆刷工具
@@ -1576,6 +1622,8 @@
 	Efficiency: 100%	效率：100%
 	Ellipse Tool	橢圓工具
 	Elliptical Marquee Tool	橢圓選取畫面工具
+	Single Row Marquee Tool	單列選取畫面工具
+	Single Column Marquee Tool	單欄選取畫面工具
 	Emboss	浮雕
 	Eraser	橡皮擦
 	Eraser Tool	橡皮擦工具
@@ -1598,6 +1646,8 @@
 	Highlights from:	亮部起點：
 	History Brush Tool	步驟記錄筆刷工具
 	Horizontal Type Tool	水平文字工具
+	Horizontal Type Mask Tool	水平文字遮色片工具
+	Vertical Type Mask Tool	垂直文字遮色片工具
 	Image Size:	影像尺寸：
 	Inches	英吋
 	Indexed	索引色
@@ -1633,6 +1683,7 @@
 	Mobile	行動裝置
 	Move Tool	移動工具
 	Could not use the move tool because the layer is locked.	無法使用移動工具，因為圖層已鎖定。
+	Could not complete the Free Transform command because the layer is locked.	無法完成「任意變形」指令，因為圖層已鎖定。
 	Multiply	色彩增值
 	My Brushes	我的筆刷
 	Neutrals	中間色
@@ -1651,6 +1702,10 @@
 	Paints from the document's opening state	從文件開啟時的狀態繪製
 	Path Selection Tool	路徑選取工具
 	Direct Selection Tool	直接選取工具
+	Add Anchor Point Tool	增加錨點工具
+	Delete Anchor Point Tool	刪除錨點工具
+	Click a segment to add an anchor point · {alt}-click an anchor to delete it	按一下線段以增加錨點 · {alt}-按一下錨點：刪除錨點
+	Click an anchor point to delete it · {alt}-click a segment to add one	按一下錨點將其刪除 · {alt}-按一下線段：增加錨點
 	Pattern Overlay	圖樣覆蓋
 	Pen Pressure	筆壓
 	Pen Tilt	筆傾斜
@@ -1670,6 +1725,8 @@
 	Postcard	明信片
 	Poster	海報
 	Pro (Dark)	Pro (深色)
+	Pro (Light)	Pro (淺色)
+	Pro (Light Gray)	Pro (淺灰)
 	Pro (Medium Gray)	Pro (中灰)
 	Protect Texture	保護紋理
 	Purple	紫色
@@ -1741,6 +1798,7 @@
 	Invalid {mode} profile	無效的 {mode} 描述檔
 	Unnamed {mode} profile	未命名的 {mode} 描述檔
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	解析度：{dpi} 像素/英吋
 	Doc: {w} × {h} px	文件：{w} × {h} px
 	Frame {current} / {total}	影格 {current} / {total}
@@ -1777,6 +1835,7 @@
 	Cache tile size	快取拼貼大小
 	Camera Raw Defaults	Camera Raw 預設值
 	Canvas border	畫布邊框
+	Show canvas dots	顯示畫布圓點
 	Canvas color	畫布顏色
 	Canvas custom color	畫布自訂顏色
 	Color picker	檢色器
@@ -1864,6 +1923,8 @@
 	Preserve details	保留細節
 	Print resolution	列印解析度
 	Pro	Pro
+	Pro light	Pro 淺色
+	Pro light gray	Pro 淺灰
 	Pro medium	Pro 中灰
 	Pro photo	ProPhoto
 	Quick export format	快速匯出格式
@@ -1891,6 +1952,7 @@
 	Show only crosshair while painting	繪圖時僅顯示十字線
 	Show slice numbers	顯示切片編號
 	Show tooltips	顯示工具提示
+	Show highlight on rollover	滑鼠懸停時顯示醒目提示
 	Show bounding box when dragging layer	拖曳圖層時顯示邊界框
 	System title bar	系統標題列
 	Show transformation values	顯示變形數值
@@ -1994,6 +2056,7 @@
 	Create Warped Text	建立彎曲文字
 	Rasterize Smart Object	點陣化智慧型物件
 	Rasterize Fill Content	點陣化填滿內容
+	Rasterize Layer Style	點陣化圖層樣式
 	Unlock: picking a preset replaces these settings	解除鎖定：選擇預設集會取代這些設定
 	Lock: keep these settings when picking another preset	鎖定：選擇其他預設集時保留這些設定
 	Diameter:	直徑：
@@ -2017,6 +2080,8 @@
 	Apply the pen's tilt and rotation to the tip shape	將筆的傾斜和旋轉套用至筆尖形狀
 	Mixer Brush	混合器筆刷
 	Mixer Brush Tool	混合器筆刷工具
+	Color Replacement Tool	顏色取代工具
+	Color Replacement	顏色取代
 	Wet	濕度
 	Mix	混合
 	Wetness Jitter	濕度快速變換
@@ -2068,6 +2133,7 @@
 	Cancelled {label}	已取消 {label}
 	Esc to cancel	按 Esc 取消
 	Opening {name}	正在開啟 {name}
+	Saved {name}	已儲存 {name}
 	Saving {name}	正在儲存 {name}
 	A save to {name} is still running; try again when it finishes	仍在儲存到 {name}；請在完成後再試一次
 	{label} is writing the file and can no longer be cancelled	{label} 正在寫入檔案，已無法取消
@@ -2140,6 +2206,9 @@ cameraRaw	Blending	混合
 	Structure:	結構：
 	Content-Aware Move Tool	內容感知移動工具
 	TIFF Options	TIFF 選項
+	Targa Options	Targa 選項
+	24 bits/pixel	24 位元/像素
+	32 bits/pixel	32 位元/像素
 	Including layers will increase file size.	包含圖層會增加檔案大小。
 	Discard Layers and Save a Copy	放棄圖層並儲存拷貝
 	Don't show again	不再顯示
@@ -2201,6 +2270,7 @@ cameraRaw	Blending	混合
 
 # Shared screen eyedropper and text Color Picker (#1128).
 	Color Picker (Text Color)	檢色器（文字顏色）
+	Color Picker ({name})	檢色器（{name}）
 	Color Picker (Fill Color)	檢色器（填滿顏色）
 	Fill color	填滿顏色
 	Color Picker (Stroke Color)	檢色器（筆畫顏色）
@@ -2301,6 +2371,7 @@ fontWeight	Italic	斜體
 	Color to Alpha…	顏色轉為 Alpha…
 	Transparency Threshold	透明度臨界值
 	Opacity Threshold	不透明度臨界值
+	PhotoCraft — Screen Color Picker	PhotoCraft — 螢幕取色器
 
 	Rasterize svg groups deeper than	點陣化超過此深度的 SVG 群組
 	0 turns this threshold off; SVG groups nested deeper than 100 levels are always rasterized.	設為 0 可關閉此臨界值；巢狀超過 100 層的 SVG 群組一律會點陣化。
@@ -2383,3 +2454,70 @@ fontWeight	Italic	斜體
 	Quick Selection found nothing there	快速選取在該處找不到任何內容
 	Object Selection found nothing there — try a tighter rectangle	物件選取在該處找不到任何內容 — 請嘗試更緊密的矩形
 	No subject found — try a rectangle around the object	找不到主體 — 請嘗試在物件周圍繪製矩形
+	Auto Erase	自動擦除
+	Click the first point or press {key} to close · {del} removes a point · Esc cancels	按一下第一個點或按 {key} 封閉 · {del} 刪除一個點 · Esc 取消
+	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	按一下，然後沿著邊緣移動 · 按一下固定一個點 · {alt}-按一下畫直線區段 · 按兩下封閉
+	Follows only edges this close to the pointer ([ and ] change it)	只追蹤離指標這麼近的邊緣（用 [ 和 ] 調整）
+	Higher values follow only edges that contrast sharply with their surroundings	數值越高，只追蹤與周圍對比強烈的邊緣
+	How often fastening points are placed by themselves	自動放置固定點的頻率
+	Scrubby Zoom	細微縮放
+	{mode} Color · {bits} bit	{mode} 色彩 · {bits} 位元
+	Drag a crop box · drag inside to move · edges resize ({ratio} ratio, {centre} centre) · Space moves while drawing · arrows nudge · X swaps orientation · {commit} commits · Esc cancels	拖移繪製裁切框 · 在框內拖移以移動 · 拖移邊緣調整大小（{ratio} 比例，{centre} 中心）· 繪製時按 Space 移動 · 方向鍵微移 · X 切換方向 · {commit} 確認 · Esc 取消
+	Appearance Settings…	外觀設定…
+	Add to favorites	加入最愛
+	Remove from favorites	從最愛移除
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+	Camera Data	相機資料
+cameraData	Make	製造商
+cameraData	Model	型號
+cameraData	Date Taken	拍攝日期
+cameraData	Exposure	曝光時間
+cameraData	F-Stop	光圈值
+cameraData	ISO Speed	ISO 感光度
+cameraData	Focal Length	焦距
+cameraData	Focal Length (35 mm)	焦距（35 公釐等效）
+cameraData	Lens	鏡頭
+# Shared panel docking
+	Activate Panel	啟用面板
+	Change Panel Group	變更面板群組
+	Change Panel Layout	變更面板配置
+	Close Panel	關閉面板
+	Dock Panel	停駐面板
+	Float Panel	浮動面板
+	Move Panel	移動面板
+	Group with	與此面板分組
+	Panel menu	面板選單
+	Resize panel window	調整面板視窗大小
+	Resize panels	調整面板大小
+	Use Classic Mode	使用傳統模式
+	Auto Center Preview	自動置中預視
+	Next Document	下一個文件
+	Previous Document	上一個文件
+	W x H x Resolution	寬 x 高 x 解析度
+	Front Image	前面的影像
+	Frame Tool	影格工具
+	Create a new rectangular frame	建立新的矩形影格
+	Create a new elliptical frame	建立新的橢圓形影格
+	Include in playback	包含在播放中
+	Perspective Crop Tool	透視裁切工具
+	Show Grid	顯示格點
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	拖曳方框或按一下四個角 · 將角拖曳到傾斜形狀的邊緣 · {commit} 確認 · Esc 取消
+	Artboard Tool	工作區域工具
+	Make Portrait	設為直向
+	Make Landscape	設為橫向
+	Add New Artboard	新增工作區域
+	W	寬
+	H	高
+	Freeform Pen Tool	自由筆型工具
+	Curvature Pen Tool	曲線筆工具
+	Curve Fit:	曲線擬合：
+	Drag: draw freehand · Release on the start point: close	拖曳：手繪 · 在起點放開：閉合
+	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	按一下：平滑點 · 按兩下：轉角 · 拖曳點：移動 · 按一下第一點：閉合 · {key} 完成
+	Search settings…	搜尋設定…
+	No matching settings	沒有符合的設定
+	New Crop Preset…	新增裁切預設集…
+	Delete Crop Preset…	刪除裁切預設集…
+	Select the crop presets to delete:	選取要刪除的裁切預設集：
+	Select the crop presets to delete	選取要刪除的裁切預設集
+	Enter a name for the crop preset	輸入裁切預設集的名稱
+	There is no crop size or ratio to save	沒有可儲存的裁切尺寸或比例

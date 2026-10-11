@@ -188,7 +188,13 @@ pub(crate) fn fit_canvas(doc: &mut Document) {
         w = w.max(i64::from(a.rect.x1));
         h = h.max(i64::from(a.rect.y1));
     }
-    doc.size = Size::new(w.clamp(1, 300_000) as u32, h.clamp(1, 300_000) as u32);
+    let size = Size::new(w.clamp(1, 300_000) as u32, h.clamp(1, 300_000) as u32);
+    if size != doc.size {
+        doc.size = size;
+        // Shape pixels are cut at the canvas: a board moved past the old edge rendered its
+        // shapes against it, leaving them missing or clipped (#2389).
+        crate::canvas_geom::refresh(doc, crate::canvas_geom::Refresh::Shapes);
+    }
 }
 
 fn next_artboard_name(doc: &Document) -> String {
@@ -428,6 +434,7 @@ fn artboards_to_files(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "file.export.artboardsToFiles";
     let dir = str_param(p, "dir", cmd).or_else(|_| str_param(p, "output", cmd))?.to_string();
     let format = p.get("format").and_then(Value::as_str).unwrap_or("png").trim_start_matches('.').to_ascii_lowercase();
+    let save = SaveOpts::from_params(p, cmd)?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let prefix = p.get("prefix").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| stem(&d.doc.name));
     let doc = d.doc.clone();
@@ -435,7 +442,7 @@ fn artboards_to_files(s: &mut Session, p: &Value) -> Result<Value> {
     for one in chosen_documents(&doc, p)? {
         let name = if prefix.is_empty() { sanitize(&one.name) } else { format!("{}_{}", sanitize(&prefix), sanitize(&one.name)) };
         let path = join(&dir, &format!("{name}.{format}"));
-        save_doc(&one, &path, SaveOpts::from_params(p))?;
+        save_doc(&one, &path, save)?;
         files.push(path);
     }
     if files.is_empty() {
