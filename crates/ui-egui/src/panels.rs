@@ -811,6 +811,32 @@ fn reveal_focused_control(ui: &egui::Ui) {
 
 // ----------------------------------------------------------------------------- options bar
 
+/// Keep the first custom crop-ratio number while the user is still entering the second.
+/// A draft is tied to its source preset so switching presets cannot restore stale fields.
+fn crop_ratio_edit_values(ratio: &str, draft: Option<(String, f32, f32)>) -> (f32, f32) {
+    if let Some((source, width, height)) = draft
+        && source == ratio
+    {
+        return (width, height);
+    }
+    crate::chrome_ui::crop_ratio(ratio, 0.0, 0.0).map_or((0.0, 0.0), |(w, h)| (w as f32, h as f32))
+}
+
+#[cfg(test)]
+mod crop_ratio_edit_tests {
+    use super::crop_ratio_edit_values;
+
+    #[test]
+    fn incomplete_ratio_entry_survives_until_both_fields_are_set() {
+        assert_eq!(crop_ratio_edit_values("", None), (0.0, 0.0));
+        let draft = Some(("".to_string(), 4.0, 0.0));
+        assert_eq!(crop_ratio_edit_values("", draft.clone()), (4.0, 0.0));
+        assert_eq!(crop_ratio_edit_values("16:9", draft), (16.0, 9.0), "selecting a preset discards an old draft");
+        assert_eq!(crop_ratio_edit_values("4:5", Some(("4:5".into(), 0.0, 5.0))), (0.0, 5.0));
+        assert_eq!(crop_ratio_edit_values("4:5", None), (4.0, 5.0), "clearing draft restores preset values");
+    }
+}
+
 pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::top("options_bar")
@@ -1145,7 +1171,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     }
                     Tool::Crop if t.pro => {
                         let presets = crate::crop_size::dropdown_options();
+                        let draft_id = ui.make_persistent_id("crop-ratio-partial-entry");
                         if widgets::dropdown(ui, "crop-ratio", &mut app.ui.tool_options.crop_ratio, &presets, 140.0) {
+                            // A new preset must not reuse the previous ratio's incomplete entry.
+                            ui.data_mut(|data| data.remove_temp::<(String, f32, f32)>(draft_id));
                             // A size preset or Front Image fills W x H x Resolution (#2443).
                             crate::crop_size::chosen(app);
                         }
@@ -1154,19 +1183,28 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             crate::crop_size::fields(o, ui);
                         } else {
                             // Custom ratio fields (Photoshop shows the preset's numbers here).
-                            let (mut rw, mut rh) = crate::chrome_ui::crop_ratio(&o.crop_ratio, 0.0, 0.0).map_or((0.0, 0.0), |(w, h)| (w as f32, h as f32));
+                            let draft = ui.data(|data| data.get_temp::<(String, f32, f32)>(draft_id));
+                            let (mut rw, mut rh) = crop_ratio_edit_values(&o.crop_ratio, draft);
                             let cw = widgets::value_field(ui, &mut rw, 0.0..=99_999.0, "", 54.0).changed();
                             let swap = icons::button(ui, "arrow-left-right", 22.0, false, tl!("Swaps height and width")).clicked();
                             let ch = widgets::value_field(ui, &mut rh, 0.0..=99_999.0, "", 54.0).changed();
                             if swap {
                                 std::mem::swap(&mut rw, &mut rh);
                             }
-                            if (cw || ch || swap) && rw > 0.0 && rh > 0.0 {
-                                o.crop_ratio = format!("{}:{}", widgets::fmt_num(rw as f64), widgets::fmt_num(rh as f64));
+                            if cw || ch || swap {
+                                // Only a complete pair constrains the crop. Preserve incomplete
+                                // edits between frames instead of resetting their first field to 0.
+                                o.crop_ratio = if rw > 0.0 && rh > 0.0 {
+                                    format!("{}:{}", widgets::fmt_num(rw as f64), widgets::fmt_num(rh as f64))
+                                } else {
+                                    String::new()
+                                };
+                                ui.data_mut(|data| data.insert_temp(draft_id, (o.crop_ratio.clone(), rw, rh)));
                             }
                         }
                         widgets::vline(ui, 22.0);
                         if widgets::secondary_button(ui, tl!("Clear"), 0.0).clicked() {
+                            ui.data_mut(|data| data.remove_temp::<(String, f32, f32)>(draft_id));
                             if o.crop_ratio == crate::crop_size::WHR {
                                 crate::crop_size::clear(o);
                             } else {
