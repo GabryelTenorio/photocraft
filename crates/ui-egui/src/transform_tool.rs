@@ -1018,18 +1018,8 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
         "edit.toggleLastState" | "edit.contentAwareScale" | "edit.puppetWarp" => Some(false),
         // Rotate and Flip turn the box (not while warping, where the mesh is the box).
         _ if box_preset(id).is_some() => Some(t.warp.is_none()),
-        // Editable type can't be distorted (#2630, as #2701 rules for the menus outside a box).
-        "edit.transform.distort" | "edit.transform.perspective" if moves_type(app, t) => Some(false),
         _ => None,
     }
-}
-
-/// Does the box move an editable type layer (not its selection outline, a lone mask or a path)?
-fn moves_type(app: &PhotocraftApp, t: &TransformSession) -> bool {
-    !t.selection
-        && t.target.is_none()
-        && t.path.is_none()
-        && app.session.active().and_then(|st| st.doc.layer(LayerId(t.layer))).is_some_and(|l| matches!(l.content, LayerContent::Text(_)))
 }
 
 /// Edit › Transform's Rotate and Flip presets while a box is open: what they do to the box, as
