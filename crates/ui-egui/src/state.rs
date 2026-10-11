@@ -65,6 +65,11 @@ pub enum Tool {
     Move,
     RectMarquee,
     EllipseMarquee,
+    /// Selects one pixel row across the whole canvas at the clicked y (Photoshop's flyout only:
+    /// no key, not in the ⇧M cycle).
+    SingleRowMarquee,
+    /// Selects one pixel column down the whole canvas at the clicked x.
+    SingleColumnMarquee,
     Lasso,
     PolygonLasso,
     MagneticLasso,
@@ -119,10 +124,12 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 54] = [
+    pub const ALL: [Tool; 56] = [
         Tool::Move,
         Tool::RectMarquee,
         Tool::EllipseMarquee,
+        Tool::SingleRowMarquee,
+        Tool::SingleColumnMarquee,
         Tool::Lasso,
         Tool::PolygonLasso,
         Tool::MagneticLasso,
@@ -181,6 +188,8 @@ impl Tool {
             Tool::Move => "Move Tool",
             Tool::RectMarquee => "Rectangular Marquee Tool",
             Tool::EllipseMarquee => "Elliptical Marquee Tool",
+            Tool::SingleRowMarquee => "Single Row Marquee Tool",
+            Tool::SingleColumnMarquee => "Single Column Marquee Tool",
             Tool::Brush => "Brush Tool",
             Tool::Pencil => "Pencil Tool",
             Tool::MixerBrush => "Mixer Brush Tool",
@@ -282,6 +291,8 @@ impl Tool {
             Tool::CloneStamp | Tool::PatternStamp => 'S',
             Tool::HistoryBrush => 'Y',
             Tool::Blur | Tool::Sharpen | Tool::Smudge => '\0',
+            // In the Marquee flyout, but M cycles only the Rectangular and Elliptical Marquee.
+            Tool::SingleRowMarquee | Tool::SingleColumnMarquee => '\0',
             Tool::Dodge | Tool::Burn | Tool::Sponge => 'O',
             Tool::QuickSelection | Tool::ObjectSelection => 'W',
             Tool::Pen => 'P',
@@ -1188,7 +1199,7 @@ mod tests {
         assert!(!Tool::RedEye.is_brushlike());
         assert_eq!(Tool::from_name("patternStamp"), Some(Tool::PatternStamp));
         assert_eq!(Tool::from_name("Pattern Stamp Tool"), Some(Tool::PatternStamp));
-        assert_eq!(Tool::ALL.len(), 54);
+        assert_eq!(Tool::ALL.len(), 56);
         assert_eq!(Tool::from_name("Remove Tool"), Some(Tool::Remove));
         assert_eq!(Tool::Remove.key(), 'J');
         assert!(Tool::Remove.is_brushlike());
