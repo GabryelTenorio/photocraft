@@ -23,7 +23,10 @@ entry, so an OpenRaster file with another extension still opens as one.
 Saving reports what OpenRaster can't hold, layer by layer: pixel masks are applied to the
 layer's pixels, fill opacity is folded into the pixels, text, shape, fill and smart object layers
 are written as their rendered pixels, and adjustment layers, layer styles, vector masks,
-clipping, alpha channels, metadata and the colour profile are left out. Xor and Paint.NET's
+clipping, alpha channels, metadata and the colour profile are left out. File › Save does not
+overwrite an existing `.ora` when the document has adjustment layers or live layer styles: the
+file stays dirty and Save As is required to a lossless format (#3806). An export to a new
+`.ora` path is a copy and leaves the original identity and dirty state. Xor and Paint.NET's
 Color Burn and Color Dodge variants have no OpenRaster name and are saved as Normal. CMYK, Lab
 and other modes are refused with a message to convert first; Grayscale saves as RGB.
 

@@ -57,6 +57,32 @@ fn layered_documents_save_reopen_and_save_in_place_as_openraster() {
 }
 
 #[test]
+fn openraster_in_place_save_leaves_adjustment_layers_dirty() {
+    let dir = tmp("adjust");
+    let path = dir.join("art.ora");
+    let path_str = path.to_str().unwrap();
+    let mut h = Headless::trusted_local();
+    h.handle("doc.new", json!({"width": 24, "height": 24, "background": "white"})).unwrap();
+    exec(&mut h, "layer.new.layer", json!({}));
+    let saved = h.handle("doc.save", json!({"path": path_str})).unwrap();
+    assert!(saved["warnings"].as_array().is_none_or(Vec::is_empty), "{saved}");
+    exec(&mut h, "layer.newAdjustmentLayer.curves", json!({}));
+    assert!(h.session.active().unwrap().is_dirty());
+    let err = h.handle("doc.save", json!({})).unwrap_err();
+    assert!(err.to_string().contains("OpenRaster") || err.to_string().contains("pass `path`"), "{err}");
+    assert!(h.session.active().unwrap().is_dirty());
+    let before = std::fs::read(&path).unwrap();
+    let copy = dir.join("copy.ora");
+    let copy_str = copy.to_str().unwrap();
+    let out = h.handle("doc.save", json!({"path": copy_str})).unwrap();
+    assert!(out["warnings"].as_array().is_some_and(|w| !w.is_empty()), "{out}");
+    assert!(h.session.active().unwrap().is_dirty(), "a lossy OpenRaster write is a copy");
+    assert_eq!(h.session.active().unwrap().path.as_deref(), Some(path_str));
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn a_corrupt_openraster_file_reports_an_error() {
     let dir = tmp("corrupt");
     let path = dir.join("broken.ora");

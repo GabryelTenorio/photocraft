@@ -1249,13 +1249,11 @@ impl PhotocraftApp {
             return Err("Answer TIFF or Targa Options before starting another save".into());
         }
         if id == "file.save" {
-            let path = self
-                .session
-                .active()
-                .ok_or("no document")?
+            let st = self.session.active().ok_or("no document")?;
+            let path = st
                 .path
                 .clone()
-                .filter(|p| photocraft_engine::file_cmds::saves_in_place(p))
+                .filter(|p| photocraft_engine::file_cmds::saves_in_place_doc(p, &st.doc))
                 .ok_or("Save writes back only to the document's own PSD, PSB or .pcraft file")?;
             return self.save_in_place(path);
         }
@@ -1281,7 +1279,9 @@ impl PhotocraftApp {
         let st = self.session.active().ok_or("no document")?;
         let layered =
             |p: &str| photocraft_engine::file_cmds::saves_in_place(p) || matches!(photocraft_engine::file_cmds::extension(p).as_deref(), Some("tif" | "tiff"));
-        Ok(tiff_layers == Some(false) || (!layered(path) && (plain_raster(&st.doc).is_none() || st.path.as_deref().is_some_and(layered))))
+        Ok(tiff_layers == Some(false)
+            || photocraft_engine::file_cmds::saves_as_copy(path, &st.doc)
+            || (!layered(path) && (plain_raster(&st.doc).is_none() || st.path.as_deref().is_some_and(layered))))
     }
 
     /// Writes the active document to a known path. `tiff_layers` is the TIFF Options answer:
@@ -1289,6 +1289,10 @@ impl PhotocraftApp {
     /// pixel (`None`: 32 with an alpha channel or transparency, else 24).
     fn write_save(&mut self, path: String, tiff_layers: Option<bool>, tga_bits: Option<photocraft_io::TgaBits>) -> Result<Value, String> {
         let copy = self.saves_copy(&path, tiff_layers)?;
+        let st = self.session.active().ok_or("no document")?;
+        if copy && st.path.as_deref() == Some(path.as_str()) && photocraft_engine::file_cmds::saves_as_copy(&path, &st.doc) {
+            return Err("OpenRaster cannot store adjustment layers or layer styles; use Save As to a PSD, PSB or .pcraft file".into());
+        }
         let settings = ExportSettings { tiff_layers: tiff_layers.unwrap_or(ExportSettings::default().tiff_layers), tga_bits, ..self.save_settings() };
         match self.write_document(path.clone(), &settings, copy)? {
             Some((path, warnings)) => Ok(serde_json::json!({"path": path, "warnings": warnings})),
@@ -1387,18 +1391,24 @@ impl PhotocraftApp {
     /// [`Self::save_automation`] writing a Targa with `tga_bits` per pixel (`None`: 32 with an
     /// alpha channel or transparency, else 24). Automation saves never prompt.
     pub fn save_automation_with(&mut self, path: Option<String>, tga_bits: Option<photocraft_io::TgaBits>) -> Result<Value, String> {
-        let target = {
+        let (target, copy) = {
             let state = self.session.active().ok_or("no document")?;
             // As File › Save: without `path` only a layered file is written back (#416).
-            path.or_else(|| state.path.clone().filter(|p| photocraft_engine::file_cmds::saves_in_place(p)))
-                .ok_or("pass `path`: a save without one writes back only to the document's own PSD, PSB or .pcraft file")?
+            let target = path
+                .or_else(|| state.path.clone().filter(|p| photocraft_engine::file_cmds::saves_in_place_doc(p, &state.doc)))
+                .ok_or("pass `path`: a save without one writes back only to the document's own PSD, PSB or .pcraft file")?;
+            let copy = photocraft_engine::file_cmds::saves_as_copy(&target, &state.doc);
+            if copy && state.path.as_deref() == Some(target.as_str()) {
+                return Err("OpenRaster cannot store adjustment layers or layer styles; pass `path` to a PSD, PSB or .pcraft file".into());
+            }
+            (target, copy)
         };
         let reply = |path: &str, warnings: &[String]| json!({"path": path, "warnings": warnings});
         // #2017: the File › Save worker path, so the encode doesn't block the frame loop.
         if self.background_jobs
             && let Some(save) = self.services.automation_save.clone()
         {
-            return match jobs_ui::start_save(self, target.clone(), ExportSettings { tga_bits, ..self.save_settings() }, false, save, true)? {
+            return match jobs_ui::start_save(self, target.clone(), ExportSettings { tga_bits, ..self.save_settings() }, copy, save, true)? {
                 Some((path, warnings)) => Ok(reply(&path, &warnings)),
                 None => {
                     let job = self.jobs.last_started;
@@ -1413,7 +1423,7 @@ impl PhotocraftApp {
         let (bytes, warnings) = export(&state.doc, &target, &settings)?;
         let write = self.services.automation_write.as_mut().ok_or("automation write authority is not configured")?;
         write(&target, &bytes)?;
-        self.saved_automation(doc, revision, &target, &warnings, false);
+        self.saved_automation(doc, revision, &target, &warnings, copy);
         Ok(reply(&target, &warnings))
     }
 

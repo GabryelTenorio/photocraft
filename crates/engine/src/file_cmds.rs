@@ -158,9 +158,33 @@ pub fn saves_in_place(path: &str) -> bool {
 
 /// Whether the lower-case extension `ext` names a layered document format (PSD, PSB, OpenRaster,
 /// .pcraft). A save to one becomes the document's file; any other format is a copy for automation
-/// saves, desktop and headless alike (#1547, #2579).
+/// saves, desktop and headless alike (#1547, #2579). OpenRaster is layered only when the document
+/// has nothing the writer omits (#3806).
 pub fn layered_extension(ext: &str) -> bool {
     matches!(ext, "psd" | "psb" | "pcraft" | "ora")
+}
+
+/// Whether OpenRaster would drop editable structure from `doc` (adjustment layers and live
+/// layer styles). In-place Save must not overwrite an `.ora` in that case (#3806).
+pub fn openraster_omits_editables(doc: &Document) -> bool {
+    doc.walk()
+        .into_iter()
+        .any(|(_, _, l)| matches!(l.content, LayerContent::Adjustment(_)) || (l.effects.enabled && l.effects.items.iter().any(|e| e.enabled())))
+}
+
+/// Whether File › Save may write back to `path` for this document. OpenRaster is refused when
+/// the writer would omit adjustment layers or live effects, so the original stays dirty.
+pub fn saves_in_place_doc(path: &str, doc: &Document) -> bool {
+    if !saves_in_place(path) {
+        return false;
+    }
+    !(extension(path).as_deref() == Some("ora") && openraster_omits_editables(doc))
+}
+
+/// Whether writing `path` for `doc` is a copy that must leave the document's path and dirty
+/// state alone. OpenRaster that would omit editables is always a copy (#3806).
+pub fn saves_as_copy(path: &str, doc: &Document) -> bool {
+    extension(path).as_deref() == Some("ora") && openraster_omits_editables(doc)
 }
 
 /// Whether `path` names a document template (.psdt). A template opens as a new untitled document

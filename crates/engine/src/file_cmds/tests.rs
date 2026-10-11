@@ -744,6 +744,19 @@ fn only_layered_files_save_in_place() {
 }
 
 #[test]
+fn openraster_in_place_save_refuses_adjustment_layers() {
+    let mut s = session(16, 16, 8);
+    assert!(saves_in_place_doc("a.ora", doc(&s)));
+    assert!(!openraster_omits_editables(doc(&s)));
+    s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap();
+    assert!(openraster_omits_editables(doc(&s)));
+    assert!(!saves_in_place_doc("a.ora", doc(&s)));
+    assert!(saves_in_place_doc("a.psd", doc(&s)));
+    assert!(saves_as_copy("out.ora", doc(&s)));
+    assert!(!saves_as_copy("out.psd", doc(&s)));
+}
+
+#[test]
 fn templates_open_untitled_without_their_path() {
     assert!(is_template("dir/card.PSDT") && !is_template("card.psd") && !is_template("psdt"));
     let dir = tmp("template");

@@ -149,7 +149,7 @@ impl Headless {
             (None, Some(p)) => {
                 let own = file_cmds::extension(p);
                 let written = format.map(|f| f.trim_start_matches('.').to_ascii_lowercase()).or_else(|| own.clone());
-                if !file_cmds::saves_in_place(p) || written != own {
+                if !file_cmds::saves_in_place_doc(p, &doc) || written != own {
                     return Err(AutomationError::BadRequest(format!(
                         "pass `path`: without one, only a PSD, PSB or .pcraft file is written back, in its own format, so `{p}` was left unchanged"
                     )));
@@ -161,6 +161,11 @@ impl Headless {
             }
         };
         let target_text = target.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
+        if stored_path.as_deref() == Some(target_text) && file_cmds::saves_as_copy(target_text, &doc) {
+            return Err(AutomationError::BadRequest(
+                "OpenRaster cannot store adjustment layers or layer styles; pass `path` to a PSD, PSB or .pcraft file".into(),
+            ));
+        }
         let warnings = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: write authority is absent".into())),
             Filesystem::TrustedLocal => {
@@ -179,7 +184,7 @@ impl Headless {
         // alone (#1547).
         let ext =
             format.map(|f| f.trim_start_matches('.').to_ascii_lowercase()).or_else(|| target.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()));
-        if ext.as_deref().is_some_and(file_cmds::layered_extension) {
+        if ext.as_deref().is_some_and(|e| file_cmds::layered_extension(e) && !file_cmds::saves_as_copy(target_text, &doc)) {
             // Saving by index must not retarget the next automation command.
             let previously_active = self.session.active_index();
             self.session.set_active(i);
