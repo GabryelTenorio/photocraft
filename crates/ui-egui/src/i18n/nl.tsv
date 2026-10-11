@@ -3726,6 +3726,12 @@ cameraData	Lens	Lens
 	No matching settings	Geen overeenkomende instellingen
 	PhotoCraft — Screen Color Picker	PhotoCraft — Schermkleurkiezer
 	Loading fonts…	Lettertypen laden…
+	Simulate Pressure	Druk simuleren
+	Stroke Path…	Pad omlijnen…
+	Background Eraser	Achtergrondgum
+	Healing Brush	Herstelpenseel
+	Spot Healing Brush	Snel herstelpenseel
+	Smudge	Uitsmeren
 # Select and Mask view modes (#1754)
 	Onion Skin	Uienschil
 	Marching Ants	Mierenmars
@@ -3756,6 +3762,11 @@ cameraData	Lens	Lens
 	Emulsion Down	Emulsie omlaag
 	Functions	Functies
 	Print Resolution:	Afdrukresolutie:
+	Use Previous Layer to Create Clipping Mask	Vorige laag gebruiken om uitknipmasker te maken
+	Fill with {mode}-neutral color (white)	Vullen met neutrale kleur voor {mode} (wit)
+	Fill with {mode}-neutral color (black)	Vullen met neutrale kleur voor {mode} (zwart)
+	Fill with {mode}-neutral color (50% gray)	Vullen met neutrale kleur voor {mode} (50% grijs)
+	(No neutral color exists for {mode} mode.)	(Voor de modus {mode} bestaat geen neutrale kleur.)
 	Channel Color	Kanaalkleur
 	Color Indicates:	Kleur geeft aan:
 	Solidity:	Soliditeit:

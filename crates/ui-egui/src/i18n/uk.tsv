@@ -3657,6 +3657,12 @@ cameraData	Lens	Об'єктив
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
 	Loading fonts…	Завантаження шрифтів…
+	Simulate Pressure	Імітувати натиск
+	Stroke Path…	Обвести контур…
+	Background Eraser	Фонова гумка
+	Healing Brush	Відновлювальний пензель
+	Spot Healing Brush	Точковий відновлювальний пензель
+	Smudge	Розмазування
 # Select and Mask view modes (#1754)
 	Onion Skin	Калька
 	Marching Ants	Мурашки
@@ -3694,6 +3700,11 @@ cameraData	Lens	Об'єктив
 	Emulsion Down	Емульсією донизу
 	Functions	Функції
 	Print Resolution:	Роздільна здатність друку:
+	Use Previous Layer to Create Clipping Mask	Використати попередній шар для створення відсічної маски
+	Fill with {mode}-neutral color (white)	Залити нейтральним кольором режиму «{mode}» (білий)
+	Fill with {mode}-neutral color (black)	Залити нейтральним кольором режиму «{mode}» (чорний)
+	Fill with {mode}-neutral color (50% gray)	Залити нейтральним кольором режиму «{mode}» (50% сірого)
+	(No neutral color exists for {mode} mode.)	(Для режиму «{mode}» немає нейтрального кольору.)
 	Channel Color	Колір каналу
 	Color Indicates:	Кольором позначено:
 	Solidity:	Щільність:

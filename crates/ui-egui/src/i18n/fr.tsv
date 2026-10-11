@@ -2985,6 +2985,14 @@ cameraData	Lens	Objectif
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
 	Loading fonts…	Chargement des polices…
+	Tool	Outil
+	Simulate Pressure	Simuler la pression
+	Stroke Path…	Contourner le tracé…
+	Background Eraser	Gomme d'arrière-plan
+	Healing Brush	Pinceau correcteur
+	Spot Healing Brush	Correcteur localisé
+	Smudge	Doigt
+	Sponge	Éponge
 # Select and Mask view modes (#1754)
 	Onion Skin	Pelure d'oignon
 	Marching Ants	Fourmis en marche
@@ -3010,6 +3018,11 @@ cameraData	Lens	Objectif
 	Emulsion Down	Émulsion verso
 	Functions	Fonctions
 	Print Resolution:	Résolution d’impression :
+	Use Previous Layer to Create Clipping Mask	Utiliser le calque précédent pour créer un masque de découpe
+	Fill with {mode}-neutral color (white)	Remplir avec la couleur neutre de {mode} (blanc)
+	Fill with {mode}-neutral color (black)	Remplir avec la couleur neutre de {mode} (noir)
+	Fill with {mode}-neutral color (50% gray)	Remplir avec la couleur neutre de {mode} (gris 50 %)
+	(No neutral color exists for {mode} mode.)	(Il n’existe aucune couleur neutre pour le mode {mode}.)
 	Channel Color	Couleur de la couche
 	Color Indicates:	La couleur indique :
 	Solidity:	Solidité :

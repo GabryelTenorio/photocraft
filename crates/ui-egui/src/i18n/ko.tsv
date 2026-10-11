@@ -3150,6 +3150,16 @@ cameraData	Lens	렌즈
 	Search settings…	설정 검색…
 	No matching settings	일치하는 설정 없음
 	Loading fonts…	글꼴 불러오는 중…
+	Simulate Pressure	압력 시뮬레이션
+	Stroke Path…	패스 획…
+	Background Eraser	배경 지우개
+	Clone Stamp	복제 도장
+	Healing Brush	복구 브러시
+	Spot Healing Brush	스팟 복구 브러시
+	History Brush	작업 내역 브러시
+	Smudge	손가락
+	Dodge	닷지
+	Burn	번
 # Select and Mask view modes (#1754)
 	Onion Skin	어니언 스킨
 	Marching Ants	점선 윤곽
@@ -3175,6 +3185,11 @@ cameraData	Lens	렌즈
 	Emulsion Down	감광면 아래로
 	Functions	기능
 	Print Resolution:	인쇄 해상도:
+	Use Previous Layer to Create Clipping Mask	이전 레이어를 사용하여 클리핑 마스크 만들기
+	Fill with {mode}-neutral color (white)	{mode} 중립 색상으로 채우기(흰색)
+	Fill with {mode}-neutral color (black)	{mode} 중립 색상으로 채우기(검정)
+	Fill with {mode}-neutral color (50% gray)	{mode} 중립 색상으로 채우기(50% 회색)
+	(No neutral color exists for {mode} mode.)	({mode} 모드에는 중립 색상이 없습니다.)
 	Channel Color	채널 색상
 	Color Indicates:	색상 표시 내용:
 	Solidity:	견고도:
