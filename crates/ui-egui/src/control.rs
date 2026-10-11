@@ -41,6 +41,19 @@ use crate::state::{DialogKind, Tool};
 
 pub type ControlResponse = Value;
 
+/// The control server's per-request reply deadline.
+pub const REPLY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The error both timeout sites return when a request's [`REPLY_DEADLINE`] passes: the
+/// transport thread waiting for a reply, and the UI thread rejecting a request it is only
+/// now draining. Built from the same constant, so the text cannot drift from the deadline.
+pub fn timeout_error() -> String {
+    format!(
+        "timeout: no reply in {}s — the command may still be running, or the app was not drawing frames (display asleep, window fully occluded, or a long operation blocked the frame loop)",
+        REPLY_DEADLINE.as_secs()
+    )
+}
+
 pub struct ControlRequest {
     pub method: String,
     pub params: Value,
@@ -488,6 +501,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     None => None,
                 };
 
+                let bridge_pro = matches!(theme.unwrap_or(app.ui.theme), crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium);
+                let legacy_update = crate::panel_docking::prepare_legacy_update(app, p, panels.as_ref(), dock_tabs.as_ref(), dock.as_ref(), bridge_pro)?;
+
                 // Apply (nothing below can fail).
                 if let Some(stroke) = shape_stroke {
                     if let Some(stroke) = stroke {
@@ -557,6 +573,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 // Dock group order, heights and collapsed groups (see `dock::DockLayout`).
                 if let Some(v) = dock {
                     app.ui.dock = v;
+                }
+                if let Some(update) = legacy_update {
+                    crate::panel_docking::commit_legacy_update(app, update, p);
                 }
                 if let Some(v) = color_panel {
                     app.ui.color_panel = v;
@@ -1015,6 +1034,11 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
             })
         }),
         "panels": app.ui.panels,
+        "dockTabs": app.ui.dock_tabs,
+        "dock": app.ui.dock,
+        "docking": app.ui.docking,
+        "dockingHidden": app.ui.docking_hidden,
+        "dockingCollapsed": app.ui.docking_collapsed,
         "view": app.ui.view,
         "views": app.ui.views,
         "dialogs": dialogs,
@@ -1254,11 +1278,23 @@ mod tests {
         retry.deadline = Some(Instant::now() + Duration::from_secs(60));
         tx.send(retry).unwrap();
         app.drain_control(&egui::Context::default());
-        assert_eq!(expired_reply.try_recv().unwrap(), json!({"ok": false, "error": "timeout"}));
+        assert_eq!(expired_reply.try_recv().unwrap(), json!({"ok": false, "error": super::timeout_error()}));
         assert_eq!(retry_reply.try_recv().unwrap()["ok"], true);
         let after = app.session.active().unwrap();
         assert_eq!(after.doc.layers.len(), layers + 1, "only the live retry adds a layer");
         assert_eq!(after.history.past_len(), steps + 1, "the expired edit adds no undo step");
+    }
+
+    #[test]
+    fn timeout_errors_name_the_likely_causes() {
+        // #2489: the reply must tell "wait" from "check the machine", and its number
+        // must come from the deadline it reports.
+        let error = super::timeout_error();
+        assert!(error.starts_with("timeout"), "machines match on the prefix");
+        assert!(error.contains(&format!("{}s", super::REPLY_DEADLINE.as_secs())), "the text matches the deadline: {error}");
+        assert!(error.contains("may still be running"), "the wait-it-out cause");
+        assert!(error.contains("display asleep"), "the check-the-display cause");
+        assert!(error.contains("frame"), "the frame-loop cause");
     }
 
     #[test]

@@ -269,6 +269,8 @@
 	Layer via Cut	Ebene durch Ausschneiden
 	Layer From Background…	Ebene aus Hintergrund…
 	Layer from Background…	Ebene aus Hintergrund…
+	Background from Layer	Hintergrund aus Ebene
+	Background From Layer	Hintergrund aus Ebene
 	New Shape Layer	Neue Formebene
 	New Type Layer	Neue Textebene
 	New Fill Layer	Neue Füllebene
@@ -682,6 +684,10 @@
 	Classic Theme	Klassisches Design
 	Solarized dark	Solarized dunkel
 	Solarized Dark Theme	Solarized-Design (Dunkel)
+	Breeze dark	Breeze dunkel
+	Breeze Dark Theme	Breeze-Design (Dunkel)
+	Breeze light	Breeze hell
+	Breeze Light Theme	Breeze-Design (Hell)
 	Next Theme	Nächstes Design
 	Actions	Aktionen
 	Brush Settings	Pinseleinstellungen
@@ -1574,6 +1580,8 @@
 	Efficiency: 100%	Effizienz: 100 %
 	Ellipse Tool	Ellipsen-Werkzeug
 	Elliptical Marquee Tool	Ellipsenauswahl-Werkzeug
+	Single Row Marquee Tool	Auswahlwerkzeug (einzelne Zeile)
+	Single Column Marquee Tool	Auswahlwerkzeug (einzelne Spalte)
 	Emboss	Relief
 	Eraser	Radiergummi
 	Eraser Tool	Radiergummi-Werkzeug
@@ -1740,6 +1748,7 @@
 	Invalid {mode} profile	Ungültiges {mode}-Profil
 	Unnamed {mode} profile	Unbenanntes {mode}-Profil
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Auflösung: {dpi} Pixel/Zoll
 	Doc: {w} × {h} px	Dok: {w} × {h} px
 	Frame {current} / {total}	Frame {current} / {total}
@@ -1776,6 +1785,7 @@
 	Cache tile size	Cache-Kachelgröße
 	Camera Raw Defaults	Camera-Raw-Standardeinstellungen
 	Canvas border	Zeichenflächenrand
+	Show canvas dots	Punkte der Zeichenfläche anzeigen
 	Canvas color	Zeichenflächenfarbe
 	Canvas custom color	Benutzerdefinierte Zeichenflächenfarbe
 	Color picker	Farbwähler
@@ -1890,6 +1900,7 @@
 	Show only crosshair while painting	Beim Malen nur Fadenkreuz zeigen
 	Show slice numbers	Slice-Nummern anzeigen
 	Show tooltips	Tooltips anzeigen
+	Show highlight on rollover	Hervorhebung bei Rollover anzeigen
 	Show bounding box when dragging layer	Begrenzungsrahmen beim Ziehen einer Ebene anzeigen
 	System title bar	System-Titelleiste
 	Show transformation values	Transformationswerte anzeigen
@@ -1993,6 +2004,7 @@
 	Create Warped Text	Verkrümmten Text erstellen
 	Rasterize Smart Object	Smart-Objekt rasterisieren
 	Rasterize Fill Content	Füllinhalt rasterisieren
+	Rasterize Layer Style	Ebenenstil rasterisieren
 	Unlock: picking a preset replaces these settings	Entsperren: das Wählen einer Vorgabe ersetzt diese Einstellungen
 	Lock: keep these settings when picking another preset	Sperren: diese Einstellungen beim Wählen einer anderen Vorgabe behalten
 	Diameter:	Durchmesser:
@@ -2460,9 +2472,34 @@ fontWeight	Italic	Kursiv
 	Quick Selection found nothing there	Die Schnellauswahl hat dort nichts gefunden
 	Object Selection found nothing there — try a tighter rectangle	Die Objektauswahl hat dort nichts gefunden — versuchen Sie ein engeres Rechteck
 	No subject found — try a rectangle around the object	Kein Motiv gefunden — versuchen Sie ein Rechteck um das Objekt
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+	Camera Data	Kameradaten
+cameraData	Make	Hersteller
+cameraData	Model	Modell
+cameraData	Date Taken	Aufnahmedatum
+cameraData	Exposure	Belichtungszeit
+cameraData	F-Stop	Blende
+cameraData	ISO Speed	ISO-Empfindlichkeit
+cameraData	Focal Length	Brennweite
+cameraData	Focal Length (35 mm)	Brennweite (35 mm)
+cameraData	Lens	Objektiv
+# Shared panel docking
+	Activate Panel	Bedienfeld aktivieren
+	Change Panel Group	Bedienfeldgruppe ändern
+	Change Panel Layout	Bedienfeldlayout ändern
+	Close Panel	Bedienfeld schließen
+	Dock Panel	Bedienfeld andocken
+	Float Panel	Schwebendes Bedienfeld
+	Move Panel	Bedienfeld verschieben
+	Group with	Gruppieren mit
+	Panel menu	Bedienfeldmenü
+	Resize panel window	Bedienfeldfenstergröße ändern
+	Resize panels	Bedienfeldgröße ändern
 	Use Classic Mode	Classic-Modus verwenden
 	Auto Center Preview	Automatische zentrierte Vorschau
 	Next Document	Nächstes Dokument
 	Previous Document	Vorheriges Dokument
 	W x H x Resolution	B x H x Auflösung
 	Front Image	Vorderes Bild
+	Search settings…	Einstellungen durchsuchen…
+	No matching settings	Keine passenden Einstellungen

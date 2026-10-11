@@ -257,6 +257,7 @@
 	Layer via Cut	Layer via Potong
 	Layer From Background…	Layer dari Background…
 	Layer from Background…	Layer dari Background…
+	Background From Layer	Background dari Layer
 	New Shape Layer	Layer Bentuk Baru
 	New Type Layer	Layer Teks Baru
 	New Fill Layer	Layer Isian Baru
@@ -673,6 +674,10 @@
 	Classic Theme	Tema Klasik
 	Solarized dark	Solarized gelap
 	Solarized Dark Theme	Tema Solarized Gelap
+	Breeze dark	Breeze gelap
+	Breeze Dark Theme	Tema Breeze Gelap
+	Breeze light	Breeze terang
+	Breeze Light Theme	Tema Breeze Terang
 	Next Theme	Tema Berikutnya
 	Actions	Action
 	Brush Settings	Pengaturan Kuas
@@ -1555,6 +1560,8 @@
 	Efficiency: 100%	Efisiensi: 100%
 	Ellipse Tool	Alat Ellipse
 	Elliptical Marquee Tool	Alat Elliptical Marquee
+	Single Row Marquee Tool	Alat Single Row Marquee
+	Single Column Marquee Tool	Alat Single Column Marquee
 	Emboss	Emboss
 	Eraser	Penghapus
 	Eraser Tool	Alat Penghapus
@@ -1719,6 +1726,7 @@
 	Scratch: {size}	Scratch: {size}
 	Untagged {mode}	{mode} Tanpa Tag
 	{w} px x {h} px ({ppi} ppi)	{w} px x {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} x {h} {unit} ({ppi} ppi)
 	Resolution: {dpi} pixels/inch	Resolusi: {dpi} piksel/inci
 	Doc: {w} × {h} px	Dok: {w} × {h} px
 	Frame {current} / {total}	Frame {current} / {total}
@@ -1755,6 +1763,7 @@
 	Cache tile size	Ukuran tile cache
 	Camera Raw Defaults	Default Camera Raw
 	Canvas border	Border kanvas
+	Show canvas dots	Tampilkan titik kanvas
 	Canvas color	Warna kanvas
 	Canvas custom color	Warna kustom kanvas
 	Color picker	Pemilih warna
@@ -1869,6 +1878,7 @@
 	Show only crosshair while painting	Tampilkan crosshair saja saat melukis
 	Show slice numbers	Tampilkan nomor slice
 	Show tooltips	Tampilkan tooltip
+	Show highlight on rollover	Tampilkan sorotan saat kursor melintas
 	Show transformation values	Tampilkan nilai transformasi
 	Slice color	Warna slice
 	Smart guide color	Warna smart guide
@@ -1970,6 +1980,7 @@
 	Create Warped Text	Buat Teks Warp
 	Rasterize Smart Object	Rasterisasi Smart Object
 	Rasterize Fill Content	Rasterisasi Isi Konten
+	Rasterize Layer Style	Rasterisasi Gaya Layer
 	Unlock: picking a preset replaces these settings	Buka kunci: memilih preset akan mengganti pengaturan ini
 	Lock: keep these settings when picking another preset	Kunci: pertahankan pengaturan ini saat memilih preset lain
 	Diameter:	Diameter:
@@ -2827,9 +2838,33 @@ fontWeight	Italic	Miring
 	Quick Selection found nothing there	Seleksi Cepat tidak menemukan apa pun di sana
 	Object Selection found nothing there — try a tighter rectangle	Seleksi Objek tidak menemukan apa pun di sana — coba persegi panjang yang lebih rapat
 	No subject found — try a rectangle around the object	Subjek tidak ditemukan — coba persegi panjang di sekitar objek
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+cameraData	Make	Merek
+cameraData	Model	Model
+cameraData	Date Taken	Tanggal Diambil
+cameraData	Exposure	Waktu Eksposur
+cameraData	F-Stop	Bukaan
+cameraData	ISO Speed	Sensitivitas ISO
+cameraData	Focal Length	Panjang Fokal
+cameraData	Focal Length (35 mm)	Panjang Fokal (35 mm)
+cameraData	Lens	Lensa
+# Shared panel docking
+	Activate Panel	Aktifkan Panel
+	Change Panel Group	Ubah Grup Panel
+	Change Panel Layout	Ubah Tata Letak Panel
+	Close Panel	Tutup Panel
+	Dock Panel	Tambatkan Panel
+	Float Panel	Panel Mengambang
+	Move Panel	Pindahkan Panel
+	Group with	Kelompokkan dengan
+	Panel menu	Menu panel
+	Resize panel window	Ubah ukuran jendela panel
+	Resize panels	Ubah ukuran panel
 	Use Classic Mode	Gunakan Mode Klasik
 	Auto Center Preview	Pusatkan Pratinjau Otomatis
 	Next Document	Dokumen Berikutnya
 	Previous Document	Dokumen Sebelumnya
 	W x H x Resolution	L x T x Resolusi
 	Front Image	Gambar Depan
+	Search settings…	Cari pengaturan…
+	No matching settings	Tidak ada pengaturan yang cocok

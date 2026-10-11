@@ -934,6 +934,7 @@ pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
     }
 
     let original_active = st.active_layer;
+    let background = crate::background_cmds::background_id(doc);
     let (count, copies) = s.edit(if copy { "Duplicate Layer" } else { "Reorder Layers" }, |doc, active| {
         let mut moved = Vec::with_capacity(moved_ids.len());
         for &id in &moved_ids {
@@ -956,6 +957,7 @@ pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
             siblings.splice(at..at, moved);
         }
         check_group_depth(doc, "Reorder Layer")?;
+        crate::background_cmds::keep_background_at_bottom(background, doc)?;
         *active = if copy {
             copies.last().copied()
         } else if batch.is_some() {
@@ -1056,6 +1058,7 @@ fn rename_layer(s: &mut Session, p: &Value) -> Result<Value> {
 fn reverse(s: &mut Session) -> Result<Value> {
     let sel = selected(s);
     s.edit("Reverse", |doc, _| {
+        let background = crate::background_cmds::background_id(doc);
         let ids = top_level(doc, &sel);
         if ids.len() < 2 {
             return Err(EngineError::Other("select two or more layers to reverse".into()));
@@ -1067,7 +1070,7 @@ fn reverse(s: &mut Session) -> Result<Value> {
         for (path, l) in paths.iter().zip(layers.into_iter().rev()) {
             *doc.layer_at_mut(path).ok_or_else(|| EngineError::Other("layer tree changed".into()))? = l;
         }
-        Ok(())
+        crate::background_cmds::keep_background_at_bottom(background, doc)
     })?;
     Ok(Value::Null)
 }
@@ -1189,11 +1192,12 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
 
 /// Duplicate Layer with several layers selected: each copy goes above its original and the
 /// copies become the selection. Artboard copies go beside their boards unless `in_place`
-/// ([`crate::artboard_cmds::place_copy`]).
-pub fn duplicate_selected(s: &mut Session, in_place: bool) -> Result<Value> {
+/// ([`crate::artboard_cmds::place_copy`]). `label` names the history step (Layer via Copy reuses
+/// this path, #2777).
+pub fn duplicate_selected(s: &mut Session, in_place: bool, label: &str) -> Result<Value> {
     let sel = selected(s);
     let old_active = s.active().and_then(|d| d.active_layer);
-    let (copies, active) = s.edit("Duplicate Layers", |doc, active| {
+    let (copies, active) = s.edit(label, |doc, active| {
         let mut copies = Vec::new();
         let mut new_active = None;
         for id in top_level(doc, &sel) {
@@ -1215,7 +1219,7 @@ pub fn duplicate_selected(s: &mut Session, in_place: bool) -> Result<Value> {
     })?;
     let out = copies.iter().map(|l| l.0).collect::<Vec<_>>();
     reselect(s, copies, active);
-    Ok(json!({"layers": out}))
+    Ok(json!({"layers": out, "layer": active.map(|l| l.0)}))
 }
 
 /// Show/hide every selected layer in one step.

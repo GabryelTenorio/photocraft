@@ -152,6 +152,8 @@
 	Rename Layer	Переименовать слой
 	Layer From Background…	Слой из фона…
 	Layer from Background…	Слой из фона…
+	Background from Layer	Фон из слоя
+	Background From Layer	Фон из слоя
 	Group Layers	Сгруппировать слои
 	Group…	Группировать…
 	Ungroup Layers	Разгруппировать слои
@@ -647,6 +649,7 @@
 	Resolution:	Разрешение:
 	Resolution: {dpi} pixels/inch	Разрешение: {dpi} пикс./дюйм
 	{w} px x {h} px ({ppi} ppi)	{w} px × {h} px ({ppi} ppi)
+	{w} {unit} x {h} {unit} ({ppi} ppi)	{w} {unit} × {h} {unit} ({ppi} ppi)
 	Pixels:	Пикселы:
 	Pixel Length:	Длина в пикселах:
 	Logical Length:	Логическая длина:
@@ -1392,6 +1395,10 @@
 	Classic Theme	Классическая тема
 	Solarized dark	Solarized тёмная
 	Solarized Dark Theme	Тёмная тема Solarized
+	Breeze dark	Breeze тёмная
+	Breeze Dark Theme	Тёмная тема Breeze
+	Breeze light	Breeze светлая
+	Breeze Light Theme	Светлая тема Breeze
 	Studio Theme	Тема Studio
 	Studio Light Theme	Светлая тема Studio
 	Adwaita Light Theme	Светлая тема Adwaita
@@ -1521,6 +1528,8 @@
 	Could not complete the Free Transform command because the layer is locked.	Не удалось выполнить команду «Свободное трансформирование», потому что слой заблокирован.
 	Rectangular Marquee Tool	Прямоугольная область
 	Elliptical Marquee Tool	Овальная область
+	Single Row Marquee Tool	Область (горизонтальная строка)
+	Single Column Marquee Tool	Область (вертикальная строка)
 	Brush Tool	Кисть
 	Pencil Tool	Карандаш
 	Eraser Tool	Ластик
@@ -2196,6 +2205,7 @@
 	Cache tile size	Размер блока кэша
 	Camera Raw Defaults	Значения Camera Raw по умолчанию
 	Canvas border	Рамка холста
+	Show canvas dots	Показывать точки холста
 	Canvas color	Цвет холста
 	Canvas custom color	Свой цвет холста
 	Classic	Классическая
@@ -2319,6 +2329,7 @@
 	Show only crosshair while painting	Только перекрестье при рисовании
 	Show slice numbers	Показывать номера фрагментов
 	Show tooltips	Показывать подсказки
+	Show highlight on rollover	Показывать подсветку при наведении
 	Show bounding box when dragging layer	Показывать рамку при перетаскивании слоя
 	System title bar	Системная строка заголовка
 	Show transformation values	Показывать значения трансформации
@@ -2705,6 +2716,28 @@ fontWeight	Italic	Курсив
 	Missing delete command	Отсутствует команда удаления
 	Invalid delete command	Недопустимая команда удаления
 	Layer deleted, but confirmation preference could not be saved: {error}	Слой удалён, но не удалось сохранить настройку подтверждения: {error}
+# File Info ▸ Camera Data (read-only EXIF fields; "Make" is the camera maker, not the verb).
+cameraData	Make	Производитель
+cameraData	Model	Модель
+cameraData	Date Taken	Дата съёмки
+cameraData	Exposure	Выдержка
+cameraData	F-Stop	Диафрагма
+cameraData	ISO Speed	Светочувствительность ISO
+cameraData	Focal Length	Фокусное расстояние
+cameraData	Focal Length (35 mm)	Фокусное расстояние (35 мм)
+cameraData	Lens	Объектив
+# Shared panel docking
+	Activate Panel	Активировать панель
+	Change Panel Group	Изменить группу панелей
+	Change Panel Layout	Изменить расположение панелей
+	Close Panel	Закрыть панель
+	Dock Panel	Закрепить панель
+	Float Panel	Сделать панель плавающей
+	Move Panel	Переместить панель
+	Group with	Сгруппировать с
+	Panel menu	Меню панели
+	Resize panel window	Изменить размер окна панели
+	Resize panels	Изменить размер панелей
 	Use Classic Mode	Использовать классический режим
 	Auto Center Preview	Автоматически центрировать просмотр
 	Next Document	Следующий документ
@@ -2712,3 +2745,6 @@ fontWeight	Italic	Курсив
 	W x H x Resolution	Ш x В x Разрешение
 	Front Image	Изображение переднего плана
 	Swaps height and width	Меняет местами высоту и ширину
+	Rasterize Layer Style	Растрировать стиль слоя
+	Search settings…	Поиск настроек…
+	No matching settings	Нет подходящих настроек
