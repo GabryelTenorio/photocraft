@@ -45,6 +45,7 @@ pub mod linked;
 mod multichannel_map;
 mod ora;
 pub mod pattern_map;
+pub mod pdf;
 mod pdn;
 pub mod pixels;
 mod psd_export;
@@ -307,6 +308,9 @@ pub fn export(doc: &Document, name_or_ext: &str, opts: &ExportOptions) -> Result
     }
     if ext == "ora" {
         return ora::export(doc);
+    }
+    if ext == "pdf" {
+        return pdf::export(doc);
     }
     if ext == photocraft_format::EXTENSION {
         let previews = photocraft_format::SaveOptions {
