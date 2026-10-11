@@ -226,7 +226,7 @@ pub fn parse(data: &[u8]) -> Result<AseFile> {
 }
 
 fn put_name(out: &mut Vec<u8>, name: &str) {
-    let units: Vec<u16> = name.encode_utf16().take(MAX_NAME_UNITS).collect();
+    let units = crate::io::utf16_units(name, MAX_NAME_UNITS);
     out.put_u16(units.len() as u16 + 1);
     for u in units {
         out.put_u16(u);
