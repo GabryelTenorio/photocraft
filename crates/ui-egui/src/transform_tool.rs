@@ -1632,7 +1632,7 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
         let p = xf.to_doc(at);
         let tol = HANDLE_PX / f64::from(xf.zoom.max(0.01));
         if t.mode != TransformMode::Distort && (rotating || near_rotate_corner(t, p, tol)) {
-            draw_rotate_feedback(painter, at, rotating.then(|| rotation_degrees(t.quad)), xf.rect);
+            draw_rotate_feedback(painter, at, rotating.then(|| rotation_degrees(t.quad)));
         }
     }
 }
@@ -1692,7 +1692,7 @@ fn clip_to_canvas(mut mesh: egui::Mesh, size: [f32; 2], to_screen: impl Fn(Pos2)
 }
 
 /// The transform's rotation handle is an arc, not the generic Alias pointer.
-fn draw_rotate_feedback(painter: &egui::Painter, at: Pos2, angle: Option<f64>, bounds: egui::Rect) {
+fn draw_rotate_feedback(painter: &egui::Painter, at: Pos2, angle: Option<f64>) {
     let center = at + vec2(14.0, 11.0);
     // Keep the visible cursor anchored to the actual pointer hotspot.
     painter.circle_filled(at, 2.0, Color32::BLACK);
@@ -1708,9 +1708,10 @@ fn draw_rotate_feedback(painter: &egui::Painter, at: Pos2, angle: Option<f64>, b
     let tip = center + vec2(4.1, -5.7);
     painter.line_segment([tip, tip + vec2(-5.0, -1.0)], Stroke::new(2.0, Color32::WHITE));
     painter.line_segment([tip, tip + vec2(-1.0, 5.0)], Stroke::new(2.0, Color32::WHITE));
+    // The angle goes in the same boxed readout as the marquee and crop ones: bare white text
+    // vanished over the light checkerboard of a transparent layer (#3231).
     if let Some(deg) = angle {
-        let pos = egui::pos2((at.x + 27.0).min(bounds.right() - 48.0).max(bounds.left()), (at.y - 14.0).max(bounds.top() + 17.0).min(bounds.bottom()));
-        painter.text(pos, egui::Align2::LEFT_BOTTOM, format!("{deg:.1}°"), egui::FontId::proportional(12.0), Color32::WHITE);
+        crate::canvas::draw_readout(painter.ctx(), "transform-angle-readout", at, ["Angle:"], [format!("{deg:.1}°")]);
     }
 }
 
@@ -2197,6 +2198,19 @@ fn rotate_about_pivot(app: &mut PhotocraftApp, da: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #3231: the rotation angle is a boxed readout, not bare white text that disappears over the
+    /// light squares of the transparency checkerboard.
+    #[test]
+    fn rotate_angle_is_a_boxed_readout() {
+        let ctx = egui::Context::default();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let painter = ui.ctx().layer_painter(egui::LayerId::background());
+            draw_rotate_feedback(&painter, pos2(200.0, 200.0), Some(16.1));
+        });
+        out.textures_delta.clear();
+        assert!(ctx.memory(|m| m.area_rect(egui::Id::new("transform-angle-readout"))).is_some(), "the angle shows in a readout box");
+    }
 
     fn session() -> TransformSession {
         TransformSession {
