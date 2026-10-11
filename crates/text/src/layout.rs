@@ -311,9 +311,14 @@ pub fn char_index(text: &str, byte: usize) -> usize {
     text[..byte].chars().count()
 }
 
-/// Line containing a byte offset (the last line when the offset sits past every line).
+/// Line containing a byte offset. At a shared wrap boundary the caret belongs to
+/// the following line, while an offset at the end of the text stays on the last.
 pub fn line_index(layout: &TextLayout, byte: usize) -> usize {
-    layout.lines.iter().position(|ln| byte >= ln.range.start && byte <= ln.range.end).unwrap_or_else(|| layout.lines.len().saturating_sub(1))
+    layout
+        .lines
+        .iter()
+        .rposition(|ln| byte >= ln.range.start && byte <= ln.range.end)
+        .unwrap_or_else(|| layout.lines.len().saturating_sub(1))
 }
 
 /// Nearest caret to a text-space point: character index and the line it sits on.
@@ -377,7 +382,7 @@ pub fn line_edge(layout: &TextLayout, text: &str, idx: usize, end: bool) -> usiz
     let n = text.chars().count();
     let idx = idx.min(n);
     let byte = byte_index(text, idx);
-    let line = layout.lines.iter().find(|ln| byte >= ln.range.start && byte <= ln.range.end).or(layout.lines.last());
+    let line = layout.lines.get(line_index(layout, byte));
     line.map_or(idx, |ln| char_index(text, if end { ln.range.end } else { ln.range.start }))
 }
 

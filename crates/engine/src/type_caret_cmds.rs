@@ -375,6 +375,25 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_caret_queries_use_the_line_that_contains_the_caret() {
+        let mut s = session();
+        let id = create(&mut s, json!({"text": "ab cd", "box": [20, 20, 20, 70], "size": 12, "font": "Inter"}));
+        let info = s.execute("type.info", json!({"layer": id})).unwrap();
+        let lines = info["lines"].as_array().unwrap();
+        assert!(lines.len() >= 2, "{lines:?}");
+        let index = lines[1]["start"].as_u64().unwrap() as usize;
+        assert_eq!(index as u64, lines[0]["end"].as_u64().unwrap(), "shared wrap boundary");
+        assert_eq!(s.execute("type.caret", json!({"layer": id, "index": index})).unwrap()["line"], 1);
+        assert_eq!(go(&mut s, id, index, "lineStart", None), index as u64);
+        assert_eq!(go(&mut s, id, index, "lineEnd", None), lines[1]["end"].as_u64().unwrap());
+
+        let hard = create(&mut s, json!({"text": "ab\\ncd", "x": 30, "y": 100, "size": 12, "font": "Inter"}));
+        assert_eq!(s.execute("type.caret", json!({"layer": hard, "index": 3})).unwrap()["line"], 1);
+        assert_eq!(go(&mut s, hard, 3, "lineStart", None), 3);
+        assert_eq!(go(&mut s, hard, 3, "lineEnd", None), 5);
+    }
+
+    #[test]
     fn hit_test_picks_the_topmost_visible_type_layer_and_empty_text_is_index_zero() {
         let mut s = session();
         let lower = create(&mut s, json!({"x": 50, "y": 80, "text": "AAAA", "size": 36}));
