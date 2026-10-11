@@ -154,6 +154,98 @@ pub fn smooth_points(cfg: &Smoothing, zoom: f32, pts: &[StrokePoint]) -> Vec<Str
 }
 
 // ---------------------------------------------------------------------------
+// Spline (midpoint quadratic Bézier)
+// ---------------------------------------------------------------------------
+
+/// Longest chord (in pixels) used to approximate a curve piece.
+const SPLINE_STEP_PX: f64 = 2.0;
+/// Cap on samples per curve piece (a huge jump must not flood the walker).
+const MAX_SPLINE_STEPS: usize = 64;
+
+#[inline]
+fn mid_pt(a: &StrokePoint, b: &StrokePoint) -> StrokePoint {
+    lerp_pt(a, b, 0.5)
+}
+
+/// Quadratic Bézier from `a` to `b` with control point `c`, on every field (pressure, tilt, time...).
+fn quad_pt(a: &StrokePoint, c: &StrokePoint, b: &StrokePoint, t: f64) -> StrokePoint {
+    let u = 1.0 - t;
+    let (wa, wc, wb) = (u * u, 2.0 * u * t, t * t);
+    let (fa, fc, fb) = (wa as f32, wc as f32, wb as f32);
+    StrokePoint {
+        x: wa * a.x + wc * c.x + wb * b.x,
+        y: wa * a.y + wc * c.y + wb * b.y,
+        pressure: fa * a.pressure + fc * c.pressure + fb * b.pressure,
+        tilt_x: fa * a.tilt_x + fc * c.tilt_x + fb * b.tilt_x,
+        tilt_y: fa * a.tilt_y + fc * c.tilt_y + fb * b.tilt_y,
+        rotation: fa * a.rotation + fc * c.rotation + fb * b.rotation,
+        wheel: fa * a.wheel + fc * c.wheel + fb * b.wheel,
+        time: wa * a.time + wc * c.time + wb * b.time,
+    }
+}
+
+fn spline_steps(len: f64) -> usize {
+    ((len / SPLINE_STEP_PX).ceil() as usize).clamp(1, MAX_SPLINE_STEPS)
+}
+
+fn dist(a: &StrokePoint, b: &StrokePoint) -> f64 {
+    (b.x - a.x).hypot(b.y - a.y)
+}
+
+/// Incremental midpoint-Bézier path: turns the smoothed points into a smooth curve of points.
+/// Keeps the last two input points; each new point completes one curve piece m0 -> m1.
+#[derive(Clone, Debug, Default)]
+pub struct Spline {
+    p0: Option<StrokePoint>,
+    p1: Option<StrokePoint>,
+}
+
+impl Spline {
+    /// Feed one point; appends the curve points to `out`.
+    pub fn push(&mut self, p: StrokePoint, out: &mut Vec<StrokePoint>) {
+        match (self.p0, self.p1) {
+            (None, _) => {
+                self.p0 = Some(p);
+                out.push(p); // stroke start, passed through untouched
+            }
+            (Some(a), None) => {
+                self.p1 = Some(p);
+                Self::line(&a, &mid_pt(&a, &p), out); // straight lead-in
+            }
+            (Some(a), Some(b)) => {
+                Self::curve(&a, &b, &p, out);
+                self.p0 = Some(b);
+                self.p1 = Some(p);
+            }
+        }
+    }
+
+    /// End of stroke: straight run from the last midpoint to the last input point.
+    pub fn finish(&mut self, out: &mut Vec<StrokePoint>) {
+        if let (Some(a), Some(b)) = (self.p0, self.p1) {
+            Self::line(&mid_pt(&a, &b), &b, out);
+        }
+        *self = Self::default();
+    }
+
+    fn curve(a: &StrokePoint, b: &StrokePoint, c: &StrokePoint, out: &mut Vec<StrokePoint>) {
+        let (m0, m1) = (mid_pt(a, b), mid_pt(b, c));
+        let steps = spline_steps(dist(&m0, b) + dist(b, &m1));
+        for s in 1..=steps {
+            out.push(quad_pt(&m0, b, &m1, s as f64 / steps as f64));
+        }
+    }
+
+    fn line(a: &StrokePoint, b: &StrokePoint, out: &mut Vec<StrokePoint>) {
+        let steps = spline_steps(dist(a, b));
+        for s in 1..steps {
+            out.push(lerp_pt(a, b, s as f64 / steps as f64));
+        }
+        out.push(*b); // exact endpoint, no rounding gap
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Path walking
 // ---------------------------------------------------------------------------
 
@@ -654,6 +746,7 @@ pub fn apply_pose(b: &BrushSettings, mut p: StrokePoint) -> StrokePoint {
 #[derive(Clone, Debug)]
 pub struct DabGenerator {
     smoother: Smoother,
+    spline: Spline,
     walker: PathWalker,
     dual_walker: Option<PathWalker>,
     builder: DabBuilder,
@@ -679,6 +772,7 @@ impl DabGenerator {
         }
         Self {
             smoother: Smoother::new(&brush.smoothing, zoom),
+            spline: Spline::default(),
             walker,
             dual_walker: dual_on.then(|| PathWalker::new(None)),
             builder: DabBuilder::new(&brush),
@@ -710,20 +804,31 @@ impl DabGenerator {
 
     /// Feed input points; appends the new primary and dual dabs.
     pub fn push(&mut self, pts: &[StrokePoint], dabs: &mut Vec<Dab>, dual: &mut Vec<Dab>) {
-        let mut sm = std::mem::take(&mut self.scratch);
-        sm.clear();
+        let mut curve = std::mem::take(&mut self.scratch);
+        curve.clear();
         for p in pts {
+            self.spline.push(*p, &mut curve);
+        }
+        let mut sm = Vec::new();
+        for p in &curve {
             self.smoother.push(*p, &mut sm);
         }
         self.walk(&sm, dabs, dual);
-        self.scratch = sm;
+        self.scratch = curve;
     }
 
     /// End of stroke.
     pub fn finish(&mut self, dabs: &mut Vec<Dab>, dual: &mut Vec<Dab>) {
+        let mut curve = Vec::new();
+        self.spline.finish(&mut curve);
+    
         let mut sm = Vec::new();
+        for p in &curve {
+            self.smoother.push(*p, &mut sm);
+        }
         self.smoother.finish(&mut sm);
         self.walk(&sm, dabs, dual);
+    
         let mut steps = Vec::new();
         self.walker.finish(&mut |s| steps.push(s));
         for s in &steps {
