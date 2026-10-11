@@ -1512,21 +1512,48 @@ fn icon_label(ui: &mut egui::Ui, icon: &str, tip: &str) {
     resp.on_hover_text(tip);
 }
 
+/// The standard font sizes Photoshop's Character panel offers, in pt (Size and Leading share it).
+pub(crate) const SIZE_PRESETS: [f32; 27] = [
+    6.0, 8.0, 9.0, 10.0, 11.0, 12.0, 14.0, 18.0, 24.0, 30.0, 36.0, 48.0, 60.0, 72.0, 96.0, 120.0, 144.0, 180.0, 216.0, 288.0, 384.0, 480.0, 576.0, 720.0,
+    864.0, 1008.0, 1296.0,
+];
+/// The standard tracking values, in 1/1000 em.
+pub(crate) const TRACKING_PRESETS: [f32; 20] =
+    [-200.0, -150.0, -100.0, -75.0, -50.0, -25.0, -10.0, 0.0, 10.0, 25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 400.0, 600.0, 800.0, 1000.0];
+
 /// Labelled numeric field (Photoshop's icon + value pairs). Returns the new value when edited.
 fn num_field(ui: &mut egui::Ui, label: &str, tip: &str, v: f32, range: std::ops::RangeInclusive<f32>, unit: &str, width: f32) -> Option<f32> {
+    num_field_presets(ui, label, tip, v, range, unit, width, &[])
+}
+
+/// [`num_field`] with Photoshop's preset chevron on the field's right edge (#3508): the standard
+/// values for Size, Leading and Tracking, so they can be picked without typing.
+#[allow(clippy::too_many_arguments)]
+fn num_field_presets(
+    ui: &mut egui::Ui,
+    label: &str,
+    tip: &str,
+    v: f32,
+    range: std::ops::RangeInclusive<f32>,
+    unit: &str,
+    width: f32,
+    presets: &[f32],
+) -> Option<f32> {
     let t = crate::theme::Tokens::get(ui.ctx());
     let mut v = v;
-    let mut out = None;
+    let mut changed = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let (r, resp) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
         ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, crate::theme::semibold(10.0), t.text_dim);
         resp.on_hover_text(tip);
-        if crate::widgets::value_field(ui, &mut v, range, unit, width).changed() {
-            out = Some(v);
-        }
+        changed = if presets.is_empty() {
+            crate::widgets::value_field(ui, &mut v, range, unit, width).changed()
+        } else {
+            crate::widgets::preset_value_field(ui, &mut v, range, unit, width, tip, presets)
+        };
     });
-    out
+    changed.then_some(v)
 }
 
 /// Photoshop's paragraph alignment glyphs: four text lines whose widths/offsets show the mode
@@ -1631,12 +1658,13 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
         });
         row(ui, &mut |ui| {
             let k = shown_scale(app);
-            if let Some(v) = num_field(ui, "tT", "Font size", c.size_pt * k, 0.1..=1296.0, "pt", w) {
+            if let Some(v) = num_field_presets(ui, "tT", "Font size", c.size_pt * k, 0.1..=1296.0, "pt", w, &SIZE_PRESETS) {
                 app.ui.tool_options.type_size = v;
                 apply(app, ui.ctx(), json!({"size": v, "metricsAsShown": true}));
             }
             let lead = c.leading_pt.unwrap_or(c.size_pt * para.auto_leading.max(0.01)) * k;
-            if let Some(v) = num_field(ui, "A↕", "Leading (set to the font size × auto-leading when Auto)", lead, 0.1..=5000.0, "pt", w) {
+            if let Some(v) = num_field_presets(ui, "A↕", "Leading (set to the font size × auto-leading when Auto)", lead, 0.1..=5000.0, "pt", w, &SIZE_PRESETS)
+            {
                 apply(app, ui.ctx(), json!({"leading": v, "metricsAsShown": true}));
             }
         });
@@ -1649,7 +1677,7 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
                     apply_kerning(app, ui.ctx(), v);
                 }
             });
-            if let Some(v) = num_field(ui, "VA", "Tracking (1/1000 em)", c.tracking, -1000.0..=10000.0, "", w) {
+            if let Some(v) = num_field_presets(ui, "VA", "Tracking (1/1000 em)", c.tracking, -1000.0..=10000.0, "", w, &TRACKING_PRESETS) {
                 apply(app, ui.ctx(), json!({"tracking": v}));
             }
         });
