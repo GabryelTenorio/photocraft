@@ -13,32 +13,111 @@ confirms when OK is enabled. Automation drives the same `fields` map as the UI (
 | Tab-through-fields | `crates/ui-egui/src/field_tab.rs` | Photoshop-style Tab / ⇧Tab (tests in same file) |
 | State | `crates/ui-egui/src/state.rs` | `Dialog`, `DialogKind`, `open_dialog` |
 | Button row | `crates/ui-egui/src/widgets.rs` | `dialog_buttons`, `focus_first_field`; `number_edit` registers for Tab |
-| Menu / command entry | `dialogs::open_command_dialog` | Picks adjustment, filter, or bare confirm dialog |
+| Menu / command entry | `dialogs::open_command_dialog`, `menus.rs` | Picks a dedicated module, schema dialog, or bare confirm |
 | Filters | `filter_dialog.rs` | Schema from engine params, live preview |
 | Adjustments | `adjust_dialog.rs` | Shared editors with Properties; preview via `adjust_preview` |
 | Generic forms | `view_cmds.rs` | `__form` grids for simple command params |
-| Dedicated bodies | `new_doc_ui`, `layer_style`, `export_dialog`, `file_ui`, `prefs_ui`, `color_picker_ui`, `guide_layout_ui`, prompts, fill/stroke/shape/pattern UIs, … | `body` + usually `open` / `confirm` |
+| Dedicated bodies | See **Command routing** below | `body` + usually `open` / `confirm` |
 
-**Routing.** `DialogKind::Command` bodies are chosen by marker keys on `fields` (`owns()` or
-`contains_key("__export")`, etc.). `dialogs::show`, `confirm`, and `cancel` share the same
-dispatch table—wire all three when adding a dialog.
+**Routing.** Non-command kinds use `DialogKind` alone. `DialogKind::Command` bodies are chosen by
+marker keys on `fields` (`owns()` or `contains_key("__export")`, etc.); **first match in
+`dialogs::show` wins**, so new markers must not collide with an earlier arm. `show`, `confirm`, and
+`cancel` share the same dispatch table—wire all three when adding a dialog.
 
 **Field contract.** `Dialog.fields` is a JSON map: command parameters agents read and write, plus
 private keys prefixed with `__`. Never use `__` for user-facing or engine params.
 
-Common private keys:
+### `DialogKind` (top-level stack)
+
+| Kind | Body module | Typical entry |
+|---|---|---|
+| `NewDocument` | `new_doc_ui.rs` | File › New, `file.new` with no size params |
+| `About` | `dialogs.rs` (About / Contributors / Models tabs) | Help › About PhotoCraft; `systemInfo: true` → System Info variant |
+| `Command` | Routed—see below | Most menu commands with parameters |
+| `LayerStyle` | `layer_style.rs` | Layer › Layer Style… |
+| `Error` | inline in `dialogs.rs` | `message` field only (e.g. move lock, locked transform) |
+
+### Command routing (`DialogKind::Command`)
+
+Dispatch order matches `dialogs::show` in `dialogs.rs` (check earlier rows before adding a marker).
+
+| Match | Module | Role |
+|---|---|---|
+| `__guideLayout` | `guide_layout_ui.rs` | View › New Guide Layout… |
+| `__fill` | `fill_ui.rs` | Edit › Fill… |
+| `__patternFill` | `pattern_fill_ui.rs` | Pattern Fill layer / New Fill Layer › Pattern… |
+| `__stroke` | `stroke_ui.rs` | Edit › Stroke… |
+| `__createShape` | `shape_dialog.rs` | Click-with-shape-tool creation (rectangle, ellipse, …) |
+| `__deleteLayer` | `delete_layer_prompt.rs` | Layers panel trash confirmation |
+| `__newLayer` | `new_layer_ui.rs` | Layer › New › Layer… (⇧⌘N) |
+| `__rasterize` | `rasterize_prompt.rs` | Rasterize-before-paint prompt |
+| `__resetAllTools` | `tool_reset.rs` | Reset All Tools confirmation |
+| `__cropPresetNew` / `__cropPresetDelete` | `crop_presets.rs` | New / delete crop preset |
+| `__variables` | `variables_ui.rs` | Image › Variables (Define, Data Sets, Apply) |
+| `__web` / `__print` | `file_ui.rs` | Save for Web, Print |
+| `__colorPicker` | `color_picker_ui.rs` | Foreground/background, nested field/command pickers (see nested keys below) |
+| `__colorRange` | `color_range_ui.rs` | Select › Color Range… |
+| `__prefsui` | `prefs_ui.rs` | Edit › Preferences… and related preset/import subdialogs |
+| `__export` | `export_dialog.rs` | Export As (document or layer) |
+| `__sizing` | `sizing.rs` | Image › Image Size… / Canvas Size… |
+| `__adjust` | `adjust_dialog.rs` | Image › Adjustments… (also sets `__filter` + `__preview` for live preview) |
+| `__filter` | `filter_dialog.rs` (+ `select_mask_view.rs` when `__command` is `select.refineEdge`) | Filter Gallery commands, Edit › Color Settings…, Select and Mask, and other schema dialogs |
+| `__form` | `view_cmds.rs` | Simple param grids (e.g. slice options, many Image › Apply Image-style commands) |
+| (none of the above) | — | **Bare confirm**: title + OK/Cancel only; OK runs `__command` with fields via generic `confirm` |
+
+**Menu shortcut.** `dialogs::open_command_dialog` opens guide layout, stroke, and color range
+directly; then tries `adjust_dialog::open`, then `filter_dialog::open`; otherwise a bare confirm
+with `__command` + `__label`. Other dedicated modules are opened from `menus.rs`, tools, or panel
+actions with their marker already set.
+
+### Shared private keys
 
 | Key | Meaning |
 |---|---|
-| `__command` | Engine command id run on OK |
+| `__command` | Engine command id run on OK (bare confirm, filters, sizing, …) |
 | `__label` | Menu/catalog label for the title |
-| `__filter` | Filter dialog (schema + preview) |
-| `__adjust` | Image › Adjustments dialog kind |
-| `__form` | Generic `view_cmds::form_body` |
-| `__export` | Export As dialog |
-| `__sizing` | Image Size / Canvas Size |
 | `__document` | Target document id (validate staleness) |
-| Domain markers | e.g. `__guideLayout`, `__rasterize`, `__layerStyleColor` |
+| `__dialog` / `__field` | Nested color picker: parent dialog id and field name to write on OK |
+| `__params` | Extra command params for command-targeted color pickers |
+| `__preview` | Live canvas preview enabled (filters and adjustments) |
+| `__choices` | Dropdown options for `__form` dialogs |
+| `__filter` | Filter-schema body (`filter_dialog`); also set on adjustments for preview plumbing |
+| `__adjust` | Image › Adjustments editor kind (`adjust_dialog`) |
+| `__form` | Generic `view_cmds::form_body` |
+| `__export` | Export As |
+| `__sizing` | Image Size / Canvas Size |
+
+### Routing markers (dedicated `Command` bodies)
+
+| Key | Module |
+|---|---|
+| `__guideLayout` | `guide_layout_ui` |
+| `__fill` | `fill_ui` |
+| `__patternFill` | `pattern_fill_ui` |
+| `__stroke` | `stroke_ui` |
+| `__createShape` | `shape_dialog` |
+| `__deleteLayer` | `delete_layer_prompt` |
+| `__newLayer` | `new_layer_ui` |
+| `__rasterize` | `rasterize_prompt` |
+| `__resetAllTools` | `tool_reset` |
+| `__cropPresetNew`, `__cropPresetDelete` | `crop_presets` |
+| `__variables` | `variables_ui` |
+| `__web`, `__print` | `file_ui` |
+| `__colorPicker` | `color_picker_ui` |
+| `__colorRange` | `color_range_ui` |
+| `__prefsui` | `prefs_ui` (string sub-kind: `prefs`, `presetsIO`, …) |
+
+### Nested color pickers (`__colorPicker` on the stack)
+
+Same hub entry as standalone pickers; `color_picker_ui::confirm` branches on extra keys:
+
+| Extra key | Behaviour |
+|---|---|
+| `__layerStyleColor` | Layer Style child; OK writes effect colour on parent `LayerStyle` dialog |
+| `__textStyleColor` | Character/paragraph style colour (type panels) |
+| `__shapeFill` | Shape layer solid fill via `shape.edit` |
+| `__command` = `layer.fill.solidColor.set` | Solid Color fill layer (no `__shapeFill`) |
+| `__dialog` + `__field` | OK updates one field on a parent command dialog (e.g. Fill › Color…) |
 
 ## Parallel modal systems (not the main stack)
 
@@ -48,7 +127,7 @@ Common private keys:
 | Shell dialog | `control.rs`, `ui.inspect` id `"shell"` | Workspace, custom pixel aspect, show-extras options |
 | Camera Raw | `camera_raw_ui.rs` | Separate OS window on desktop; see control-protocol § Camera Raw |
 | Error message | `DialogKind::Error` | e.g. `move_lock`—message + OK |
-| Nested pickers | `layer_style/color_picker`, `color_picker_ui`, text style picker | Stack on parent; parent confirm refused while child open |
+| Nested pickers | `color_picker_ui` (+ markers in **Nested color pickers**) | Stack on parent; parent confirm refused while child open |
 
 ## Rules
 
@@ -112,7 +191,7 @@ Common private keys:
 
 ## Adding a command dialog (checklist)
 
-1. Choose path: `adjust_dialog`, `filter_dialog`, `__form`, or new `*_ui` module with `owns(MARK)`.
+1. Choose path: see **Command routing** (`adjust_dialog`, `filter_dialog`, `__form`, `__sizing`, …, or new `*_ui` with a unique marker).
 2. `open`: build `fields` (`__command`, `__label`, params, marker); `app.ui.open_dialog(DialogKind::Command, f)`.
 3. `body(app, ui, &mut fields)`—mutate `fields` only; use shared widgets.
 4. `confirm` / `cancel` arms in `dialogs.rs` (or delegate to module `confirm`).
@@ -131,3 +210,4 @@ Common private keys:
 | Date | Change |
 |---|---|
 | 2026-10-11 | Initial doc from dialog codebase audit |
+| 2026-10-11 | Document all `DialogKind` values and `Command` routing markers |
