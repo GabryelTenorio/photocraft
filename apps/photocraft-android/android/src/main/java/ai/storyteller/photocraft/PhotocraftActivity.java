@@ -17,6 +17,9 @@ import android.view.MotionEvent;
  */
 public final class PhotocraftActivity extends NativeActivity {
     private boolean penDown;
+    private int activePenId = -1;
+    private float lastPenX;
+    private float lastPenY;
 
     // JNI symbol is implemented in src/spen.rs in libphotocraft_android.so.
     private native void nativeStylusSample(
@@ -25,6 +28,10 @@ public final class PhotocraftActivity extends NativeActivity {
             float orientationRadians,
             boolean eraser,
             boolean contact
+    );
+
+    private native void nativeStylusTouch(
+            int action, int pointerId, float x, float y, float pressure
     );
 
     @Override
@@ -64,6 +71,10 @@ public final class PhotocraftActivity extends NativeActivity {
             nativeStylusSample(0.0f, 0.0f, 0.0f, false, false);
             penDown = false;
         }
+        if (activePenId != -1) {
+            nativeStylusTouch(MotionEvent.ACTION_CANCEL, activePenId, lastPenX, lastPenY, 0.0f);
+            activePenId = -1;
+        }
     }
 
     private static int stylusIndex(MotionEvent e) {
@@ -102,6 +113,31 @@ public final class PhotocraftActivity extends NativeActivity {
 
     private void forwardStylus(MotionEvent event) {
         int action = event.getActionMasked();
+        int penIndex = stylusIndex(event);
+        if (penIndex >= 0) {
+            int id = event.getPointerId(penIndex);
+            boolean penUp = (action == MotionEvent.ACTION_UP)
+                    || (action == MotionEvent.ACTION_POINTER_UP && event.getActionIndex() == penIndex);
+            if (action == MotionEvent.ACTION_DOWN
+                    || (action == MotionEvent.ACTION_POINTER_DOWN && event.getActionIndex() == penIndex)) {
+                activePenId = id;
+                lastPenX = event.getX(penIndex);
+                lastPenY = event.getY(penIndex);
+                nativeStylusTouch(MotionEvent.ACTION_DOWN, id, lastPenX, lastPenY,
+                        event.getPressure(penIndex));
+            } else if (action == MotionEvent.ACTION_MOVE && activePenId == id) {
+                lastPenX = event.getX(penIndex);
+                lastPenY = event.getY(penIndex);
+                nativeStylusTouch(MotionEvent.ACTION_MOVE, id, lastPenX, lastPenY,
+                        event.getPressure(penIndex));
+            } else if (penUp && activePenId == id) {
+                lastPenX = event.getX(penIndex);
+                lastPenY = event.getY(penIndex);
+                nativeStylusTouch(MotionEvent.ACTION_UP, id, lastPenX, lastPenY,
+                        event.getPressure(penIndex));
+                activePenId = -1;
+            }
+        }
 
         if (action == MotionEvent.ACTION_CANCEL
                 || action == MotionEvent.ACTION_UP
