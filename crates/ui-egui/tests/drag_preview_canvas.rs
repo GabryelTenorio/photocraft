@@ -209,12 +209,9 @@ fn marquee_previews_show_while_dragging_on_white_and_black_at_1x_and_2x() {
                     // curve, so the arc stays inside it where a straight chord would sag out.
                     let (cx, cy) = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0);
                     let (rx, ry) = ((b[0] - a[0]) / 2.0, (b[1] - a[1]) / 2.0);
-                    for (mx, my, t0) in [
-                        (cx, a[1], std::f64::consts::TAU * 0.75),
-                        (b[0], cy, 0.0),
-                        (cx, b[1], std::f64::consts::FRAC_PI_2),
-                        (a[0], cy, std::f64::consts::PI),
-                    ] {
+                    for (mx, my, t0) in
+                        [(cx, a[1], std::f64::consts::TAU * 0.75), (b[0], cy, 0.0), (cx, b[1], std::f64::consts::FRAC_PI_2), (a[0], cy, std::f64::consts::PI)]
+                    {
                         let span = 0.3; // rad: ≈ ±21..30 px of arc, ≈ 5 dash periods
                         let pts: Vec<Pos2> = (0..=48)
                             .map(|i| {
