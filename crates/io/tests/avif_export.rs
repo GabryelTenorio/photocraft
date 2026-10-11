@@ -122,6 +122,27 @@ mod enabled {
     }
 
     #[test]
+    fn targa_options_do_not_matte_avif_or_replace_its_transparency() {
+        let mut doc = columns(ColorMode::Rgb, SampleType::U8, &[&[0.8, 0.2, 0.1, 1.0], &[0.2, 0.6, 0.8, 0.5]]);
+        let expected = export(&doc, "avif", &quality(100)).unwrap();
+        // A 32-bit Targa would use this separate channel instead of the layers' transparency;
+        // a 24-bit Targa would matte the layers over white. Neither policy applies to AVIF.
+        let mut alpha = Surface::new(photocraft_color::PixelFormat::new(ColorMode::Grayscale, SampleType::U8, false));
+        alpha.fill_rect(doc.bounds(), &[0.0]);
+        doc.channels.push(photocraft_doc::AlphaChannel::new("Alpha 1", alpha));
+        let baseline = export(&doc, "avif", &quality(100)).unwrap();
+        assert_eq!(baseline.bytes, expected.bytes, "document alpha channels must not replace AVIF transparency");
+
+        for bits in [photocraft_io::TgaBits::Bits24, photocraft_io::TgaBits::Bits32] {
+            let opts = ExportOptions { tga_bits: Some(bits), ..quality(100) };
+            let result = export(&doc, "avif", &opts).unwrap();
+            assert_container(&result.bytes, doc.size, true);
+            assert_eq!(result.bytes, expected.bytes, "{bits:?} must not affect AVIF colours or alpha");
+            assert_eq!(result.warnings, baseline.warnings, "{bits:?} must not change AVIF fidelity notes");
+        }
+    }
+
+    #[test]
     fn layered_export_flattens_opacity_and_alpha_before_colour_conversion() {
         let mut doc = columns(ColorMode::Rgb, SampleType::U8, &[&[0.2, 0.4, 0.6, 0.5], &[0.1, 0.3, 0.7, 1.0]]);
         doc.icc_profile = Some(Builtin::DisplayP3.profile().to_bytes());
