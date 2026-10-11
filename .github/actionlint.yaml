@@ -2,3 +2,6 @@
 self-hosted-runner:
   labels:
     - macos-release  # org larger runner (M2 Pro), used by release.yml
+    # Pending upstream actionlint support: https://github.com/rhysd/actionlint/pull/683
+    - ubuntu-26.04
+    - ubuntu-26.04-arm
