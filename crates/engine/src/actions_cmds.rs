@@ -4,7 +4,8 @@
 //! The list lives on [`Session`] so the panel, the CLI, the control channel and MCP share one
 //! copy. Recording copies replayable journal entries (commands whose [`CommandSpec::journal`] is
 //! set, except action-editing commands and the already-expanded `edit.transform.again`) into an
-//! action. Playback runs those steps with [`Session::execute`]
+//! action. A replayable command's journal entry replaces the entries of the commands it ran on its
+//! own behalf, so they are recorded once (#3067). Playback runs those steps with [`Session::execute`]
 //! and stops at the first error, leaving one history step per step that ran.
 //!
 //! An untrusted session installs [`Session::authorize`]. `actions.play` calls it for every nested
@@ -626,6 +627,46 @@ mod tests {
         assert_eq!(s.active().unwrap().history.past_len(), before + 1);
         assert_eq!(pixel(&s, 0, 8, 2), vec![1.0, 0.0, 0.0, 1.0]);
         assert_eq!(pixel(&s, 0, 12, 2), vec![0.0; 4]);
+    }
+
+    /// A Background with a red bar and a slanted ruler line, ready for Straighten.
+    fn ruled_background(s: &mut Session, depth: u32) {
+        s.execute("file.new", json!({"width": 80, "height": 60, "depth": depth})).unwrap();
+        s.edit("red bar", |doc, _| {
+            doc.layers[0].surface_mut().unwrap().fill_rect(photocraft_geom::Rect::new(10, 20, 60, 8), &[1.0, 0.0, 0.0, 1.0]);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn record_command_that_runs_commands_replays_it_once() {
+        // Straighten Layer runs Image Rotation and Crop itself: only its own call is recorded,
+        // so playback rotates once, not three times (rotate, crop, then straighten again).
+        for depth in [8, 16] {
+            let mut s = Session::new();
+            ruled_background(&mut s, depth);
+            s.execute("actions.record", json!({"name": "Level"})).unwrap();
+            s.execute("image.analysis.rulerTool", json!({"start": [10, 30], "end": [70, 25]})).unwrap();
+            s.execute("image.analysis.straightenLayer", json!({})).unwrap();
+            s.execute("actions.stop", json!({})).unwrap();
+            let got = s.execute("actions.get", json!({"action": "Level"})).unwrap();
+            let ids: Vec<&str> = got["steps"].as_array().unwrap().iter().map(|st| st[0].as_str().unwrap()).collect();
+            assert_eq!(ids, ["image.analysis.rulerTool", "image.analysis.straightenLayer"], "depth {depth}");
+            let direct = s.active().unwrap().doc.clone();
+
+            ruled_background(&mut s, depth);
+            let before = s.active().unwrap().history.past_len();
+            let played = s.execute("actions.play", json!({"action": "Level"})).unwrap();
+            assert!(played.get("failed").is_none(), "depth {depth}: {played}");
+            assert_eq!(played["ran"], 2, "depth {depth}");
+            assert_eq!(s.active().unwrap().history.past_len(), before + 1, "depth {depth}: one Straighten step (the ruler is no step)");
+            let replayed = s.active().unwrap().doc.clone();
+            assert_eq!(replayed.size, direct.size, "depth {depth}: rotated and cropped once");
+            let r = photocraft_geom::Rect::new(0, 0, direct.size.width as i32, direct.size.height as i32);
+            let px = |d: &photocraft_doc::Document| d.layers[0].surface().unwrap().read_region(r);
+            assert_eq!(px(&replayed), px(&direct), "depth {depth}: same pixels as the direct run");
+        }
     }
 
     #[test]
