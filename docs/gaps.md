@@ -42,7 +42,7 @@ what an agent can't finish alone.
 ### G1. PSD fidelity and Photoshop acceptance
 - **Missing:** PSDs we write are not always accepted by Photoshop, and Photoshop-authored files
   don't always render as Photoshop renders them.
-- **Evidence:** corpus floors (`crates/io/tests/corpus.rs`, scorecard): Photoshop-authored
+- **Evidence:** corpus floors (`crates/io/tests/it/corpus.rs`, scorecard): Photoshop-authored
   oracles 133/256 (52%), io corpus 146/170 (86%), psd-tools 236/309 (76%); round trips ~100%
   within the corpus. Smart-filter re-render matches 5/30. User reports: a PSD with text layers
   re-saved unmodified would not reopen (#2374, closed 2026-10-10), Photoshop 26.6 cannot reopen our files (#1281), "PSD not
