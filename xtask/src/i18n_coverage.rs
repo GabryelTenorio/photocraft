@@ -186,8 +186,10 @@ fn plural_keys(sources: &[(PathBuf, String)]) -> BTreeSet<Key> {
             let Some(end) = call_end(rest) else { break };
             let args = rest.get(..end).unwrap_or("");
             let forms = quoted_strings(args);
-            if forms.len() >= 2 {
-                keys.insert(Key { context: "@plural".into(), source: format!("{}|{}", forms[0], forms[1]) });
+            // The count can contain strings (for example JSON's `r["files"]`).
+            // The final two literals are the singular and plural message forms.
+            if let [.., one, other] = forms.as_slice() {
+                keys.insert(Key { context: "@plural".into(), source: format!("{one}|{other}") });
             }
             rest = rest.get(end + 1..).unwrap_or("");
         }
@@ -554,6 +556,20 @@ mod tests {
             assert!(keys.contains(&Key { context: String::new(), source: "production key".into() }));
             assert!(!keys.contains(&Key { context: String::new(), source: "test fixture key".into() }));
         }
+    }
+
+    #[test]
+    fn plural_message_forms_follow_strings_in_language_and_count_arguments() {
+        let sources = vec![(
+            PathBuf::from("ui.rs"),
+            r#"trn(Lang::from_code("en"), r["files"].as_array().map_or(0, Vec::len) as u64,
+                "Saved for Web: {n} file", "Saved for Web: {n} files");"#
+                .into(),
+        )];
+        assert_eq!(
+            plural_keys(&sources),
+            BTreeSet::from([Key { context: "@plural".into(), source: "Saved for Web: {n} file|Saved for Web: {n} files".into() }]),
+        );
     }
 
     #[test]
