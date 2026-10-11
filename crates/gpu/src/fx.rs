@@ -434,7 +434,7 @@ pub(crate) fn program_with(e: &Effect, light: &GlobalLight, vector_shape: bool, 
             // composite_with_effects' stroke bands (maps 0 outside, 1 inside)
             let (in_w, out_w) = stroke_widths(st);
             if out_w > 0.0 {
-                let d = b.field(if vector_shape { FieldKind::StrokeOutsideVector } else { FieldKind::StrokeOutside }, out_w);
+                let d = b.field(if vector_shape { FieldKind::StrokeOutsideVector } else { FieldKind::StrokeOutsideExact }, out_w);
                 let mut s = stage(Kernel::MStroke, Some(d), None, [out_w, 0.0, 0.0, 0.0], 0);
                 s.out = Some(0);
                 b.stages.push(s);
@@ -522,7 +522,8 @@ pub(crate) fn field(kind: FieldKind, reach: i32, shape: &[f32], region: Rect, ou
 /// (the chamfer fields, a sequential sweep) the window is cut into bands that go in parallel. Without
 /// threads (wasm) there is nothing to spread over, and bands keep the memory small.
 fn threaded_inside(kind: FieldKind) -> bool {
-    !cfg!(target_arch = "wasm32") && matches!(kind, FieldKind::Outside | FieldKind::Inside | FieldKind::BevelOutside | FieldKind::BevelInside)
+    !cfg!(target_arch = "wasm32")
+        && matches!(kind, FieldKind::Outside | FieldKind::Inside | FieldKind::BevelOutside | FieldKind::BevelInside | FieldKind::StrokeOutsideExact)
 }
 
 /// [`field`] with the halo given (the tests shrink it to see that they notice).
@@ -748,6 +749,7 @@ mod tests {
             FieldKind::ChokeInside,
             FieldKind::StrokeOutside,
             FieldKind::StrokeInside,
+            FieldKind::StrokeOutsideExact,
             FieldKind::StrokeOutsideVector,
         ] {
             let reach = 9;
@@ -824,5 +826,35 @@ mod tests {
             }
         }
         assert!(too_small_noticed, "a 2 row halo went unnoticed, so this test guards nothing");
+    }
+
+    /// #3646: a wide raster stroke's outer edge is the exact Euclidean distance, not the chamfer's
+    /// octagon. The GPU builds it from `StrokeOutsideExact`, while the spread of drop shadows and
+    /// softer outer glows keeps the chamfer field (fitted to Photoshop, #224) — so routing the
+    /// stroke back through the chamfer, or a shadow through the exact field, fails here.
+    #[test]
+    fn a_raster_stroke_uses_the_exact_outer_field() {
+        use photocraft_color::{BlendMode, Color};
+        use photocraft_doc::{FxCommon, FxPaint, StrokeFx, StrokePosition};
+        let light = GlobalLight::default();
+        let stroke =
+            |position| Effect::Stroke(StrokeFx { common: FxCommon::new(BlendMode::Normal, 1.0), size: 40.0, position, paint: FxPaint::Color(Color::BLACK) });
+        let outer = program(&stroke(StrokePosition::Outside), &light, false);
+        assert!(
+            outer.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideExact),
+            "a raster outside stroke needs the exact outer field: {:?}",
+            outer.fields
+        );
+        assert!(!outer.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutside), "…not the chamfer field: {:?}", outer.fields);
+        // A shape layer's outline stroke is exact too; the inside edge keeps the chamfer.
+        let vector = program(&stroke(StrokePosition::Outside), &light, true);
+        assert!(vector.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideVector), "{:?}", vector.fields);
+        let inner = program(&stroke(StrokePosition::Inside), &light, false);
+        assert!(inner.fields.iter().any(|(k, _)| *k == FieldKind::StrokeInside), "{:?}", inner.fields);
+        // The shadow / softer-glow spread is unchanged: still the chamfer.
+        let Effect::DropShadow(mut s) = Effect::default_drop_shadow() else { unreachable!() };
+        s.spread = 0.5;
+        let shadow = program(&Effect::DropShadow(s), &light, false);
+        assert!(shadow.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutside), "the shadow spread keeps the chamfer: {:?}", shadow.fields);
     }
 }

@@ -2151,14 +2151,18 @@ pub enum FieldKind {
     BevelOutside,
     /// `bevel_dist_inside` of the shape: the inside distance of chiselled bevels.
     BevelInside,
-    /// Chamfer distance outside the shape: outside strokes, and the spread of drop shadows and
-    /// softer outer glows ([`dilate`]).
+    /// Chamfer distance outside the shape: the spread of drop shadows and softer outer glows
+    /// ([`dilate`]); their metric is fitted to Photoshop (#224) and keeps the sub-pixel seeding.
     StrokeOutside,
     /// Chamfer distance outside `1 - alpha`: the choke of inner shadows and softer inner glows.
     ChokeInside,
     /// Stroke distance inside the shape.
     StrokeInside,
-    /// Stroke distance outside a shape layer's outline (from its local coverage).
+    /// Exact Euclidean distance outside the shape: a raster stroke's outer edge. The chamfer's
+    /// level sets are polygons (an ~8-fold octagon), so a wide stroke's outer boundary facets; the
+    /// outer edge is exact while the shadow / glow spread above keeps the chamfer (#3646).
+    StrokeOutsideExact,
+    /// Stroke distance outside a shape layer's outline (from its local coverage), exact Euclidean.
     StrokeOutsideVector,
 }
 
@@ -2174,7 +2178,8 @@ pub fn distance_field(kind: FieldKind, alpha: Vec<f32>, w: usize, h: usize, reac
         FieldKind::StrokeOutside => dist_outside_by(&s, Metric::Chamfer),
         FieldKind::ChokeInside => dist_outside_by(&s.map(|a| 1.0 - a), Metric::Chamfer),
         FieldKind::StrokeInside => dist_inside_by(&s, Metric::Chamfer),
-        FieldKind::StrokeOutsideVector => dist_outside_by(&local_coverage(&s), Metric::Chamfer),
+        FieldKind::StrokeOutsideExact => dist_outside_by(&s, Metric::Euclidean),
+        FieldKind::StrokeOutsideVector => dist_outside_by(&local_coverage(&s), Metric::Euclidean),
     }
 }
 
