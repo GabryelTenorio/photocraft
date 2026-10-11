@@ -247,6 +247,7 @@ pub fn authorize_engine_command(id: &str, params: &Value) -> Result<(), Automati
             id,
             "pattern.import"
                 | "pattern.export"
+                | "type.registerFonts"
                 | "edit.presets.migratePresets"
                 | "measurementLog.export"
                 | "layer.videoLayers.newVideoLayerFromFile"
@@ -646,9 +647,14 @@ mod tests {
             "measurementLog.export",
             "layer.videoLayers.reloadFrame",
             "edit.colorSettings",
+            "type.registerFonts",
         ] {
             assert!(authorize_engine_command(id, &serde_json::json!({})).is_err());
         }
+        // A host path, inside an action or on the desktop channel too.
+        let fonts = serde_json::json!({"path": "/outside/fonts"});
+        assert!(authorize_engine_step("type.registerFonts", &fonts).is_err());
+        assert!(authorize_desktop_engine_command("type.registerFonts", &fonts).is_err());
         assert!(authorize_engine_command("file.new", &serde_json::json!({})).is_ok());
         for id in ["layer.smartObjects.editContents", "layer.smartObjects.convertToLayers", "layer.smartObjects.saveContents"] {
             assert!(authorize_desktop_engine_command(id, &serde_json::json!({"layer": 19})).is_ok(), "{id}");
