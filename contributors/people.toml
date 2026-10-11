@@ -93,3 +93,6 @@ sync_github_name = true
 
 [people.FinnNk]
 sync_github_name = true
+
+[people.agustif]
+display_name = "Agusti F."
