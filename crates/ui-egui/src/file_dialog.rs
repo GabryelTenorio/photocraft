@@ -46,6 +46,9 @@ pub enum FileDialogAnswer {
     SaveTo(String),
     /// The selected folder's path (desktop).
     FolderTo(String),
+    /// No dialog could be shown (on Linux: no desktop portal and no zenity, #3354); the message
+    /// says what to install. Reported as an error rather than taken for Cancel.
+    Unavailable(String),
 }
 
 /// Hands a dialog's answer to the app and wakes it, from any thread. Dropping it unanswered
@@ -107,7 +110,11 @@ impl PhotocraftApp {
             FileDialogRequest::Folder { .. } => "folder",
             FileDialogRequest::Save { .. } => "save",
         };
-        let then: Then = Box::new(move |app, answer| answer.map_or_else(|| Err(CANCELLED.into()), |a| then(app, a)));
+        let then: Then = Box::new(move |app, answer| match answer {
+            None => Err(CANCELLED.into()),
+            Some(FileDialogAnswer::Unavailable(why)) => Err(why),
+            Some(a) => then(app, a),
+        });
         self.file_dialog = Some(Pending { request: Some(request), answer: None, then });
         Ok(json!({ "fileDialog": kind }))
     }
@@ -201,15 +208,17 @@ impl PhotocraftApp {
                 }
                 FileDialogAnswer::Contents(name, bytes) => app.open_contents(vec![(name, bytes)]),
                 FileDialogAnswer::ContentsMany(files) => app.open_contents(files),
-                FileDialogAnswer::SaveTo(_) => return Err(UNEXPECTED.into()),
                 FileDialogAnswer::FolderTo(_) => return Err(UNEXPECTED.into()),
+                FileDialogAnswer::SaveTo(_) | FileDialogAnswer::Unavailable(_) => return Err(UNEXPECTED.into()),
             }
             Ok(Value::Null)
         })
     }
 
-    /// Opens each picked file's contents as its own document, reporting each failure.
-    fn open_contents(&mut self, files: Vec<(String, Vec<u8>)>) {
+    /// Opens each picked file's contents as its own document, in name order (like
+    /// [`Self::open_paths`]), reporting each failure.
+    fn open_contents(&mut self, mut files: Vec<(String, Vec<u8>)>) {
+        files.sort_by(|a, b| crate::file_open::natural_cmp(&a.0, &b.0));
         for (name, bytes) in files {
             if let Err(e) = self.open_bytes(&name, &bytes) {
                 self.open_failed(&name, &e);
@@ -297,8 +306,8 @@ fn read_picked(answer: FileDialogAnswer) -> Result<(String, Vec<u8>), String> {
             let bytes = photocraft_format::read_file(std::path::Path::new(&path)).map_err(|e| format!("{}: {e}", display_name(&path)))?;
             Ok((path, bytes))
         }
-        FileDialogAnswer::SaveTo(_) => Err(UNEXPECTED.into()),
         FileDialogAnswer::FolderTo(_) => Err(UNEXPECTED.into()),
+        FileDialogAnswer::SaveTo(_) | FileDialogAnswer::Unavailable(_) => Err(UNEXPECTED.into()),
     }
 }
 
