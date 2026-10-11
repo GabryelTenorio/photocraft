@@ -1135,6 +1135,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "window": {"width": screen.width(), "height": screen.height(), "pixelsPerPoint": ctx.pixels_per_point()},
         "tool": app.ui.tool,
         "toolOptions": app.ui.tool_options,
+        "perspectiveCrop": app.ui.perspective_crop,
         "strokeEditor": app.ui.stroke_editor,
         "magnetic": app.ui.magnetic,
         "textEdit": app.ui.text_edit,
@@ -2258,8 +2259,11 @@ mod tests {
             let r = call(&mut app, &ctx, "engine.execute", json!({"command": command, "params": {"layer": smart.0}}));
             assert_eq!(r["ok"], false, "{r}");
             assert!(r["error"].as_str().unwrap().contains("ambient smart-object path denied"), "{r}");
-            app.session.actions.list =
-                vec![photocraft_engine::actions_cmds::Action { name: "Linked contents".into(), steps: vec![(command.into(), json!({"layer": smart.0}))] }];
+            app.session.actions.list = vec![photocraft_engine::actions_cmds::Action {
+                name: "Linked contents".into(),
+                steps: vec![(command.into(), json!({"layer": smart.0}))],
+                disabled: Default::default(),
+            }];
             let r = call(&mut app, &ctx, "engine.execute", json!({"command": "actions.play", "params": {"action": "Linked contents"}}));
             assert_eq!(r["ok"], true, "{r}");
             assert_eq!(r["result"]["ran"], 0, "{r}");
@@ -2288,6 +2292,7 @@ mod tests {
         app.session.actions.list.push(photocraft_engine::actions_cmds::Action {
             name: "Open".into(),
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
+            disabled: Default::default(),
         });
         let ctx = egui::Context::default();
         let r = call(&mut app, &ctx, "engine.execute", json!({"command": "actions.play", "params": {"action": "Open"}}));
@@ -2306,6 +2311,7 @@ mod tests {
         app.session.actions.list.push(photocraft_engine::actions_cmds::Action {
             name: "Open".into(),
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
+            disabled: Default::default(),
         });
         app.automation_input = true;
         let r = app.run("actions.play", json!({"action": "Open"})).unwrap();
