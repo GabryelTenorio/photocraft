@@ -24,35 +24,42 @@ pub(crate) use paste_target;
 pub struct Clip {
     pub surface: Surface,
     pub bounds: Rect,
-    /// The copied layer itself, when Copy took a whole layer that Paste should recreate rather
-    /// than rasterize (see [`whole_layer`]): a scratch document in the source's colour holding it.
+    /// The copied layers, when Copy took whole layers that Paste should recreate rather
+    /// than rasterize (see [`whole_layer`]): a scratch document in the source's colour holding them.
     /// `surface` still holds its pixels, for Paste Into, masks, channels and other apps.
     pub layers: Option<Box<Document>>,
 }
 
 /// Photoshop's layer-based copy (CC 2018 on): with no selection, Copy takes the active layer
 /// whole when it is a smart object (#2428), a type or shape layer, or a group (its whole subtree)
-/// (#2670), so Paste recreates it instead of its pixels. Pixel layers, and several selected
-/// layers, still copy the active layer's pixels.
+/// (#2670), a masked pixel layer, or several selected layers, so Paste recreates
+/// their editable content. A pixel selection always keeps bitmap semantics.
 fn takes_whole(d: &crate::DocState, id: LayerId) -> bool {
     d.doc.selection.is_none()
-        && d.selected_layers().len() <= 1
         && crate::layer_copy_cmds::layered(d.doc.mode)
-        && d.doc
-            .layer(id)
-            .is_some_and(|l| matches!(l.content, LayerContent::Smart(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Group(_)))
+        && d.doc.layer(id).is_some_and(|l| {
+            d.selected_layers().len() > 1
+                || matches!(l.content, LayerContent::Smart(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Group(_))
+                || matches!(l.content, LayerContent::Raster(_)) && (l.mask.is_some() || l.vector_mask.is_some())
+        })
 }
 
-/// The layer Copy takes whole ([`takes_whole`]): a scratch document in the source's colour
-/// holding it.
+/// The layers Copy takes whole ([`takes_whole`]): a scratch document in the source's colour
+/// holding them.
 fn whole_layer(d: &crate::DocState, id: LayerId) -> Option<Box<Document>> {
-    let l = d.doc.layer(id).filter(|_| takes_whole(d, id))?;
+    if !takes_whole(d, id) {
+        return None;
+    }
     let doc = &d.doc;
     let mut copies = Document::new("", doc.size, doc.mode, doc.depth);
     copies.icc_profile = doc.icc_profile.clone();
     copies.resolution_dpi = doc.resolution_dpi;
     copies.patterns = doc.patterns.clone();
-    copies.layers.push(l.clone());
+    // The existing layer-selection helper preserves stack order and omits
+    // children whose selected parent already carries them.
+    for id in crate::layer_multi_cmds::top_level(doc, &d.selected_layers()) {
+        copies.layers.push(doc.layer(id)?.clone());
+    }
     Some(Box::new(copies))
 }
 
@@ -160,24 +167,28 @@ fn merged_surface(doc: &Document) -> Surface {
     photocraft_compose::flatten_to_surface(doc, PixelFormat::new(fmt.mode, fmt.sample, true), None)
 }
 
-fn copy(s: &mut Session, merged: bool) -> Result<Value> {
+fn copy(s: &mut Session, merged: bool, take_whole: bool) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
     let clip = if merged {
         lift(&merged_surface(&d.doc), d.doc.selection.as_ref(), canvas)?
     } else {
         let id = d.active_layer.ok_or(EngineError::Other("no active layer".into()))?;
-        let layers = whole_layer(d, id);
+        let layers = take_whole.then(|| whole_layer(d, id)).flatten();
         match (d.doc.layer(id).and_then(Layer::surface), &layers) {
-            (Some(surf), _) => Clip { layers, ..lift(surf, d.doc.selection.as_ref(), canvas)? },
-            // A group has no pixels of its own: the clipboard pixels are what it shows.
-            (None, Some(copies)) => {
+            // Keep a composited bitmap beside the editable layers for native
+            // export and bitmap-only paste destinations. Masks affect this
+            // bitmap, but must not shrink the editable layer's placement bounds.
+            (_, Some(copies)) => {
+                let bounds = copies.layers.iter().filter_map(crate::layer_multi_cmds::layer_bounds).fold(Rect::EMPTY, |a, b| a.union(&b)).intersect(&canvas);
                 let mut shown = (**copies).clone();
                 for l in &mut shown.layers {
                     l.visible = true;
                 }
-                Clip { layers, ..lift(&merged_surface(&shown), None, canvas)? }
+                let bitmap = lift(&merged_surface(&shown), None, canvas)?;
+                Clip { layers, bounds: bounds.union(&bitmap.bounds), ..bitmap }
             }
+            (Some(surf), None) => lift(surf, d.doc.selection.as_ref(), canvas)?,
             (None, None) => return Err(EngineError::Other("the active layer has no pixels".into())),
         }
     };
@@ -229,7 +240,9 @@ fn paste(s: &mut Session, p: &Value, in_place: bool) -> Result<Value> {
     let canvas = d.doc.bounds();
     let fmt = d.doc.pixel_format();
     let (dx, dy) = paste_offset(&clip, canvas, p, in_place);
-    if let Some(layers) = clip.layers.as_deref().filter(|_| crate::layer_copy_cmds::layered(d.doc.mode)) {
+    if let Some(layers) =
+        clip.layers.as_deref().filter(|_| crate::layer_copy_cmds::layered(d.doc.mode) && p.get("pixels").and_then(Value::as_bool) != Some(true))
+    {
         return paste_layers(s, layers, dx, dy);
     }
     let moved = shifted(&clip.surface, dx, dy);
@@ -257,6 +270,25 @@ fn paste_layers(s: &mut Session, layers: &Document, dx: i32, dy: i32) -> Result<
     }
     crate::layer_copy_cmds::adapt_copies(s, &mut copies, &d.doc)?;
     crate::layer_copy_cmds::translate_copies(&mut copies, dx, dy);
+    if dx != 0 || dy != 0 {
+        // Pasting moves the complete copied layer, including unlinked masks.
+        // Ordinary layer movement deliberately leaves these masks in place.
+        let ids: Vec<_> = copies.walk().into_iter().map(|(_, _, l)| l.id).collect();
+        for id in ids {
+            if let Some(l) = copies.layer_mut(id) {
+                if let Some(m) = &mut l.mask
+                    && !m.linked
+                {
+                    m.surface = shifted(&m.surface, dx, dy);
+                }
+                if let Some(m) = &mut l.vector_mask
+                    && !m.linked
+                {
+                    m.path = m.path.transform(&photocraft_geom::Affine::translate(f64::from(dx), f64::from(dy)));
+                }
+            }
+        }
+    }
     let patterns: Vec<_> = copies.patterns.iter().filter(|pat| !d.doc.patterns.iter().any(|q| q.id == pat.id)).cloned().collect();
     let id = s.edit("Paste", |doc, active| {
         doc.patterns.extend(patterns);
@@ -637,7 +669,7 @@ pub fn specs() -> Vec<CommandSpec> {
             if let Some(k) = crate::channel_clip::paste_color_target(s, p) {
                 return crate::channel_clip::cut(s, id, k);
             }
-            let r = copy(s, false)?;
+            let r = copy(s, false, false)?;
             let bg = s.tools.background;
             s.edit("Cut Pixels", |doc, _| clear_selected(doc, id, bg))?;
             Ok(r)
@@ -645,17 +677,17 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!("edit.copy", "Copy", &["Edit"], Some("Cmd+C"), "{} (a targeted colour or alpha channel copies that channel, as grayscale)", can_copy, |s, _| {
             match crate::channel_clip::copy(s)? {
                 Some(r) => Ok(r),
-                None => copy(s, false),
+                None => copy(s, false, true),
             }
         }),
-        spec!("edit.copyMerged", "Copy Merged", &["Edit"], Some("Cmd+Shift+C"), "{}", has_doc, |s, _| copy(s, true)),
+        spec!("edit.copyMerged", "Copy Merged", &["Edit"], Some("Cmd+Shift+C"), "{}", has_doc, |s, _| copy(s, true, false)),
         spec!(
             "edit.paste",
             "Paste",
             &["Edit"],
             Some("Cmd+V"),
             concat!(
-                r#"{"center":[x,y]? (view centre; default keeps the position when it overlaps the canvas),"#,
+                r#"{"center":[x,y]? (view centre; default keeps the position when it overlaps the canvas),"pixels":bool=false (paste the bitmap only),"#,
                 paste_target!(),
                 "} (with no document open: a new document from the clipboard)"
             ),
@@ -1363,3 +1395,6 @@ mod tests {
         assert!(s.execute("view.moveGuide", json!({"orientation": "vertical", "index": 3, "position": 1})).is_err());
     }
 }
+
+#[cfg(test)]
+mod clipboard_tests;
