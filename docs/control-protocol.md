@@ -330,7 +330,8 @@ The MCP server has the same batching as the `command_batch` tool (`{steps:[{id, 
 in headless and bridge mode. A step with `wait: false` returns `{job, pending}` at once, as `command_run`
 does; later steps that edit the same document fail with a message naming the job until it ends.
 
-Fonts that are neither bundled nor installed (#3393): `engine.execute` with
+Fonts that are neither bundled nor installed (#3393): start the server with `--font-dir <dir>`
+(repeatable; launch configuration like the roots, so any folder), or use `engine.execute` with
 `{"command": "type.registerFonts", "params": {"path": "fonts"}}` registers a font file, or every
 `.ttf`, `.otf`, `.ttc` and `.otc` file in a folder and its subfolders (8 levels deep), read under
 the read root. The reply is `{families, files, skipped: [{file, error}]}`, and `type.fonts` lists
