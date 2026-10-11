@@ -3505,6 +3505,9 @@ cameraData	Lens	レンズ
 	Frame Tool	フレームツール
 	Create a new rectangular frame	新しい長方形フレームを作成
 	Create a new elliptical frame	新しい楕円形フレームを作成
+	Perspective Crop Tool	遠近法の切り抜きツール
+	Show Grid	グリッドを表示
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	ボックスをドラッグするか 4 つの角をクリック · 角を傾いた形の端までドラッグ · {commit} で確定 · Esc でキャンセル
 	Artboard Tool	アートボードツール
 	Make Portrait	縦向きにする
 	Make Landscape	横向きにする

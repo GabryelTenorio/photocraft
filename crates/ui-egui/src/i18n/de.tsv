@@ -2526,6 +2526,9 @@ cameraData	Lens	Objektiv
 	Frame Tool	Rahmenwerkzeug
 	Create a new rectangular frame	Neuen rechteckigen Rahmen erstellen
 	Create a new elliptical frame	Neuen elliptischen Rahmen erstellen
+	Perspective Crop Tool	Perspektivisches Freistellungswerkzeug
+	Show Grid	Raster einblenden
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	Rahmen ziehen oder vier Ecken klicken · Ecken auf die Kanten einer schrägen Form ziehen · {commit} übernimmt · Esc bricht ab
 	Artboard Tool	Zeichenbereich-Werkzeug
 	Make Portrait	Hochformat
 	Make Landscape	Querformat

@@ -2470,6 +2470,9 @@ cameraData	Lens	鏡頭
 	Frame Tool	影格工具
 	Create a new rectangular frame	建立新的矩形影格
 	Create a new elliptical frame	建立新的橢圓形影格
+	Perspective Crop Tool	透視裁切工具
+	Show Grid	顯示格點
+	Drag a box or click four corners · drag the corners onto the edges of a skewed shape · {commit} commits · Esc cancels	拖曳方框或按一下四個角 · 將角拖曳到傾斜形狀的邊緣 · {commit} 確認 · Esc 取消
 	Artboard Tool	工作區域工具
 	Make Portrait	設為直向
 	Make Landscape	設為橫向
