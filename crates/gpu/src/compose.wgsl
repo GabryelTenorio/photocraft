@@ -680,10 +680,14 @@ fn adjust(c: vec3<f32>) -> vec3<f32> {
         }
         case 14: {                                                             // Color balance
             let l = gray(c);
-            let ws = clamp(1.0 - l * 2.0, 0.0, 1.0);
-            let wh = clamp(l * 2.0 - 1.0, 0.0, 1.0);
+            let linear = vec3(t_decode(c.r, p3.y), t_decode(c.g, p3.y), t_decode(c.b, p3.y));
+            let tone_l = dot(linear, vec3(0.2126, 0.7152, 0.0722));
+            let ws = clamp(1.0 - tone_l * 2.0, 0.0, 1.0);
+            let wh = clamp(tone_l * 2.0 - 1.0, 0.0, 1.0);
             let wm = 1.0 - ws - wh;
-            let o = clamp(c + (p0.rgb * ws + p1.rgb * wm + p2.rgb * wh) / 100.0 * 0.5, vec3(0.0), vec3(1.0));
+            let axis = p0.rgb * ws + p1.rgb * wm + p2.rgb * wh;
+            let delta = vec3(axis.r - (axis.g + axis.b) * 0.5, axis.g - (axis.r + axis.b) * 0.5, axis.b - (axis.r + axis.g) * 0.5);
+            let o = clamp(c + delta / 100.0 * 0.5, vec3(0.0), vec3(1.0));
             if (p3.x > 0.5) {
                 let l1 = max(gray(o), 1e-6);
                 return clamp(o * l / l1, vec3(0.0), vec3(1.0));

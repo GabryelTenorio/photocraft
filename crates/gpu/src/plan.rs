@@ -1593,7 +1593,7 @@ pub fn adjustment_program(adj: &Adjustment, transfer: Transfer, depth: photocraf
             p[0] = [shadows[0], shadows[1], shadows[2], 0.0];
             p[1] = [midtones[0], midtones[1], midtones[2], 0.0];
             p[2] = [highlights[0], highlights[1], highlights[2], 0.0];
-            p[3][0] = if *preserve_luminosity { 1.0 } else { 0.0 };
+            p[3] = [if *preserve_luminosity { 1.0 } else { 0.0 }, transfer_exponent(transfer), 0.0, 0.0];
             (14, p, None)
         }
         Adjustment::SelectiveColor { relative, adjustments } => {

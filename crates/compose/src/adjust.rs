@@ -190,11 +190,21 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
             }
         }
         Adjustment::ColorBalance { shadows, midtones, highlights, preserve_luminosity } => map_rgb(buf, |c| {
+            // Classify the shadow, midtone and highlight ranges by linear luminance. An sRGB
+            // value of 128 is only about 0.22 linear light, so it belongs to the shadows instead
+            // of falling just outside them as it did with encoded-value luma.
+            let linear = [transfer.decode(c[0]), transfer.decode(c[1]), transfer.decode(c[2])];
+            let tone_l = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
             let l = rgb_to_gray(c);
-            let ws = (1.0 - l * 2.0).clamp(0.0, 1.0);
-            let wh = (l * 2.0 - 1.0).clamp(0.0, 1.0);
+            let ws = (1.0 - tone_l * 2.0).clamp(0.0, 1.0);
+            let wh = (tone_l * 2.0 - 1.0).clamp(0.0, 1.0);
             let wm = 1.0 - ws - wh;
-            let out: [f32; 3] = std::array::from_fn(|i| (c[i] + (shadows[i] * ws + midtones[i] * wm + highlights[i] * wh) / 100.0 * 0.5).clamp(0.0, 1.0));
+            // The controls are Cyan–Red, Magenta–Green and Yellow–Blue axes, not independent
+            // R/G/B channel controls. Moving toward one primary adds it and removes half of each
+            // channel in its complementary secondary.
+            let axis = std::array::from_fn::<_, 3, _>(|i| shadows[i] * ws + midtones[i] * wm + highlights[i] * wh);
+            let delta = [axis[0] - (axis[1] + axis[2]) * 0.5, axis[1] - (axis[0] + axis[2]) * 0.5, axis[2] - (axis[0] + axis[1]) * 0.5];
+            let out: [f32; 3] = std::array::from_fn(|i| (c[i] + delta[i] / 100.0 * 0.5).clamp(0.0, 1.0));
             if *preserve_luminosity {
                 let l1 = rgb_to_gray(out).max(1e-6);
                 out.map(|v| (v * l / l1).clamp(0.0, 1.0))
@@ -823,6 +833,26 @@ mod tone_tests {
         let rect = Rect::new(0, 0, 8, 8);
         let px = (0..64).map(|i| [((i % 8) as f32) / 7.0, ((i / 8) as f32) / 7.0, 0.3, 1.0]).collect();
         Buffer { rect, px }
+    }
+
+    #[test]
+    fn color_balance_shadow_axes_affect_srgb_middle_gray() {
+        let gray = 128.0 / 255.0;
+        for preserve_luminosity in [false, true] {
+            let mut buf = Buffer { rect: Rect::new(0, 0, 1, 1), px: vec![[gray, gray, gray, 1.0]] };
+            let adjustment = Adjustment::ColorBalance { shadows: [100.0, -100.0, 0.0], midtones: [0.0; 3], highlights: [0.0; 3], preserve_luminosity };
+
+            apply_depth(&adjustment, &mut buf, Transfer::Srgb, None);
+
+            let output = buf.px[0];
+            assert!(output[0] > gray + 0.1, "red slider should affect this shadow pixel: {output:?}");
+            assert!(output[1] < gray - 0.1, "magenta slider should affect this shadow pixel: {output:?}");
+            if preserve_luminosity {
+                assert!(output[2] > gray, "luminosity preservation should retain the slider-axis color shift: {output:?}");
+            } else {
+                assert!((output[2] - gray).abs() < 1e-5, "opposed slider axes should cancel blue: {output:?}");
+            }
+        }
     }
 
     /// Photoshop 27.11, measured: Brightness/Contrast with Use Legacy on, over a gray ramp
