@@ -16,6 +16,8 @@
 //! * Layered TIFFs (Photoshop layer data in tags 37724 and 34377) open with their
 //!   layers through the PSD path and are written back the same way; see `tiff_layers`.
 //! * Paint.NET PDN3 documents open as editable bitmap layers (import only).
+//! * OpenRaster (`.ora`) documents open and save with their layers, groups, blend modes,
+//!   opacity and visibility; see `ora`.
 //! * Affinity documents (`.af`, `.afdesign`, `.afphoto`, `.afpub`) open natively
 //!   with no source save path, what isn't imported listed in the warnings; a file
 //!   whose native data can't be read opens as its embedded preview; see `affinity`.
@@ -36,10 +38,12 @@ pub mod blocks;
 mod channel_map;
 pub mod comps_map;
 pub mod effects_map;
+pub mod exr_parts;
 mod flat;
 mod gradient_bake;
 pub mod linked;
 mod multichannel_map;
+mod ora;
 pub mod pattern_map;
 mod pdn;
 pub mod pixels;
@@ -59,7 +63,7 @@ use photocraft_doc::Document;
 use photocraft_psd::{PsdError, PsdFile};
 
 pub use adjust_map::ADJUSTMENT_KEYS;
-pub use flat::{document_to_image, import_tiff_page};
+pub use flat::{document_to_image, import_tiff_page, tga_alpha_channel_to_transparency};
 pub use psd_export::{PsdExportOptions, document_to_psd, document_to_psd_with};
 pub use psd_import::{psd_to_document, psd_to_document_with};
 
@@ -69,6 +73,9 @@ pub enum IoError {
     /// Paint.NET document decode failure.
     #[error("PDN: {0}")]
     Pdn(String),
+    /// OpenRaster read failure.
+    #[error("OpenRaster: {0}")]
+    Ora(String),
     /// PSD parse/write failure.
     #[error("PSD: {0}")]
     Psd(#[from] PsdError),
@@ -222,6 +229,9 @@ fn import_stages(name: &str, bytes: &[u8], ctl: &photocraft_raster::Interrupt, m
     if affinity::is_affinity(bytes) || affinity::has_extension(name) {
         return affinity::import(name, bytes);
     }
+    if ora::is_ora(bytes) || has_extension(name, "ora") {
+        return ora::import(name, bytes, ctl);
+    }
     if has_extension(name, "pdn") || bytes.starts_with(b"PDN3") {
         return pdn::import(name, bytes, ctl);
     }
@@ -264,6 +274,9 @@ pub fn export(doc: &Document, name_or_ext: &str, opts: &ExportOptions) -> Result
     if affinity::EXTENSIONS.contains(&ext.as_str()) {
         return Err(IoError::Unsupported("Affinity export is not implemented; save a new PSD, PNG or .pcraft copy".into()));
     }
+    if ext == "ora" {
+        return ora::export(doc);
+    }
     if ext == photocraft_format::EXTENSION {
         let previews = photocraft_format::SaveOptions {
             thumbnail: Some(photocraft_compose::thumbnail(doc, 256)),
@@ -294,8 +307,45 @@ pub fn export(doc: &Document, name_or_ext: &str, opts: &ExportOptions) -> Result
 /// with the document pixel model and un-matted from white (Photoshop mattes
 /// the merged image of transparent documents). Used as the compositing oracle.
 pub fn merged_composite(file: &PsdFile) -> Result<Vec<[f32; 4]>, IoError> {
-    let img = file.composite_rgba8().ok();
     let h = &file.header;
+    h.validate()?;
+    if h.color_mode == photocraft_psd::ColorMode::Rgb && file.merged_has_alpha() {
+        // Preserve native sample precision before removing the white matte.
+        let raw = file.decode_merged()?;
+        let plane = raw.len() / usize::from(h.channels);
+        if plane == 0 {
+            return Err(PsdError::Invalid("empty RGB composite".into()).into());
+        }
+        let planes = raw
+            .chunks_exact(plane)
+            .take(4)
+            .map(|bytes| match h.depth {
+                32 => Ok(photocraft_psd::pixels::samples_f32(bytes)),
+                16 => Ok(photocraft_psd::pixels::samples_u16(bytes).into_iter().map(|v| f32::from(v) / 65535.0).collect()),
+                _ => photocraft_psd::pixels::plane_to_u8(bytes, h.depth, h.width as usize, h.height as usize)
+                    .map(|values| values.into_iter().map(|v| f32::from(v) / 255.0).collect()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let [r, g, b, a] = planes.as_slice() else { return Err(PsdError::Invalid("missing RGB composite channels".into()).into()) };
+        return Ok(r
+            .iter()
+            .zip(g)
+            .zip(b)
+            .zip(a)
+            .map(|(((&r, &g), &b), &a)| {
+                let mut pixel = [r, g, b, a];
+                let alpha = pixel[3];
+                for c in pixel.iter_mut().take(3) {
+                    *c = pixels::unmatte(*c, alpha, 1.0);
+                    if h.depth != 32 {
+                        *c = c.clamp(0.0, 1.0);
+                    }
+                }
+                pixel
+            })
+            .collect());
+    }
+    let img = file.composite_rgba8().ok();
     // CMYK goes through the colour-managed model conversion (the PSD crate's RGBA preview is a
     // naive, profile-free conversion).
     if let (Some(img), false) = (img, matches!(h.color_mode, photocraft_psd::ColorMode::Lab | photocraft_psd::ColorMode::Cmyk)) {

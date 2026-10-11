@@ -306,19 +306,34 @@ fn stroke_json(s: &ShapeStroke) -> Value {
 }
 
 /// Applies stroke keys onto `base` (`null` → no stroke).
-fn parse_stroke(v: &Value, base: Option<ShapeStroke>, fg: Color) -> std::result::Result<Option<ShapeStroke>, String> {
+pub fn parse_stroke(v: &Value, base: Option<ShapeStroke>, fg: Color) -> std::result::Result<Option<ShapeStroke>, String> {
     if v.is_null() || v.as_bool() == Some(false) {
         return Ok(None);
     }
+    if !v.is_object() {
+        return Err("stroke must be an object or null".into());
+    }
+    for (key, lo, hi) in [("width", 0.0, 1_000_000.0), ("opacity", 0.0, 100.0), ("miterLimit", 1.0, 500.0), ("dashOffset", -1_000_000.0, 1_000_000.0)] {
+        if let Some(value) = v.get(key)
+            && !value.as_f64().is_some_and(|n| n.is_finite() && (lo..=hi).contains(&n))
+        {
+            return Err(format!("`{key}` must be a finite number between {lo} and {hi}"));
+        }
+    }
+    for key in ["align", "cap", "join"] {
+        if v.get(key).is_some_and(|value| !value.is_string()) {
+            return Err(format!("`{key}` must be a string"));
+        }
+    }
     let mut s = base.unwrap_or(ShapeStroke { paint: Fill::Solid(fg), ..Default::default() });
     if let Some(w) = f64p(v, "width") {
-        s.width = w.max(0.0) as f32;
+        s.width = w as f32;
     }
     if let Some(c) = v.get("color").or_else(|| v.get("fill")) {
         s.paint = parse_fill(c)?.ok_or("stroke colour cannot be null")?;
     }
     if let Some(o) = f64p(v, "opacity") {
-        s.opacity = (o / 100.0).clamp(0.0, 1.0) as f32;
+        s.opacity = (o / 100.0) as f32;
     }
     if let Some(a) = v.get("align").and_then(Value::as_str) {
         s.align = match a {
@@ -345,18 +360,27 @@ fn parse_stroke(v: &Value, base: Option<ShapeStroke>, fg: Color) -> std::result:
         };
     }
     if let Some(m) = f64p(v, "miterLimit") {
-        s.miter_limit = m.max(1.0) as f32;
+        s.miter_limit = m as f32;
     }
     if let Some(d) = v.get("dashes") {
         s.dashes = match d {
             Value::Null => Vec::new(),
-            Value::Array(a) => a.iter().filter_map(Value::as_f64).map(|x| x.max(0.0) as f32).collect(),
+            Value::Array(a) if a.len() <= 32 => a
+                .iter()
+                .map(|x| {
+                    x.as_f64()
+                        .filter(|n| n.is_finite() && (0.0..=10000.0).contains(n))
+                        .map(|x| x as f32)
+                        .ok_or_else(|| "dash lengths must be finite numbers between 0 and 10000 widths".to_string())
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()?,
             _ => return Err("`dashes` must be an array (multiples of the width)".into()),
         };
     }
     if let Some(o) = f64p(v, "dashOffset") {
         s.dash_offset = o as f32;
     }
+    s.validate()?;
     Ok(Some(s))
 }
 
@@ -433,6 +457,20 @@ pub fn refresh_shape(doc: &Document, sh: &mut ShapeLayer) {
     sh.cache = Some(vector::render_shape(sh, doc.pixel_format(), doc.bounds()));
 }
 
+/// A staged stroke edit rendered with the same validation and cache refresh as `shape.edit`.
+/// The caller owns this snapshot; the session and its history remain untouched.
+pub fn preview_shape_stroke(doc: &Document, id: LayerId, params: &Value) -> Result<Document> {
+    let mut result = doc.clone();
+    let layer = result.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+    let LayerContent::Shape(shape) = &mut layer.content else {
+        return Err(EngineError::Other("preview target is not a shape layer".into()));
+    };
+    shape.stroke = parse_stroke(params, shape.stroke.clone(), Color::BLACK).map_err(|e| bad("shape.edit", e))?;
+    vector::flatten::validate_shape(&shape.path, shape.stroke.as_ref()).map_err(|e| bad("shape.edit", e))?;
+    refresh_shape(doc, shape);
+    Ok(result)
+}
+
 /// Moves a layer's vector content by `(dx, dy)`: shape paths (re-rendered) and linked vector
 /// masks, recursing into groups. For the Move tool / `layer.move`.
 pub fn translate_vectors(doc: &Document, l: &mut Layer, dx: f64, dy: f64) {
@@ -473,7 +511,17 @@ pub fn transform_shape(sh: &mut ShapeLayer, a: &Affine) {
                 }
                 LiveShape::Ellipse { rect } => LiveShape::Ellipse { rect: r(rect) },
                 LiveShape::Polygon { rect, sides, star_ratio } => LiveShape::Polygon { rect: r(rect), sides, star_ratio },
-                LiveShape::Line { from, to, weight } => LiveShape::Line { from: pt(from), to: pt(to), weight },
+                LiveShape::Line { from, to, weight } => {
+                    // Live-shape edits regenerate the line's filled bar from its parameters.
+                    // Keep the weight in sync with a positive scale of the path, or an
+                    // unchanged endpoint edit unexpectedly restores the old thickness (#3063).
+                    // A line's width scales perpendicular to its direction.
+                    let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+                    let old_length = dx.hypot(dy);
+                    let new_length = (dx * m0).hypot(dy * m3);
+                    let width_scale = if old_length > 0.0 && new_length > 0.0 { m0 * m3 * old_length / new_length } else { m0.min(m3) };
+                    LiveShape::Line { from: pt(from), to: pt(to), weight: weight * width_scale }
+                }
             })
         }
         // Flips and 90° turns keep rectangles, ellipses and lines live (Image Rotation): the new
@@ -519,6 +567,12 @@ fn shape_info(s: &Session, id: LayerId) -> Result<Value> {
 }
 
 pub(crate) fn with_shape<R>(s: &mut Session, id: LayerId, label: &str, f: impl FnOnce(&mut ShapeLayer, &mut Layer) -> Result<R>) -> Result<R> {
+    if let Some(st) = s.active() {
+        let locks = st.doc.effective_locks(id);
+        if locks.all || locks.pixels {
+            return Err(EngineError::Other("shape layer is locked".into()));
+        }
+    }
     s.edit(label, |doc, _| {
         let snapshot = doc.clone();
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
@@ -529,7 +583,9 @@ pub(crate) fn with_shape<R>(s: &mut Session, id: LayerId, label: &str, f: impl F
             return Err(EngineError::Other(format!("layer {} is not a shape layer", id.0)));
         };
         let r = f(&mut sh, l);
-        refresh_shape(&snapshot, &mut sh);
+        if r.is_ok() {
+            refresh_shape(&snapshot, &mut sh);
+        }
         l.content = LayerContent::Shape(sh);
         r
     })
@@ -567,6 +623,7 @@ fn shape_create(s: &mut Session, p: &Value) -> Result<Value> {
         Some(v) => parse_stroke(v, None, fgc).map_err(|e| bad(CMD, e))?,
         None => None,
     };
+    vector::flatten::validate_shape(&path, stroke.as_ref()).map_err(|e| bad(CMD, e))?;
     // Add to an existing shape layer with a path operation (Shape tool in combine/subtract… mode).
     if let Some(target) = p.get("addTo").and_then(Value::as_u64) {
         let op = p.get("op").and_then(Value::as_str).map_or(Some(PathOp::Combine), op_from).ok_or_else(|| bad(CMD, "unknown `op`"))?;
@@ -578,6 +635,7 @@ fn shape_create(s: &mut Session, p: &Value) -> Result<Value> {
             }
             sh.live = None;
             sh.psd_raw = None;
+            vector::flatten::validate_shape(&sh.path, sh.stroke.as_ref()).map_err(|e| bad(CMD, e))?;
             Ok(())
         })?;
         return shape_info(s, id);
@@ -613,9 +671,14 @@ fn shape_edit(s: &mut Session, p: &Value) -> Result<Value> {
             // Explicit radii on a plain rectangle keep it a (now rounded) rectangle.
             let kind = if kind == "rect" && radii(p).is_some_and(|r| r.iter().any(|v| *v > 0.0)) { "roundedRect".to_string() } else { kind };
             let l = live_from_params(CMD, &kind, p, sh.live.as_ref())?;
-            sh.path = vector::shapes::live_path(&l);
-            sh.live = Some(l);
-            sh.psd_raw = None;
+            // A transformed live shape's path may carry nonuniform corner scaling
+            // that its scalar radii cannot represent. Re-entering unchanged values
+            // must not regenerate the outline and silently discard that geometry.
+            if sh.live.as_ref() != Some(&l) {
+                sh.path = vector::shapes::live_path(&l);
+                sh.live = Some(l);
+                sh.psd_raw = None;
+            }
         }
         if let Some(m) = nums::<6>(p, "transform") {
             transform_shape(sh, &Affine { m });
@@ -644,6 +707,7 @@ fn shape_edit(s: &mut Session, p: &Value) -> Result<Value> {
         if let Some(n) = name {
             layer.name = n;
         }
+        vector::flatten::validate_shape(&sh.path, sh.stroke.as_ref()).map_err(|e| bad(CMD, e))?;
         Ok(())
     })?;
     shape_info(s, id)
@@ -843,7 +907,21 @@ fn path_transform(s: &mut Session, p: &Value) -> Result<Value> {
         let (tx, ty) = (number("translateX", 0.0)?, number("translateY", 0.0)?);
         let (sx, sy) = (number("scaleX", 1.0)?, number("scaleY", 1.0)?);
         let angle = number("angle", 0.0)?;
-        let path = resolve_path(s, Some(&name))?;
+        // An explicit `layer` parameter must determine both the transformed path and its
+        // pivot. resolve_path("layer") otherwise reads the currently active layer (#3062).
+        let path = if let Some(id) = layer_id {
+            let layer = s.active().and_then(|st| st.doc.layer(id)).ok_or(EngineError::NoLayer(id))?;
+            match &layer.content {
+                LayerContent::Shape(shape) => shape.path.clone(),
+                _ => layer
+                    .vector_mask
+                    .as_ref()
+                    .map(|mask| mask.path.clone())
+                    .ok_or_else(|| EngineError::Other("target layer has no shape path or vector mask".into()))?,
+            }
+        } else {
+            resolve_path(s, Some(&name))?
+        };
         let (x0, y0, x1, y1) = path.control_bounds().ok_or_else(|| bad(CMD, "path has no points to transform"))?;
         let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
         Affine::translate(-cx, -cy)
@@ -952,7 +1030,8 @@ fn path_fill(s: &mut Session, p: &Value) -> Result<Value> {
     s.edit("Fill Path", |doc, _| {
         let area = doc.bounds();
         let r = vector::fill_rasterizer(&path, vector::DEFAULT_TOLERANCE);
-        let feather_pad = (feather.ceil() as i32).saturating_mul(2);
+        // The feather reaches 3σ = 3 × radius (σ = radius, as in Photoshop), plus a pixel.
+        let feather_pad = (feather.ceil() as i32).saturating_mul(3).saturating_add(1);
         let area = r.pixel_bounds().map_or(area, |b| b.inflate(feather_pad).intersect(&area));
         if area.is_empty() {
             return Ok(());
@@ -963,6 +1042,11 @@ fn path_fill(s: &mut Session, p: &Value) -> Result<Value> {
         }
         if feather > 0.0 {
             cov = sel::feather(&cov, area.width() as usize, area.height() as usize, feather);
+        }
+        // An active selection limits the fill, soft edges included, as every other fill does (#2387).
+        if let Some(selection) = doc.selection.as_ref() {
+            let mask = sel::mask_from_surface(Some(selection), area);
+            cov.iter_mut().zip(&mask).for_each(|(c, m)| *c *= m);
         }
         let locks = doc.effective_locks(id);
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
@@ -1026,8 +1110,13 @@ fn path_stroke(s: &mut Session, p: &Value) -> Result<Value> {
     let bg = s.tools.background;
     let dmg = s.edit("Stroke Path", |doc, _| {
         let sel = doc.selection.clone();
-        let lock = doc.effective_locks(id).transparency;
+        let locks = doc.effective_locks(id);
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+        // Pixel and full locks (the layer's own or a parent group's) refuse the stroke, as Fill Path does (#2388).
+        if locks.pixels || locks.all {
+            return Err(EngineError::Other(format!("Could not complete your request because the layer \"{}\" is locked", l.name)));
+        }
+        let lock = locks.transparency;
         let surf = l.surface_mut().ok_or_else(|| EngineError::Other("Stroke Path needs a pixel layer".into()))?;
         let mut brush = brush.clone();
         if brush.erase && lock {

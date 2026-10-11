@@ -92,6 +92,28 @@ fn revert_reloads_as_one_undoable_step() {
 }
 
 #[test]
+fn injected_import_failure_does_not_open_a_document() {
+    let mut s = session(8, 8, 8);
+    let before = s.documents().len();
+    crate::allocation::fail_next_for_test();
+    let result = open_bytes_as(&mut s, "image.png", b"not decoded", None, None);
+    assert!(result.as_ref().is_err_and(|e| e.to_string().contains("not enough memory for importing document")));
+    assert_eq!(s.documents().len(), before);
+}
+
+#[test]
+fn injected_save_failure_does_not_modify_the_destination() {
+    let dir = tmp("allocation-save");
+    let path = join(&dir, "existing.psd");
+    std::fs::write(&path, b"previous file").unwrap();
+    let s = session(8, 8, 8);
+    crate::allocation::fail_next_for_test();
+    let result = save_doc(doc(&s), &path, None);
+    assert!(result.as_ref().is_err_and(|e| e.to_string().contains("not enough memory for saving document")));
+    assert_eq!(std::fs::read(path).unwrap(), b"previous file");
+}
+
+#[test]
 fn save_a_copy_keeps_path_and_dirty_state() {
     let dir = tmp("copy");
     let mut s = session(20, 10, 16);
@@ -158,6 +180,23 @@ fn place_embedded_centres_fits_and_embeds() {
     }
 }
 
+/// Preferences ▸ General ▸ Resize Image During Place: off, a larger image keeps its natural size
+/// instead of being fitted to the canvas; an explicit `"fit"` still wins.
+#[test]
+fn resize_image_during_place_preference_controls_the_fit() {
+    let dir = tmp("place-fit-pref");
+    let big = png(&dir, "big.png", 200, 100, "#ff0000");
+    let mut s = session(100, 100, 8);
+    s.execute("prefs.set", json!({"path": "general.resizeImageDuringPlace", "value": false})).unwrap();
+    let r = s.execute("file.placeEmbedded", json!({"path": big})).unwrap();
+    assert!((r["scale"].as_f64().unwrap() - 100.0).abs() < 1e-9, "natural size: {r}");
+    let b = r["bounds"].as_array().unwrap();
+    assert!(b[2].as_f64().unwrap() > 100.0, "wider than the canvas: {b:?}");
+    // An explicit "fit": true overrides the preference.
+    let r = s.execute("file.placeEmbedded", json!({"path": big, "fit": true})).unwrap();
+    assert!((r["scale"].as_f64().unwrap() - 50.0).abs() < 1e-9, "fitted on request: {r}");
+}
+
 /// A 40×20 JPEG (left half red, right half blue) tagged EXIF Orientation = 6: shown upright it
 /// is 20×40, red on top.
 fn rotated_jpeg(dir: &str) -> String {
@@ -219,6 +258,77 @@ fn file_info_round_trips_through_xmp_and_psd() {
     let out = write_file_info(Some(foreign), &json!({"authorTitle": "Artist"}));
     assert!(out.contains("xmp:CreatorTool=\"Other App\""));
     assert_eq!(read_file_info(Some(&out))["authorTitle"], "Artist");
+}
+
+fn camera_exif() -> Vec<u8> {
+    photocraft_algo::exif::build(&photocraft_algo::exif::CameraInfo {
+        make: Some("SONY".into()),
+        model: Some("ILCE-7RM5".into()),
+        lens: Some("24-70mm F2.8".into()),
+        exposure_time: Some(1.0 / 250.0),
+        f_number: Some(8.0),
+        iso: Some(400.0),
+        focal_length: Some(33.1),
+        focal_length_35mm: Some(50.0),
+        date_taken: Some("2024:02:17 12:40:19".into()),
+    })
+}
+
+#[test]
+fn file_info_reads_camera_data_from_jpeg_and_psd_exif() {
+    let mut s = session(8, 8, 8);
+    assert_eq!(s.execute("file.fileInfo", json!({})).unwrap()["camera"], json!({}));
+    s.edit("exif", |doc, _| {
+        doc.metadata.exif = Some(Arc::new(camera_exif()));
+        Ok(())
+    })
+    .unwrap();
+    let want = json!({
+        "make": "SONY", "model": "ILCE-7RM5", "dateTaken": "2024-02-17 12:40:19", "exposure": "1/250 s", "fNumber": "f/8",
+        "iso": "ISO 400", "focalLength": "33.1 mm", "focalLength35mm": "50 mm", "lens": "24-70mm F2.8"
+    });
+    for name in ["x.jpg", "x.psd"] {
+        let (bytes, _) = encode(doc(&s), name, None).unwrap();
+        let back = photocraft_io::import(name, &bytes).unwrap().document;
+        let mut t = Session::new();
+        t.add_document(back, None);
+        assert_eq!(t.execute("file.fileInfo", json!({})).unwrap()["camera"], want, "{name}");
+        // Editing the description fields leaves the read-only camera data alone.
+        let edited = t.execute("file.fileInfo", json!({"title": "Pier", "camera": {"make": "ignored"}})).unwrap();
+        assert_eq!(edited["camera"], want, "{name}");
+    }
+}
+
+#[test]
+fn camera_data_formats_like_photoshop_and_falls_back_to_xmp() {
+    let info = |t: Option<f64>, n: Option<f64>, f: Option<f64>| {
+        let exif = photocraft_algo::exif::build(&photocraft_algo::exif::CameraInfo { exposure_time: t, f_number: n, focal_length: f, ..Default::default() });
+        camera_data(Some(&exif), None)
+    };
+    assert_eq!(info(Some(2.0), Some(2.8), Some(35.0)), json!({"exposure": "2 s", "fNumber": "f/2.8", "focalLength": "35 mm"}));
+    assert_eq!(info(Some(0.5), Some(5.6), None), json!({"exposure": "1/2 s", "fNumber": "f/5.6"}));
+    assert_eq!(info(Some(0.4), None, None), json!({"exposure": "0.4 s"}));
+    assert_eq!(info(Some(1.0 / 2000.0), None, None), json!({"exposure": "1/2000 s"}));
+    assert_eq!(info(Some(0.0), Some(0.0), Some(0.0)), json!({}));
+    // No EXIF block (a raw import, XMP-only files): Photoshop's exif:/tiff:/aux: properties.
+    let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description rdf:about="" xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:exif="http://ns.adobe.com/exif/1.0/" xmlns:aux="http://ns.adobe.com/exif/1.0/aux/"
+ tiff:Make="SONY" tiff:Model="ILCE-7RM5" exif:ExposureTime="1/250" exif:FNumber="8/1" exif:FocalLength="331/10"
+ exif:FocalLengthIn35mmFilm="50" exif:DateTimeOriginal="2024-02-17T12:40:19.00+01:00" aux:Lens="Lens &amp; Co">
+<exif:ISOSpeedRatings><rdf:Seq><rdf:li>400</rdf:li></rdf:Seq></exif:ISOSpeedRatings>
+</rdf:Description></rdf:RDF></x:xmpmeta>"#;
+    let want = json!({
+        "make": "SONY", "model": "ILCE-7RM5", "dateTaken": "2024-02-17 12:40:19", "exposure": "1/250 s", "fNumber": "f/8",
+        "iso": "ISO 400", "focalLength": "33.1 mm", "focalLength35mm": "50 mm", "lens": "Lens & Co"
+    });
+    assert_eq!(camera_data(None, Some(xmp)), want);
+    // EXIF wins; XMP only fills what EXIF lacks.
+    let exif = photocraft_algo::exif::build(&photocraft_algo::exif::CameraInfo { make: Some("Other".into()), ..Default::default() });
+    let both = camera_data(Some(&exif), Some(xmp));
+    assert_eq!(both["make"], "Other");
+    assert_eq!(both["exposure"], "1/250 s");
+    // Garbage in either block reads as no data, never a panic.
+    assert_eq!(camera_data(Some(b"II*\0\xff\xff\xff\xff"), Some("<exif:FNumber>0/0</exif:FNumber> exif:ExposureTime=\"-1/0\"")), json!({}));
 }
 
 const MULTILINGUAL_XMP: &str = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
@@ -543,7 +653,7 @@ fn guide_layouts() {
 
 #[test]
 fn only_layered_files_save_in_place() {
-    for path in ["a.psd", "dir/a.PSB", r"C:\w\a.pcraft", "my.dir/a.psd"] {
+    for path in ["a.psd", "dir/a.PSB", r"C:\w\a.pcraft", "my.dir/a.psd", "a.ora", "dir/A.ORA"] {
         assert!(saves_in_place(path), "{path}");
     }
     // Flat formats, no extension, a dotted folder with an extensionless file, a dot file.
