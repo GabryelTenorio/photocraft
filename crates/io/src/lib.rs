@@ -63,7 +63,7 @@ use photocraft_doc::Document;
 use photocraft_psd::{PsdError, PsdFile};
 
 pub use adjust_map::ADJUSTMENT_KEYS;
-pub use flat::{document_to_image, import_tiff_page, tga_alpha_channel_to_transparency};
+pub use flat::{document_to_image, import_tiff_page, tga_alpha_channel_to_transparency, tga_default_bits};
 pub use psd_export::{PsdExportOptions, document_to_psd, document_to_psd_with};
 pub use psd_import::{psd_to_document, psd_to_document_with};
 
@@ -162,11 +162,42 @@ pub struct ExportOptions {
     /// PSD/PSB always keep XMP; `.pcraft` keeps both. Everything by default, as Save As does;
     /// Export As offers None.
     pub xmp: XmpEmbed,
+    /// Targa: bits per pixel of an RGB file. `None` writes 32 when the document has an alpha
+    /// channel or transparency, else 24; Save As asks, starting at [`tga_default_bits`].
+    pub tga_bits: Option<TgaBits>,
 }
 
 impl Default for ExportOptions {
     fn default() -> Self {
-        ExportOptions { encode: EncodeOptions::default(), force_psb: false, tiff_layers: false, xmp: XmpEmbed::All }
+        ExportOptions { encode: EncodeOptions::default(), force_psb: false, tiff_layers: false, xmp: XmpEmbed::All, tga_bits: None }
+    }
+}
+
+/// Bits per pixel of an RGB Targa (Photoshop's Targa Options › Resolution).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TgaBits {
+    /// The colours alone, no alpha.
+    Bits24,
+    /// The colours and an 8-bit alpha: the document's alpha channel, or its transparency.
+    Bits32,
+}
+
+impl TgaBits {
+    /// `24` or `32` as [`TgaBits`]; any other number is `None`.
+    pub fn from_bits(bits: u64) -> Option<Self> {
+        match bits {
+            24 => Some(TgaBits::Bits24),
+            32 => Some(TgaBits::Bits32),
+            _ => None,
+        }
+    }
+
+    /// The bits per pixel.
+    pub fn bits(self) -> u8 {
+        match self {
+            TgaBits::Bits24 => 24,
+            TgaBits::Bits32 => 32,
+        }
     }
 }
 
@@ -345,7 +376,9 @@ pub fn merged_composite(file: &PsdFile) -> Result<Vec<[f32; 4]>, IoError> {
             })
             .collect());
     }
-    let img = file.composite_rgba8().ok();
+    // The RGBA8 preview clips signed/HDR values. Decode float merged images at their
+    // original depth through the model path below; they are the rendering oracle.
+    let img = if h.depth == 32 { None } else { file.composite_rgba8().ok() };
     // CMYK goes through the colour-managed model conversion (the PSD crate's RGBA preview is a
     // naive, profile-free conversion).
     if let (Some(img), false) = (img, matches!(h.color_mode, photocraft_psd::ColorMode::Lab | photocraft_psd::ColorMode::Cmyk)) {
@@ -367,7 +400,10 @@ pub fn merged_composite(file: &PsdFile) -> Result<Vec<[f32; 4]>, IoError> {
             .collect());
     }
     // Generic path (Lab, CMYK and others) via the raster model conversion.
-    let (doc, _) = psd_to_document(&PsdFile { layer_info: None, ..file.clone() });
+    // Keep the merged-alpha marker while discarding layers: otherwise an extra
+    // spot/alpha channel in an opaque composite is mistaken for transparency.
+    let layer_info = Some(photocraft_psd::LayerInfo { merged_alpha: file.merged_has_alpha(), layers: Vec::new(), padding: None });
+    let (doc, _) = psd_to_document(&PsdFile { layer_info, ..file.clone() });
     // Multichannel documents keep their channels apart (no layer): composite them.
     if doc.layers.is_empty() && doc.mode == photocraft_color::ColorMode::Multichannel {
         return Ok(photocraft_compose::flatten(&doc).px);
