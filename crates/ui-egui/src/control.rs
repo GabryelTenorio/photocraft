@@ -941,7 +941,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     // Right-click while transforming: the box's menu, as on the canvas.
                     if app.ui.transform.as_ref().is_some_and(|t| t.warp.is_none()) {
                         if down {
-                            crate::canvas_tool_menu::open_transform(app, screen_point(app, x, y));
+                            crate::canvas_tool_menu::open_transform(app, ctx, screen_point(app, x, y));
                         }
                         continue;
                     }

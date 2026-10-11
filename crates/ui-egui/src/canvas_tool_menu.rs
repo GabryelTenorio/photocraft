@@ -633,7 +633,7 @@ mod tests {
         let mut app = app();
         app.run("type.create", json!({"x": 2, "y": 20, "text": "Hi", "size": 16})).unwrap();
         crate::transform_tool::begin(&mut app, &Context::default()).unwrap();
-        assert!(open_transform(&mut app, [10.0, 10.0]));
+        assert!(open_transform(&mut app, &Context::default(), [10.0, 10.0]));
         let menu = app.ui.canvas_tool_menu.clone().unwrap();
         for (id, on) in [("edit.transform.skew", true), ("edit.transform.distort", false), ("edit.transform.perspective", false)] {
             assert_eq!(entry_enabled(&app, &menu, id), on, "{id}");
