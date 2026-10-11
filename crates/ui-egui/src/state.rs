@@ -110,6 +110,9 @@ pub enum Tool {
     QuickSelection,
     ObjectSelection,
     Pen,
+    /// Converts an anchor between smooth and corner, and pulls handles out of a corner
+    /// (Photoshop's Convert Point tool; also the Pen's ⌥ mode, `direct_select.rs`).
+    ConvertPoint,
     PathSelection,
     DirectSelection,
     Rectangle,
@@ -123,7 +126,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 55] = [
+    pub const ALL: [Tool; 56] = [
         Tool::Move,
         Tool::RectMarquee,
         Tool::EllipseMarquee,
@@ -169,6 +172,7 @@ impl Tool {
         Tool::QuickSelection,
         Tool::ObjectSelection,
         Tool::Pen,
+        Tool::ConvertPoint,
         Tool::PathSelection,
         Tool::DirectSelection,
         Tool::Rectangle,
@@ -230,6 +234,7 @@ impl Tool {
             Tool::QuickSelection => "Quick Selection Tool",
             Tool::ObjectSelection => "Object Selection Tool",
             Tool::Pen => "Pen Tool",
+            Tool::ConvertPoint => "Convert Point Tool",
             Tool::PathSelection => "Path Selection Tool",
             Tool::DirectSelection => "Direct Selection Tool",
             Tool::Rectangle => "Rectangle Tool",
@@ -291,7 +296,7 @@ impl Tool {
             Tool::SingleRowMarquee | Tool::SingleColumnMarquee => '\0',
             Tool::Dodge | Tool::Burn | Tool::Sponge => 'O',
             Tool::QuickSelection | Tool::ObjectSelection => 'W',
-            Tool::Pen => 'P',
+            Tool::Pen | Tool::ConvertPoint => 'P',
             Tool::PathSelection | Tool::DirectSelection => 'A',
             Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => 'U',
         }
@@ -1210,7 +1215,11 @@ mod tests {
         assert!(!Tool::RedEye.is_brushlike());
         assert_eq!(Tool::from_name("patternStamp"), Some(Tool::PatternStamp));
         assert_eq!(Tool::from_name("Pattern Stamp Tool"), Some(Tool::PatternStamp));
-        assert_eq!(Tool::ALL.len(), 55);
+        assert_eq!(Tool::from_name("convertPoint"), Some(Tool::ConvertPoint));
+        assert_eq!(Tool::from_name("Convert Point Tool"), Some(Tool::ConvertPoint));
+        assert_eq!(Tool::ConvertPoint.key(), 'P', "it shares the Pen's key");
+        assert!(!Tool::ConvertPoint.is_brushlike());
+        assert_eq!(Tool::ALL.len(), 56);
         assert_eq!(Tool::from_name("Remove Tool"), Some(Tool::Remove));
         assert_eq!(Tool::Remove.key(), 'J');
         assert!(Tool::Remove.is_brushlike());

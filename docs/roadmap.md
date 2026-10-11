@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (Photomerge implementation status corrected; real-world quality validation remains open) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** minor (missing tools: 12 of 68) · **Target:** Adobe Photoshop 2026
 
 - UI.5: Panels can detach, join other tab groups, split, resize and redock through shared docking transactions. Custom layouts persist with workspaces, respect workspace locking, and retain collapse flags for intact native groups.
 
@@ -77,7 +77,7 @@ Ranked; each item links to its gap entry. Pick from the top unless an issue is a
 4. **Brush and transform feel** ([G4](gaps.md#g4-brush-feel), [G5](gaps.md#g5-transform-handles-and-modifiers)):
    [`brush-parity.md`](brush-parity.md) and [`ui-parity.md`](ui-parity.md) rows marked partial
    or missing. 150–250 h.
-5. **Missing tools** ([G6](gaps.md#g6-missing-tools)): 15 of Photoshop's 68. 60–100 h.
+5. **Missing tools** ([G6](gaps.md#g6-missing-tools)): 12 of Photoshop's 68. 60–100 h.
 
 ## What's next, with estimates
 
@@ -113,6 +113,7 @@ Each milestone has a **definition of done (DoD)** and must leave `main` green on
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Missing tools: 12 of 68 (Convert Point landed, #3204; was 15, stale) |
 | 2026-10-10 | minor | Photomerge is implemented; real-world quality validation remains open |
 | 2026-10-10 | minor | Alpha gate table (core-workflow gate from the progress-docs standard): passes, stage stays alpha |
 | 2026-10-10 | major | Progress-docs standard: honest assessment and dated measurements moved to `target-app-parity.md`, Affinity notes to `file-format-parity.md`; new Current focus and estimates; `parity.md` renamed `parity-checklist.md` |
