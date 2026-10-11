@@ -6,9 +6,9 @@ PhotoCraft follows the same conventions as FilmCraft #28. Start a headless sessi
 photocraft-cli mcp --automation-read-root /work/project --automation-write-root /work/project
 ```
 
-Paths are relative to the corresponding root; without a root that filesystem authority is
-absent. Bridge mode uses `--bridge` and `--control-token-file` as described in
-[development.md](development.md). UI tools require a running desktop app.
+Paths are relative to the corresponding root, or absolute paths beneath it; without a root that
+filesystem authority is absent. Bridge mode uses `--bridge` and `--control-token-file` as
+described in [development.md](development.md). UI tools require a running desktop app.
 
 ## Tools and resources
 
@@ -18,6 +18,9 @@ absent. Bridge mode uses `--bridge` and `--control-token-file` as described in
 - `command_batch`: ordered `steps`, optional `stop_on_error`; one history step per command,
   not an atomic transaction. Existing per-step results and reply budgets are preserved.
 - `doc_inspect`: layer tree, history and selection; an empty session returns `document:null`.
+  Every layer (including groups and nested children) reports raster-only `hasMask`,
+  `hasVectorMask` for vector mask presence, and `vectorMaskEnabled` (`true`/`false` when
+  present, `null` when absent). A disabled vector mask still has `hasVectorMask:true`.
 - `render_preview`: bounded PNG content; `index` and `max_side` (default 1024, maximum 2048).
 - `ui_inspect` and `ui_screenshot`: live app state/window in bridge mode.
 

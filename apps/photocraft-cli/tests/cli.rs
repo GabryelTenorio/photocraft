@@ -222,6 +222,24 @@ fn run_errors() {
 }
 
 #[test]
+fn run_rejects_invalid_filter_parameters_without_exporting() {
+    let d = tmp("invalid-filter-params");
+    let out = d.join("result.png");
+    for (params, key) in [(r#"{"radius":"big"}"#, "radius"), (r#"{"radus":3}"#, "radus"), (r#"{"radius":5000}"#, "radius"), (r#"{"radius":-4}"#, "radius")] {
+        let result = bin()
+            .args(["run", "--new", r#"{"width":8,"height":8}"#, "--cmd", "filter.blur.gaussianBlur", "--params", params, "--out"])
+            .arg(&out)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        let error = String::from_utf8_lossy(&result.stderr);
+        assert!(error.contains("filter.blur.gaussianBlur") && error.contains(key), "{error}");
+        assert!(!out.exists());
+    }
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
 fn batch_applies_actions_to_directory() {
     let d = tmp("batch");
     let (inp, outp) = (d.join("in"), d.join("out"));
@@ -358,6 +376,32 @@ fn quality_outside_1_to_100_is_refused() {
         })
         .collect();
     assert!(sizes[0] <= sizes[1] && sizes[1] <= sizes[2], "{sizes:?}");
+}
+
+/// `--tga-bits` picks a TGA's bits per pixel (byte 16 of its header); anything but 24 or 32 is
+/// refused and nothing is written.
+#[test]
+fn tga_bits_choose_the_targa_depth() {
+    let d = tmp("tga-bits");
+    let a = d.join("a.png");
+    write_png(&a, 8, 4, 3);
+    for (bits, want) in [(None, 32), (Some("24"), 24), (Some("32"), 32)] {
+        let out = d.join("a.tga");
+        let mut convert = bin();
+        convert.arg("convert").arg(&a).arg(&out);
+        if let Some(b) = bits {
+            convert.args(["--tga-bits", b]);
+        }
+        ok(&mut convert);
+        assert_eq!(std::fs::read(&out).unwrap()[16], want, "--tga-bits {bits:?}");
+    }
+    for bad in ["16", "0", "abc", ""] {
+        let out = d.join("bad.tga");
+        let o = bin().arg("convert").arg(&a).arg(&out).args(["--tga-bits", bad]).output().unwrap();
+        assert_eq!(o.status.code(), Some(1), "--tga-bits {bad}");
+        assert!(String::from_utf8_lossy(&o.stderr).contains(&format!("bad --tga-bits `{bad}`: expected 24 or 32")), "--tga-bits {bad}");
+        assert!(!out.exists(), "--tga-bits {bad} wrote a file");
+    }
 }
 
 /// #492: an `--out` folder that is the `--in` folder, however it is spelt, is refused before
