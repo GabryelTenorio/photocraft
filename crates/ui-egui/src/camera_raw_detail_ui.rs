@@ -153,6 +153,7 @@ impl DetailPreview {
 
     /// Draw only the visible pixel rectangle. No full-image GPU texture and no GPU-size limit
     /// on the source image; uploads are capped to the current viewport plus a one-pixel border.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint(
         &mut self,
         ui: &egui::Ui,
@@ -348,7 +349,7 @@ fn crop_image(surface: &Surface, area: PixelRect, display: &photocraft_engine::d
         surface.read_rgba_into(PixelRect::new(area.x0, y, area.x1, y + 1), &mut row);
         let buf = photocraft_compose::Buffer { rect: photocraft_geom::Rect::new(area.x0, y, area.x1, y + 1), px: row.clone() };
         let img = display.to_rgba8(&buf);
-        pixels.extend(img.pixels.chunks_exact(4).map(|q| Color32::from_rgba_unmultiplied(q[0], q[1], q[2], q[3])));
+        pixels.extend(img.pixels.as_chunks::<4>().0.iter().map(|&[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a)));
     }
     ColorImage::new([width, area.height() as usize], pixels)
 }
@@ -420,12 +421,8 @@ mod tests {
                 let dark = preview.sample([0.0, 0.0], 1, false, &params).unwrap();
                 let light = preview.sample([1.0 / 40.0, 0.0], 1, false, &params).unwrap();
                 assert!(light[0] - dark[0] > 0.5, "native alternating pixels survive: {mode:?}/{depth:?}");
-                let mut doc = photocraft_doc::Document::new(
-                    "test",
-                    photocraft_geom::Size::new(40, 30),
-                    photocraft_doc::ColorMode::Rgb,
-                    photocraft_doc::SampleType::U8,
-                );
+                let mut doc =
+                    photocraft_doc::Document::new("test", photocraft_geom::Size::new(40, 30), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8);
                 doc.icc_profile = Some(photocraft_cms::Builtin::Srgb.profile().to_bytes());
                 let display = photocraft_engine::color_cmds::ColorState::default().canvas_display(&doc).unwrap();
                 assert_eq!(crop_image(&expected, PixelRect::new(-12, 8, -10, 9), &display).size, [2, 1]);
@@ -438,14 +435,10 @@ mod tests {
     #[test]
     fn refined_crop_uses_linear_document_display_encoding() {
         let area = PixelRect::new(0, 0, 1, 1);
-        let mut source = Surface::new(photocraft_color::PixelFormat { mode: photocraft_color::ColorMode::Rgb, sample: photocraft_color::SampleType::F32, alpha: true });
+        let mut source =
+            Surface::new(photocraft_color::PixelFormat { mode: photocraft_color::ColorMode::Rgb, sample: photocraft_color::SampleType::F32, alpha: true });
         source.write_region(area, &[0.25, 0.25, 0.25, 1.0]);
-        let mut doc = photocraft_doc::Document::new(
-            "test",
-            photocraft_geom::Size::new(1, 1),
-            photocraft_doc::ColorMode::Rgb,
-            photocraft_doc::SampleType::F32,
-        );
+        let mut doc = photocraft_doc::Document::new("test", photocraft_geom::Size::new(1, 1), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::F32);
         doc.icc_profile = Some(photocraft_cms::Builtin::LinearSrgb.profile().to_bytes());
         let mut color = photocraft_engine::color_cmds::ColorState::default();
         color.settings.monitor_profile = "srgb".into();

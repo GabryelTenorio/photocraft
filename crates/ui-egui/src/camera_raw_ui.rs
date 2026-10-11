@@ -1133,12 +1133,7 @@ mod tests {
 
     #[test]
     fn preview_texture_uses_linear_document_display_encoding() {
-        let mut doc = photocraft_doc::Document::new(
-            "test",
-            photocraft_geom::Size::new(1, 1),
-            photocraft_doc::ColorMode::Rgb,
-            photocraft_doc::SampleType::F32,
-        );
+        let mut doc = photocraft_doc::Document::new("test", photocraft_geom::Size::new(1, 1), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::F32);
         doc.icc_profile = Some(photocraft_cms::Builtin::LinearSrgb.profile().to_bytes());
         let mut color = photocraft_engine::color_cmds::ColorState::default();
         color.settings.monitor_profile = "srgb".into();
