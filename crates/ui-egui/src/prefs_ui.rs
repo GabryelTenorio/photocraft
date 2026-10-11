@@ -52,6 +52,8 @@ pub struct Runtime {
     show_rulers: Option<bool>,
     /// Tool options as last remembered in the preferences (see `tool_memory`).
     pub(crate) tool_options: Option<crate::state::ToolOptions>,
+    /// View flags as last remembered in the preferences (see `view_memory`).
+    pub(crate) view_extras: Option<Vec<bool>>,
 }
 
 /// The GPU canvas colours from Preferences › Transparency & Gamut.
@@ -218,6 +220,7 @@ pub fn load(app: &mut PhotocraftApp) {
     crate::brush_picker::restore(app);
     sync_rulers(app);
     crate::tool_memory::restore(app);
+    crate::view_memory::restore(app);
     app.sync_recent();
     app.prefs_rt.saved_rev = app.session.prefs.rev();
     app.prefs_rt.saved_value = Some(app.session.prefs_value());
@@ -2645,6 +2648,43 @@ mod tests {
             assert!(o.move_auto_select && o.feather == 0.0, "{bad}");
             assert_eq!(o.tolerance, if bad.is_object() { 5.0 } else { 32.0 });
         }
+    }
+
+    #[test]
+    fn view_extras_survive_a_restart() {
+        let (mut app, store) = app_with_store();
+        let ctx = egui::Context::default();
+        tick(&mut app, &ctx);
+        // The menu items, as a click or their shortcut runs them.
+        const ITEMS: [&str; 4] = ["view.show.pixelGrid", "view.show.grid", "view.snapTo.layers", "view.extras"];
+        for id in ITEMS {
+            crate::menus::invoke(&mut app, &ctx, id, Value::Null).unwrap();
+        }
+        crate::view_memory::persist(&mut app);
+        tick(&mut app, &ctx);
+        // Only what differs from the defaults is stored.
+        assert_eq!(stored(&store)["viewExtras"], json!({"extras": false, "show.grid": true, "show.pixelGrid": false, "snapTo.layers": false}));
+        let saved = store.lock().unwrap().clone().unwrap();
+        let (mut app2, _) = app_with_saved(Some(saved));
+        tick(&mut app2, &ctx);
+        let ui = &app2.ui;
+        assert!(!ui.view.extras && !ui.view.show.pixel_grid && ui.extras.grid && !ui.view.snap_to.layers);
+        assert!(ui.view.show.smart_guides && ui.extras.guides && ui.extras.snap && ui.view.snap_to.guides, "the rest keep their defaults");
+        // Back to the defaults (Extras first: showing an item turns it back on): nothing is stored.
+        for id in ITEMS.into_iter().rev() {
+            crate::menus::invoke(&mut app, &ctx, id, Value::Null).unwrap();
+        }
+        crate::view_memory::persist(&mut app);
+        tick(&mut app, &ctx);
+        assert_eq!(stored(&store)["viewExtras"], Value::Null);
+        // A hand-edited file: unknown keys and values that aren't bools are ignored.
+        let bad = json!({"viewExtras": {"show.pixelGrid": false, "show.nothing": false, "snap": "no", "extras": 0}}).to_string();
+        let (mut app3, _) = app_with_saved(Some(bad));
+        tick(&mut app3, &ctx);
+        assert!(!app3.ui.view.show.pixel_grid && app3.ui.extras.snap && app3.ui.view.extras);
+        let (mut app4, _) = app_with_saved(Some(json!({"viewExtras": "junk"}).to_string()));
+        tick(&mut app4, &ctx);
+        assert_eq!(app4.ui.view, crate::view_cmds::ViewOptions::default());
     }
 
     #[test]

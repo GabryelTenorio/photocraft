@@ -184,7 +184,7 @@ pub fn pixel_aspect_ratio(id: &str) -> f32 {
     }
 }
 
-fn show_slot<'a>(s: &'a mut Show, key: &str) -> Option<&'a mut bool> {
+pub(crate) fn show_slot<'a>(s: &'a mut Show, key: &str) -> Option<&'a mut bool> {
     Some(match key {
         "layerEdges" => &mut s.layer_edges,
         "selectionEdges" => &mut s.selection_edges,
@@ -203,7 +203,7 @@ fn show_slot<'a>(s: &'a mut Show, key: &str) -> Option<&'a mut bool> {
     })
 }
 
-fn snap_slot<'a>(s: &'a mut SnapTo, key: &str) -> Option<&'a mut bool> {
+pub(crate) fn snap_slot<'a>(s: &'a mut SnapTo, key: &str) -> Option<&'a mut bool> {
     Some(match key {
         "guides" => &mut s.guides,
         "grid" => &mut s.grid,
