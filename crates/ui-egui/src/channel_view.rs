@@ -382,17 +382,17 @@ mod tests {
         s.execute("channel.target", json!({"channel": "green"})).unwrap();
         let st = s.active().unwrap();
         let b = st.doc.bounds();
-        assert_eq!(render(&st.doc, &st.channel_view, b, 1, false).unwrap()[0], Color32::from_gray(128));
-        assert_eq!(render(&st.doc, &st.channel_view, b, 1, true).unwrap()[0], Color32::from_rgb(0, 128, 0));
+        assert_eq!(render(&st.doc, &st.channel_view, b, 1, false, st.active_layer).unwrap()[0], Color32::from_gray(128));
+        assert_eq!(render(&st.doc, &st.channel_view, b, 1, true, st.active_layer).unwrap()[0], Color32::from_rgb(0, 128, 0));
 
         let mut s = Session::new();
         s.execute("file.new", json!({"width": 4, "height": 4, "mode": "cmyk"})).unwrap();
         s.execute("edit.fill", json!({"color": "#4080c0"})).unwrap();
         s.execute("channel.target", json!({"channel": "cyan"})).unwrap();
         let st = s.active().unwrap();
-        let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, true).unwrap()[0];
+        let px = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, true, st.active_layer).unwrap()[0];
         assert!(px.r() < 100 && px.g() > 150 && px.b() > 150, "cyan ink, not gray: {px:?}");
-        let gray = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false).unwrap()[0];
+        let gray = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap()[0];
         assert_eq!(gray.r(), gray.g(), "off stays grayscale");
     }
 
@@ -405,12 +405,12 @@ mod tests {
         let b = s.active().unwrap().doc.bounds();
         s.execute("channel.target", json!({"channel": {"color": 0}})).unwrap();
         let st = s.active().unwrap();
-        let px = render(&st.doc, &st.channel_view, b, 1, true).unwrap()[0];
+        let px = render(&st.doc, &st.channel_view, b, 1, true, st.active_layer).unwrap()[0];
         let spread = px.r().max(px.g().max(px.b())) as i32 - px.r().min(px.g().min(px.b())) as i32;
         assert!(spread <= 3, "Lightness stays gray: {px:?}");
         s.execute("channel.target", json!({"channel": {"color": 1}})).unwrap();
         let st = s.active().unwrap();
-        let px = render(&st.doc, &st.channel_view, b, 1, true).unwrap()[0];
+        let px = render(&st.doc, &st.channel_view, b, 1, true, st.active_layer).unwrap()[0];
         assert!(px.r() != px.g() || px.g() != px.b(), "a channel is tinted, not gray: {px:?}");
     }
 
