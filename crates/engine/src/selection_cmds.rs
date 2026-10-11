@@ -893,6 +893,7 @@ mod tests {
         let sub_last = run(&mut s, json!({"points": [[5, 5], [45, 5], [5, 5]], "subtractPoints": [[15, 5]], "order": ["+", "+", "+", "-"]}));
         assert!(sub_last[0] < 0.5, "{sub_last:?}");
         // A malformed or inconsistent order is an error, never a panic.
+        clear_selection(&mut s);
         for bad in [json!(["+"]), json!(["+", "+", "x"]), json!("+-"), json!(["-", "-", "+"])] {
             assert!(s.execute("select.colorRange", json!({"points": [[5, 5], [45, 5]], "subtractPoints": [[15, 5]], "order": bad})).is_err(), "{bad}");
         }
