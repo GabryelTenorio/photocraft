@@ -2135,7 +2135,7 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
             let tool = pv.split_tool.or_else(|| (alt || pv.split_quick).then(|| quick_split_kind(&w.to_mesh(1, 1), w.bounds, p)));
             tool.map(|tool| (tool, p))
         });
-        draw_warp(painter, xf, t, w, pv, guide);
+        draw_warp(app, painter, xf, t, w, pv, guide);
         return;
     }
     if !pv.shape.as_ref().is_some_and(|p| p.active)
@@ -2370,7 +2370,15 @@ fn draw_warp_points(painter: &egui::Painter, m: &BezierMesh, scr: impl Fn([f64; 
     }
 }
 
-fn draw_warp(painter: &egui::Painter, xf: &ViewXform, t: &TransformSession, w: &Warp, pv: &TransformPreview, guide: Option<(SplitTool, [f64; 2])>) {
+fn draw_warp(
+    app: &PhotocraftApp,
+    painter: &egui::Painter,
+    xf: &ViewXform,
+    t: &TransformSession,
+    w: &Warp,
+    pv: &TransformPreview,
+    guide: Option<(SplitTool, [f64; 2])>,
+) {
     let scr = |q: [f64; 2]| xf.to_screen(q[0] as f32, q[1] as f32);
     let r = t.rect;
     let m = w.to_mesh(1, 1);
