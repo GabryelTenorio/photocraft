@@ -145,6 +145,12 @@ struct HandOff {
     released: Option<u64>,
 }
 
+/// Whether an OS resize was just handed off (`ViewportCommand::BeginResize`) and its pointer press
+/// has not yet been released.
+pub fn resizing(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<HandOff>(resize_handed_off_id())).is_some_and(|h| h.released.is_none())
+}
+
 /// The compositor takes the button release of an OS resize (KDE Wayland), so egui kept the edge
 /// pressed: the zones stopped hovering until the next click, every other resize (#1581). End the
 /// press ourselves on the input after the hand-off, but only while egui still has it down and this
@@ -464,5 +470,20 @@ mod tests {
         let cmds = w.gesture(&[pos2(1.0, 300.0), pos2(8.0, 300.0)]);
         assert!(!cmds.iter().any(|c| matches!(c, ViewportCommand::BeginResize(_))), "{cmds:?}");
         assert!(w.click(pos2(999.5, 0.5)).iter().any(|c| matches!(c, ViewportCommand::Close)));
+    }
+
+    #[test]
+    fn resizing_tracks_active_handoff_before_begin_resize_runs() {
+        let mut w = Win::new(1000.0);
+        w.frame(vec![]);
+        assert!(!resizing(&w.ctx));
+        let p = pos2(998.0, 300.0);
+        w.frame(vec![Event::PointerMoved(p)]);
+        assert!(!resizing(&w.ctx));
+        let out = w.frame(vec![button(p, true)]);
+        assert_eq!(out.viewport_output[&ViewportId::ROOT].commands, vec![ViewportCommand::BeginResize(ResizeDirection::East)]);
+        assert!(resizing(&w.ctx), "resizing must be true on the frame BeginResize is queued");
+        w.frame(vec![]);
+        assert!(!resizing(&w.ctx), "cleared once release_after_os_resize ends the hand-off");
     }
 }
