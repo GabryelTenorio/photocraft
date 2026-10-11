@@ -234,9 +234,10 @@ impl TextLayout {
         self.hit_test_line(x, y)
     }
 
-    /// Byte offset of the caret nearest to a line-space point.
-    pub fn hit_test_line(&self, x: f32, y: f32) -> usize {
-        let Some((li, line)) = self.lines.iter().enumerate().min_by(|a, b| {
+    /// The visual line nearest to a line-space ordinate, including its ascent and descent.
+    /// Pointer hit testing uses this even where adjacent lines share a caret byte offset.
+    fn closest_line(&self, y: f32) -> Option<(usize, &LineInfo)> {
+        self.lines.iter().enumerate().min_by(|a, b| {
             let d = |l: &LineInfo| {
                 if y < l.baseline - l.ascent {
                     l.baseline - l.ascent - y
@@ -247,7 +248,12 @@ impl TextLayout {
                 }
             };
             d(a.1).total_cmp(&d(b.1))
-        }) else {
+        })
+    }
+
+    /// Byte offset of the caret nearest to a line-space point.
+    pub fn hit_test_line(&self, x: f32, y: f32) -> usize {
+        let Some((li, line)) = self.closest_line(y) else {
             return 0;
         };
         let mut best = (f32::MAX, line.range.end);
@@ -324,7 +330,11 @@ pub fn line_index(layout: &TextLayout, byte: usize) -> usize {
 /// Nearest caret to a text-space point: character index and the line it sits on.
 pub fn hit_char(layout: &TextLayout, text: &str, x: f32, y: f32) -> (usize, usize) {
     let byte = layout.hit_test(x, y);
-    (char_index(text, byte), line_index(layout, byte))
+    // At a soft-wrap boundary either visual line can share this byte offset. The
+    // pointer's line, not the caret's preferred (following) line, is authoritative.
+    let (_, line_y) = layout.to_line(x, y);
+    let line = layout.closest_line(line_y).map_or_else(|| line_index(layout, byte), |(index, _)| index);
+    (char_index(text, byte), line)
 }
 
 /// Text-space point inside the laid-out line boxes, expanded by `slop` px on every side.

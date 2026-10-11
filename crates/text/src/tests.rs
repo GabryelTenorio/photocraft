@@ -432,6 +432,11 @@ fn wrapped_and_forced_line_starts_use_the_following_line() {
     assert_eq!(line_index(&layout, byte_index(&wrapped.text, index)), 1);
     assert_eq!(line_edge(&layout, &wrapped.text, index, false), index);
     assert_eq!(line_edge(&layout, &wrapped.text, index, true), wrapped.text[..layout.lines[1].range.end].chars().count());
+    // The previous line's right edge shares the caret index, but a click there
+    // must still report the previous visual line.
+    let first = &layout.lines[0];
+    let (x, y) = layout.to_text(first.x1, first.baseline);
+    assert_eq!(crate::layout::hit_char(&layout, &wrapped.text, x, y).1, 0);
 
     let text = "a\u{3}b";
     let forced = engine.layout(&point(text, 12.0), 72.0);
