@@ -19,6 +19,25 @@
 # (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin letters; the trailing "…" of
 # dialog commands is kept.
 
+# Guide layout dialog
+	Columns	Sloupce
+	Rows	Řádky
+	Number	Počet
+	Margin	Okraj
+	Top:	Nahoře:
+	Left:	Vlevo:
+	Bottom:	Dole:
+	Right:	Vpravo:
+	Target:	Cíl:
+	Selected Artboards	Vybraná kreslicí plátna
+	Center Columns	Vystředit sloupce
+	Clear Existing Guides	Odstranit stávající vodítka
+	Invalid guide layout	Neplatné rozvržení vodítek
+	Leave empty for automatic size	Pro automatickou velikost ponechte prázdné
+	5 Columns, 3 Rows	5 sloupců, 3 řádky
+	8 Columns	8 sloupců
+	12 Columns	12 sloupců
+
 	File	Soubor
 	Edit	Úpravy
 	Image	Obraz
@@ -694,6 +713,8 @@
 	Theme	Motiv
 	Pro Theme	Motiv Pro
 	Pro Medium Gray Theme	Motiv Pro (středně šedý)
+	Pro Light Gray Theme	Motiv Pro (světle šedý)
+	Pro Light Theme	Motiv Pro (světlý)
 	Studio Theme	Motiv Studio
 	Studio Light Theme	Motiv Studio (světlý)
 	Adwaita Light Theme	Motiv Adwaita (světlý)
@@ -835,6 +856,9 @@
 	Bend:	Ohyb:
 	Bicubic	Bikubická
 	Bicubic (smooth gradients)	Bikubická (plynulé přechody)
+	Automatic	Automaticky
+	Bicubic Smoother (enlargement)	Bikubická hladší (zvětšení)
+	Bicubic Sharper (reduction)	Bikubická ostřejší (zmenšení)
 	Bilinear	Bilineární
 	Black	Černá
 	Black & White	Černobílá
@@ -1519,6 +1543,7 @@
 	White Balance: As Shot	Vyvážení bílé: jako při snímání
 	Whites	Bílé
 	Width	Šířka
+	Slant	Sklon
 	Width:	Šířka:
 	Work Path	Pracovní cesta
 	Yellow	Žlutá
@@ -1696,6 +1721,7 @@
 	Pen Pressure	Přítlak pera
 	Pen Tilt	Náklon pera
 	Pen Tool	Nástroj pero
+	Convert Point Tool	Nástroj převést bod
 	Photo	Fotografie
 	PhotoCraft website	Web PhotoCraft
 	Picas	Pica
@@ -1711,6 +1737,8 @@
 	Postcard	Pohlednice
 	Poster	Plakát
 	Pro (Dark)	Pro (tmavý)
+	Pro (Light)	Pro (světlý)
+	Pro (Light Gray)	Pro (světle šedý)
 	Pro (Medium Gray)	Pro (středně šedý)
 	Protect Texture	Chránit texturu
 	Purple	Nachová
@@ -1911,6 +1939,8 @@
 	Preserve details	Zachovat detaily
 	Print resolution	Rozlišení tisku
 	Pro	Pro
+	Pro light	Pro světlý
+	Pro light gray	Pro světle šedý
 	Pro medium	Pro střední
 	Pro photo	ProPhoto
 	Quick export format	Formát rychlého exportu
@@ -2122,6 +2152,7 @@
 	Developing {name}	Vyvolávání {name}
 	Cancelled {label}	Zrušeno: {label}
 	Esc to cancel	Esc pro zrušení
+	Opened {name}	Otevřeno: {name}
 	Opening {name}	Otevírání {name}
 	Saved {name}	Uloženo: {name}
 	Saving {name}	Ukládání {name}
@@ -2294,6 +2325,21 @@ cameraRaw	Color	Barvy
 	Domed	Kopule
 	Domed (Inverted)	Kopule (obrácená)
 	Diagonal (Descending)	Diagonála (sestupná)
+	Contour Editor	Editor kontury
+	Anti-aliased	Vyhlazení
+	Corner	Roh
+	Gloss Contour	Kontura lesku
+	Contour	Kontura
+	Cone - Inverted	Kužel - obrácený
+	Cove - Deep	Zátoka - hluboká
+	Cove - Shallow	Zátoka - mělká
+	Gaussian	Gaussovský
+	Half Round	Půlkruh
+	Ring	Prstenec
+	Ring - Double	Prstenec - dvojitý
+	Rolling Slope - Descending	Zvlněný svah - sestupný
+	Rounded Steps	Zaoblené stupně
+	Sawtooth 1	Pila 1
 
 	Red Eye Tool	Nástroj červené oči
 	Red Eye	Červené oči
@@ -2491,6 +2537,9 @@ cameraData	Lens	Objektiv
 	Previous Document	Předchozí dokument
 	W x H x Resolution	Š x V x Rozlišení
 	Front Image	Přední obraz
+	Frame Tool	Nástroj rámeček
+	Create a new rectangular frame	Vytvořit nový obdélníkový rámeček
+	Create a new elliptical frame	Vytvořit nový eliptický rámeček
 	Include in playback	Zahrnout do přehrávání
 	Perspective Crop Tool	Nástroj perspektivní oříznutí
 	Show Grid	Zobrazit mřížku
@@ -2512,5 +2561,28 @@ cameraData	Lens	Objektiv
 	Select the crop presets to delete	Vyberte předvolby oříznutí k odstranění
 	Enter a name for the crop preset	Zadejte název předvolby oříznutí
 	There is no crop size or ratio to save	Není žádná velikost ani poměr oříznutí k uložení
+	Scale:	Měřítko:
+	Snap to Origin	Přichytit k počátku
 	Search settings…	Hledat nastavení…
 	No matching settings	Žádná odpovídající nastavení
+# Select and Mask view modes (#1754)
+	Onion Skin	Cibulová slupka
+	Marching Ants	Pochodující mravenci
+	On Black	Na černé
+	On White	Na bílé
+	On Layers	Na vrstvách
+	Show Edge	Zobrazit okraj
+	Show Original	Zobrazit originál
+	F cycles the views; hold X to see the image	F přepíná zobrazení; podržením X uvidíte obraz
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	Štětec pro upřesnění okraje (R)
+	Expand Detection Area	Rozšířit oblast detekce
+	Restore Original Edge	Obnovit původní okraj
+	Paint over hair or fur on the image; Alt paints the other mode	Malujte přes vlasy nebo srst v obraze; Alt maluje v opačném režimu
+	Clear Brush Strokes	Vymazat tahy štětce
+	Show rulers	Zobrazit pravítka
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Kliknutím umístíte · Alt-kliknutím nebo přetažením mimo plátno odeberete
+	No document open	Není otevřen žádný dokument
+	{n} of {max} sample points	{n} z {max} bodů měření

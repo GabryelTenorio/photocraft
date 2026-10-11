@@ -15,6 +15,25 @@
 # way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept. Plural rule: one|other (n != 1 -> other).
 
+# Guide layout dialog
+	Columns	Spalten
+	Rows	Zeilen
+	Number	Anzahl
+	Margin	Rand
+	Top:	Oben:
+	Left:	Links:
+	Bottom:	Unten:
+	Right:	Rechts:
+	Target:	Ziel:
+	Selected Artboards	Ausgewählte Zeichenflächen
+	Center Columns	Spalten zentrieren
+	Clear Existing Guides	Vorhandene Hilfslinien löschen
+	Invalid guide layout	Ungültiges Hilfslinien-Layout
+	Leave empty for automatic size	Für automatische Größe leer lassen
+	5 Columns, 3 Rows	5 Spalten, 3 Zeilen
+	8 Columns	8 Spalten
+	12 Columns	12 Spalten
+
 	File	Datei
 	Edit	Bearbeiten
 	Image	Bild
@@ -680,6 +699,8 @@
 	Theme	Design
 	Pro Theme	Pro-Design
 	Pro Medium Gray Theme	Pro-Design (Mittelgrau)
+	Pro Light Gray Theme	Pro-Design (Hellgrau)
+	Pro Light Theme	Pro-Design (Hell)
 	Studio Theme	Studio-Design
 	Studio Light Theme	Studio-Design (Hell)
 	Adwaita Light Theme	Adwaita-Design (Hell)
@@ -812,6 +833,9 @@
 	Bend:	Biegung:
 	Bicubic	Bikubisch
 	Bicubic (smooth gradients)	Bikubisch (sanfte Verläufe)
+	Automatic	Automatisch
+	Bicubic Smoother (enlargement)	Bikubisch glatter (Vergrößerung)
+	Bicubic Sharper (reduction)	Bikubisch schärfer (Verkleinerung)
 	Bilinear	Bilinear
 	Black	Schwarz
 	Black & White	Schwarzweiß
@@ -1498,6 +1522,7 @@
 	White Balance: As Shot	Weißabgleich: Wie Aufnahme
 	Whites	Weiß
 	Width	Breite
+	Slant	Neigung
 	Width:	Breite:
 	Work Path	Arbeitspfad
 	Yellow	Gelb
@@ -1671,6 +1696,7 @@
 	Pen Pressure	Stiftdruck
 	Pen Tilt	Stiftneigung
 	Pen Tool	Stift-Werkzeug
+	Convert Point Tool	Punkt-umwandeln-Werkzeug
 	Photo	Foto
 	PhotoCraft website	PhotoCraft-Website
 	Picas	Pica
@@ -1686,6 +1712,8 @@
 	Postcard	Postkarte
 	Poster	Poster
 	Pro (Dark)	Pro (Dunkel)
+	Pro (Light)	Pro (Hell)
+	Pro (Light Gray)	Pro (Hellgrau)
 	Pro (Medium Gray)	Pro (Mittelgrau)
 	Protect Texture	Textur schützen
 	Purple	Lila
@@ -1882,6 +1910,8 @@
 	Preserve details	Details erhalten
 	Print resolution	Druckauflösung
 	Pro	Pro
+	Pro light	Pro hell
+	Pro light gray	Pro hellgrau
 	Pro medium	Pro mittel
 	Pro photo	Pro Foto
 	Quick export format	Schnellexport-Format
@@ -2089,6 +2119,7 @@
 	Developing {name}	{name} wird entwickelt
 	Cancelled {label}	{label} abgebrochen
 	Esc to cancel	Esc zum Abbrechen
+	Opened {name}	Geöffnet: {name}
 	Opening {name}	Öffne {name}
 	Saved {name}	Gespeichert: {name}
 	Saving {name}	Speichere {name}
@@ -2330,6 +2361,21 @@
 	Domed	Gewölbt
 	Domed (Inverted)	Gewölbt (umgekehrt)
 	Diagonal (Descending)	Diagonal (absteigend)
+	Contour Editor	Kontur-Editor
+	Anti-aliased	Glätten
+	Corner	Ecke
+	Gloss Contour	Glanzkontur
+	Contour	Kontur
+	Cone - Inverted	Kegel - umgekehrt
+	Cove - Deep	Bucht - tief
+	Cove - Shallow	Bucht - flach
+	Gaussian	Gauß
+	Half Round	Halbrund
+	Ring	Ring
+	Ring - Double	Ring - doppelt
+	Rolling Slope - Descending	Wellenhang - absteigend
+	Rounded Steps	Abgerundete Stufen
+	Sawtooth 1	Sägezahn 1
 
 	Red Eye Tool	Rote-Augen-Werkzeug
 	Red Eye	Rote Augen
@@ -2524,6 +2570,9 @@ cameraData	Lens	Objektiv
 	Previous Document	Vorheriges Dokument
 	W x H x Resolution	B x H x Auflösung
 	Front Image	Vorderes Bild
+	Frame Tool	Rahmenwerkzeug
+	Create a new rectangular frame	Neuen rechteckigen Rahmen erstellen
+	Create a new elliptical frame	Neuen elliptischen Rahmen erstellen
 	Include in playback	In Wiedergabe einbeziehen
 	Perspective Crop Tool	Perspektivisches Freistellungswerkzeug
 	Show Grid	Raster einblenden
@@ -2543,5 +2592,28 @@ cameraData	Lens	Objektiv
 	Select the crop presets to delete	Wählen Sie die zu löschenden Freistellungsvorgaben
 	Enter a name for the crop preset	Geben Sie einen Namen für die Freistellungsvorgabe ein
 	There is no crop size or ratio to save	Es gibt keine Freistellungsgröße und kein Seitenverhältnis zum Speichern
+	Scale:	Skalierung:
+	Snap to Origin	An Ursprung ausrichten
 	Search settings…	Einstellungen durchsuchen…
 	No matching settings	Keine passenden Einstellungen
+# Select and Mask view modes (#1754)
+	Onion Skin	Zwiebelschicht
+	Marching Ants	Laufende Ameisen
+	On Black	Auf Schwarz
+	On White	Auf Weiß
+	On Layers	Auf Ebenen
+	Show Edge	Kante anzeigen
+	Show Original	Original anzeigen
+	F cycles the views; hold X to see the image	F wechselt die Ansicht; X gedrückt halten zeigt das Bild
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	Kante-verbessern-Pinsel (R)
+	Expand Detection Area	Erkennungsbereich erweitern
+	Restore Original Edge	Ursprüngliche Kante wiederherstellen
+	Paint over hair or fur on the image; Alt paints the other mode	Über Haare oder Fell im Bild malen; Alt malt im anderen Modus
+	Clear Brush Strokes	Pinselstriche löschen
+	Show rulers	Lineale anzeigen
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Klicken zum Platzieren · Alt-Klick oder Ziehen außerhalb der Arbeitsfläche zum Entfernen
+	No document open	Kein Dokument geöffnet
+	{n} of {max} sample points	{n} von {max} Messpunkten

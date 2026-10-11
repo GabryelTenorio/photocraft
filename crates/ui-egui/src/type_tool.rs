@@ -4,6 +4,7 @@
 //! typing session is one "Edit Type" history step and automation sees exactly what the user does.
 //! Offsets in [`TextEdit`] are character indices (the engine's unit); the layout works in bytes.
 
+use std::collections::HashMap;
 use std::sync::{Arc, PoisonError};
 
 use egui::{Color32, Pos2, Stroke};
@@ -123,6 +124,29 @@ pub fn edit_active(app: &mut PhotocraftApp) -> Result<(), String> {
     app.ui.mask_target = false;
     app.ui.vector_mask_target = false;
     Ok(())
+}
+
+/// Double-click with the Move tool (Photoshop CC 2019+): edit the type layer under document
+/// point (`x`, `y`) with the caret on the glyph there, switching to the Type tool. False when no
+/// type is there.
+pub fn edit_at(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
+    let Some(id) = hit_layer(app, x, y) else { return false };
+    commit(app);
+    if app.session.select_layer(id).is_err() {
+        return false;
+    }
+    let key = session_key(app);
+    if begin_edit(app, id, &key).is_err() {
+        return false;
+    }
+    let off = hit_offset(app, id, x, y);
+    app.ui.text_edit =
+        Some(TextEdit { layer: id.0, caret: off, anchor: off, session: key, created: false, mask: false, dragging: false, resize: None, preedit: None });
+    let vertical = app.session.active().and_then(|st| text_layer(&st.doc, id)).is_some_and(|t| t.orientation == photocraft_doc::text::Orientation::Vertical);
+    app.ui.tool = if vertical { crate::state::Tool::VerticalType } else { crate::state::Tool::Type };
+    app.ui.mask_target = false;
+    app.ui.vector_mask_target = false;
+    true
 }
 
 fn hit_offset(app: &mut PhotocraftApp, id: LayerId, x: f64, y: f64) -> usize {
@@ -322,13 +346,33 @@ pub(crate) fn selected_range(app: &PhotocraftApp) -> Option<[usize; 2]> {
     (a < b).then_some([a, b])
 }
 
+/// Copy the selected characters to the system clipboard. Returns the copied range. Shared by the
+/// clipboard Copy event and Edit > Copy during a type edit.
+pub(crate) fn copy_selection(app: &PhotocraftApp, ctx: &egui::Context) -> Option<[usize; 2]> {
+    let [a, b] = selected_range(app)?;
+    let ed = app.ui.text_edit.as_ref()?;
+    let text = text_layer(&app.session.active()?.doc, LayerId(ed.layer))?;
+    ctx.copy_text(text.text.chars().skip(a).take(b - a).collect());
+    Some([a, b])
+}
+
+/// Edit > Paste during a type edit: ask the window for the clipboard text, which arrives as a
+/// Paste event next frame and replaces the selection there (like ⌘V).
+pub(crate) fn request_paste(ctx: &egui::Context) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+}
+
+/// Select > All during a type edit selects every character (like ⌘A).
+pub(crate) fn select_all(app: &mut PhotocraftApp) {
+    let Some(n) = app.ui.text_edit.as_ref().and_then(|ed| current_text(app, LayerId(ed.layer))).map(|t| t.chars().count()) else { return };
+    if let Some(e) = app.ui.text_edit.as_mut() {
+        (e.anchor, e.caret) = (0, n);
+    }
+}
+
 /// Shared by the clipboard Cut event and Edit > Cut during a type edit.
 pub(crate) fn cut_selection(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    let Some([a, b]) = selected_range(app) else { return };
-    let Some(ed) = app.ui.text_edit.as_ref() else { return };
-    let Some(st) = app.session.active() else { return };
-    let Some(text) = text_layer(&st.doc, LayerId(ed.layer)) else { return };
-    ctx.copy_text(text.text.chars().skip(a).take(b - a).collect());
+    let Some([a, b]) = copy_selection(app, ctx) else { return };
     if let Some(ed) = app.ui.text_edit.as_mut() {
         ed.anchor = a;
         ed.caret = b;
@@ -550,9 +594,7 @@ pub fn handle_keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
             egui::Event::Ime(egui::ImeEvent::Commit(s)) => ime_update(app, s, true),
             egui::Event::Ime(_) => {}
             egui::Event::Copy => {
-                if a < b {
-                    ctx.copy_text(text.chars().skip(a).take(b - a).collect());
-                }
+                copy_selection(app, ctx);
             }
             egui::Event::Cut => cut_selection(app, ctx),
             egui::Event::Key { key, pressed: true, modifiers: m, .. } => {
@@ -883,6 +925,57 @@ pub fn families() -> Arc<Vec<String>> {
     v
 }
 
+/// Where [`sync_font_names`] leaves the font menus' localized labels for this frame.
+fn font_labels_id() -> egui::Id {
+    egui::Id::new("photocraft-font-menu-localized-names")
+}
+
+/// Preferences ▸ Type ▸ Show Font Names in English: when off, font menus list a family that has a
+/// localized (native-language) name by that name, as Photoshop does ("MS Gothic" reads
+/// "ＭＳ ゴシック"). Called once a frame; the menus read the labels from the context.
+pub fn sync_font_names(ctx: &egui::Context, show_in_english: bool) {
+    let labels = (!show_in_english).then(localized_families);
+    ctx.data_mut(|d| {
+        if let Some(labels) = labels {
+            d.insert_temp(font_labels_id(), labels);
+        } else {
+            d.remove::<Arc<HashMap<String, String>>>(font_labels_id());
+        }
+    });
+}
+
+/// The fonts' localized family names, keyed by family. Cached until fonts are registered.
+fn localized_families() -> Arc<HashMap<String, String>> {
+    type Cached = Option<(u64, Arc<HashMap<String, String>>)>;
+    static LOCALIZED: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
+    let key = photocraft_text::fonts::generation();
+    let mut cached = LOCALIZED.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((k, v)) = cached.as_ref()
+        && *k == key
+    {
+        return v.clone();
+    }
+    let v = Arc::new(photocraft_text::shared().lock().map(|mut e| e.fonts.localized_family_names()).unwrap_or_default());
+    *cached = Some((key, v.clone()));
+    v
+}
+
+/// The font menu's rows: each family with the label it shows (its localized name when `labels`
+/// has one, else the family), matching `query` (lowercase) by either name. With localized labels
+/// the rows sort by label, so the menu stays alphabetical as shown.
+fn font_menu_rows<'a>(families: &'a [String], labels: Option<&'a HashMap<String, String>>, query: &str) -> Vec<(&'a String, &'a str)> {
+    let label = |f: &'a String| labels.and_then(|l| l.get(f)).map_or(f.as_str(), String::as_str);
+    let mut rows: Vec<(&String, &str)> = families
+        .iter()
+        .map(|f| (f, label(f)))
+        .filter(|(f, l)| query.is_empty() || f.to_lowercase().contains(query) || l.to_lowercase().contains(query))
+        .collect();
+    if labels.is_some_and(|l| !l.is_empty()) {
+        rows.sort_by_cached_key(|(_, l)| l.to_lowercase());
+    }
+    rows
+}
+
 fn weight_name(w: f32) -> &'static str {
     match w.round() as i32 {
         ..=150 => "Thin",
@@ -933,6 +1026,83 @@ fn style_names(faces: &[photocraft_text::FaceInfo]) -> Vec<String> {
     names
 }
 
+/// A variable-font axis: (tag, min, default, max), as [`photocraft_text::FaceInfo::axes`].
+pub(crate) type Axis = (String, f32, f32, f32);
+
+/// The axes the Character section shows as sliders (#2985): those of the faces matching the
+/// style's italic, else of any face. Optical size has none: it follows the type size.
+pub(crate) fn slider_axes(faces: &[photocraft_text::FaceInfo], italic: bool) -> Vec<Axis> {
+    let pick = |want: Option<bool>| {
+        let mut v: Vec<Axis> = Vec::new();
+        for f in faces.iter().filter(|f| want.is_none_or(|w| f.italic == w)) {
+            for a in &f.axes {
+                let usable = a.0 != "opsz" && a.1.is_finite() && a.3.is_finite() && a.1 < a.3;
+                if usable && !v.iter().any(|b| b.0 == a.0) {
+                    v.push(a.clone());
+                }
+            }
+        }
+        v
+    };
+    let v = pick(Some(italic));
+    if v.is_empty() { pick(None) } else { v }
+}
+
+/// The value an axis slider shows: the style's own value for the axis, else what the layout
+/// draws (the style's weight on `wght`, the axis default otherwise), within the axis range.
+pub(crate) fn axis_value(c: &photocraft_doc::text::CharStyle, (tag, min, default, max): &Axis) -> f32 {
+    let v = c.variations.iter().find(|v| &v.axis == tag).map(|v| v.value).unwrap_or_else(|| match tag.as_str() {
+        "wght" => f32::from(c.weight),
+        "ital" if c.italic => *max,
+        _ => *default,
+    });
+    let d = default.clamp(*min, *max);
+    if v.is_finite() { v.clamp(*min, *max) } else { d }
+}
+
+/// Slider label for an axis: the registered axes by name, others by their tag (as the font
+/// names them in its `fvar` table, e.g. `GRAD`).
+fn axis_label(tag: &str) -> String {
+    match tag {
+        "wght" => tl!("Weight").to_string(),
+        "wdth" => tl!("Width").to_string(),
+        "slnt" => tl!("Slant").to_string(),
+        "ital" => tl!("Italic").to_string(),
+        _ => tag.to_string(),
+    }
+}
+
+/// One slider row per variable-font axis of the style's font, below the font style (#2985).
+fn axis_sliders(app: &mut PhotocraftApp, ui: &mut egui::Ui, c: &photocraft_doc::text::CharStyle) {
+    let axes = {
+        let faces = photocraft_text::shared().lock().unwrap_or_else(PoisonError::into_inner).fonts.faces(&c.font_family);
+        slider_axes(&faces, c.italic)
+    };
+    let t = crate::theme::Tokens::get(ui.ctx());
+    for axis in &axes {
+        let (min, max) = (axis.1, axis.3);
+        let mut v = axis_value(c, axis);
+        let mut changed = false;
+        ui.push_id(("type-axis", &axis.0), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(axis_label(&axis.0)).color(t.text_dim));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    changed |= crate::widgets::value_field(ui, &mut v, min..=max, "", 74.0).changed();
+                });
+            });
+            changed |= crate::widgets::slider(ui, &mut v, min..=max, None).changed();
+        });
+        ui.add_space(crate::theme::ROW_GAP);
+        if changed {
+            // Whole units on wide axes (weight 100–900), hundredths on narrow ones (ital 0–1).
+            let v = if max - min >= 10.0 { v.round() } else { (v * 100.0).round() / 100.0 };
+            let mut m = serde_json::Map::new();
+            m.insert(axis.0.clone(), json!(v));
+            apply(app, ui.ctx(), json!({ "variations": m }));
+        }
+    }
+}
+
 /// PSD text can identify a face only by its PostScript name. Show its real subfamily too.
 pub(crate) fn selected_style(style: &photocraft_doc::text::CharStyle) -> String {
     if let Some(ps) = &style.postscript_name {
@@ -979,8 +1149,11 @@ pub(crate) fn family_picker_in(
     let search_id = ui.id().with(("font-search", salt));
     // The list opens on the press, so a press-drag-release picks a font too (#2735).
     let (press, close) = crate::press_menu::PressCombo::before(ui, salt);
+    let labels: Option<Arc<HashMap<String, String>>> = ui.ctx().data(|d| d.get_temp(font_labels_id()));
+    let labels = labels.as_deref();
+    let shown = labels.and_then(|l| l.get(current.as_str())).unwrap_or(current).clone();
     let combo = egui::ComboBox::from_id_salt(salt)
-        .selected_text(current.as_str())
+        .selected_text(shown)
         .width(width)
         .height(FONT_MENU_HEIGHT)
         .icon(crate::widgets::chevron_icon)
@@ -1013,23 +1186,23 @@ pub(crate) fn family_picker_in(
             d.insert_temp(search_id, q.clone());
         });
         let ql = q.to_lowercase();
-        let filtered: Vec<&String> = families.iter().filter(|f| ql.is_empty() || f.to_lowercase().contains(&ql)).collect();
+        let rows = font_menu_rows(families, labels, &ql);
         if down || up {
-            let index = filtered.iter().position(|f| *f == current);
+            let index = rows.iter().position(|(f, _)| *f == current);
             let next = match index {
-                Some(i) if down => i.saturating_add(1).min(filtered.len().saturating_sub(1)),
+                Some(i) if down => i.saturating_add(1).min(rows.len().saturating_sub(1)),
                 Some(i) => i.saturating_sub(1),
                 None if down => 0,
-                None => filtered.len().saturating_sub(1),
+                None => rows.len().saturating_sub(1),
             };
-            if let Some(f) = filtered.get(next) {
+            if let Some((f, _)) = rows.get(next) {
                 changed = **f != *current;
                 current.clone_from(f);
                 // A served family not fetched yet: start now, as a click does.
                 photocraft_text::served::request(f);
             }
         }
-        let accept = enter && filtered.iter().any(|f| *f == current);
+        let accept = enter && rows.iter().any(|(f, _)| *f == current);
         if accept {
             ui.data_mut(|d| d.remove::<String>(search_id));
             ui.close();
@@ -1038,8 +1211,8 @@ pub(crate) fn family_picker_in(
         let row_h = preview.map_or(28.0, |(_, [_, h])| (h + 4.0).max(28.0));
 
         let mut hovered: Option<String> = None;
-        for f in filtered {
-            let mut button = egui::Button::selectable(f == current, f).truncate();
+        for (f, label) in rows {
+            let mut button = egui::Button::selectable(f == current, label).truncate();
             if let Some((size, [_, h])) = preview {
                 button =
                     button.right_text(egui::Atom::custom(ui.id().with(("font-sample", f)), egui::vec2(crate::font_preview::slot_width(ui.ctx(), f, size), h)));
@@ -1322,7 +1495,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 }
 
 /// Character and paragraph style at the target (selection start, else the layer's first run).
-fn styles_at(app: &PhotocraftApp) -> Option<(photocraft_doc::text::CharStyle, photocraft_doc::text::ParagraphStyle)> {
+pub(crate) fn styles_at(app: &PhotocraftApp) -> Option<(photocraft_doc::text::CharStyle, photocraft_doc::text::ParagraphStyle)> {
     let (layer, range) = target(app)?;
     let st = app.session.active()?;
     let t = text_layer(&st.doc, LayerId(layer))?;
@@ -1556,6 +1729,7 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
                 apply(app, ui.ctx(), json!({"fontStyle": style}));
             }
         });
+        axis_sliders(app, ui, &c);
         row(ui, &mut |ui| {
             let k = shown_scale(app);
             if let Some(v) = num_field(ui, "tT", "Font size", c.size_pt * k, 0.1..=1296.0, "pt", w) {

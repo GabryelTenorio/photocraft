@@ -8,6 +8,23 @@
 # stay as they are; the trailing "…" of dialog commands is kept. UI text addresses the user
 # informally ("je") and uses sentence case.
 
+# Guide layout dialog
+	Rows	Rijen
+	Number	Aantal
+	Top:	Boven:
+	Left:	Links:
+	Bottom:	Onder:
+	Right:	Rechts:
+	Target:	Doel:
+	Selected Artboards	Geselecteerde tekengebieden
+	Center Columns	Kolommen centreren
+	Clear Existing Guides	Bestaande hulplijnen wissen
+	Invalid guide layout	Ongeldige hulplijnindeling
+	Leave empty for automatic size	Leeg laten voor automatische grootte
+	5 Columns, 3 Rows	5 kolommen, 3 rijen
+	8 Columns	8 kolommen
+	12 Columns	12 kolommen
+
 	File	Bestand
 	Edit	Bewerken
 	Image	Afbeelding
@@ -671,6 +688,8 @@
 	Theme	Thema
 	Pro Theme	Pro-thema
 	Pro Medium Gray Theme	Pro-thema middelgrijs
+	Pro Light Gray Theme	Pro-thema lichtgrijs
+	Pro Light Theme	Pro-thema licht
 	Studio Theme	Studio-thema
 	Studio Light Theme	Studio-thema licht
 	Classic Theme	Klassiek thema
@@ -805,6 +824,8 @@
 	Bend:	Buiging:
 	Bicubic	Bicubisch
 	Bicubic (smooth gradients)	Bicubisch (vloeiende verlopen)
+	Bicubic Smoother (enlargement)	Bicubisch vloeiender (vergroten)
+	Bicubic Sharper (reduction)	Bicubisch scherper (verkleinen)
 	Bilinear	Bilineair
 	Black	Zwart
 	Black & White	Zwart-wit
@@ -1488,6 +1509,7 @@
 	White Balance: As Shot	Witbalans: zoals opgenomen
 	Whites	Witten
 	Width	Breedte
+	Slant	Helling
 	Width:	Breedte:
 	Work Path	Werkpad
 	Yellow	Geel
@@ -1661,6 +1683,7 @@
 	Pen Pressure	Pendruk
 	Pen Tilt	Penkanteling
 	Pen Tool	Pengereedschap
+	Convert Point Tool	Punt-converteergereedschap
 	Photo	Foto
 	PhotoCraft website	Website van PhotoCraft
 	Picas	Pica's
@@ -1676,6 +1699,8 @@
 	Postcard	Ansichtkaart
 	Poster	Poster
 	Pro (Dark)	Pro (donker)
+	Pro (Light)	Pro (licht)
+	Pro (Light Gray)	Pro (lichtgrijs)
 	Pro (Medium Gray)	Pro (middelgrijs)
 	Protect Texture	Textuur beschermen
 	Purple	Paars
@@ -1872,6 +1897,8 @@
 	Preserve details	Details behouden
 	Print resolution	Afdrukresolutie
 	Pro	Pro
+	Pro light	Pro licht
+	Pro light gray	Pro lichtgrijs
 	Pro medium	Pro middel
 	Pro photo	Pro Photo
 	Quick export format	Formaat snel exporteren
@@ -2075,6 +2102,7 @@
 	Developing {name}	{name} wordt ontwikkeld
 	Cancelled {label}	{label} geannuleerd
 	Esc to cancel	Esc om te annuleren
+	Opened {name}	{name} geopend
 	Opening {name}	{name} openen
 	Saved {name}	{name} opgeslagen
 	Saving {name}	{name} opslaan
@@ -2304,6 +2332,19 @@
 	Domed	Koepel
 	Domed (Inverted)	Koepel (omgekeerd)
 	Diagonal (Descending)	Diagonaal (aflopend)
+	Contour Editor	Contoureditor
+	Anti-aliased	Anti-aliasing
+	Corner	Hoek
+	Gloss Contour	Glanscontour
+	Contour	Contour
+	Cone - Inverted	Kegel - omgekeerd
+	Cove - Deep	Inham - diep
+	Cove - Shallow	Inham - ondiep
+	Half Round	Halfrond
+	Ring - Double	Ring - dubbel
+	Rolling Slope - Descending	Glooiende helling - aflopend
+	Rounded Steps	Afgeronde treden
+	Sawtooth 1	Zaagtand 1
 	Red Eye Tool	Rode-ogengereedschap
 	Red Eye	Rode ogen
 	Pupil Size	Pupilgrootte
@@ -3676,4 +3717,29 @@ cameraData	Lens	Lens
 	Search settings…	Instellingen zoeken…
 	No matching settings	Geen overeenkomende instellingen
 	PhotoCraft — Screen Color Picker	PhotoCraft — Schermkleurkiezer
+# Select and Mask view modes (#1754)
+	Onion Skin	Uienschil
+	Marching Ants	Mierenmars
+	On Black	Op zwart
+	On White	Op wit
+	On Layers	Op lagen
+	Show Edge	Rand tonen
+	Show Original	Origineel tonen
+	F cycles the views; hold X to see the image	F wisselt de weergaven; houd X ingedrukt om de afbeelding te zien
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	Penseel Rand verfijnen (R)
+	Expand Detection Area	Detectiegebied uitbreiden
+	Restore Original Edge	Oorspronkelijke rand herstellen
+	Paint over hair or fur on the image; Alt paints the other mode	Schilder over haar of vacht in de afbeelding; Alt schildert in de andere modus
+	Clear Brush Strokes	Penseelstreken wissen
+	Show rulers	Linialen tonen
+	Frame Tool	Kadergereedschap
+	Create a new rectangular frame	Nieuw rechthoekig kader maken
+	Create a new elliptical frame	Nieuw ovaal kader maken
 	Include in playback	Opnemen in afspelen
+	Scale:	Schaal:
+	Snap to Origin	Uitlijnen op oorsprong
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Klik om te plaatsen · Alt-klik of sleep buiten het canvas om te verwijderen
+	{n} of {max} sample points	{n} van {max} steekproefpunten
