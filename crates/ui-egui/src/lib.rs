@@ -75,11 +75,14 @@ pub mod fill_ui;
 pub mod filter_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod filter_preview_worker;
+pub mod flick_pan;
 mod font_preview;
+pub mod frame_tool;
 pub mod gallery_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
+pub mod guide_layout_ui;
 pub mod hold_keys;
 pub mod i18n;
 mod icon_data;
@@ -1677,12 +1680,22 @@ impl PhotocraftApp {
         }
     }
 
-    /// The Layers panel targets the active layer's mask, and no alpha channel or Quick Mask
-    /// takes over (the engine routes those itself).
+    /// The active layer's mask is what pixel commands edit: the Layers panel targets it, or every
+    /// colour channel is off and that mask is the picture. An alpha channel or Quick Mask wins,
+    /// as the engine routes those itself.
     pub fn layer_mask_targeted(&self) -> bool {
-        let Some(st) = self.session.active().filter(|_| self.ui.mask_target) else { return false };
+        let Some(st) = self.session.active() else { return false };
         let composite = st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::Composite && st.doc.quick_mask.is_none();
-        composite && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some())
+        let has_mask = st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some());
+        if !composite || !has_mask {
+            return false;
+        }
+        if self.ui.mask_target {
+            return true;
+        }
+        let colors_off = st.channel_view.visible_colors(photocraft_engine::channel_cmds::color_count(&st.doc)) == 0;
+        let alpha_on = (0..st.doc.channels.len()).any(|i| st.channel_view.alpha_shown(i));
+        colors_off && !alpha_on
     }
 
     /// Viewing a layer mask (#196) targets it; a vector-mask target needs a vector mask on the
@@ -2161,6 +2174,9 @@ mod warp_text_dialog_tests;
 mod blend_dropdown_wheel_tests;
 
 #[cfg(test)]
+mod dropdown_press_tests;
+
+#[cfg(test)]
 mod marquee_tests;
 
 #[cfg(test)]
@@ -2174,6 +2190,8 @@ mod stamp_tests;
 
 #[cfg(test)]
 mod alt_click_tests;
+#[cfg(test)]
+mod status_bar_tests;
 #[cfg(test)]
 mod stroke_timing_tests;
 
