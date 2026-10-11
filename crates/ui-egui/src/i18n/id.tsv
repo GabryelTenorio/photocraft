@@ -3012,3 +3012,6 @@ cameraData	Lens	Lensa
 	Fill with {mode}-neutral color (black)	Isi dengan warna netral {mode} (hitam)
 	Fill with {mode}-neutral color (50% gray)	Isi dengan warna netral {mode} (abu-abu 50%)
 	(No neutral color exists for {mode} mode.)	(Tidak ada warna netral untuk mode {mode}.)
+# Field Blur pins (#3373)
+	No pin selected	Tidak ada pin yang dipilih
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Klik gambar untuk menambah pin; seret pin untuk memindahkannya, atau cincinnya untuk mengubah blur. Delete menghapus pin yang dipilih.

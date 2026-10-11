@@ -3619,3 +3619,6 @@ cameraData	Lens	レンズ
 	Fill with {mode}-neutral color (black)	{mode} の中間色で塗りつぶす (黒)
 	Fill with {mode}-neutral color (50% gray)	{mode} の中間色で塗りつぶす (50% グレー)
 	(No neutral color exists for {mode} mode.)	({mode} モードには中間色がありません。)
+# Field Blur pins (#3373)
+	No pin selected	ピンが選択されていません
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	画像をクリックしてピンを追加します。ピンをドラッグして移動し、リングをドラッグしてぼかしを変更します。Delete キーで選択したピンを削除します。

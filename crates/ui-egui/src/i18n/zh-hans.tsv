@@ -2627,3 +2627,6 @@ cameraData	Lens	镜头
 	Fill with {mode}-neutral color (black)	使用{mode}中性色填充（黑色）
 	Fill with {mode}-neutral color (50% gray)	使用{mode}中性色填充（50% 灰色）
 	(No neutral color exists for {mode} mode.)	（{mode}模式不存在中性色。）
+# Field Blur pins (#3373)
+	No pin selected	未选择图钉
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	单击图像以添加图钉；拖动图钉可移动它，拖动其圆环可更改模糊程度。按 Delete 键删除所选图钉。

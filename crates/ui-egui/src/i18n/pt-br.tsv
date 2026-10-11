@@ -3799,3 +3799,6 @@ layerLabel	No Color	Sem cor
 	Fill with {mode}-neutral color (black)	Preencher com a cor neutra de {mode} (preto)
 	Fill with {mode}-neutral color (50% gray)	Preencher com a cor neutra de {mode} (cinza 50%)
 	(No neutral color exists for {mode} mode.)	(Não existe cor neutra para o modo {mode}.)
+# Field Blur pins (#3373)
+	No pin selected	Nenhum alfinete selecionado
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Clique na imagem para adicionar um alfinete; arraste um alfinete para movê-lo ou o anel dele para alterar o desfoque. Delete remove o alfinete selecionado.
