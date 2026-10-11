@@ -3192,3 +3192,4 @@ cameraData	Lens	렌즈
 	Fill with {mode}-neutral color (black)	{mode} 중립 색상으로 채우기(검정)
 	Fill with {mode}-neutral color (50% gray)	{mode} 중립 색상으로 채우기(50% 회색)
 	(No neutral color exists for {mode} mode.)	({mode} 모드에는 중립 색상이 없습니다.)
+	Background (Default)	배경(기본값)

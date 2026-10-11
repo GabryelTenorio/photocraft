@@ -2627,3 +2627,5 @@ cameraData	Lens	镜头
 	Fill with {mode}-neutral color (black)	使用{mode}中性色填充（黑色）
 	Fill with {mode}-neutral color (50% gray)	使用{mode}中性色填充（50% 灰色）
 	(No neutral color exists for {mode} mode.)	（{mode}模式不存在中性色。）
+	Background (Default)	背景（默认）
+	Content-Aware Fill	内容识别填充

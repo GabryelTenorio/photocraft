@@ -3025,3 +3025,5 @@ cameraData	Lens	Objectif
 	Fill with {mode}-neutral color (black)	Remplir avec la couleur neutre de {mode} (noir)
 	Fill with {mode}-neutral color (50% gray)	Remplir avec la couleur neutre de {mode} (gris 50 %)
 	(No neutral color exists for {mode} mode.)	(Il n’existe aucune couleur neutre pour le mode {mode}.)
+	Background (Default)	Arrière-plan (par défaut)
+	Content-Aware Fill	Remplissage d'après le contenu

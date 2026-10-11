@@ -3769,3 +3769,4 @@ cameraData	Lens	Lens
 	Fill with {mode}-neutral color (black)	Vullen met neutrale kleur voor {mode} (zwart)
 	Fill with {mode}-neutral color (50% gray)	Vullen met neutrale kleur voor {mode} (50% grijs)
 	(No neutral color exists for {mode} mode.)	(Voor de modus {mode} bestaat geen neutrale kleur.)
+	Background (Default)	Achtergrond (standaard)

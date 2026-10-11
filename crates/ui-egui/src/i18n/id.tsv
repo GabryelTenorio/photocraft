@@ -3012,3 +3012,5 @@ cameraData	Lens	Lensa
 	Fill with {mode}-neutral color (black)	Isi dengan warna netral {mode} (hitam)
 	Fill with {mode}-neutral color (50% gray)	Isi dengan warna netral {mode} (abu-abu 50%)
 	(No neutral color exists for {mode} mode.)	(Tidak ada warna netral untuk mode {mode}.)
+	Background (Default)	Background (Default)
+	Content-Aware Fill	Isi Content-Aware

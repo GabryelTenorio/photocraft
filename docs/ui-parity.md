@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Hand-tool flick panning) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (Crop tool Content-Aware Fill) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -138,7 +138,8 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Default mode: the image turns and moves behind an upright box; Auto Center Preview; Use Classic Mode | done | TOOL-214-23 |
 | W × H × Resolution with units, built-in size presets, Front Image | done | TOOL-214-9 (`crop_size.rs`) |
 | Saved custom crop presets | missing | TOOL-214-9 |
-| Content-Aware crop fill, Delete Cropped Pixels off | partial | |
+| Fill: Content-Aware Fill: a turned or extending crop fills the uncovered corners and strips from the image (each piece with its own sampling window), on the Background or else the active pixel layer, in the crop's one undo step; Generative Expand not offered | done | `tests/crop_content_aware.rs`, `crop_ui.rs::commit_passes_the_fill_choice` (#3823, 2026-10-12) |
+| Delete Cropped Pixels off | partial | |
 
 ## Snapping, guides, rulers, precision
 
@@ -210,3 +211,4 @@ Paragraph; the rest open as in-app floating windows.
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |
+| 2026-10-12 | minor | Crop tool Fill › Content-Aware Fill done (#3823); Delete Cropped Pixels off split into its own row, still partial |
