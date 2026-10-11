@@ -4186,6 +4186,7 @@ version = "0.7.0"
 dependencies = [
  "arboard",
  "async-io",
+ "clipboard-win",
  "core-graphics2",
  "dispatch2",
  "eframe",
