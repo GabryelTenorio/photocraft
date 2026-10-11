@@ -385,3 +385,72 @@ fn moving_an_artboard_past_the_canvas_grows_it() {
     s.undo();
     assert_eq!((doc(&s).size.width, doc(&s).size.height), (100, 80));
 }
+
+#[test]
+fn moving_an_artboard_past_the_canvas_keeps_its_shapes_whole() {
+    // #2389: a shape's pixels are cut at the canvas; the board moved before the canvas grew,
+    // so its shape rendered against the old edge and stayed missing or clipped.
+    let shape_board = |s: &mut Session| {
+        s.execute("file.new", json!({"width": 100, "height": 100, "background": "transparent"})).unwrap();
+        let sh = s.execute("shape.create", json!({"kind": "rect", "rect": [10, 20, 30, 30], "fill": "#ff0000"})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("layer.new.artboardFromLayers", json!({})).unwrap();
+        sh
+    };
+    for (cmd, p, size, red, not_red) in [
+        ("layer.artboard.set", json!({"x": 120}), (150, 100), [(121, 21), (130, 30), (149, 49)], None),
+        ("layer.translate", json!({"dx": 110, "dy": 0}), (150, 100), [(121, 21), (130, 30), (149, 49)], None),
+        ("layer.artboard.set", json!({"y": 120}), (100, 150), [(11, 121), (20, 130), (39, 149)], None),
+        // Partly past the edge: the whole shape, not just the part inside the old canvas.
+        ("layer.artboard.set", json!({"x": 90}), (120, 100), [(91, 21), (95, 30), (110, 30)], Some((15, 30))),
+    ] {
+        let mut s = Session::new();
+        let sh = shape_board(&mut s);
+        s.execute(cmd, p.clone()).unwrap();
+        assert_eq!((doc(&s).size.width, doc(&s).size.height), size, "{cmd} {p}");
+        for (x, y) in red {
+            assert!(red_at(&s, x, y), "{cmd} {p}: ({x}, {y})");
+        }
+        if let Some((x, y)) = not_red {
+            assert!(!red_at(&s, x, y), "{cmd} {p}: ({x}, {y}) left behind");
+        }
+        let info = s.execute("shape.info", json!({"layer": sh})).unwrap();
+        assert_eq!(info["bounds"], json!([red[0].0 - 1, red[0].1 - 1, 30, 30]), "{cmd} {p}");
+        // One undo step back to the original board; redo brings the whole shape back.
+        s.undo();
+        assert_eq!((doc(&s).size.width, doc(&s).size.height), (100, 100));
+        assert!(red_at(&s, 20, 30), "{cmd} {p}: undo");
+        s.redo();
+        assert_eq!((doc(&s).size.width, doc(&s).size.height), size);
+        for (x, y) in red {
+            assert!(red_at(&s, x, y), "{cmd} {p}: redo ({x}, {y})");
+        }
+    }
+}
+
+#[test]
+fn add_beside_places_a_board_on_each_side_and_alt_duplicates_contents() {
+    // #3033: the Artboard tool's "+" buttons. Board 40×40 at (10, 10) holding a red square.
+    let mut s = session(8);
+    let gid = board_with_square(&mut s);
+    let r = s.execute("layer.artboard.addBeside", json!({"side": "right"})).unwrap();
+    assert_eq!(r["rect"], json!([150, 10, 40, 40]), "same size, a gap to the right");
+    assert!(!red_at(&s, 155, 15), "a plain \"+\" adds an empty board");
+    let r = s.execute("layer.artboard.addBeside", json!({"layer": gid.0, "side": "bottom", "duplicate": true})).unwrap();
+    assert_eq!(r["rect"], json!([10, 150, 40, 40]));
+    assert!(red_at(&s, 15, 155), "⌥: the copy brings the contents");
+    // Again on the right: that spot is taken, so the next free one.
+    let r = s.execute("layer.artboard.addBeside", json!({"layer": gid.0})).unwrap();
+    assert_eq!(r["rect"], json!([290, 10, 40, 40]));
+    // Left of x = 10 is past the canvas origin: everything shifts right by 130 to make room.
+    let before = doc(&s).size;
+    let r = s.execute("layer.artboard.addBeside", json!({"layer": gid.0, "side": "left"})).unwrap();
+    assert_eq!(r["rect"], json!([0, 10, 40, 40]));
+    assert_eq!(board_rect(&s, gid.0), Rect::new(140, 10, 180, 50));
+    assert!(red_at(&s, 145, 15), "the original's contents moved with the shift");
+    assert_eq!(doc(&s).size.width, before.width + 130);
+    // One undo step.
+    s.undo();
+    assert_eq!(board_rect(&s, gid.0), Rect::new(10, 10, 50, 50));
+    assert_eq!(doc(&s).size, before);
+    assert!(s.execute("layer.artboard.addBeside", json!({"side": "diagonal"})).is_err());
+}

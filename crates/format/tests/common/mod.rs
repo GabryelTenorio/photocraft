@@ -166,6 +166,7 @@ pub fn rich_doc(mode: ColorMode, depth: SampleType) -> Document {
     let smart = Layer::new(
         "Smart",
         LayerContent::Smart(SmartObject {
+            contents_id: SmartContentsId::fresh(),
             source: SmartSource::Embedded { file_name: "inner.png".into(), bytes: blob(11, 2000) },
             transform: Affine::scale(0.5),
             smart_filters: vec![SmartFilter {
@@ -194,6 +195,7 @@ pub fn rich_doc(mode: ColorMode, depth: SampleType) -> Document {
     let linked = Layer::new(
         "Linked",
         LayerContent::Smart(SmartObject {
+            contents_id: SmartContentsId::fresh(),
             source: SmartSource::Linked { path: "/tmp/linked.psd".into() },
             transform: Affine::IDENTITY,
             smart_filters: vec![],
@@ -217,6 +219,7 @@ pub fn rich_doc(mode: ColorMode, depth: SampleType) -> Document {
     d.channels.push(alpha);
     d.channels.push(AlphaChannel { spot: Some((Color::rgb(1.0, 0.0, 0.5), 0.7)), ..AlphaChannel::new("Spot", ch.clone()) });
     d.quick_mask = Some(AlphaChannel::new("Quick Mask", ch));
+    d.quick_mask_unselected = true;
     let mut pat = Surface::new(PixelFormat::new(photocraft_color::ColorMode::Rgb, photocraft_color::SampleType::U16, true));
     scribble(&mut pat, 21, false);
     d.patterns.push(photocraft_doc::Pattern::new("$$$/Patterns/Test=Scribble", pat, 32, 24));
