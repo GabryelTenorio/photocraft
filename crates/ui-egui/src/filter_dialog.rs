@@ -441,6 +441,12 @@ fn uses_logarithmic_slider(min: f32, max: f32) -> bool {
     min > 0.0 && max / min > 500.0
 }
 
+/// Filters whose `angle` param is a *direction*: Photoshop draws an angle dial beside it. Twirl's
+/// angle is an amount of rotation, not a direction, so it keeps the plain slider.
+fn angle_is_direction(cmd: &str) -> bool {
+    matches!(cmd, "filter.blur.motionBlur" | "filter.stylize.emboss")
+}
+
 /// Dialog body for filter commands.
 pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let t = Tokens::get(ui.ctx());
@@ -461,6 +467,17 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                     let mut count = v.round().clamp(2.0, 256.0) as u32;
                     crate::widgets::color_count_row(ui, &label(&p.key), &mut count);
                     f.insert(p.key, json!(count));
+                    continue;
+                }
+                // Photoshop draws a direction dial beside Motion Blur's and Emboss's Angle (#3152).
+                if p.key == "angle" && angle_is_direction(&cmd) {
+                    let name = label(&p.key);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(&name).color(t.text_dim));
+                        crate::widgets::angle_dial(ui, &name, &mut v);
+                        crate::widgets::value_field(ui, &mut v, -180.0..=180.0, "°", 74.0);
+                    });
+                    f.insert(p.key, json!(v.round()));
                     continue;
                 }
                 let unit = if is_pixel_param_of(&cmd, &p.key) {
@@ -769,6 +786,35 @@ mod tests {
         assert!(uses_logarithmic_slider(1.0, 9999.0));
         assert!(!uses_logarithmic_slider(1.0, 500.0));
         assert!(!uses_logarithmic_slider(0.0, 1000.0));
+    }
+
+    #[test]
+    fn only_directional_angles_get_a_dial() {
+        assert!(angle_is_direction("filter.blur.motionBlur"));
+        assert!(angle_is_direction("filter.stylize.emboss"));
+        assert!(!angle_is_direction("filter.distort.twirl"), "Twirl's angle is an amount of rotation, not a direction");
+    }
+
+    /// #3152: the Motion Blur Angle field has Photoshop's interactive angle dial, and dragging the
+    /// dial turns the angle.
+    #[test]
+    fn motion_blur_angle_dial_drags_the_angle() {
+        use egui_kittest::kittest::Queryable;
+        let mut fields = Map::new();
+        fields.insert("__command".into(), json!("filter.blur.motionBlur"));
+        fields.insert("angle".into(), json!(0.0));
+        fields.insert("distance".into(), json!(10.0));
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(360.0, 140.0)).build_ui_state(|ui, f: &mut Map<String, Value>| body(ui, f), fields);
+        h.run();
+        // The dial is labelled "Angle" (the text label comes first, so `.last()` is the dial).
+        let dial = h.query_all_by_label("Angle").last().expect("the Motion Blur angle dial");
+        let pos = dial.rect().center() + egui::vec2(0.0, -15.0);
+        h.event(egui::Event::PointerMoved(pos));
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+        h.step();
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+        h.run();
+        assert_eq!(h.state()["angle"].as_f64(), Some(90.0), "the dial points up: {:#?}", h.state());
     }
 
     #[test]

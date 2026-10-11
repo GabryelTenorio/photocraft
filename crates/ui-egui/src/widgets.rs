@@ -703,6 +703,46 @@ pub fn slider_row_with(
     r
 }
 
+/// Photoshop's circular angle dial (Motion Blur, Emboss, Layer Style light direction): click or
+/// drag inside to aim the needle, or nudge it with the arrow keys while focused. `angle` is a
+/// document angle in degrees, counter-clockwise from three o'clock (`0` points right), kept in
+/// `-180..=180`. `label` (translated) names it for hover text and accessibility; the returned
+/// response is `.changed()` when the angle moved.
+pub fn angle_dial(ui: &mut Ui, label: &str, angle: &mut f32) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, mut dial) = ui.allocate_exact_size(vec2(42.0, 42.0), Sense::click_and_drag());
+    dial.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Slider, ui.is_enabled(), tl!(label)));
+    if (dial.clicked() || dial.dragged())
+        && let Some(pos) = dial.interact_pointer_pos()
+    {
+        let delta = pos - rect.center();
+        if delta.length_sq() > 1.0 {
+            *angle = (-delta.y).atan2(delta.x).to_degrees().round();
+            dial.mark_changed();
+        }
+    }
+    let painter = ui.painter();
+    let radius = rect.width() / 2.0 - 2.0;
+    painter.circle(rect.center(), radius, t.field, Stroke::new(1.0, t.field_border));
+    let radians = angle.to_radians();
+    let tip = rect.center() + vec2(radians.cos(), -radians.sin()) * (radius - 4.0);
+    painter.line_segment([rect.center(), tip], Stroke::new(2.0, t.accent));
+    painter.circle_filled(rect.center(), 2.0, t.text_dim);
+    if dial.has_focus() {
+        painter.circle_stroke(rect.center(), radius + 2.0, Stroke::new(1.0, t.accent));
+        let step = ui.input(|i| {
+            i.num_presses(egui::Key::ArrowRight) as f32 + i.num_presses(egui::Key::ArrowUp) as f32
+                - i.num_presses(egui::Key::ArrowLeft) as f32
+                - i.num_presses(egui::Key::ArrowDown) as f32
+        });
+        if step != 0.0 {
+            *angle = (*angle + step + 180.0).rem_euclid(360.0) - 180.0;
+            dial.mark_changed();
+        }
+    }
+    dial
+}
+
 /// iOS-style toggle switch.
 pub fn toggle(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     let t = Tokens::get(ui.ctx());
