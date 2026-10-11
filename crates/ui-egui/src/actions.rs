@@ -197,7 +197,12 @@ fn visible_steps(app: &PhotocraftApp, action: usize) -> Vec<(String, Value)> {
 
 /// "3 steps", or "2/3 steps" when some are switched off (Photoshop shows a red partial check).
 fn step_count(steps: usize, disabled: usize) -> String {
-    if disabled == 0 { format!("{steps} steps") } else { format!("{}/{steps} steps", steps.saturating_sub(disabled)) }
+    if disabled == 0 {
+        crate::i18n::trn(crate::i18n::current(), steps as u64, "{n} step", "{n} steps")
+    } else {
+        let count = crate::i18n::trn(crate::i18n::current(), steps as u64, "{n} step", "{n} steps");
+        format!("{}/{count}", steps.saturating_sub(disabled))
+    }
 }
 
 fn paint_check(ui: &egui::Ui, rect: Rect, on: bool, t: &Tokens) {

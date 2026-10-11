@@ -3586,3 +3586,28 @@ layerLabel	No Color	Žádná barva
 	Monitor profile on {display}: {profile}	Profil monitoru {display}: {profile}
 	manual	ruční
 	fallback	náhradní
+
+# Composed labels and Navigator zoom context
+	The document does not have an embedded colour profile. Working space: {working}.	Dokument nemá vložený barevný profil. Pracovní prostor barev: {working}.
+	The document has an embedded colour profile that does not match the working space.\nEmbedded: {embedded}\nWorking: {working}	Dokument má vložený barevný profil, který neodpovídá pracovnímu prostoru barev.\nVložený: {embedded}\nPracovní: {working}
+	Importing {what} from {file}…	Importují se {what} ze souboru {file}…
+	brushes	štětce
+	gradients	přechody
+@plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Importován {n} štětec ze souboru {file}|Importovány {n} štětce ze souboru {file}|Importováno {n} štětců ze souboru {file}
+@plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Importován {n} přechod ze souboru {file}|Importovány {n} přechody ze souboru {file}|Importováno {n} přechodů ze souboru {file}
+	Data Set: {name}  ({index}/{total})	Datová sada: {name}  ({index}/{total})
+	(none)	(žádná)
+navigator	Zoom	Zvětšení
+@plural	{n} plane|{n} planes	{n} rovina|{n} roviny|{n} rovin
+@plural	{n} slice|{n} slices	{n} řez|{n} řezy|{n} řezů
+@plural	{n} preset|{n} presets	{n} přednastavení|{n} přednastavení|{n} přednastavení
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	{n} vrstva zaznamenaná v této kompozici byla odstraněna. Aktualizujte kompozici nebo zrušte upozornění.|{n} vrstvy zaznamenané v této kompozici byly odstraněny. Aktualizujte kompozici nebo zrušte upozornění.|{n} vrstev zaznamenaných v této kompozici bylo odstraněno. Aktualizujte kompozici nebo zrušte upozornění.
+	Apply {option}: {state}	Použít: {option} ({state})
+	on	zapnuto
+	off	vypnuto
+	This adjustment ({key}) is kept as imported and can't be edited yet.	Tato úprava ({key}) se uchovává v importované podobě a zatím ji nelze upravovat.
+	Join the ArtCraft Discord ({url})	Připojit se na Discord ArtCraft ({url})
+	{index} of {total}	{index} z {total}
+@plural	{n} step|{n} steps	{n} krok|{n} kroky|{n} kroků
+	{shortcut} assigned.	Zkratka {shortcut} přiřazena.
+	{shortcut} is already in use by {commands} and will be removed from it when you click OK.	Zkratka {shortcut} se již používá pro {commands}. Kliknutím na OK původní přiřazení zrušíte.

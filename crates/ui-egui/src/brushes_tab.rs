@@ -912,7 +912,9 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     widgets::hairline(ui);
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{} presets", app.session.tools.presets.len())).color(t.text_faint));
+        ui.label(
+            RichText::new(crate::i18n::trn(crate::i18n::current(), app.session.tools.presets.len() as u64, "{n} preset", "{n} presets")).color(t.text_faint),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // The current preset by identity: editing the brush after picking must not deselect it.
             let current = app.session.tools.current_preset.clone().filter(|n| app.session.tools.presets.iter().any(|p| p.name.eq_ignore_ascii_case(n)));

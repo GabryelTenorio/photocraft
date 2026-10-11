@@ -641,7 +641,14 @@ pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             egui::RichText::new(tl!("Discord")).color(t.text_dim).size(12.0),
                         )
                         .frame(false);
-                        if ui.add(discord).on_hover_text(format!("Join the ArtCraft Discord ({})", crate::links::DISCORD)).clicked() {
+                        if ui
+                            .add(discord)
+                            .on_hover_text({
+                                let template = "Join the ArtCraft Discord ({url})";
+                                crate::i18n::fmt(tl!(template), &[("url", crate::links::DISCORD)])
+                            })
+                            .clicked()
+                        {
                             crate::links::open(app, ui.ctx(), crate::links::DISCORD);
                         }
                     }
@@ -1854,7 +1861,7 @@ fn navigator(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let controls = ui.vertical(|ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            label(ui, tl!("Zoom"));
+            label(ui, crate::i18n::tr_ctx(crate::i18n::current(), "navigator", "Zoom"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 for (lbl, z) in [("200%", 2.0), ("100%", 1.0)] {
                     if widgets::pill_tab(ui, lbl, (v.zoom - z).abs() < 1e-3).clicked() {

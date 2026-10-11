@@ -984,13 +984,11 @@ pub fn open_shortcuts(app: &mut PhotocraftApp, tab: u64) -> u64 {
 /// Open the Embedded Profile Mismatch prompt for the active document.
 pub fn open_mismatch(app: &mut PhotocraftApp, report: &Value) -> u64 {
     let msg = if report.get("missing").and_then(Value::as_bool) == Some(true) {
-        format!("The document does not have an embedded colour profile. Working space: {}.", report["working"].as_str().unwrap_or("?"))
+        let template = "The document does not have an embedded colour profile. Working space: {working}.";
+        crate::i18n::fmt(tl!(template), &[("working", report["working"].as_str().unwrap_or("?"))])
     } else {
-        format!(
-            "The document has an embedded colour profile that does not match the working space.\nEmbedded: {}\nWorking: {}",
-            report["embedded"].as_str().unwrap_or("?"),
-            report["working"].as_str().unwrap_or("?")
-        )
+        let template = "The document has an embedded colour profile that does not match the working space.\nEmbedded: {embedded}\nWorking: {working}";
+        crate::i18n::fmt(tl!(template), &[("embedded", report["embedded"].as_str().unwrap_or("?")), ("working", report["working"].as_str().unwrap_or("?"))])
     };
     let action = match report["action"].as_str() {
         Some("converted") => "convert",
@@ -1609,6 +1607,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
     let mut selected = f.get("selected").and_then(Value::as_str).unwrap_or("").to_string();
     let mut capture = f.get("capture").and_then(Value::as_bool).unwrap_or(false);
     let mut message = f.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+    let mut message_warning = f.get("messageWarning").and_then(Value::as_bool).unwrap_or(false);
     let items = shortcut_items(app);
     // Menu path and command label as shown in the menus, in the UI language.
     let shown = |id: &str, label: &str, path: &[String]| -> (Vec<String>, String) {
@@ -1640,6 +1639,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 overrides.insert(selected.clone(), String::new());
                 capture = false;
                 message = tl!("Shortcut removed.").into();
+                message_warning = false;
             } else if let Some(sc) = shortcut_text(key, m) {
                 let clash: Vec<String> = items
                     .iter()
@@ -1650,10 +1650,13 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                     })
                     .collect();
                 overrides.insert(selected.clone(), sc.clone());
+                message_warning = !clash.is_empty();
                 message = if clash.is_empty() {
-                    format!("{} assigned.", crate::shortcuts::pretty(&sc))
+                    let template = "{shortcut} assigned.";
+                    crate::i18n::fmt(tl!(template), &[("shortcut", &crate::shortcuts::pretty(&sc))])
                 } else {
-                    format!("{} is already in use by {} and will be removed from it when you click OK.", crate::shortcuts::pretty(&sc), clash.join(", "))
+                    let template = "{shortcut} is already in use by {commands} and will be removed from it when you click OK.";
+                    crate::i18n::fmt(tl!(template), &[("shortcut", &crate::shortcuts::pretty(&sc)), ("commands", &clash.join(", "))])
                 };
                 capture = false;
             }
@@ -1700,6 +1703,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                         selected = id.clone();
                         capture = true;
                         message.clear();
+                        message_warning = false;
                     }
                     ui.label(if changed { RichText::new(tl!("modified")).color(t.text_faint).size(10.5) } else { RichText::new("") });
                 } else {
@@ -1731,14 +1735,17 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
             if ui.add_enabled(has_sel, egui::Button::new(tl!("Use Default"))).clicked() {
                 overrides.remove(&selected);
                 message = tl!("Default restored.").into();
+                message_warning = false;
             }
             if ui.add_enabled(has_sel, egui::Button::new(tl!("Delete Shortcut"))).clicked() {
                 overrides.insert(selected.clone(), String::new());
                 message = tl!("Shortcut removed.").into();
+                message_warning = false;
             }
             if ui.button(tl!("Reset All to Defaults")).clicked() {
                 overrides.clear();
                 message = tl!("All shortcuts reset to PhotoCraft defaults.").into();
+                message_warning = false;
             }
             // A Photoshop set (`.kys`) fills the overrides; the file arrives after this frame
             // and `kys_import` writes the dialog's fields then (#1163).
@@ -1746,6 +1753,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 && let Err(e) = crate::kys_import::import_dialog(app)
             {
                 message = e;
+                message_warning = false;
             }
         });
     } else if ui.button(tl!("Show All Menu Items")).clicked() {
@@ -1753,7 +1761,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
         colors.clear();
     }
     if !message.is_empty() {
-        ui.label(RichText::new(&message).color(if message.contains("already in use") { t.warning } else { t.text_dim }));
+        ui.label(RichText::new(&message).color(if message_warning { t.warning } else { t.text_dim }));
     }
     if overrides_ok {
         f.insert("overrides".into(), json!(overrides));
@@ -1763,6 +1771,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
     f.insert("selected".into(), json!(selected));
     f.insert("capture".into(), json!(capture));
     f.insert("message".into(), json!(message));
+    f.insert("messageWarning".into(), json!(message_warning));
 }
 
 fn toolbar_tab(ui: &mut egui::Ui, f: &mut Map<String, Value>) {

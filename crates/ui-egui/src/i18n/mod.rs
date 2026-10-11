@@ -847,6 +847,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn czech_composed_labels_use_context_and_preserve_document_names() {
+        let cs = CS();
+        assert_eq!(tr(cs, "Zoom"), "Lupa");
+        assert_eq!(tr_ctx(cs, "navigator", "Zoom"), "Zvětšení");
+        assert_eq!(tr_ctx(Lang::EN, "navigator", "Zoom"), "Zoom");
+        let template = "Data Set: {name}  ({index}/{total})";
+        assert_eq!(fmt(tr(cs, template), &[("name", "Data Set 1"), ("index", "1"), ("total", "2")]), "Datová sada: Data Set 1  (1/2)");
+        for (n, expected) in
+            [(1, "Importován 1 přechod ze souboru Sunset"), (3, "Importovány 3 přechody ze souboru Sunset"), (5, "Importováno 5 přechodů ze souboru Sunset")]
+        {
+            assert_eq!(fmt(&trn(cs, n, "Imported {n} gradient from {file}", "Imported {n} gradients from {file}"), &[("file", "Sunset")]), expected);
+        }
+    }
+
     /// Every `tl!("literal")` in the shell has an entry in each language that claims complete menus
     /// (so a new label can't ship untranslated by accident). Literals that are deliberately shown as
     /// they are (names, units) are listed in `KEEP_AS_IS`.

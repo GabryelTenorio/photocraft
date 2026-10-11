@@ -490,7 +490,7 @@ fn web_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             let nslices = photocraft_doc::slices::resolve(&doc).len();
             if !doc.slices.is_empty() {
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new(format!("{nslices} slices")).color(t.text_dim));
+                ui.label(egui::RichText::new(crate::i18n::trn(crate::i18n::current(), nslices as u64, "{n} slice", "{n} slices")).color(t.text_dim));
                 check(ui, f, "html", tl!("Save HTML and Images"), true);
                 dropdown_str(ui, "web-slices", f, "slices", &[("all", tl!("All Slices")), ("user", tl!("All User Slices"))], 150.0);
             }

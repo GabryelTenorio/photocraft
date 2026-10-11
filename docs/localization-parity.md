@@ -1,6 +1,6 @@
 # Localization parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (right-to-left shell layout) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Czech dynamic UI messages) · **Target:** Adobe Photoshop 2026
 
 Per-language status of PhotoCraft's UI. How catalogs work and how to add one:
 [`localization.md`](localization.md). Language notes: [Korean](localization-ko.md), [Spanish](localization-es.md),
@@ -49,6 +49,13 @@ catalog).
 Chinese `zh-hant` (2,329 rows), Russian `ru` (2,544), Ukrainian `uk` (3,375), Czech `cs` (2,337),
 Polish `pl` (3,366), Greek `el` (3,481), Dutch `nl` (3,568), Italian `it` (2,411).
 
+Czech UI follow-up (2026-10-11): status and notice wrappers, hardware labels, brush and
+transform accessibility names, rasterization prompts, profile mismatch messages and preset
+counts now translate at their render/assignment sites. Navigator's zoom level uses a context
+(`Zvětšení`), while the tool remains `Lupa`. Engine errors, profile/file/document names stay
+verbatim; new dynamic templates fall back to English in catalogs without entries. This is
+additional UI coverage, not a claim that engine localization or native review is complete.
+
 ## Cross-language gaps
 
 - Engine error, status and parameter-help messages are English in every language.
@@ -66,3 +73,4 @@ Polish `pl` (3,366), Greek `el` (3,481), Dutch `nl` (3,568), Italian `it` (2,411
 |---|---|---|
 | 2026-10-10 | major | First version, measured from the catalogs with the `i18n-coverage` rules |
 | 2026-10-10 | minor | Right-to-left shell layout (menu bar, title, options and status bars, toolbox and dock sides) |
+| 2026-10-11 | minor | Czech dynamic status/notice and hardware text, render labels and Navigator zoom context; engine messages remain English |
