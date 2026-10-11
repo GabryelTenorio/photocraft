@@ -524,6 +524,7 @@ mod tests {
     }
 
     /// On a Mac, every display is read, and the profiles parse as RGB profiles.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn detected_displays_parse() {
         if let Ok(displays) = detect() {
