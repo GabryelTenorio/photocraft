@@ -538,6 +538,8 @@ pub struct PresetStore {
     synced_rev: Option<u64>,
     /// Group file name → its last written content.
     groups: HashMap<String, Synced>,
+    /// Group files that failed to load: left on disk untouched, so a sync never writes them.
+    skipped: HashSet<String>,
     /// Tip hash → file size, for every tip file the store owns.
     tips: HashMap<String, u64>,
     index: Option<IndexFile>,
@@ -597,6 +599,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
 
     // Parse the group files.
     let mut parsed: Vec<(String, u64, GroupFile)> = Vec::new();
+    let mut skipped = HashSet::new();
     let mut failed = false;
     for (name, size) in group_files {
         let r = backend.read(&name, MAX_GROUP_BYTES).and_then(|b| serde_json::from_slice::<GroupFile>(&b).map_err(|e| e.to_string())).and_then(|g| {
@@ -615,6 +618,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
             Err(e) => {
                 failed = true;
                 warnings.push(format!("brush presets: {name} skipped: {e}"));
+                skipped.insert(name);
             }
         }
     }
@@ -637,6 +641,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
         backend,
         synced_rev: None,
         groups: HashMap::new(),
+        skipped: HashSet::new(),
         tips: HashMap::new(),
         index: None,
         actions_rev: 0,
@@ -668,6 +673,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
             // Left on disk untouched (a sync never deletes a file it did not load).
             failed = true;
             warnings.push(format!("brush presets: {file} skipped: {missing} preset(s) have missing or unreadable tips"));
+            skipped.insert(file);
             continue;
         }
         for h in &hashes {
@@ -678,6 +684,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
         presets.extend(items.iter().cloned());
         store.groups.insert(file, Synced { presets: items, tips: hashes, bytes: size, stale });
     }
+    store.skipped = skipped;
     // Tip files nothing references are garbage (e.g. left by a crash), unless a group failed to
     // load: its tips must survive so a fixed file still works.
     if !failed {
@@ -871,6 +878,13 @@ impl PresetStore {
                 .get(&file)
                 .is_some_and(|s| !s.stale && s.presets.len() == idx.len() && s.presets.iter().zip(idx).all(|(a, &i)| presets.get(i) == Some(a)));
             if unchanged {
+                continue;
+            }
+            if self.skipped.contains(&file) {
+                self.warnings.push(format!(
+                    "Couldn't save brush presets `{}`: {file} could not be read, so it was left unchanged",
+                    if group.is_empty() { "(ungrouped)" } else { group }
+                ));
                 continue;
             }
             let mut items: Vec<&mut BrushPreset> = presets.iter_mut().filter(|p| !p.builtin && p.group == *group).collect();
