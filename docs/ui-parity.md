@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: tools, transform, nudging, snapping, modifiers, navigation, shortcuts, panels audited from source and open issues) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** minor (toolbox count corrected to 55 of 68; open PRs linked for the missing tools) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -12,8 +12,8 @@ Status: **done** (behaves as in Photoshop, with a test), **partial** (exists, di
 **missing**. Evidence is a file under `crates/ui-egui/src/` unless another path is given, a
 scorecard id, or an issue. Modifier names are macOS first (⌘ ⌥ ⇧); Windows/Linux use Ctrl and Alt.
 
-**Summary (estimated, weights = how often the gesture is used):** ~40% ready. Tools 53/68
-present (78%, measured). Free Transform modifiers and Crop are close to Photoshop; the gaps are
+**Summary (estimated, weights = how often the gesture is used):** ~40% ready. Tools 55/68
+present (81%, measured). Free Transform modifiers and Crop are close to Photoshop; the gaps are
 in the long tail of modifiers, in-transform UI, spring-loaded tools, panels and preferences.
 Remaining: 60–110 h for transforms and modifiers (gap G5), 60–100 h for tools (G6), 150–250 h
 for panels and workspace (G9).
@@ -26,22 +26,22 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 
 | Group | Present | Missing |
 |---|---|---|
-| Move, artboard | Move | Artboard (commands `layer.new.artboard*` exist) |
+| Move, artboard | Move | Artboard (commands `layer.new.artboard*` exist; PR #2862) |
 | Marquee | Rectangular, Elliptical, Single Row, Single Column | |
 | Lasso | Lasso, Polygonal, Magnetic | |
 | Selection | Object Selection, Quick Selection, Magic Wand | |
-| Crop and slice | Crop, Slice, Slice Select | Perspective Crop |
-| Frame | | Frame (`layer.new.frameFromLayers` exists) |
-| Eyedropper | Eyedropper, Ruler, Note, Count | Color Sampler (#1046) |
+| Crop and slice | Crop, Slice, Slice Select | Perspective Crop (PR #2864) |
+| Frame | | Frame (`layer.new.frameFromLayers` exists; PR #2915) |
+| Eyedropper | Eyedropper, Ruler, Note, Count | Color Sampler (PR #2753) |
 | Retouch | Remove, Spot Healing, Healing, Patch, Content-Aware Move, Red Eye | |
-| Brush | Brush, Pencil, Mixer Brush | Color Replacement (`paint.colorReplacement` exists) |
+| Brush | Brush, Pencil, Mixer Brush | Color Replacement (`paint.colorReplacement` exists; PR #2719) |
 | Stamp | Clone Stamp, Pattern Stamp | |
-| History | History Brush | Art History Brush |
+| History | History Brush | Art History Brush (PR #1610) |
 | Eraser | Eraser, Background Eraser, Magic Eraser | |
 | Fill | Gradient, Paint Bucket | |
 | Focus, toning | Blur, Sharpen, Smudge, Dodge, Burn, Sponge | |
-| Pen | Pen | Freeform Pen, Curvature Pen (#1054), Add Anchor Point, Delete Anchor Point, Convert Point (⌥ with Pen only) |
-| Type | Horizontal, Vertical | Horizontal Type Mask, Vertical Type Mask |
+| Pen | Pen | Freeform Pen, Curvature Pen (PR #2856), Add Anchor Point, Delete Anchor Point (PR #2756), Convert Point (⌥ with Pen only; no PR) |
+| Type | Horizontal, Vertical | Horizontal Type Mask, Vertical Type Mask (PR #2861) |
 | Path selection | Path Selection, Direct Selection | |
 | Shapes | Rectangle, Ellipse, Triangle, Polygon, Line, Custom Shape | (Star is a Polygon option in Photoshop) |
 | View | Hand, Rotate View, Zoom | |
@@ -203,4 +203,5 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Toolbox count corrected to 55 of 68 (was 53); open PRs linked for each missing tool |
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
