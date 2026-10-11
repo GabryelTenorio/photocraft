@@ -380,6 +380,9 @@ fn batch(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
             let mut h = Headless::trusted_local();
             h.open(input).map_err(|e| e.to_string())?;
             for (id, p) in &actions {
+                if photocraft_engine::actions_cmds::shell_view_command(id) || photocraft_engine::actions_cmds::shell_save_command(id) {
+                    continue;
+                }
                 h.command_run(id, p.clone()).map_err(|e| format!("`{id}`: {e}"))?;
             }
             let r = h.save(None, Some(&target), Some(&ext), &opts).map_err(|e| e.to_string())?;
