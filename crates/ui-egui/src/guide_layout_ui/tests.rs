@@ -220,3 +220,17 @@ fn preview_cache_tracks_document_revision() {
     app.run(COMMAND, json!({"margin":23})).unwrap();
     assert!(preview(&app, &app.session.active().unwrap().doc).unwrap().0.vertical.contains(&23.0));
 }
+
+/// Preferences ▸ Units & Rulers ▸ Gutter: the first layout starts from the preferred gutter;
+/// once the dialog has been used, its remembered values win.
+#[test]
+fn the_first_layout_starts_from_the_units_and_rulers_gutter() {
+    let mut app = app();
+    let id = open(&mut app);
+    assert_eq!(app.ui.dialog_mut(id).unwrap().fields["gutter"].as_f64(), Some(12.0), "the preference's default");
+    app.session.prefs.edit(|p| p.units_and_rulers.gutter = 8.0);
+    // The dialog has been used: its remembered values win, not the new preference.
+    app.ui.view.guide_layout = json!({"columns": 4, "gutter": 4, "rows": 0, "rowGutter": 0, "margin": 0, "centerColumns": false, "clearExisting": false});
+    let id = open(&mut app);
+    assert_eq!(app.ui.dialog_mut(id).unwrap().fields["gutter"].as_f64(), Some(4.0), "remembered values stay");
+}
