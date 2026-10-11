@@ -25,6 +25,7 @@ contextual, command-ID and plural translations; missing entries fall back to Eng
 | Polski | `pl` | one / few (2–4, not 12–14) / many |
 | Ελληνικά | `el` | one / other |
 | Nederlands | `nl` | one / other |
+| Magyar | `hu` | one form |
 
 Every non-English catalog covers the current menu labels, `tl!` literals, blend mode names,
 and generated preference labels. Tests enforce that coverage. This does not include every
