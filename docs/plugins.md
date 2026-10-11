@@ -135,7 +135,7 @@ exports. All integers are `i32` unless noted; pointers are offsets into the modu
   except the zero-width joiner and non-joiner, and at least one character must be visible.
   `kind`: `"filter"` (the only kind in v1).
 - `params`: in dialog order. Names are `[A-Za-z0-9_]`, not starting with `_`, not `id`/`layer`.
-  Types: `number`, `int`, `bool`, `choice`, `point` and `color` (below).
+  Types: `number`, `int`, `bool`, `choice`, `point`, `color` and `angle` (below).
   The host validates the user's values before calling: missing values take the default, numbers are
   clamped to `min..max` (ints rounded), a wrong type or an unknown choice is an error.
 - `group` (optional, any parameter type): the dialog tab the parameter sits on, 1–32 printable
@@ -189,6 +189,23 @@ else rejects the manifest.
   is not `"#rrggbb"` is an error. The live preview follows the picker as the colour changes.
 - Saved presets keep the hex string; a stored colour that is not a valid `"#rrggbb"` is dropped.
 - In the registry notation a colour reads `"inner":color=#cfeaff`.
+
+#### Angles: `angle`
+
+An `angle` parameter is a direction in degrees, set with a dial and a number field. `default` is a
+number from 0 to 360 inclusive (0 when omitted); anything else rejects the manifest.
+
+```json
+"params": {
+  "direction": {"type": "angle", "default": 45, "group": "Bolt"}
+}
+```
+
+- 0 points right (east) and the angle grows clockwise on screen: 90 is down, 270 is up.
+- The plug-in receives a plain number in `params`: `{"direction": 45}`, always within 0–360.
+  Values outside that range wrap around (370 becomes 10, -90 becomes 270); a non-number is an error.
+- Saved presets keep the number, wrapped the same way on load; a stored non-number is dropped.
+- In the registry notation an angle reads `"direction":angle=45`.
 
 ### Pixels
 

@@ -40,6 +40,9 @@ pub enum Kind {
     /// A point `[x, y]` in percent of the canvas (`point=[x,y]`, a plug-in `point` param): two
     /// fields in the dialog and a handle dragged on the canvas (`plugin_points`).
     Point([f32; 2]),
+    /// A direction in degrees, 0-360 (`angle=45`, a plug-in `angle` param): 0 points right and the
+    /// angle grows clockwise on screen. A dial with a number field beside it.
+    Angle(f32),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,6 +115,9 @@ pub fn parse_spec(spec: &str) -> Vec<Param> {
             Kind::Color(crate::color_picker_ui::parse_hex(default))
         } else if v == "doc" {
             Kind::Document
+        } else if let Some(d) = v.strip_prefix("angle") {
+            let d = d.trim_start_matches('=').trim().parse::<f64>().ok().and_then(photocraft_plugins::wrap_angle).unwrap_or(0.0);
+            Kind::Angle(d as f32)
         } else if let Some(d) = v.strip_prefix("point") {
             Kind::Point(parse_point(d.trim_start_matches('=')))
         } else if v == "json" || v.starts_with("layer id") || v.starts_with('[') || v.starts_with('{') {
@@ -376,6 +382,7 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
             Kind::Color(Some(rgb)) => json!(crate::color_picker_ui::hex(*rgb)),
             Kind::Color(None) => continue,
             Kind::Point(p) => json!(p),
+            Kind::Angle(a) => json!(a),
             // Colour inputs come from the current swatches, so the proxy preview matches the result.
             Kind::Json if p.key == "foreground" => json!(app.session.tools.foreground),
             Kind::Json if p.key == "background" => json!(app.session.tools.background),
@@ -480,6 +487,7 @@ pub fn open_with_spec(app: &mut PhotocraftApp, command: &str, label: &str, spec:
             Kind::Int { default } => json!(default),
             Kind::Color(Some(rgb)) => json!(crate::color_picker_ui::hex(*rgb)),
             Kind::Point(p) => json!(p),
+            Kind::Angle(a) => json!(a),
             _ => continue,
         };
         fields.insert(p.key, v);
@@ -743,6 +751,12 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 let r = |v: f32| (v.clamp(0.0, 100.0) * 100.0).round() / 100.0;
                 f.insert(p.key, json!([r(x), r(y)]));
             }
+            Kind::Angle(default) => {
+                let mut deg = f.get(&p.key).and_then(Value::as_f64).and_then(photocraft_plugins::wrap_angle).map_or(default, |a| a as f32);
+                angle_dial_row(ui, &label(&p.key), &mut deg);
+                let deg = photocraft_plugins::wrap_angle(f64::from(deg)).unwrap_or(0.0);
+                f.insert(p.key, json!((deg * 10.0).round() / 10.0));
+            }
             Kind::Int { default } => {
                 let mut v = f.get(&p.key).and_then(Value::as_f64).unwrap_or(default as f64) as f32;
                 ui.horizontal(|ui| {
@@ -763,6 +777,62 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
         crate::widgets::checkbox(ui, &mut preview, tl!("Preview"));
         f.insert("__preview".into(), json!(preview));
     }
+}
+
+/// Diameter of the angle dial, in points.
+const DIAL: f32 = 64.0;
+
+/// The angle a pointer at `rel` (relative to the dial's centre, screen coordinates: y down) sets:
+/// whole degrees in 0..360, 0 pointing right (east) and growing clockwise on screen, so due south
+/// is 90 and due north 270. `None` too close to the centre to have a direction.
+pub fn dial_angle(rel: egui::Vec2) -> Option<f32> {
+    (rel.length_sq() > 1.0).then(|| rel.y.atan2(rel.x).to_degrees().round().rem_euclid(360.0))
+}
+
+/// A plug-in `angle` row: the label, a dial (drag anywhere on it to point the handle at the
+/// pointer; arrow keys step it by a degree when it has focus) and a number field kept in sync.
+/// Typed values outside 0-360 wrap when the caller stores them.
+fn angle_dial_row(ui: &mut egui::Ui, name: &str, deg: &mut f32) {
+    let t = Tokens::get(ui.ctx());
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(name).color(t.text_dim));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            crate::widgets::value_field(ui, deg, -36000.0..=36000.0, "°", 64.0);
+            let (rect, mut dial) = ui.allocate_exact_size(egui::vec2(DIAL, DIAL), egui::Sense::click_and_drag());
+            dial.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Slider, ui.is_enabled(), name));
+            let c = rect.center();
+            if (dial.clicked() || dial.dragged())
+                && let Some(a) = dial.interact_pointer_pos().and_then(|pos| dial_angle(pos - c))
+            {
+                *deg = a;
+                dial.mark_changed();
+            }
+            if dial.has_focus() {
+                let step = ui.input(|i| {
+                    i.num_presses(egui::Key::ArrowRight) as f32 + i.num_presses(egui::Key::ArrowDown) as f32
+                        - i.num_presses(egui::Key::ArrowLeft) as f32
+                        - i.num_presses(egui::Key::ArrowUp) as f32
+                });
+                if step != 0.0 {
+                    *deg = (deg.round() + step).rem_euclid(360.0);
+                    dial.mark_changed();
+                }
+            }
+            let painter = ui.painter();
+            let radius = DIAL / 2.0 - 5.0;
+            painter.circle(c, radius, t.field, egui::Stroke::new(1.0, t.field_border));
+            let r = deg.to_radians();
+            // Clockwise on screen: y grows downwards.
+            let handle = c + egui::vec2(r.cos(), r.sin()) * radius;
+            painter.line_segment([c, handle], egui::Stroke::new(2.0, t.accent));
+            painter.circle_filled(c, 2.0, t.text_dim);
+            painter.circle(handle, 4.0, egui::Color32::WHITE, egui::Stroke::new(1.0, t.accent));
+            if dial.has_focus() {
+                painter.circle_stroke(c, radius + 3.0, egui::Stroke::new(1.0, t.accent));
+            }
+            let _ = dial.on_hover_text(tl!("Drag to set the direction"));
+        });
+    });
 }
 
 /// The selected tab of a plug-in dialog with grouped params.
@@ -2014,5 +2084,48 @@ mod tests {
         // A stale or unknown tab falls back to the first.
         fields.insert(TAB.into(), json!("Gone"));
         assert_eq!(selected_tab(fields, &tabs), "Glow");
+    }
+
+    #[test]
+    fn plugin_dial_points_east_at_0_and_turns_clockwise() {
+        assert_eq!(dial_angle(egui::vec2(20.0, 0.0)), Some(0.0), "due east");
+        assert_eq!(dial_angle(egui::vec2(0.0, 20.0)), Some(90.0), "due south: clockwise on screen");
+        assert_eq!(dial_angle(egui::vec2(-20.0, 0.0)), Some(180.0), "due west");
+        assert_eq!(dial_angle(egui::vec2(0.0, -20.0)), Some(270.0), "due north");
+        assert_eq!(dial_angle(egui::vec2(20.0, -0.1)), Some(0.0), "just above east rounds to 0, not 360");
+        assert_eq!(dial_angle(egui::vec2(0.2, 0.2)), None, "the centre has no direction");
+    }
+
+    #[test]
+    fn plugin_angle_params_open_with_their_defaults_wrap_and_pass_through() {
+        let m = photocraft_plugins::Manifest::parse(
+            br#"{"id":"org.example.bolt","name":"Bolt","kind":"filter",
+                "params":{"direction":{"type":"angle","default":45,"group":"Bolt"},"tilt":{"type":"angle"}}}"#,
+        )
+        .unwrap();
+        let spec = m.params_notation();
+        let kinds: Vec<Kind> = parse_spec(&spec).into_iter().map(|p| p.kind).collect();
+        assert_eq!(kinds, [Kind::Angle(45.0), Kind::Angle(0.0)]);
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let mut fixed = Map::new();
+        fixed.insert("id".into(), json!("org.example.bolt"));
+        open_with_spec(&mut app, "plugin.run", "Bolt", &spec, fixed);
+        let fields = &mut app.ui.dialogs.last_mut().unwrap().fields;
+        assert_eq!((&fields["direction"], &fields["tilt"]), (&json!(45.0), &json!(0.0)));
+        let ctx = egui::Context::default();
+        let draw = |fields: &mut Map<String, Value>| ctx.run_ui(Default::default(), |ui| body(ui, fields)).textures_delta.clear();
+        // A value the dial or field set survives drawing and reaches the plug-in unchanged.
+        fields.insert("direction".into(), json!(137.5));
+        draw(fields);
+        let params = params_of(fields);
+        assert_eq!((&params["direction"], &params["tilt"]), (&json!(137.5), &json!(0.0)));
+        let resolved = m.resolve_params(&params).unwrap();
+        assert_eq!(resolved["direction"], json!(137.5));
+        // Out-of-range values from the dialog wrap into 0-360.
+        for (given, want) in [(370.0, 10.0), (-90.0, 270.0), (360.0, 360.0)] {
+            fields.insert("direction".into(), json!(given));
+            draw(fields);
+            assert_eq!(fields["direction"], json!(want), "{given}");
+        }
     }
 }

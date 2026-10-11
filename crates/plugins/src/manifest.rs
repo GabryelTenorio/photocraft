@@ -66,6 +66,12 @@ pub enum ParamSpec {
     /// An opaque colour, `"#rrggbb"` (a swatch that opens a colour picker). The plug-in receives
     /// the lowercase hex string.
     Color { default: String },
+    /// A direction in degrees, `0..=360` (a dial in the dialog): 0 points right (east) and the
+    /// angle grows clockwise on screen. The plug-in receives a number in `0..=360`.
+    Angle {
+        #[serde(default)]
+        default: f64,
+    },
 }
 
 fn int_min() -> i64 {
@@ -119,6 +125,16 @@ pub struct Guide {
 pub fn normalize_color(s: &str) -> Option<String> {
     let hex = s.strip_prefix('#')?;
     (hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then(|| format!("#{}", hex.to_ascii_lowercase()))
+}
+
+/// Range of an `angle` parameter, in degrees.
+pub const ANGLE_RANGE: (f64, f64) = (0.0, 360.0);
+
+/// An angle in degrees brought into [`ANGLE_RANGE`]: values already in `0..=360` are kept (360
+/// stays 360), others wrap around the circle (370 → 10, -90 → 270, 720 → 0). `None` when not finite.
+pub fn wrap_angle(deg: f64) -> Option<f64> {
+    let (lo, hi) = ANGLE_RANGE;
+    deg.is_finite().then(|| if (lo..=hi).contains(&deg) { deg } else { deg.rem_euclid(hi) })
 }
 
 /// Clamps a point to the canvas: each coordinate into [`POINT_RANGE`] (non-finite values are `None`).
@@ -184,6 +200,9 @@ impl Manifest {
                         return Err(Error::Manifest(format!("parameter `{k}`: point default must be two numbers in {lo}-{hi}")));
                     }
                 }
+                ParamSpec::Angle { default } if !(default.is_finite() && (ANGLE_RANGE.0..=ANGLE_RANGE.1).contains(default)) => {
+                    return Err(Error::Manifest(format!("parameter `{k}`: angle default must be a number of degrees in 0-360, not {default}")));
+                }
                 ParamSpec::Color { default } if normalize_color(default).is_none() => {
                     return Err(Error::Manifest(format!("parameter `{k}`: color default must be a \"#rrggbb\" hex string, not {default:?}")));
                 }
@@ -244,6 +263,7 @@ impl Manifest {
                 }
                 ParamSpec::Point { default: [x, y] } => format!("\"{k}\":point=[{x},{y}]"),
                 ParamSpec::Color { default } => format!("\"{k}\":color={}", normalize_color(default).unwrap_or_default()),
+                ParamSpec::Angle { default } => format!("\"{k}\":angle={default}"),
             })
             .collect();
         format!("{{{}}}", parts.join(","))
@@ -300,6 +320,10 @@ impl Manifest {
                 ParamSpec::Color { default } => match v {
                     None => json!(normalize_color(default).unwrap_or_default()),
                     Some(v) => json!(v.as_str().and_then(normalize_color).ok_or_else(|| wrong("a \"#rrggbb\" colour"))?),
+                },
+                ParamSpec::Angle { default } => match v {
+                    None => json!(wrap_angle(*default).unwrap_or(0.0)),
+                    Some(v) => json!(v.as_f64().and_then(wrap_angle).ok_or_else(|| wrong("a number of degrees"))?),
                 },
             };
             out.insert(k.clone(), resolved);
@@ -634,6 +658,59 @@ mod tests {
         }
         assert_eq!(normalize_color("#AbCdEf").as_deref(), Some("#abcdef"));
         assert_eq!(normalize_color("#ab"), None);
+    }
+
+    fn with_angle(default: Value) -> Result<Manifest> {
+        Manifest::parse(
+            json!({"id": "org.example.bolt", "name": "Bolt", "kind": "filter", "params": {"direction": {"type": "angle", "default": default, "group": "Bolt"}}})
+                .to_string()
+                .as_bytes(),
+        )
+    }
+
+    #[test]
+    fn angle_params_validate_their_default() {
+        let m = with_angle(json!(45)).unwrap();
+        assert_eq!(m.params[0].1, ParamSpec::Angle { default: 45.0 });
+        assert_eq!(m.group("direction"), Some("Bolt"));
+        assert_eq!(m.params_notation(), r#"{"direction":angle=45}"#);
+        for ok in [json!(0), json!(360), json!(12.5)] {
+            assert!(with_angle(ok.clone()).is_ok(), "{ok}");
+        }
+        for bad in [json!(-0.5), json!(360.5), json!(720), json!(-90)] {
+            let e = with_angle(bad.clone()).unwrap_err().to_string();
+            assert!(e.contains("direction") && e.contains("0-360"), "{bad}: {e}");
+        }
+        for bad in [json!("45"), json!(null), json!([45]), json!(true), json!({"deg": 45})] {
+            assert!(with_angle(bad.clone()).is_err(), "{bad}");
+        }
+        let no_default = Manifest::parse(br#"{"id":"a","name":"x","kind":"filter","params":{"a":{"type":"angle"}}}"#).unwrap();
+        assert_eq!(no_default.params[0].1, ParamSpec::Angle { default: 0.0 }, "the default defaults to 0");
+    }
+
+    #[test]
+    fn angles_wrap_into_0_to_360() {
+        for (given, want) in [(0.0, 0.0), (90.0, 90.0), (360.0, 360.0), (370.0, 10.0), (-90.0, 270.0), (720.0, 0.0), (-360.0, 0.0), (45.5, 45.5)] {
+            assert_eq!(wrap_angle(given), Some(want), "{given}");
+        }
+        assert_eq!(wrap_angle(f64::NAN), None);
+        assert_eq!(wrap_angle(f64::INFINITY), None);
+    }
+
+    #[test]
+    fn angle_values_pass_through_params() {
+        let m = with_angle(json!(45)).unwrap();
+        let get = |v: Value| m.resolve_params(&json!({"direction": v})).map(|p| p["direction"].clone());
+        assert_eq!(get(Value::Null).unwrap(), json!(45.0), "the default");
+        for a in [0.0, 90.0, 137.5, 270.0, 360.0] {
+            assert_eq!(get(json!(a)).unwrap(), json!(a), "passed through unchanged");
+        }
+        assert_eq!(get(json!(370)).unwrap(), json!(10.0));
+        assert_eq!(get(json!(-90)).unwrap(), json!(270.0));
+        for bad in [json!("90"), json!([90]), json!(true), json!({"deg": 90})] {
+            let e = get(bad.clone()).unwrap_err().to_string();
+            assert!(e.contains("direction"), "{bad}: {e}");
+        }
     }
 
     fn with_name(name: &str) -> Result<Manifest> {

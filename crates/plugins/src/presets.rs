@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use crate::manifest::{Manifest, ParamSpec, clamp_point, normalize_color, valid_id};
+use crate::manifest::{Manifest, ParamSpec, clamp_point, normalize_color, valid_id, wrap_angle};
 
 /// The presets file format this build reads and writes.
 pub const VERSION: u64 = 1;
@@ -90,7 +90,8 @@ pub fn to_json(presets: &Presets) -> String {
 impl Manifest {
     /// The values of a stored preset that still fit this manifest: unknown keys and values of the
     /// wrong type are dropped, numbers and points are clamped into range, and choices the
-    /// plug-in no longer offers and colours that aren't `"#rrggbb"` are dropped. `None` when nothing usable is left (the preset no
+    /// plug-in no longer offers and colours that aren't `"#rrggbb"` are dropped; angles are wrapped
+    /// into 0-360 and non-numbers dropped. `None` when nothing usable is left (the preset no
     /// longer matches the plug-in). Missing parameters keep their defaults when the result goes
     /// through [`Manifest::resolve_params`].
     pub fn preset_values(&self, stored: &Map<String, Value>) -> Option<Map<String, Value>> {
@@ -108,6 +109,7 @@ impl Manifest {
                     _ => None,
                 },
                 ParamSpec::Color { .. } => v.as_str().and_then(normalize_color).map(Value::String),
+                ParamSpec::Angle { .. } => finite.and_then(wrap_angle).map(|a| json!(a)),
             };
             if let Some(kept) = kept {
                 out.insert(k.clone(), kept);
@@ -135,7 +137,8 @@ mod tests {
                 "mono":{"type":"bool"},
                 "mode":{"type":"choice","options":["a","b"]},
                 "at":{"type":"point","default":[50,50]},
-                "inner":{"type":"color","default":"#cfeaff"}}}"##,
+                "inner":{"type":"color","default":"#cfeaff"},
+                "direction":{"type":"angle","default":45}}}"##,
         )
         .unwrap()
     }
@@ -221,5 +224,24 @@ mod tests {
         // The kept colour fills in through the defaults.
         let full = m.resolve_params(&json!({})).unwrap();
         assert_eq!(full["inner"], json!("#cfeaff"));
+    }
+
+    #[test]
+    fn angles_round_trip_wrap_and_invalid_ones_are_dropped() {
+        let m = manifest();
+        let mut p = Presets::new();
+        p.insert("Steep".into(), json!({"direction": 137.5, "amount": 10.0}).as_object().unwrap().clone());
+        let Parsed::Presets(back) = parse(to_json(&p).as_bytes()) else { panic!() };
+        assert_eq!(back, p);
+        assert_eq!(Value::Object(m.preset_values(&back["Steep"]).unwrap()), json!({"direction": 137.5, "amount": 10.0}));
+        for (stored, want) in [(json!(370), 10.0), (json!(-90), 270.0), (json!(720), 0.0), (json!(360), 360.0)] {
+            assert_eq!(Value::Object(m.preset_values(json!({"direction": stored}).as_object().unwrap()).unwrap()), json!({"direction": want}), "{stored}");
+        }
+        for bad in [json!("90"), json!([90]), json!(true), json!(null), json!({"deg": 90})] {
+            let stored = json!({"direction": bad, "amount": 10.0});
+            assert_eq!(Value::Object(m.preset_values(stored.as_object().unwrap()).unwrap()), json!({"amount": 10.0}), "{bad}");
+            assert_eq!(m.preset_values(json!({"direction": bad}).as_object().unwrap()), None, "{bad}");
+        }
+        assert_eq!(m.resolve_params(&json!({})).unwrap()["direction"], json!(45.0));
     }
 }
