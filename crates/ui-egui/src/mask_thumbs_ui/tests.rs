@@ -601,10 +601,15 @@ fn selecting_mask_thumbnail_toggles_swatches_to_mask_colors_and_back() {
     click_with(&mut h, r_mask.center(), Modifiers::NONE);
     assert_eq!(h.state().session.tools.foreground, grey, "mask colors restored");
 
-    // 5. Creating a new adjustment layer targets its mask and toggles to mask colors.
+    // 5. Creating a new adjustment layer targets the layer itself, not the mask (#3369).
     click_with(&mut h, r_layer, Modifiers::NONE);
     assert_eq!(h.state().session.tools.foreground, RED);
     h.state_mut().run("layer.newAdjustmentLayer.curves", json!({})).unwrap();
-    assert!(h.state().ui.mask_target, "new adjustment layer targets its mask");
-    assert_eq!(h.state().session.tools.foreground, grey);
+    assert!(!h.state().ui.mask_target, "new adjustment layer targets the layer, not its mask (#3369)");
+    assert_eq!(h.state().session.tools.foreground, RED, "pixel colors retained");
+
+    // Creating a new fill layer also targets the layer itself, not the mask (#3369).
+    h.state_mut().run("layer.newFillLayer.solidColor", json!({"color": "#00ff00"})).unwrap();
+    assert!(!h.state().ui.mask_target, "new fill layer targets the layer, not its mask (#3369)");
+    assert_eq!(h.state().session.tools.foreground, RED);
 }
