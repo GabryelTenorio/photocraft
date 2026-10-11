@@ -3606,6 +3606,7 @@ cameraData	Lens	Об'єктив
 	Apply mask to layer before removing?	Застосувати маску до шару перед видаленням?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Шар або його маска змінилися. Перетягніть маску до кошика ще раз.
 	Delete the vector mask?	Видалити векторну маску?
+	Include in playback	Включити у відтворення
 	New Crop Preset…	Новий набір параметрів кадрування…
 	Delete Crop Preset…	Видалити набір параметрів кадрування…
 	Select the crop presets to delete:	Виберіть набори параметрів кадрування для видалення:
