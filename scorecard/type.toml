@@ -49,9 +49,9 @@ note = "Alt+Left/Right at a collapsed caret kerns the pair (type_tool.rs kern_pa
 [[item]]
 id = "TYPE-218-7"
 target = "Warp Text dialog previews live and opens with the layer's current warp"
-status = "missing"
+status = "done"
 issue = 218
-note = "view_cmds.rs:834 always seeds arc, bend 50"
+note = "Type > Warp Text opens with the layer's current warp and previews it live on the canvas (warp_preview.rs; warp_text_dialog_tests.rs)"
 
 [[item]]
 id = "TYPE-218-8"

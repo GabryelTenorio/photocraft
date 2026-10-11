@@ -45,7 +45,7 @@ pub fn bits_param(params: &serde_json::Value, cmd: &str) -> Result<Option<TgaBit
 /// A prompt already waiting is never replaced (a shortcut can still reach Save a Copy).
 pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: bool) -> Result<(), String> {
     if app.save_options_open() {
-        return Err("Answer TIFF or Targa Options before starting another save".into());
+        return Err(crate::SAVE_OPTIONS_OPEN.into());
     }
     let doc = app.active_doc_id()?;
     let bits = app.session.active().map_or(TgaBits::Bits24, |st| photocraft_io::tga_default_bits(&st.doc));
@@ -79,20 +79,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         let Some(p) = app.targa_options.take() else { return };
         let settings = ExportSettings { tga_bits: Some(p.bits), ..app.save_settings() };
         let step = serde_json::json!({"path": p.path, "tgaBits": p.bits.bits()});
-        let written = app.with_document(p.doc, |app| app.write_document(p.path, &settings, p.copy));
-        if written.is_ok() && p.record {
-            // An action being recorded keeps the Save As with this answer (#2032).
-            app.session.journal.push(("file.saveAs".into(), step));
-        }
-        match written {
-            Err(e) => {
-                app.ui.status = crate::i18n::fmt(tl!("Save failed: {error}"), &[("error", &e)]);
-                app.ui.status_error = true;
-            }
-            Ok(Some(_)) if !p.copy => crate::discard_ui::saved_document(app, ctx, p.doc),
-            // A background save releases the close prompt when it finishes (`jobs_ui`).
-            Ok(_) => {}
-        }
+        app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, p.record.then_some(step));
     } else if cancel {
         app.targa_options = None;
         app.ui.status = tl!("Save cancelled").into();

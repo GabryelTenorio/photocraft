@@ -143,6 +143,9 @@ fn layered_save_respects_explicit_jpeg_choices() {
     app.poll_file_dialog(&ctx, None);
     answer(&open, Some(FileDialogAnswer::SaveTo("/exports/chosen.JPEG".into())));
     app.poll_file_dialog(&ctx, None);
+    // JPEG Options asks first (FILE-215-19); OK writes.
+    assert!(written.borrow().is_empty() && app.jpeg_options.is_some());
+    crate::jpeg_options_ui::confirm(&mut app, &ctx);
     assert_eq!(*written.borrow(), ["/exports/chosen.jpeg"]);
     // The JPEG can't hold the layers, so it is a copy and the document keeps its file (#2550).
     assert_eq!(app.session.active().unwrap().path.as_deref(), Some("/pics/My image.JPEG"));
@@ -151,6 +154,7 @@ fn layered_save_respects_explicit_jpeg_choices() {
         let (mut app, open, written) = jpeg_app(Some("/pics/My image.JPEG"), true);
         menus::invoke(&mut app, &ctx, command, json!({"path": "/exports/chosen.jpg"})).unwrap();
         assert!(!app.file_dialog_open() && open.borrow().is_empty());
+        crate::jpeg_options_ui::confirm(&mut app, &ctx);
         assert_eq!(*written.borrow(), ["/exports/chosen.jpg"]);
     }
 }
