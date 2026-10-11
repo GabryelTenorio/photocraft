@@ -48,6 +48,10 @@ pub struct Runtime {
     pub(crate) checker_key: Option<[[u8; 3]; 2]>,
     /// Style last sent to the GPU canvas.
     pub(crate) gpu_style: Option<crate::gpu_canvas::CanvasStyle>,
+    /// `unitsAndRulers.showRulers` as last applied to View › Rulers.
+    show_rulers: Option<bool>,
+    /// Tool options as last remembered in the preferences (see `tool_memory`).
+    pub(crate) tool_options: Option<crate::state::ToolOptions>,
 }
 
 /// The GPU canvas colours from Preferences › Transparency & Gamut.
@@ -88,6 +92,8 @@ fn selected_theme(interface: &prefs::Interface, system: Option<egui::Theme>) -> 
     if light {
         match interface.light_theme {
             LightTheme::StudioLight => ThemeKind::StudioLight,
+            LightTheme::ProLightGray => ThemeKind::ProLightGray,
+            LightTheme::ProLight => ThemeKind::ProLight,
             LightTheme::Classic => ThemeKind::Classic,
             LightTheme::Adwaita => ThemeKind::Adwaita,
             LightTheme::BreezeLight => ThemeKind::BreezeLight,
@@ -120,8 +126,14 @@ pub(crate) fn cycle_appearance(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
 }
 
-const LIGHT_THEME_OPTIONS: &[(&str, ThemeKind)] =
-    &[("studioLight", ThemeKind::StudioLight), ("classic", ThemeKind::Classic), ("adwaita", ThemeKind::Adwaita), ("breezeLight", ThemeKind::BreezeLight)];
+const LIGHT_THEME_OPTIONS: &[(&str, ThemeKind)] = &[
+    ("studioLight", ThemeKind::StudioLight),
+    ("proLightGray", ThemeKind::ProLightGray),
+    ("proLight", ThemeKind::ProLight),
+    ("classic", ThemeKind::Classic),
+    ("adwaita", ThemeKind::Adwaita),
+    ("breezeLight", ThemeKind::BreezeLight),
+];
 const DARK_THEME_OPTIONS: &[(&str, ThemeKind)] = &[
     ("proMedium", ThemeKind::ProMedium),
     ("pro", ThemeKind::Pro),
@@ -170,6 +182,24 @@ fn system_theme(app: &PhotocraftApp, ctx: &egui::Context) -> Option<egui::Theme>
     app.services.system_theme.as_ref().and_then(|read| read(ctx)).or_else(|| ctx.system_theme())
 }
 
+/// View › Rulers follows `unitsAndRulers.showRulers` when the preference changes (at launch, from
+/// `prefs.set` or a reset), so documents open with the rulers as last set.
+fn sync_rulers(app: &mut PhotocraftApp) {
+    let want = app.session.prefs().units_and_rulers.show_rulers;
+    if app.prefs_rt.show_rulers != Some(want) {
+        app.ui.extras.rulers = want;
+        app.prefs_rt.show_rulers = Some(want);
+    }
+}
+
+/// View › Rulers was toggled: remember it for the next launch (Photoshop keeps the last state).
+pub(crate) fn remember_rulers(app: &mut PhotocraftApp, on: bool) {
+    if app.session.prefs().units_and_rulers.show_rulers != on {
+        app.session.prefs.edit(|p| p.units_and_rulers.show_rulers = on);
+    }
+    app.prefs_rt.show_rulers = Some(on);
+}
+
 // ------------------------------------------------------------------ lifecycle
 
 /// Load saved preferences once, when the app is created. Recovery starts during frame upkeep.
@@ -185,6 +215,8 @@ pub fn load(app: &mut PhotocraftApp) {
     }
     crate::dock::restore(app);
     crate::brush_picker::restore(app);
+    sync_rulers(app);
+    crate::tool_memory::restore(app);
     app.sync_recent();
     app.prefs_rt.saved_rev = app.session.prefs.rev();
     app.prefs_rt.saved_value = Some(app.session.prefs_value());
@@ -364,6 +396,7 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         load(app);
     }
     recovery(app);
+    sync_rulers(app);
     sync_display_scale(app, ctx);
     sync_appearance(app, ctx);
     crate::theme::set_ui_font_size(ctx, app.session.prefs().interface.ui_font_size);
@@ -381,6 +414,8 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         app.prefs_rt.gpu_style = Some(style);
     }
     autosave(app);
+    #[cfg(not(target_arch = "wasm32"))]
+    link_updates(app, ctx);
     history_log(app);
 }
 
@@ -511,6 +546,39 @@ pub(crate) fn save_preferences(app: &mut PhotocraftApp) -> Result<(), String> {
         app.ui.notices.retain(|n| n.id != id);
     }
     Ok(())
+}
+
+/// Linked smart objects follow their files while the document is open, as in Photoshop: every two
+/// seconds, and as soon as the window comes back to the front (after saving in another app), stamp
+/// the active document's linked files on a worker thread and re-render the layers of the ones that
+/// changed ([`photocraft_engine::link_watch`]).
+#[cfg(not(target_arch = "wasm32"))]
+fn link_updates(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    match app.session.poll_link_scan() {
+        Some(Ok(r)) => {
+            if let Some(n) = r["updated"].as_array().map(Vec::len).filter(|n| *n > 0) {
+                app.ui.status = format!("Updated {n} linked smart object(s) changed on disk");
+            }
+        }
+        Some(Err(e)) => app.ui.status = e.to_string(),
+        None => {}
+    }
+    let (last_key, focus_key) = (egui::Id::new("linkWatch.lastScan"), egui::Id::new("linkWatch.focused"));
+    let now = ctx.input(|i| i.time);
+    let focused = ctx.input(|i| i.focused);
+    let was_focused: bool = ctx.data(|d| d.get_temp(focus_key)).unwrap_or(focused);
+    ctx.data_mut(|d| d.insert_temp(focus_key, focused));
+    let has_links = app.session.active().is_some_and(|d| !photocraft_engine::link_watch::linked_files(&d.doc).is_empty());
+    if !has_links {
+        return;
+    }
+    let last: f64 = ctx.data(|d| d.get_temp(last_key)).unwrap_or(f64::NEG_INFINITY);
+    if now - last >= 2.0 || (focused && !was_focused) {
+        ctx.data_mut(|d| d.insert_temp(last_key, now));
+        app.session.start_link_scan();
+    }
+    let wait = if app.session.link_scan.is_some() { 100 } else { 2000 };
+    ctx.request_repaint_after(std::time::Duration::from_millis(wait));
 }
 
 /// Background autosave of documents with unsaved changes every N minutes (File Handling).
@@ -1379,6 +1447,8 @@ fn section_fields(
             // Settings nothing reads yet stay out of the dialog (issue #204); their stored values
             // pass through untouched.
             if (section == "interface" && matches!(k.as_str(), "theme" | "appearanceMode" | "darkTheme" | "lightTheme" | "favoriteThemes"))
+                // View › Rulers (⌘R) sets it, as in Photoshop.
+                || path == "unitsAndRulers.showRulers"
                 || prefs::is_hidden(&path)
                 || (section == "performance" && matches!(k.as_str(), "useGpu" | "gpuBackend" | "renderingMode"))
                 || (section == "export" && !export_field_visible(obj, &k))
@@ -2540,6 +2610,33 @@ mod tests {
     }
 
     #[test]
+    fn tool_options_survive_a_restart() {
+        let (mut app, store) = app_with_store();
+        let ctx = egui::Context::default();
+        tick(&mut app, &ctx);
+        app.ui.tool_options.move_auto_select = false;
+        app.ui.tool_options.feather = 12.0;
+        crate::tool_memory::persist(&mut app, &ctx);
+        tick(&mut app, &ctx);
+        // Only what differs from the defaults is stored.
+        assert_eq!(stored(&store)["toolOptions"], json!({"move_auto_select": false, "feather": 12.0}));
+        let saved = store.lock().unwrap().clone().unwrap();
+        let (mut app2, _) = app_with_saved(Some(saved));
+        tick(&mut app2, &ctx);
+        assert!(!app2.ui.tool_options.move_auto_select);
+        assert_eq!(app2.ui.tool_options.feather, 12.0);
+        assert_eq!(app2.ui.tool_options.tolerance, crate::state::ToolOptions::default().tolerance);
+        // A hand-edited file: unreadable fields keep their defaults, the good ones still load.
+        for bad in [json!("junk"), json!({"move_auto_select": "no", "feather": 1e300, "tolerance": 5.0, "unknown": 1})] {
+            let (mut app3, _) = app_with_saved(Some(json!({"toolOptions": bad}).to_string()));
+            tick(&mut app3, &ctx);
+            let o = &app3.ui.tool_options;
+            assert!(o.move_auto_select && o.feather == 0.0, "{bad}");
+            assert_eq!(o.tolerance, if bad.is_object() { 5.0 } else { 32.0 });
+        }
+    }
+
+    #[test]
     fn show_tooltips_preferences_turn_tooltips_off() {
         let (mut app, _) = app_with_store();
         let ctx = egui::Context::default();
@@ -2569,10 +2666,12 @@ mod tests {
         assert!(!prefs::is_hidden("type.fillNewTypeLayersWithPlaceholder"));
         assert!(!prefs::is_hidden("type.useEscToCommit"));
         assert!(!prefs::is_hidden("type.smartQuotes"));
-        // Rotate View with Trackpad is live; the other Enhanced Controls rows stay hidden.
+        assert!(!prefs::is_hidden("type.showFontNamesInEnglish"));
+        // Rotate View with Trackpad and the pinch zoom are live; the other Enhanced Controls rows
+        // stay hidden.
         assert!(has_visible_fields(&values, "enhancedControls"));
         assert!(!prefs::is_hidden("enhancedControls.rotateViewWithTrackpad"));
-        assert!(prefs::is_hidden("enhancedControls.zoomWithTrackpadPinch"));
+        assert!(!prefs::is_hidden("enhancedControls.zoomWithTrackpadPinch"));
         // Camera Raw Defaults shows only "Open in Camera Raw" so far.
         assert!(has_visible_fields(&values, "rawDefaults"));
         assert!(!prefs::is_hidden("rawDefaults.openInCameraRaw"));
