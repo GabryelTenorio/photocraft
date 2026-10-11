@@ -90,6 +90,11 @@
 	Redo	Повторити
 	Fade…	Послабити…
 	Cut	Вирізати
+	Copy Mask	Копіювати маску
+	Paste Mask	Вставити маску
+	Replace Layer Mask?	Замінити маску шару?
+	Replace the existing pixel mask on “{layer}”?	Замінити наявну піксельну маску шару «{layer}»?
+	Replace	Замінити
 	Copy	Копіювати
 	Copy Merged	Копіювати об'єднане
 	Paste	Вставити
@@ -3651,17 +3656,18 @@ cameraData	Lens	Об'єктив
 	Freeform Pen Tool	Інструмент «Довільне перо»
 	Curvature Pen Tool	Інструмент «Перо кривизни»
 	Curve Fit:	Точність кривої:
-	Drag: draw freehand · Release on the start point: close	Перетягування: малювати від руки · Відпускання на початковій точці: замкнути
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Перетягування: малювати від руки · {alt}+клацання: прямий сегмент · Відпускання на початковій точці: замкнути
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Клацання: плавна точка · Подвійне клацання: кут · Перетягування точки: перемістити · Клацання першої точки: замкнути · {key}: завершити
 	Search settings…	Пошук налаштувань…
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
-	Copy Mask	Копіювати маску
-	Paste Mask	Вставити маску
-	Replace Layer Mask?	Замінити маску шару?
-	Replace the existing pixel mask on “{layer}”?	Замінити наявну піксельну маску шару «{layer}»?
-	Replace	Замінити
 	Loading fonts…	Завантаження шрифтів…
+	Simulate Pressure	Імітувати натиск
+	Stroke Path…	Обвести контур…
+	Background Eraser	Фонова гумка
+	Healing Brush	Відновлювальний пензель
+	Spot Healing Brush	Точковий відновлювальний пензель
+	Smudge	Розмазування
 # Select and Mask view modes (#1754)
 	Onion Skin	Калька
 	Marching Ants	Мурашки
@@ -3699,3 +3705,8 @@ cameraData	Lens	Об'єктив
 	Emulsion Down	Емульсією донизу
 	Functions	Функції
 	Print Resolution:	Роздільна здатність друку:
+	Use Previous Layer to Create Clipping Mask	Використати попередній шар для створення відсічної маски
+	Fill with {mode}-neutral color (white)	Залити нейтральним кольором режиму «{mode}» (білий)
+	Fill with {mode}-neutral color (black)	Залити нейтральним кольором режиму «{mode}» (чорний)
+	Fill with {mode}-neutral color (50% gray)	Залити нейтральним кольором режиму «{mode}» (50% сірого)
+	(No neutral color exists for {mode} mode.)	(Для режиму «{mode}» немає нейтрального кольору.)

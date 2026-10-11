@@ -117,6 +117,11 @@
 	Toggle Last State	Alihkan Status Terakhir
 	Fade…	Pudarkan…
 	Cut	Potong
+	Copy Mask	Salin Masker
+	Paste Mask	Tempel Masker
+	Replace Layer Mask?	Ganti Masker Layer?
+	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
+	Replace	Ganti
 	Copy	Salin
 	Copy Merged	Salin Gabungan
 	Paste	Tempel
@@ -2959,7 +2964,7 @@ cameraData	Lens	Lensa
 	Freeform Pen Tool	Alat Pen Bebas
 	Curvature Pen Tool	Alat Pen Kelengkungan
 	Curve Fit:	Penyesuaian Kurva:
-	Drag: draw freehand · Release on the start point: close	Seret: gambar bebas · Lepas di titik awal: tutup
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Seret: gambar bebas · {alt}-klik: segmen lurus · Lepas di titik awal: tutup
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: titik halus · Klik ganda: sudut · Seret titik: pindahkan · Klik titik pertama: tutup · {key} selesai
 	New Crop Preset…	Preset Pangkas Baru…
 	Delete Crop Preset…	Hapus Preset Pangkas…
@@ -2971,12 +2976,15 @@ cameraData	Lens	Lensa
 	Snap to Origin	Jepret ke Titik Asal
 	Search settings…	Cari pengaturan…
 	No matching settings	Tidak ada pengaturan yang cocok
-	Copy Mask	Salin Masker
-	Paste Mask	Tempel Masker
-	Replace Layer Mask?	Ganti Masker Layer?
-	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
-	Replace	Ganti
 	Loading fonts…	Memuat font…
+	Tool	Alat
+	Simulate Pressure	Simulasikan Tekanan
+	Stroke Path…	Stroke Path…
+	Background Eraser	Background Eraser
+	Healing Brush	Healing Brush
+	Spot Healing Brush	Spot Healing Brush
+	Smudge	Smudge
+	Sponge	Sponge
 # Select and Mask view modes (#1754)
 	Onion Skin	Kulit Bawang
 	Marching Ants	Semut Berbaris
@@ -3002,3 +3010,8 @@ cameraData	Lens	Lensa
 	Emulsion Down	Emulsi di Bawah
 	Functions	Fungsi
 	Print Resolution:	Resolusi Cetak:
+	Use Previous Layer to Create Clipping Mask	Gunakan Layer Sebelumnya untuk Membuat Clipping Mask
+	Fill with {mode}-neutral color (white)	Isi dengan warna netral {mode} (putih)
+	Fill with {mode}-neutral color (black)	Isi dengan warna netral {mode} (hitam)
+	Fill with {mode}-neutral color (50% gray)	Isi dengan warna netral {mode} (abu-abu 50%)
+	(No neutral color exists for {mode} mode.)	(Tidak ada warna netral untuk mode {mode}.)

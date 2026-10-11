@@ -112,6 +112,10 @@
 	Toggle Last State	Laatste staat wisselen
 	Fade…	Afzwakken…
 	Cut	Knippen
+	Copy Mask	Masker kopiëren
+	Paste Mask	Masker plakken
+	Replace Layer Mask?	Laagmasker vervangen?
+	Replace the existing pixel mask on “{layer}”?	Het bestaande pixelmasker op “{layer}” vervangen?
 	Copy	Kopiëren
 	Copy Merged	Samengevoegd kopiëren
 	Paste	Plakken
@@ -3714,7 +3718,7 @@ cameraData	Lens	Lens
 	Freeform Pen Tool	Pengereedschap Vrije vorm
 	Curvature Pen Tool	Pengereedschap Kromming
 	Curve Fit:	Curve aanpassen:
-	Drag: draw freehand · Release on the start point: close	Slepen: uit de vrije hand tekenen · Loslaten op beginpunt: sluiten
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Slepen: uit de vrije hand tekenen · {alt}-klik: recht segment · Loslaten op beginpunt: sluiten
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: vloeiend punt · Dubbelklik: hoek · Punt slepen: verplaatsen · Klik op eerste punt: sluiten · {key} voltooien
 	New Crop Preset…	Nieuwe uitsnijvoorinstelling…
 	Delete Crop Preset…	Uitsnijvoorinstelling verwijderen…
@@ -3725,11 +3729,13 @@ cameraData	Lens	Lens
 	Search settings…	Instellingen zoeken…
 	No matching settings	Geen overeenkomende instellingen
 	PhotoCraft — Screen Color Picker	PhotoCraft — Schermkleurkiezer
-	Copy Mask	Masker kopiëren
-	Paste Mask	Masker plakken
-	Replace Layer Mask?	Laagmasker vervangen?
-	Replace the existing pixel mask on “{layer}”?	Het bestaande pixelmasker op “{layer}” vervangen?
 	Loading fonts…	Lettertypen laden…
+	Simulate Pressure	Druk simuleren
+	Stroke Path…	Pad omlijnen…
+	Background Eraser	Achtergrondgum
+	Healing Brush	Herstelpenseel
+	Spot Healing Brush	Snel herstelpenseel
+	Smudge	Uitsmeren
 # Select and Mask view modes (#1754)
 	Onion Skin	Uienschil
 	Marching Ants	Mierenmars
@@ -3760,3 +3766,8 @@ cameraData	Lens	Lens
 	Emulsion Down	Emulsie omlaag
 	Functions	Functies
 	Print Resolution:	Afdrukresolutie:
+	Use Previous Layer to Create Clipping Mask	Vorige laag gebruiken om uitknipmasker te maken
+	Fill with {mode}-neutral color (white)	Vullen met neutrale kleur voor {mode} (wit)
+	Fill with {mode}-neutral color (black)	Vullen met neutrale kleur voor {mode} (zwart)
+	Fill with {mode}-neutral color (50% gray)	Vullen met neutrale kleur voor {mode} (50% grijs)
+	(No neutral color exists for {mode} mode.)	(Voor de modus {mode} bestaat geen neutrale kleur.)

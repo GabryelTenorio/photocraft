@@ -119,6 +119,11 @@
 	Toggle Last State	Przełącz ostatni stan
 	Fade…	Zanikanie…
 	Cut	Wytnij
+	Copy Mask	Kopiuj maskę
+	Paste Mask	Wklej maskę
+	Replace Layer Mask?	Zastąpić maskę warstwy?
+	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
+	Replace	Zastąp
 	Copy	Kopiuj
 	Copy Merged	Kopiuj scalone
 	Paste	Wklej
@@ -3570,7 +3575,7 @@ cameraData	Lens	Obiektyw
 	Freeform Pen Tool	Narzędzie Pióro dowolne
 	Curvature Pen Tool	Narzędzie Pióro krzywizny
 	Curve Fit:	Dopasowanie krzywej:
-	Drag: draw freehand · Release on the start point: close	Przeciągnięcie: rysowanie odręczne · Puszczenie w punkcie początkowym: zamknij
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Przeciągnięcie: rysowanie odręczne · {alt}-klik: prosty segment · Puszczenie w punkcie początkowym: zamknij
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Klik: punkt gładki · Dwuklik: narożnik · Przeciągnięcie punktu: przesuń · Klik w pierwszy punkt: zamknij · {key} zakończ
 	New Crop Preset…	Nowe ustawienie kadrowania…
 	Delete Crop Preset…	Usuń ustawienie kadrowania…
@@ -3582,12 +3587,13 @@ cameraData	Lens	Obiektyw
 	Snap to Origin	Przyciągnij do początku
 	Search settings…	Szukaj ustawień…
 	No matching settings	Brak pasujących ustawień
-	Copy Mask	Kopiuj maskę
-	Paste Mask	Wklej maskę
-	Replace Layer Mask?	Zastąpić maskę warstwy?
-	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
-	Replace	Zastąp
 	Loading fonts…	Wczytywanie czcionek…
+	Simulate Pressure	Symuluj nacisk
+	Stroke Path…	Obrysuj ścieżkę…
+	Background Eraser	Gumka tła
+	Healing Brush	Pędzel korygujący
+	Spot Healing Brush	Punktowy pędzel korygujący
+	Smudge	Palec
 # Select and Mask view modes (#1754)
 	Onion Skin	Skórka cebuli
 	Marching Ants	Maszerujące mrówki
@@ -3613,3 +3619,8 @@ cameraData	Lens	Obiektyw
 	Emulsion Down	Emulsja w dół
 	Functions	Funkcje
 	Print Resolution:	Rozdzielczość druku:
+	Use Previous Layer to Create Clipping Mask	Użyj poprzedniej warstwy do utworzenia maski przycinającej
+	Fill with {mode}-neutral color (white)	Wypełnij kolorem neutralnym dla trybu {mode} (biały)
+	Fill with {mode}-neutral color (black)	Wypełnij kolorem neutralnym dla trybu {mode} (czarny)
+	Fill with {mode}-neutral color (50% gray)	Wypełnij kolorem neutralnym dla trybu {mode} (50% szarości)
+	(No neutral color exists for {mode} mode.)	(Dla trybu {mode} nie istnieje kolor neutralny.)

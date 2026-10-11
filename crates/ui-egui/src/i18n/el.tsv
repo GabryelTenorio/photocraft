@@ -103,6 +103,10 @@
 	Toggle Last State	Εναλλαγή τελευταίας κατάστασης
 	Fade…	Εξασθένηση…
 	Cut	Αποκοπή
+	Copy Mask	Αντιγραφή μάσκας
+	Paste Mask	Επικόλληση μάσκας
+	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
+	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;
 	Copy	Αντιγραφή
 	Copy Merged	Αντιγραφή συγχωνευμένων
 	Paste	Επικόλληση
@@ -3654,7 +3658,7 @@ cameraData	Lens	Φακός
 	Freeform Pen Tool	Πένα ελεύθερης σχεδίασης
 	Curvature Pen Tool	Πένα καμπυλότητας
 	Curve Fit:	Προσαρμογή καμπύλης:
-	Drag: draw freehand · Release on the start point: close	Σύρσιμο: ελεύθερη σχεδίαση · Άφημα στο αρχικό σημείο: κλείσιμο
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Σύρσιμο: ελεύθερη σχεδίαση · {alt}-κλικ: ευθύ τμήμα · Άφημα στο αρχικό σημείο: κλείσιμο
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Κλικ: ομαλό σημείο · Διπλό κλικ: γωνία · Σύρσιμο σημείου: μετακίνηση · Κλικ στο πρώτο σημείο: κλείσιμο · {key}: τέλος
 	New Crop Preset…	Νέα προεπιλογή περικοπής…
 	Delete Crop Preset…	Διαγραφή προεπιλογής περικοπής…
@@ -3666,11 +3670,16 @@ cameraData	Lens	Φακός
 	Snap to Origin	Προσκόλληση στην αρχή
 	Search settings…	Αναζήτηση ρυθμίσεων…
 	No matching settings	Δεν βρέθηκαν ρυθμίσεις
-	Copy Mask	Αντιγραφή μάσκας
-	Paste Mask	Επικόλληση μάσκας
-	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
-	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;
 	Loading fonts…	Φόρτωση γραμματοσειρών…
+	Simulate Pressure	Προσομοίωση πίεσης
+	Stroke Path…	Περίγραμμα διαδρομής…
+	Background Eraser	Γόμα φόντου
+	Healing Brush	Πινέλο επιδιόρθωσης
+	Spot Healing Brush	Πινέλο τοπικής επιδιόρθωσης
+	Smudge	Μουντζούρωμα
+	Dodge	Φωτισμός
+	Burn	Σκοτείνιασμα
+	Sponge	Σφουγγάρι
 # Select and Mask view modes (#1754)
 	Onion Skin	Φλούδα κρεμμυδιού
 	Marching Ants	Κινούμενο περίγραμμα
@@ -3695,3 +3704,8 @@ cameraData	Lens	Φακός
 	Emulsion Down	Γαλάκτωμα προς τα κάτω
 	Functions	Λειτουργίες
 	Print Resolution:	Ανάλυση εκτύπωσης:
+	Use Previous Layer to Create Clipping Mask	Χρήση του προηγούμενου επιπέδου για δημιουργία μάσκας αποκοπής
+	Fill with {mode}-neutral color (white)	Γέμισμα με το ουδέτερο χρώμα της λειτουργίας {mode} (λευκό)
+	Fill with {mode}-neutral color (black)	Γέμισμα με το ουδέτερο χρώμα της λειτουργίας {mode} (μαύρο)
+	Fill with {mode}-neutral color (50% gray)	Γέμισμα με το ουδέτερο χρώμα της λειτουργίας {mode} (50% γκρι)
+	(No neutral color exists for {mode} mode.)	(Δεν υπάρχει ουδέτερο χρώμα για τη λειτουργία {mode}.)

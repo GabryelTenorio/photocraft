@@ -120,6 +120,11 @@
 	Toggle Last State	直前の状態と切り替え
 	Fade…	フェード…
 	Cut	切り取り
+	Copy Mask	マスクをコピー
+	Paste Mask	マスクを貼り付け
+	Replace Layer Mask?	レイヤーマスクを置き換えますか？
+	Replace the existing pixel mask on “{layer}”?	「{layer}」の既存のピクセルマスクを置き換えますか？
+	Replace	置き換え
 	Copy	コピー
 	Copy Merged	統合部分をコピー
 	Paste	貼り付け
@@ -3568,7 +3573,7 @@ cameraData	Lens	レンズ
 	Freeform Pen Tool	フリーフォームペンツール
 	Curvature Pen Tool	曲線ペンツール
 	Curve Fit:	カーブフィット:
-	Drag: draw freehand · Release on the start point: close	ドラッグ: フリーハンドで描画 · 始点で離す: 閉じる
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	ドラッグ: フリーハンドで描画 · {alt}+クリック: 直線セグメント · 始点で離す: 閉じる
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	クリック: スムーズポイント · ダブルクリック: 角 · 点をドラッグ: 移動 · 最初の点をクリック: 閉じる · {key} 完了
 	New Crop Preset…	新規切り抜きプリセット…
 	Delete Crop Preset…	切り抜きプリセットを削除…
@@ -3580,12 +3585,13 @@ cameraData	Lens	レンズ
 	Snap to Origin	原点にスナップ
 	Search settings…	設定を検索…
 	No matching settings	一致する設定はありません
-	Copy Mask	マスクをコピー
-	Paste Mask	マスクを貼り付け
-	Replace Layer Mask?	レイヤーマスクを置き換えますか？
-	Replace the existing pixel mask on “{layer}”?	「{layer}」の既存のピクセルマスクを置き換えますか？
-	Replace	置き換え
 	Loading fonts…	フォントを読み込み中…
+	Simulate Pressure	筆圧をシミュレート
+	Stroke Path…	パスのストローク…
+	Background Eraser	背景消しゴム
+	Healing Brush	修復ブラシ
+	Spot Healing Brush	スポット修復ブラシ
+	Smudge	指先
 # Select and Mask view modes (#1754)
 	Onion Skin	オニオンスキン
 	Marching Ants	点線の境界
@@ -3611,3 +3617,8 @@ cameraData	Lens	レンズ
 	Emulsion Down	乳剤面を下
 	Functions	機能
 	Print Resolution:	プリント解像度:
+	Use Previous Layer to Create Clipping Mask	下のレイヤーを使用してクリッピングマスクを作成
+	Fill with {mode}-neutral color (white)	{mode} の中間色で塗りつぶす (白)
+	Fill with {mode}-neutral color (black)	{mode} の中間色で塗りつぶす (黒)
+	Fill with {mode}-neutral color (50% gray)	{mode} の中間色で塗りつぶす (50% グレー)
+	(No neutral color exists for {mode} mode.)	({mode} モードには中間色がありません。)
