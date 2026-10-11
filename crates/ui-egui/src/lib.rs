@@ -25,6 +25,7 @@ pub mod anchor_tools;
 pub mod artboard_tool;
 pub mod artboard_ui;
 pub(crate) mod blend_preview;
+pub mod blur_paths;
 pub mod blur_pins;
 mod brand;
 pub mod brush_panel;
