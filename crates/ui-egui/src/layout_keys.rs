@@ -26,7 +26,6 @@ use egui::{Event, Key};
 
 /// One keyboard layout's symbol keys: `(text typed, ⇧ held, key the press stands for)`.
 pub struct Layout {
-    pub name: &'static str,
     pub keys: &'static [(&'static str, bool, Key)],
 }
 
@@ -34,13 +33,13 @@ pub struct Layout {
 /// (German, Italian, Spanish...) ⇧+ types `*` and ⇧− types `_`, which egui has no keys for, so
 /// they arrive as the physical `]` / `/`. They become `+` / `-`, as ⇧= arrives as `+` on a US
 /// layout. A US ⇧] still arrives as `}` and ⇧8 (`*` too) as a digit.
-pub const COMMON: Layout = Layout { name: "common", keys: &[("*", true, Key::Plus), ("_", true, Key::Minus)] };
+pub const COMMON: Layout = Layout { keys: &[("*", true, Key::Plus), ("_", true, Key::Minus)] };
 
 /// Layouts with Photoshop-specific brush keys (#3109). German: Ö / # are `[` / `]` (smaller,
 /// bigger) and ⇧Ö / ⇧# the hardness; `ö` and `#` arrive as the physical `;` and `\`, ⇧# types `'`.
 /// French AZERTY and others have no verified Photoshop keys yet and use the fallback.
 pub const LAYOUTS: &[Layout] = &[Layout {
-    name: "German",
+    // German
     keys: &[("ö", false, Key::OpenBracket), ("Ö", true, Key::OpenBracket), ("#", false, Key::CloseBracket), ("'", true, Key::CloseBracket)],
 }];
 
