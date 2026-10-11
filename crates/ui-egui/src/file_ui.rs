@@ -92,7 +92,8 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &V
             return Some(app.pick_file_bytes_filtered(SCRIPT_EXTENSIONS, |app, name, bytes| {
                 let r = app.run("file.scripts.browse", json!({"script": String::from_utf8_lossy(&bytes)}));
                 if r.is_ok() {
-                    app.ui.status = format!("Ran script {name}");
+                    let template = "Ran script {name}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("name", &name)]);
                 }
                 r
             }));
@@ -542,7 +543,8 @@ fn save_for_web(app: &mut PhotocraftApp, p: Value) -> Result<Value, String> {
         app.ui.status_error = true;
     })?;
     app.sync_views();
-    app.ui.status = format!("Saved for Web: {} file(s)", r["files"].as_array().map_or(0, Vec::len));
+    app.ui.status =
+        crate::i18n::trn(crate::i18n::current(), r["files"].as_array().map_or(0, Vec::len) as u64, "Saved for Web: {n} file", "Saved for Web: {n} files");
     app.ui.status_error = false;
     Ok(r)
 }
@@ -756,9 +758,15 @@ fn print_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Va
 fn print_confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
     let r = app.run("file.print", params(f))?;
     app.ui.status = if r["sent"] == json!(true) {
-        format!("Sent to the printer ({})", r["spooler"].as_str().unwrap_or(""))
+        {
+            let template = "Sent to the printer ({spooler})";
+            crate::i18n::fmt(tl!(template), &[("spooler", r["spooler"].as_str().unwrap_or(""))])
+        }
     } else {
-        format!("Printed to {}", r["pdf"].as_str().unwrap_or(""))
+        {
+            let template = "Printed to {path}";
+            crate::i18n::fmt(tl!(template), &[("path", r["pdf"].as_str().unwrap_or(""))])
+        }
     };
     Ok(r)
 }

@@ -801,7 +801,8 @@ pub fn commit(app: &mut PhotocraftApp) {
             return;
         }
         let Some(a) = rect_to_quad_affine(t.rect, t.quad) else {
-            app.ui.status = "Distort and Perspective can't be applied to a path".into();
+            let message = "Distort and Perspective can't be applied to a path";
+            app.ui.status = tl!(message).into();
             return;
         };
         let mut p = target;

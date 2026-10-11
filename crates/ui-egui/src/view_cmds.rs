@@ -1177,9 +1177,17 @@ fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
         let (bytes, warnings) = export(&doc, &path, &crate::ExportSettings::default())?;
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
         write(&path, &bytes)?;
-        app.ui.status = format!("Saved a copy as {path}");
+        let template = "Saved a copy as {path}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
-        crate::notices::io_warnings(app, &format!("Saved a copy as {}", crate::file_open::display_name(&path)), &warnings);
+        crate::notices::io_warnings(
+            app,
+            &{
+                let template = "Saved a copy as {path}";
+                crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))])
+            },
+            &warnings,
+        );
         Ok(json!({"path": path, "warnings": warnings}))
     })
 }
@@ -1193,7 +1201,8 @@ fn export_contents(app: &mut PhotocraftApp) -> Result<Value, String> {
     app.pick_save(&name.clone(), move |app, path| {
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
         write(&path, &bytes)?;
-        app.ui.status = format!("Exported contents to {path}");
+        let template = "Exported contents to {path}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
         Ok(json!({"path": path, "fileName": name, "bytes": bytes.len()}))
     })

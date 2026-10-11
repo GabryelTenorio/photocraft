@@ -287,7 +287,8 @@ pub fn set_source(app: &mut PhotocraftApp, x: f64, y: f64) {
     app.ui.clone_source = Some([x.round(), y.round()]);
     app.ui.clone_offset = None;
     let _ = app.run("cloneSource.set", json!({"source": [x.round(), y.round()]}));
-    app.ui.status = format!("Clone source set at {:.0}, {:.0}", x, y);
+    let template = "Clone source set at {x}, {y}";
+    app.ui.status = crate::i18n::fmt(tl!(template), &[("x", &format!("{x:.0}")), ("y", &format!("{y:.0}"))]);
     app.ui.status_error = false;
 }
 

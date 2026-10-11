@@ -3486,3 +3486,48 @@ layerLabel	No Color	Žádná barva
 	General Blending	Obecné prolnutí
 	This Layer:	Tato vrstva:
 	Underlying Layer:	Podkladová vrstva:
+
+# Status messages and notices
+	Nothing to paste: the clipboard holds no image	Není co vložit: schránka neobsahuje obraz
+	Preferences saved	Předvolby uloženy
+	Distort and Perspective can't be applied to a path	Deformaci a perspektivu nelze použít na cestu
+	Invalid panel layout; restored the default dock	Neplatné rozložení panelů; obnoveno výchozí ukotvení
+@plural	{n} sample point removed|{n} sample points removed	Odstraněn {n} bod měření|Odstraněny {n} body měření|Odstraněno {n} bodů měření
+	Preferences were reset: {error}	Předvolby byly obnoveny: {error}
+	Recovered {name}	Obnoveno: {name}
+	Couldn't save preferences: {error}. Retrying…	Předvolby se nepodařilo uložit: {error}. Další pokus…
+	Autosave failed: {error}	Automatické ukládání selhalo: {error}
+	Exported presets to {path}	Přednastavení exportována do {path}
+	Ran script {name}	Spuštěn skript {name}
+	Sent to the printer ({spooler})	Odesláno do tiskárny ({spooler})
+	Printed to {path}	Vytištěno do {path}
+	Exported {path} ({size})	Exportováno: {path} ({size})
+	Exported {path}	Exportováno: {path}
+	Added swatch {name}	Přidán vzorek {name}
+	Step {step} ({id}) failed: {error}	Krok {step} ({id}) selhal: {error}
+	Could not rename the action: {error}	Akci se nepodařilo přejmenovat: {error}
+	Action playback failed: {error}	Přehrávání akce selhalo: {error}
+	Clone source set at {x}, {y}	Zdroj klonování nastaven na {x}, {y}
+	Color management: {error}	Správa barev: {error}
+	Opened {url}	Otevřeno: {url}
+	No custom shape "{name}": pick one in the options bar or Window › Shapes	Vlastní tvar „{name}“ není k dispozici: vyberte ho v pruhu voleb nebo v nabídce Okna › Tvary
+	Saved a copy as {path}	Kopie uložena jako {path}
+	Exported contents to {path}	Obsah exportován do {path}
+	{label} is not available: {reason}	{label} není k dispozici: {reason}
+	Saved {path}; image assets: {n} in {dir}	Uloženo: {path}; obrazové soubory: {n} v {dir}
+@plural	Played {n} step|Played {n} steps	Přehrán {n} krok|Přehrány {n} kroky|Přehráno {n} kroků
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Aktualizován {n} propojený chytrý objekt změněný na disku|Aktualizovány {n} propojené chytré objekty změněné na disku|Aktualizováno {n} propojených chytrých objektů změněných na disku
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Uloženo pro web: {n} soubor|Uloženo pro web: {n} soubory|Uloženo pro web: {n} souborů
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Importován {n} štětec ze skupiny {group}|Importovány {n} štětce ze skupiny {group}|Importováno {n} štětců ze skupiny {group}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Importován {n} vzorek ze souboru {file}|Importovány {n} vzorky ze souboru {file}|Importováno {n} vzorků ze souboru {file}
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Exportován {n} vzorek do souboru {file}|Exportovány {n} vzorky do souboru {file}|Exportováno {n} vzorků do souboru {file}
+	{message} (notes: {n}; {warning})	{message} (poznámky: {n}; {warning})
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} další upozornění k přednastavení štětců)|{warning} (+{n} další upozornění k přednastavení štětců)|{warning} (+{n} dalších upozornění k přednastavení štětců)
+	Preferences can't be saved	Předvolby nelze uložit
+	PhotoCraft keeps retrying; until a save succeeds, preference changes are lost when it closes.	PhotoCraft se nadále pokouší o uložení; dokud nebude úspěšné, změny předvoleb se při zavření ztratí.
+	GPU retry scheduled	Naplánován další pokus o použití GPU
+	Save your work and restart PhotoCraft to retry GPU acceleration. CPU rendering remains active for this session.	Uložte práci a restartujte PhotoCraft pro další pokus o akceleraci GPU. V této relaci zůstane aktivní vykreslování pomocí CPU.
+	GPU device was lost; using the CPU renderer.	Spojení se zařízením GPU bylo ztraceno; používá se vykreslování pomocí CPU.
+	GPU error; using the CPU renderer.	Chyba GPU; používá se vykreslování pomocí CPU.
+@plural	{what} with {n} warning|{what} with {n} warnings	{what}: {n} upozornění|{what}: {n} upozornění|{what}: {n} upozornění
+	Couldn't open {name}: {error}	Soubor {name} se nepodařilo otevřít: {error}

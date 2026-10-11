@@ -211,7 +211,8 @@ pub fn load(app: &mut PhotocraftApp) {
     if let Some(text) = app.services.load_prefs.as_mut().and_then(|f| f())
         && let Err(e) = app.session.load_prefs_json(&text)
     {
-        app.ui.status = format!("Preferences were reset: {e}");
+        let template = "Preferences were reset: {error}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
     }
     crate::dock::restore(app);
     crate::brush_picker::restore(app);
@@ -292,7 +293,8 @@ fn finish_recovery(app: &mut PhotocraftApp, key: &str, v: &Value) {
         app.ui.chrome.home = None;
     }
     app.sync_views();
-    app.ui.status = format!("Recovered {name}");
+    let template = "Recovered {name}";
+    app.ui.status = crate::i18n::fmt(tl!(template), &[("name", &name)]);
     app.ui.status_error = false;
 }
 
@@ -310,7 +312,7 @@ pub(crate) fn on_recovery_event(app: &mut PhotocraftApp, e: &JobEvent) -> bool {
             // Native bundle decoding cannot stop midway. Cancel admission and the rest of the
             // batch so another large decoder isn't started while this worker finishes.
             app.prefs_rt.recovery_queue.clear();
-            app.ui.status = format!("Cancelled {}", e.label);
+            app.ui.status = crate::i18n::fmt(tl!("Cancelled {label}"), &[("label", tl!(&e.label))]);
             app.ui.status_error = false;
         }
     }
@@ -327,7 +329,19 @@ fn presets_store(app: &mut PhotocraftApp) {
                 app.services.preset_store = None;
                 let warnings = app.session.attach_preset_store(opened);
                 if let Some(w) = warnings.first() {
-                    app.ui.status = if warnings.len() == 1 { w.clone() } else { format!("{w} (+{} more brush preset warnings)", warnings.len() - 1) };
+                    app.ui.status = if warnings.len() == 1 {
+                        w.clone()
+                    } else {
+                        crate::i18n::fmt(
+                            &crate::i18n::trn(
+                                crate::i18n::current(),
+                                (warnings.len() - 1) as u64,
+                                "{warning} (+{n} more brush preset warning)",
+                                "{warning} (+{n} more brush preset warnings)",
+                            ),
+                            &[("warning", w)],
+                        )
+                    };
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
@@ -453,7 +467,8 @@ fn persist(app: &mut PhotocraftApp, now: f64) -> Option<f64> {
             app.prefs_rt.saved_value = Some(ours);
             let r = std::mem::take(&mut app.prefs_rt.save_retry);
             if r.failures > 0 {
-                app.ui.status = "Preferences saved".into();
+                let message = "Preferences saved";
+                app.ui.status = tl!(message).into();
                 app.ui.status_error = false;
                 if let Some(id) = r.notice {
                     app.ui.notices.retain(|n| n.id != id);
@@ -469,7 +484,8 @@ fn persist(app: &mut PhotocraftApp, now: f64) -> Option<f64> {
             r.at = now + delay;
             let failures = r.failures;
             if failures == 1 {
-                app.ui.status = format!("Couldn't save preferences: {e}. Retrying…");
+                let template = "Couldn't save preferences: {error}. Retrying…";
+                app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
                 app.ui.status_error = true;
             } else if failures == SAVE_NOTICE_AFTER {
                 let lines = vec![e, "PhotoCraft keeps retrying; until a save succeeds, preference changes are lost when it closes.".into()];
@@ -547,7 +563,12 @@ fn link_updates(app: &mut PhotocraftApp, ctx: &egui::Context) {
     match app.session.poll_link_scan() {
         Some(Ok(r)) => {
             if let Some(n) = r["updated"].as_array().map(Vec::len).filter(|n| *n > 0) {
-                app.ui.status = format!("Updated {n} linked smart object(s) changed on disk");
+                app.ui.status = crate::i18n::trn(
+                    crate::i18n::current(),
+                    n as u64,
+                    "Updated {n} linked smart object changed on disk",
+                    "Updated {n} linked smart objects changed on disk",
+                );
             }
         }
         Some(Err(e)) => app.ui.status = e.to_string(),
@@ -592,7 +613,8 @@ fn autosave(app: &mut PhotocraftApp) {
                     app.prefs_rt.autosaved.insert(id, revision);
                 }
                 Err(e) => {
-                    app.ui.status = format!("Autosave failed: {e}");
+                    let template = "Autosave failed: {error}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
                     app.ui.status_error = true;
                 }
             }
@@ -641,7 +663,8 @@ fn autosave(app: &mut PhotocraftApp) {
                     }
                 }
                 Err(e) => {
-                    app.ui.status = format!("Autosave failed: {e}");
+                    let template = "Autosave failed: {error}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
                     app.ui.status_error = true;
                 }
             }
@@ -1914,7 +1937,8 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
                 app.pick_save("Presets.pcpresets", move |app, path| {
                     let write = app.services.write.as_mut().ok_or("no writer configured")?;
                     write(&path, text.as_bytes())?;
-                    app.ui.status = format!("Exported presets to {path}");
+                    let template = "Exported presets to {path}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
                     Ok(json!({"path": path}))
                 })
             }

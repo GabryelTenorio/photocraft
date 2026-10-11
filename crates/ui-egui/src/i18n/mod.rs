@@ -795,6 +795,25 @@ mod tests {
         assert!(code.starts_with("a\n") && code.ends_with("\nc"), "{code}");
     }
 
+    #[test]
+    fn czech_status_templates_preserve_details_and_plural_counts() {
+        let cs = CS();
+        let template = "Step {step} ({id}) failed: {error}";
+        let args = [("step", "2"), ("id", "file.export"), ("error", "disk full: /tmp/image.psd")];
+        assert_eq!(fmt(tr(cs, template), &args), "Krok 2 (file.export) selhal: disk full: /tmp/image.psd");
+        assert_eq!(fmt(tr(Lang::EN, template), &args), "Step 2 (file.export) failed: disk full: /tmp/image.psd");
+        // Languages without these dynamic templates keep the English source.
+        assert_eq!(tr(JA(), template), template);
+        for (n, expected) in [(0, "Odstraněno 0 bodů měření"), (1, "Odstraněn 1 bod měření"), (2, "Odstraněny 2 body měření"), (5, "Odstraněno 5 bodů měření")]
+        {
+            assert_eq!(trn(cs, n, "{n} sample point removed", "{n} sample points removed"), expected);
+        }
+        let one = "Imported {n} swatch from {file}";
+        let other = "Imported {n} swatches from {file}";
+        assert_eq!(fmt(&trn(cs, 3, one, other), &[("file", "English name.aco")]), "Importovány 3 vzorky ze souboru English name.aco");
+        assert_eq!(tr(cs, "Preferences can't be saved"), "Předvolby nelze uložit");
+    }
+
     /// Every `tl!("literal")` in the shell has an entry in each language that claims complete menus
     /// (so a new label can't ship untranslated by accident). Literals that are deliberately shown as
     /// they are (names, units) are listed in `KEEP_AS_IS`.

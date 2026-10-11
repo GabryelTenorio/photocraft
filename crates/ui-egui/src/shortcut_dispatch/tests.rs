@@ -542,7 +542,7 @@ fn named_action_function_key_replays_and_survives_preferences_roundtrip() {
     h.state_mut().ui.actions.selected = None;
     press(&mut h, "F6");
     assert_eq!(active_name(&h), "F6 overlay");
-    assert_eq!(h.state().ui.status, "Played 1 steps");
+    assert_eq!(h.state().ui.status, "Played 1 step");
     assert!(!h.state().ui.status_error);
     assert_eq!(take_log(&h.ctx), vec![(crate::actions::shortcut_id("LivePrint 2R"), Outcome::Ran)]);
     h.state_mut().run("actions.delete", json!({"action": "LivePrint 2R"})).unwrap();

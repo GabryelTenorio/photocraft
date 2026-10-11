@@ -54,7 +54,7 @@ pub fn fall_back(app: &mut PhotocraftApp, fault: &photocraft_gpu::Fault) {
     app.perf.gpu_info.lost = Some(fault.to_string());
     let title = if fault.is_lost() { LOST_MESSAGE } else { ERROR_MESSAGE };
     queue_fallback_notice(app, fault.to_string());
-    app.ui.status = title.to_string();
+    app.ui.status = tl!(title).to_string();
     app.ui.status_error = true;
 }
 

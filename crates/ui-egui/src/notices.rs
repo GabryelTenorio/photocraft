@@ -130,9 +130,10 @@ fn dismiss(app: &mut PhotocraftApp, id: u64) {
 pub fn io_warnings(app: &mut PhotocraftApp, what: &str, warnings: &[String]) {
     let Some(first) = warnings.first() else { return };
     let n = warnings.len();
-    app.ui.status = if n == 1 { format!("{what}: {first}") } else { format!("{what} with {n} warnings: {first} …") };
+    let title = crate::i18n::fmt(&crate::i18n::trn(crate::i18n::current(), n as u64, "{what} with {n} warning", "{what} with {n} warnings"), &[("what", what)]);
+    app.ui.status = if n == 1 { format!("{what}: {first}") } else { format!("{title}: {first} …") };
     app.ui.status_error = true;
-    post(app, format!("{what} with {n} warning{}", if n == 1 { "" } else { "s" }), warnings.to_vec(), false, None);
+    post(app, title, warnings.to_vec(), false, None);
 }
 
 /// Report a failed file operation: the status bar shows it as an error and a notice keeps it on
