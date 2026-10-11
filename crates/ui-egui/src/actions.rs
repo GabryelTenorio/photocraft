@@ -182,8 +182,10 @@ fn playback_selection(app: &PhotocraftApp) -> Option<usize> {
 }
 
 /// Steps in the `[[id, params], …]` shape batch and droplets already accept.
+/// Steps in the `[[id, params], …]` shape batch and droplets already accept, without the
+/// steps switched off in the panel.
 pub fn action_steps(action: &Action) -> Vec<Value> {
-    action.steps.iter().map(|(id, p)| json!([id, p])).collect()
+    action.steps.iter().enumerate().filter(|(i, _)| action.step_on(*i)).map(|(_, (id, p))| json!([id, p])).collect()
 }
 
 /// Named action bindings use the existing persisted shortcut overrides. Keeping the
