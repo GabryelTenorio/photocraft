@@ -3364,3 +3364,34 @@ cameraRaw	Zoom and Pan	확대/축소 및 이동
 	White Balance tool (I): click a neutral area	화이트 밸런스 도구 (I): 중립 영역을 클릭
 	Zoom Tool (Z)	돋보기 도구 (Z)
 cameraRaw	Type	유형
+# Camera Raw filter parameters (generic filter dialog labels)
+	As Shot	촬영 시 설정
+	Calibration Blue Hue	캘리브레이션 파랑 색조
+	Calibration Blue Sat	캘리브레이션 파랑 채도
+	Calibration Green Hue	캘리브레이션 초록 색조
+	Calibration Green Sat	캘리브레이션 초록 채도
+	Calibration Red Hue	캘리브레이션 빨강 색조
+	Calibration Red Sat	캘리브레이션 빨강 채도
+	Calibration Shadows Tint	캘리브레이션 어두운 영역 색조 보정
+	Curve Refine Saturation	곡선 채도 다듬기
+	Defringe Green Amount	가장자리 색상 제거 초록 양
+	Defringe Purple Amount	가장자리 색상 제거 보라 양
+	Full	전체
+	Guided	안내선
+	Lens Blur Amount	렌즈 흐림 효과 양
+	Lens Blur Apply	렌즈 흐림 효과 적용
+	Lens Distortion	렌즈 왜곡
+	Lens Vignette	렌즈 비네팅
+	Lens Vignette Midpoint	렌즈 비네팅 중간점
+	Noise Color Smoothness	색상 노이즈 매끄러움
+	Noise Luminance Contrast	광도 노이즈 대비
+	Process Version	처리 방식 버전
+	Transform Aspect	변형 종횡비
+	Transform Horizontal	변형 가로
+	Transform Offset X	변형 X 오프셋
+	Transform Offset Y	변형 Y 오프셋
+	Transform Rotate	변형 회전
+	Transform Scale	변형 크기 조절
+	Transform Vertical	변형 세로
+	Upright	바로 세우기
+	White Balance	화이트 밸런스
