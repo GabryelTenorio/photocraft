@@ -472,7 +472,7 @@ scripts/fetch-corpus.sh            # the same as cargo xtask corpus --all
   silent skip, and every floor is enforced.
 - If you touch psd, io, codecs, compose, gpu, text or format, run `cargo xtask test-corpus` before
   you finish.
-- The CI `corpus` job runs `cargo xtask corpus --all` and then `cargo xtask test-corpus` on every PR
+- The CI `corpus` job runs `cargo xtask corpus --all` and then `cargo xtask test-corpus --pixls` on every PR
   and on main. `corpus/` is cached with `actions/cache`, keyed on the hash of `corpus_pins.rs` and
   the manifests. A download happens only when a pin changes; otherwise the cache restores in seconds
   and is re-verified (sha256) before the tests run. Fork PRs read the base branch's cache.

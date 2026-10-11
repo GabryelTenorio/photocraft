@@ -2,7 +2,7 @@
 //! Sony compressed ARW (cRAW), Panasonic RW2 (RawFormat 5) and uncompressed
 //! Olympus ORF (with its maker-note preview).
 
-use photocraft_raw::testgen::{craw_block, mosaic, orf, orf_padded12, orf_two_field12, orf_word_packed12, rw2, scene, sony_craw};
+use photocraft_raw::testgen::{craw_block, mosaic, orf, orf_compressed, orf_padded12, orf_two_field12, orf_word_packed12, rw2, scene, sony_craw};
 use photocraft_raw::*;
 
 const CURVE: [u16; 4] = [8000, 10400, 12900, 14100];
@@ -259,6 +259,92 @@ fn orf_packed_or_compressed_falls_back() {
     assert!(matches!(decode(&b, &Limits::default()), Err(RawError::Unsupported(_))));
 }
 
+#[test]
+fn compressed_orf_round_trips_both_precisions_and_predictor_branches() {
+    let (w, h) = (34, 19);
+    for precision in [12, 14] {
+        let top = (1u16 << precision) - 1;
+        let smooth = mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, top);
+        let flat = vec![254; w * h];
+        // Sharp transitions force Rice escapes; small alternating slopes cross
+        // the flat predictor threshold and both residual sign/rounding cases.
+        let edges: Vec<u16> = (0..w * h).map(|i| if (i / 5 + i / w) % 2 == 0 { top - (i % 33) as u16 } else { (i % 34) as u16 }).collect();
+        for values in [smooth, flat, edges] {
+            let bytes = orf_compressed(w, h, &values, precision);
+            let sensor = decode(&bytes, &Limits::default()).unwrap();
+            assert_eq!(sensor.data, values, "{precision}-bit sample equality");
+            assert_eq!((sensor.width, sensor.height), (w, h));
+            assert_eq!(sensor.white, [f32::from(top); 3]);
+            assert_eq!(sensor.black.values, [if precision == 14 { 256.0 } else { 64.0 }; 4]);
+            assert_eq!(sensor.camera_wb, Some([2.0, 1.0, 1.5]));
+            assert_eq!(sensor.crop, photocraft_raw::Rect::new(2, 2, w - 4, h - 4));
+            assert!(embedded_preview(&bytes).is_some(), "maker-note preview, including OM SYSTEM");
+        }
+    }
+}
+
+#[test]
+fn compressed_orf_black_exposure_stays_black_at_both_precisions() {
+    // The same recorded BlackLevel2=64 means 64 sensor units at 12 bits,
+    // and 256 at 14 bits. Subtracting 64 from both lifts/tints 14-bit shadows.
+    for (precision, dark) in [(12, 64), (14, 256)] {
+        let bytes = orf_compressed(34, 20, &vec![dark; 34 * 20], precision);
+        let sensor = decode(&bytes, &Limits::default()).unwrap();
+        let developed = develop_sensor(&sensor, &DevelopOptions::default()).unwrap();
+        assert!(developed.rgb.iter().all(|&v| v == 0), "{precision}-bit optical black must develop to black");
+    }
+}
+
+#[test]
+fn compressed_orf_rejects_truncation_invalid_profile_and_resource_limits() {
+    let (w, h) = (34, 12);
+    let bytes = orf_compressed(w, h, &vec![2000; w * h], 12);
+    let strip = orf_inline_u32(&bytes, 273) as usize;
+    let length = orf_inline_u32(&bytes, 279) as usize;
+    let mut unknown = bytes.clone();
+    unknown[strip + 4] = 2;
+    assert!(matches!(decode(&unknown, &Limits::default()), Err(RawError::Unsupported(_))));
+    for count in [7, 8, length / 2, length - 1] {
+        let mut truncated = bytes.clone();
+        patch_ifd0_long(&mut truncated, 279, count as u32);
+        assert!(matches!(decode(&truncated, &Limits::default()), Err(RawError::Malformed(_))), "strip length {count}");
+    }
+    let mut extra = bytes.clone();
+    patch_ifd0_long(&mut extra, 279, (length + 1) as u32);
+    assert!(matches!(decode(&extra, &Limits::default()), Err(RawError::Malformed(_))));
+    let limits = Limits { max_pixels: (w * h - 1) as u64, ..Limits::default() };
+    assert!(matches!(decode(&bytes, &limits), Err(RawError::LimitExceeded(_))));
+}
+
+#[test]
+fn compressed_orf_lengths_that_match_uncompressed_layouts_keep_their_samples() {
+    // Independently measured encoder lengths collide with word-packed (96),
+    // padded (128), and 16-bit (544) storage. Length alone cannot route these.
+    for (width, precision, amplitude, seed, expected_length) in
+        [(8, 12, 512, 438, 96), (8, 14, 512, 587, 96), (10, 12, 1024, 18, 128), (10, 14, 1024, 9, 128), (34, 12, 4096, 9, 544), (34, 14, 4096, 1, 544)]
+    {
+        let mut state = seed as u32;
+        let values: Vec<u16> = (0..width * 8)
+            .map(|_| {
+                state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+                ((state >> 16) % amplitude) as u16
+            })
+            .collect();
+        let bytes = orf_compressed(width, 8, &values, precision);
+        assert_eq!(orf_inline_u32(&bytes, 279), expected_length, "{width}x8 / {precision}-bit length collision");
+        assert_eq!(decode(&bytes, &Limits::default()).unwrap().data, values, "{width}x8 / {precision}-bit sample equality");
+    }
+}
+
+#[test]
+fn uncompressed_orf_samples_that_resemble_a_compressed_header_stay_uncompressed() {
+    let (w, h) = (34, 8);
+    let mut values = vec![1000; w * h];
+    values[..4].copy_from_slice(&[0, 0, 16, 0]);
+    let bytes = orf(w, h, &values);
+    assert_eq!(decode(&bytes, &Limits::default()).unwrap().data, values);
+}
+
 /// Offset of an IFD0 entry in the synthetic little-endian ORFs.
 fn orf_entry(bytes: &[u8], tag: u16) -> usize {
     let ifd = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
@@ -269,6 +355,11 @@ fn orf_entry(bytes: &[u8], tag: u16) -> usize {
 fn orf_inline_u32(bytes: &[u8], tag: u16) -> u32 {
     let at = orf_entry(bytes, tag) + 8;
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
+}
+
+fn patch_ifd0_long(bytes: &mut [u8], tag: u16, value: u32) {
+    let at = orf_entry(bytes, tag) + 8;
+    bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
 }
 
 fn orf_set_u32(bytes: &mut [u8], tag: u16, value: u32) {

@@ -50,7 +50,7 @@ Implemented only from public specifications, papers and observation of files:
   earlier measurements by voshart. Independently implemented here from that description and
   direct byte measurements of CC0 E-300 / E-500 / E-330 and E-M5 II / PEN-F high-resolution files: one little-endian TIFF strip,
   ten LSB-first 12-bit samples in 15 bytes followed by one zero byte, with whole blocks per row.
-  No LightCraft decoder source was used. This does not describe Olympus compressed ORF.
+  No LightCraft decoder source was used.
 * Packed uncompressed Olympus ORF: the accepted layout measurements in
   [LightCraft #600](https://github.com/storytold/lightcraft/pull/600), contributed by radialmonster,
   and direct observations of its six CC0 compact-camera originals. Whole rows of MSB-first
@@ -59,6 +59,11 @@ Implemented only from public specifications, papers and observation of files:
   used. The single-strip XZ-2 / XZ-10 / SH-2 layout was checked separately: MSB-first
   12-bit samples are stored in little-endian 32-bit words.
   No LightCraft implementation was read or copied.
+* Compressed Olympus / OM System ORF and ORI: public Olympus patents US7333035B2,
+  US7715639B2, JP2006211155A and US7259698B2 informed experiments with CC0 originals.
+  Exact stream syntax, adaptive coding parameters, residual correction and spatial prediction
+  were established by file measurements. The patents alone do not specify the ORF stream;
+  see [the measured profile and qualification](../../docs/orf-compression.md).
 * Demosaicing: Malvar, He & Cutler (ICASSP 2004); Hirakawa & Parks, "Adaptive
   homogeneity-directed demosaicing" (IEEE TIP 2005); for X-Trans and other non-Bayer CFAs,
   gradient-weighted green interpolation (Lu & Tan, "Color filter array demosaicking: new method
@@ -83,7 +88,8 @@ camera colour tables were copied.
 | Olympus ORF, uncompressed 16-bit (E-1, E-400…) | Decoded, with ImageProcessing black / WB / ValidBits / crop |
 | Olympus ORF, padded uncompressed 12-bit (E-300, E-500, E-330, E-M5 II and PEN-F high-resolution) | Decoded, including files declaring 16-bit samples; exact single-strip 12.8-bit-per-pixel storage only. Reuses the file's CFA / ImageProcessing metadata and existing uncalibrated colour fallback |
 | Olympus ORF, packed uncompressed 12-bit (XZ-2, XZ-10, SH-2; two-field C-5060WZ, C-7070WZ, SP-510UZ, SP-550UZ, SP-565UZ, SP-570UZ) | Decoded from measured storage layouts and the file's CFA. Two-field storage requires the exact strip/gap layout; no crop is guessed when its origin is absent. Camera colour rendering remains uncalibrated |
-| Nikon "lossy after split" NEF, Sony "Compressed RAW 2", Pentax compressed PEF, RW2 RawFormat 4 and older, Olympus compressed ORF | Unsupported: no public description of these codes was found apart from GPL decoder source, which this crate may not use (clean-room). `photocraft-io` opens the embedded JPEG preview instead |
+| Olympus / OM System compressed ORF and ORI, 12 and 14 bit | Decoded for the measured single-strip predictive profile, including OM SYSTEM maker notes and high-resolution captures. All 87 compressed CC0 originals in the local qualification matched independent research sample digests; [scope, source basis and qualification](../../docs/orf-compression.md). Camera colour rendering remains uncalibrated |
+| Nikon "lossy after split" NEF, Sony "Compressed RAW 2", Pentax compressed PEF, RW2 RawFormat 4 and older | Unsupported: no public description of these codes was found apart from GPL decoder source, which this crate may not use (clean-room). `photocraft-io` opens the embedded JPEG preview instead |
 | Fujifilm RAF, uncompressed (X-Trans I–V, GFX and Bayer bodies since about 2010) | Decoded: 16-bit containers (either byte order), 12-bit LSB-first packing, 14-bit packing in 32-bit words; X-Trans 6×6 or Bayer 2×2 layout, black, as-shot WB, crop, RawExposureBias, orientation from the preview's EXIF |
 | Fujifilm compressed RAF, early FinePix / SuperCCD RAF (no CFA TIFF) | Unsupported (no public description of the compression); preview fallback |
 | CR3 | Recognised, unsupported (preview fallback where a preview is found) |
@@ -111,3 +117,7 @@ curve is applied: the result is a scene-referred rendering, flatter than a camer
 `cargo run --release -p photocraft-raw --example rawinfo -- [--dump] [--demosaic ahd] [--png DIR] FILE...`
 prints what was decoded, times decode and develop, and can write sRGB PNG previews and the
 embedded JPEG previews.
+
+`--sensor-u16le FILE` writes the full decoded sensor samples before development and skips
+the development step. Use one input at a time and compare the output's SHA256 with the
+[ORF / ORI qualification manifest](../../docs/orf-corpus.json).

@@ -35,16 +35,24 @@ fn cr2_opens() {
 }
 
 #[test]
-fn packed_orfs_develop_and_survive_native_save_and_16_bit_export() {
+fn orfs_develop_and_survive_native_save_and_16_bit_export() {
     let (w, h) = (40, 33);
     let padded = photocraft_raw::testgen::orf_padded12(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, 4095));
     let fields = photocraft_raw::testgen::orf_two_field12(w, h, &mosaic(&scene(w, h), w, [2, 1, 1, 0], 0, 4095));
     let words = photocraft_raw::testgen::orf_word_packed12(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, 4095));
-    for (bytes, expected_size) in [(padded, (36, 29)), (fields, (40, 33)), (words, (36, 29))] {
-        let initial = import("shot.ORF", &bytes).unwrap();
+    let compressed12 = photocraft_raw::testgen::orf_compressed(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 64, 4095), 12);
+    let compressed14 = photocraft_raw::testgen::orf_compressed(w, h, &mosaic(&scene(w, h), w, [1, 0, 2, 1], 256, 16383), 14);
+    for (bytes, expected_size, name) in [
+        (padded, (36, 29), "shot.ORF"),
+        (fields, (40, 33), "shot.ORF"),
+        (words, (36, 29), "shot.ORF"),
+        (compressed12, (36, 29), "shot.ORI"),
+        (compressed14, (36, 29), "shot.ORF"),
+    ] {
+        let initial = import(name, &bytes).unwrap();
         assert!(initial.warnings.iter().any(|w| w.contains("ORF") && w.contains("developed with default settings")));
         let (tuned, wb_applied) =
-            photocraft_io::raw::import_raw_tuned("shot.ORF", &bytes, &photocraft_io::raw::RawTuning { exposure: 0.5, temperature: 5.0, tint: 0.0 }).unwrap();
+            photocraft_io::raw::import_raw_tuned(name, &bytes, &photocraft_io::raw::RawTuning { exposure: 0.5, temperature: 5.0, tint: 0.0 }).unwrap();
         assert!(wb_applied, "Camera Raw must apply the file's white balance during development");
         let doc = tuned.document;
         assert_eq!((doc.size.width, doc.size.height), expected_size);

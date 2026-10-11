@@ -27,7 +27,7 @@
 //! tiles, CFA and LinearRaw), CR2 (lossless JPEG with Canon slices), uncompressed or
 //! lossless-JPEG TIFF/EP raws (NEF, ARW, PEF… when not vendor-compressed),
 //! Nikon compressed NEF (lossless and lossy), Sony compressed ARW (cRAW),
-//! Panasonic RW2 (RawFormat 5), uncompressed Olympus ORF and uncompressed
+//! Panasonic RW2 (RawFormat 5), Olympus/OM System ORF/ORI and uncompressed
 //! Fujifilm RAF (Bayer and X-Trans). Everything else reports
 //! [`RawError::Unsupported`].
 //!
@@ -50,6 +50,7 @@ mod ljpeg;
 mod nefc;
 mod opcodes;
 mod orf;
+mod orf_compressed;
 mod par;
 mod preview;
 mod raf;
@@ -117,7 +118,7 @@ impl RawFormat {
 }
 
 /// File extensions of the raw formats this crate recognises.
-pub const EXTENSIONS: &[&str] = &["dng", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "pef", "orf", "rw2", "raf"];
+pub const EXTENSIONS: &[&str] = &["dng", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "pef", "orf", "ori", "rw2", "raf"];
 
 /// Decompression-bomb guards, checked on header values before allocating
 /// (the same shape and defaults as `photocraft-codecs`' limits).

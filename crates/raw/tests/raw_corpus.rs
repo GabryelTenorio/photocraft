@@ -1,16 +1,16 @@
 //! Real-camera corpus tests against `corpus/pixls` (raw.pixls.us, public domain): representative
 //! decode paths, oracle-checked against values measured when the corpus was pinned (the
 //! `inspect` example prints them). Opt-in like every real-file corpus:
-//! `cargo xtask corpus --pixls` fetches, `cargo xtask test-corpus` runs.
+//! `cargo xtask corpus --pixls` fetches, `cargo xtask test-corpus -p raw` runs.
 #![cfg(feature = "corpus")]
 
-use photocraft_raw::{Limits, RawError, RawFormat};
+use photocraft_raw::{Limits, RawFormat};
 use std::path::PathBuf;
 
 fn pixls(name: &str) -> PathBuf {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../corpus/pixls").join(name);
     if !p.is_file() {
-        panic!("{} is missing: run `cargo xtask corpus --pixls` (or `--all`) first", p.display());
+        panic!("{} is missing: run `cargo xtask corpus --pixls` first", p.display());
     }
     p
 }
@@ -509,12 +509,122 @@ fn additional_orf_layouts_match_file_metadata_and_boundary_samples() {
     }
 }
 
-/// The E-5 file is the documented known-unsupported case: later Olympus bodies store
-/// compressed sensor data. The error must say so, never panic, and the file still previews.
+/// Metadata comes directly from TIFF/Exif and maker tags. Full-sample fingerprints come
+/// from a separate C++ research implementation based on Olympus patent prose and direct
+/// CC0-file measurements, with no third-party RAW decoder or binary oracle. CRC32 covers
+/// every row-major u16le sample; it is a regression check, not a security hash. Source
+/// downloads remain SHA256-pinned in xtask/pixls.sha256.
 #[test]
-fn packed_orf_reports_the_documented_gap() {
-    let bytes = std::fs::read(pixls("_7061961_copy.ORF")).unwrap();
-    let err = photocraft_raw::decode(&bytes, &Limits::default()).unwrap_err();
-    assert!(matches!(err, RawError::Unsupported(ref m) if m.contains("Olympus compressed")), "{err}");
-    assert!(photocraft_raw::embedded_preview(&bytes).is_some(), "the camera's JPEG preview is still reachable");
+fn compressed_orf_matches_file_metadata_and_full_sample_fingerprints() {
+    struct Case {
+        file: &'static str,
+        make: &'static str,
+        model: &'static str,
+        size: (usize, usize),
+        crop: (usize, usize, usize, usize),
+        cfa: [u8; 4],
+        black: [f32; 4],
+        white: f32,
+        wb_rb: (u16, u16),
+        crc32: u32,
+    }
+    let cases = [
+        // raw.pixls.us #2152: the previously unsupported E-5 fixture.
+        Case {
+            file: "_7061961_copy.ORF",
+            make: "OLYMPUS IMAGING CORP.",
+            model: "E-5",
+            size: (4100, 3084),
+            crop: (42, 24, 4032, 3024),
+            cfa: [2, 1, 1, 0],
+            // Raw BlackLevel2 is [65, 65, 64, 64]; the existing R,G,G,B
+            // metadata mapping places it at BGGR sensor positions.
+            black: [64.0, 65.0, 64.0, 65.0],
+            white: 4095.0,
+            wb_rb: (516, 300),
+            crc32: 0xbf99_e99e,
+        },
+        // #1051: BGGR and an escaped initial entropy token.
+        Case {
+            file: "sc000877.orf",
+            make: "OLYMPUS IMAGING CORP.",
+            model: "E-M1",
+            size: (4640, 3472),
+            crop: (8, 8, 4608, 3456),
+            cfa: [2, 1, 1, 0],
+            black: [255.0; 4],
+            white: 4095.0,
+            wb_rb: (528, 386),
+            crc32: 0xd4fa_f8ff,
+        },
+        // #2857: the normal-resolution ORI paired with the padded high-res ORF above.
+        Case {
+            file: "CB252215.ORI",
+            make: "OLYMPUS IMAGING CORP.",
+            model: "E-M5MarkII",
+            size: (4640, 3472),
+            crop: (8, 8, 4608, 3456),
+            cfa: [0, 1, 1, 2],
+            black: [254.0; 4],
+            white: 4095.0,
+            wb_rb: (438, 636),
+            crc32: 0x2d6e_4e71,
+        },
+        // #5283: OM SYSTEM maker-note header and 12-bit normal capture.
+        Case {
+            file: "OM_Systems_OM1_RAW_Image_20mpx_P1010025.ORF",
+            make: "OM Digital Solutions",
+            model: "OM-1",
+            size: (5220, 3912),
+            crop: (12, 12, 5184, 3888),
+            cfa: [0, 1, 1, 2],
+            black: [254.0; 4],
+            white: 4095.0,
+            wb_rb: (618, 438),
+            crc32: 0x50ad_9329,
+        },
+        // #7269: 14-bit 50 MP handheld high-res capture, with distinct black levels.
+        Case {
+            file: "50mp-14bit-handheld.orf",
+            make: "OM Digital Solutions",
+            model: "OM-1MarkII",
+            size: (8172, 6132),
+            crop: (6, 6, 8160, 6120),
+            cfa: [0, 1, 1, 2],
+            // BlackLevel2 remains in 12-bit units for the 14-bit sensor.
+            black: [1020.0, 1016.0, 1016.0, 1020.0],
+            white: 16383.0,
+            wb_rb: (578, 464),
+            crc32: 0x2741_fb86,
+        },
+    ];
+    for case in cases {
+        let file = case.file;
+        let bytes = std::fs::read(pixls(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let sensor = photocraft_raw::decode(&bytes, &Limits::default()).unwrap_or_else(|e| panic!("{file}: {e}"));
+        assert_eq!(sensor.format, RawFormat::Orf, "{file}");
+        assert_eq!(sensor.make.as_deref(), Some(case.make), "{file}");
+        assert_eq!(sensor.model.as_deref(), Some(case.model), "{file}");
+        assert_eq!((sensor.width, sensor.height), case.size, "{file}");
+        assert_eq!(sensor.data.len(), case.size.0 * case.size.1, "{file}");
+        assert_eq!((sensor.crop.x, sensor.crop.y, sensor.crop.width, sensor.crop.height), case.crop, "{file}");
+        let cfa = sensor.cfa.as_ref().unwrap_or_else(|| panic!("{file}: no CFA"));
+        assert_eq!(cfa.colors, case.cfa, "{file}");
+        assert_eq!(sensor.black.values, case.black, "{file}");
+        assert_eq!(sensor.white, [case.white; 3], "{file}");
+        assert_eq!(sensor.camera_wb, Some([f64::from(case.wb_rb.0) / 256.0, 1.0, f64::from(case.wb_rb.1) / 256.0]), "{file}");
+
+        // Stream explicit little-endian bytes through the existing flate2 CRC without
+        // allocating a second full image or depending on the host's byte order.
+        let mut crc = flate2::Crc::new();
+        let mut buffer = [0u8; 8192];
+        for samples in sensor.data.chunks(buffer.len() / 2) {
+            for (sample, dest) in samples.iter().zip(buffer.chunks_exact_mut(2)) {
+                dest.copy_from_slice(&sample.to_le_bytes());
+            }
+            crc.update(&buffer[..samples.len() * 2]);
+        }
+        assert_eq!(crc.sum(), case.crc32, "{file}: full sensor fingerprint");
+        assert!(photocraft_raw::embedded_preview(&bytes).is_some(), "{file}: camera JPEG preview");
+    }
 }

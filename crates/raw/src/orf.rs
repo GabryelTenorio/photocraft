@@ -1,5 +1,5 @@
-//! Olympus ORF with uncompressed sensor data (older Four Thirds bodies such as
-//! the E-1 and E-400, and padded 12-bit storage on the E-300 / E-500 / E-330).
+//! Olympus/OM System ORF/ORI sensor data: packed, uncompressed and measured
+//! 12/14-bit predictive storage, including high-resolution captures.
 //!
 //! The container is TIFF with an `IIRO` / `IIRS` / `MMOR` header; the sensor
 //! data is IFD0's strips, either 16-bit samples whose top ValidBits bits are
@@ -13,7 +13,8 @@
 //! WB_RBLevels (0x0100), WB_GLevel (0x011F), BlackLevel2 (0x0600), ValidBits
 //! (0x0611) and CropLeft / CropTop / CropWidth / CropHeight (0x0612–0x0615).
 //!
-//! Olympus' own compressed sensor data is not decoded.
+//! Measured 12/14-bit compressed ORF/ORI streams are decoded by `orf_compressed`;
+//! their framing, prediction and measurement sources are in `docs/orf-compression.md`.
 
 use crate::error::{RawError, Result};
 use crate::sensor::{BlackLevels, JpegLayout, Plane, Rect, Sensor, read_plane};
@@ -33,7 +34,8 @@ const CROP: [u16; 4] = [0x0612, 0x0613, 0x0614, 0x0615];
 
 /// The Olympus maker note, the TIFF view its offsets are relative to and that
 /// view's absolute position in the file. New-style notes (`OLYMPUS\0` + byte
-/// order) are relative to the note; old-style ones (`OLYMP\0`) to the file.
+/// order, or `OM SYSTEM\0\0\0` + byte order) are relative to the note; old-style
+/// ones (`OLYMP\0`) to the file.
 fn maker_note<'a>(t: &Tiff<'a>, ifds: &[Ifd]) -> Option<(Tiff<'a>, Ifd, usize)> {
     let e = ifds.iter().find_map(|i| i.get(tag::MAKER_NOTE).copied())?;
     let head = t.bytes(e.at, 12)?;
@@ -45,6 +47,18 @@ fn maker_note<'a>(t: &Tiff<'a>, ifds: &[Ifd]) -> Option<(Tiff<'a>, Ifd, usize)> 
         };
         let inner = Tiff { data: t.data.get(e.at..)?, le, first_ifd: 12 };
         let ifd = inner.ifd_at(12, 0)?;
+        (inner, ifd, e.at)
+    } else if head == b"OM SYSTEM\0\0\0" {
+        // Observed on OM-1, OM-1 Mark II, OM-3 and OM-5 CC0 originals: the
+        // longer name moves the byte order to 12 and the first IFD to 16.
+        let head = t.bytes(e.at, 16)?;
+        let le = match head.get(12..14)? {
+            b"II" => true,
+            b"MM" => false,
+            _ => return None,
+        };
+        let inner = Tiff { data: t.data.get(e.at..)?, le, first_ifd: 16 };
+        let ifd = inner.ifd_at(16, 0)?;
         (inner, ifd, e.at)
     } else if head.starts_with(b"OLYMP\0") {
         (*t, t.ifd_at(e.at.checked_add(8)?, 0)?, 0)
@@ -87,23 +101,39 @@ pub(crate) fn decode(t: &Tiff, limits: &Limits) -> Result<Sensor> {
         return Err(RawError::malformed("ORF IFD0 has no readable strip byte counts"));
     }
     let stored: u64 = counts.iter().map(|&c| u64::from(c)).sum();
+    let ip = maker_subifd(t, &ifds, IMAGE_PROCESSING);
+    let valid_bits = ip.as_ref().and_then(|(view, note, _)| view.tag_uint(note, VALID_BITS));
     if t.tag_uint(&raw, tag::COMPRESSION).unwrap_or(1) != 1 {
-        return Err(RawError::unsupported("Olympus compressed (or packed) ORF is not decoded"));
+        return Err(RawError::unsupported("ORF TIFF compression tag is not supported"));
     }
     let padded_len = (width / 10).checked_mul(height).and_then(|blocks| blocks.checked_mul(16));
     let packed_len = width.checked_mul(height).and_then(|pixels| pixels.checked_mul(3)).map(|bytes| bytes / 2);
     let two_field = t.le && width > 0 && width.is_multiple_of(2) && counts.len() > 1 && packed_len == Some(stored);
-    let plane = if t.le && width > 0 && width.is_multiple_of(10) && counts.len() == 1 && padded_len == Some(stored) {
+    let offsets = t.tag_uints(&raw, tag::STRIP_OFFSETS);
+    let header = offsets.first().and_then(|&at| t.bytes(at as usize, 7));
+    let compressed_header = header.is_some_and(|h| h == [0, 0, 0, 0, 1, 0, 0] || h == [0, 0, 0, 0, 0, 1, 0]);
+    // Compressed byte lengths can coincide with any fixed-size layout. Require
+    // a complete valid stream before preferring it; uncompressed first samples
+    // can also resemble a compressed header and must retain their old route.
+    let compressed = compressed_header.then(|| read_compressed(t, &raw, limits, width, height, &counts, valid_bits));
+    let plane = if let Some(Ok(plane)) = compressed {
+        plane
+    } else if t.le && width > 0 && width.is_multiple_of(10) && counts.len() == 1 && padded_len == Some(stored) {
         read_padded12(t, &raw, limits, width, height, stored)?
     } else if t.le && width > 0 && width.is_multiple_of(8) && counts.len() == 1 && packed_len == Some(stored) {
         read_word_packed12(t, &raw, limits, width, height, stored)?
     } else if two_field {
         read_two_field12(t, &raw, limits, width, height, &counts)?
     } else {
-        if stored < width.saturating_mul(height).saturating_mul(2) {
-            return Err(RawError::unsupported("Olympus compressed (or packed) ORF is not decoded"));
+        let unpacked_len = width.saturating_mul(height).saturating_mul(2);
+        if stored < unpacked_len || (stored != unpacked_len && compressed_header) {
+            match compressed {
+                Some(Err(error)) => return Err(error),
+                _ => read_compressed(t, &raw, limits, width, height, &counts, valid_bits)?,
+            }
+        } else {
+            read_plane(t, &raw, limits, JpegLayout::Flat)?
         }
-        read_plane(t, &raw, limits, JpegLayout::Flat)?
     };
     if plane.samples != 1 {
         return Err(RawError::unsupported(format!("ORF with {} samples per pixel", plane.samples)));
@@ -114,11 +144,14 @@ pub(crate) fn decode(t: &Tiff, limits: &Limits) -> Result<Sensor> {
     }
     let full = Rect::new(0, 0, plane.width, plane.height);
     let mut warnings = Vec::new();
-    let ip = maker_subifd(t, &ifds, IMAGE_PROCESSING);
     let floats = |tg: u16| ip.as_ref().map(|(v, i, _)| v.tag_floats(i, tg)).unwrap_or_default();
 
+    // BlackLevel2 remains in 12-bit units in the measured 14-bit high-res
+    // files. Paired ORF/ORI captures verify fourfold sensor values, while the
+    // recorded black levels remain unchanged (see docs/orf-compression.md).
+    let black_scale = if plane.bits == 14 { 4.0 } else { 1.0 };
     let black = match rggb_by_position(&cfa, &floats(BLACK_LEVEL_2)) {
-        Some(v) => BlackLevels { rows: 2, cols: 2, values: v.to_vec(), delta_h: Vec::new(), delta_v: Vec::new() },
+        Some(v) => BlackLevels { rows: 2, cols: 2, values: v.map(|b| b * black_scale).to_vec(), delta_h: Vec::new(), delta_v: Vec::new() },
         None => {
             warnings.push("ORF: black level not recorded; assumed 0".to_string());
             BlackLevels::uniform(0.0)
@@ -180,6 +213,27 @@ pub(crate) fn decode(t: &Tiff, limits: &Limits) -> Result<Sensor> {
         tone_curve: Vec::new(),
         warnings,
     })
+}
+
+/// The measured compressed profile has one unsigned 16-bit-declared TIFF strip;
+/// the maker note supplies the actual 12/14-bit precision. A complete valid
+/// stream distinguishes compression from ambiguous fixed-length storage.
+fn read_compressed(t: &Tiff, raw: &Ifd, limits: &Limits, width: u64, height: u64, counts: &[u32], valid_bits: Option<u32>) -> Result<Plane> {
+    let offsets = t.tag_uints(raw, tag::STRIP_OFFSETS);
+    let ([offset], [count], Some(bits @ (12 | 14))) = (offsets.as_slice(), counts, valid_bits) else {
+        return Err(RawError::unsupported("ORF compressed profile requires one strip and recorded 12/14-bit precision"));
+    };
+    if !t.le
+        || t.tag_uint(raw, tag::BITS_PER_SAMPLE) != Some(16)
+        || t.tag_uint(raw, tag::SAMPLES_PER_PIXEL).unwrap_or(1) != 1
+        || t.tag_uint(raw, tag::SAMPLE_FORMAT).unwrap_or(1) != 1
+    {
+        return Err(RawError::unsupported("ORF compressed profile requires unsigned single-sample little-endian TIFF"));
+    }
+    limits.check(width, height, 2)?;
+    let bytes = t.bytes(*offset as usize, *count as usize).ok_or_else(|| RawError::malformed("ORF compressed strip truncated"))?;
+    let data = crate::orf_compressed::decode(bytes, width as usize, height as usize, bits as u8)?;
+    Ok(Plane { width: width as usize, height: height as usize, samples: 1, bits, data })
 }
 
 /// A single strip of ten 12-bit samples per 16-byte block. This is a storage
@@ -313,4 +367,75 @@ fn read_word_packed12(t: &Tiff, raw: &Ifd, limits: &Limits, width: u64, height: 
         buffer &= (1u64 << bits) - 1;
     }
     Ok(Plane { width: width as usize, height: height as usize, samples: 1, bits: 12, data })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tiff::Entry;
+
+    /// A note at a nonzero file offset with relative IFD and out-of-line values.
+    fn om_note(le: bool) -> (Vec<u8>, Vec<Ifd>) {
+        let mut note = b"OM SYSTEM\0\0\0".to_vec();
+        note.extend_from_slice(if le { b"II" } else { b"MM" });
+        let short = |v: u16| if le { v.to_le_bytes() } else { v.to_be_bytes() };
+        let long = |v: u32| if le { v.to_le_bytes() } else { v.to_be_bytes() };
+        note.extend(short(4));
+        note.extend(short(1));
+        note.extend(short(IMAGE_PROCESSING));
+        note.extend(short(13));
+        note.extend(long(1));
+        note.extend(long(34));
+        note.extend(long(0));
+        assert_eq!(note.len(), 34);
+        note.extend(short(2));
+        note.extend(short(VALID_BITS));
+        note.extend(short(3));
+        note.extend(long(2));
+        note.extend(short(14));
+        note.extend(short(0));
+        note.extend(short(BLACK_LEVEL_2));
+        note.extend(short(3));
+        note.extend(long(4));
+        note.extend(long(64));
+        note.extend(long(0));
+        assert_eq!(note.len(), 64);
+        for value in [254, 254, 255, 255] {
+            note.extend(short(value));
+        }
+        let mut bytes = vec![0; 32];
+        bytes.extend_from_slice(&note);
+        let ifds = vec![Ifd { offset: 0, entries: vec![Entry { tag: tag::MAKER_NOTE, typ: 7, count: note.len() as u32, at: 32 }] }];
+        (bytes, ifds)
+    }
+
+    #[test]
+    fn om_system_maker_note_uses_its_byte_order_and_relative_offsets() {
+        for le in [true, false] {
+            let (bytes, ifds) = om_note(le);
+            let t = Tiff { data: &bytes, le: !le, first_ifd: 0 };
+            let (view, ip, base) = maker_subifd(&t, &ifds, IMAGE_PROCESSING).expect("OM SYSTEM ImageProcessing");
+            assert_eq!(base, 32);
+            assert_eq!(view.le, le);
+            assert_eq!(view.tag_uints(&ip, VALID_BITS), [14, 0]);
+            assert_eq!(view.tag_uints(&ip, BLACK_LEVEL_2), [254, 254, 255, 255]);
+        }
+    }
+
+    #[test]
+    fn malformed_om_system_maker_note_is_unavailable() {
+        let (bytes, ifds) = om_note(true);
+        for end in 0..48 {
+            let t = Tiff { data: &bytes[..end], le: true, first_ifd: 0 };
+            assert!(maker_note(&t, &ifds).is_none(), "truncated at {end}");
+        }
+        let mut invalid_order = bytes.clone();
+        invalid_order[44..46].copy_from_slice(b"??");
+        let t = Tiff { data: &invalid_order, le: true, first_ifd: 0 };
+        assert!(maker_note(&t, &ifds).is_none());
+        let mut invalid_subifd = bytes;
+        invalid_subifd[58..62].copy_from_slice(&u32::MAX.to_le_bytes());
+        let t = Tiff { data: &invalid_subifd, le: true, first_ifd: 0 };
+        assert!(maker_subifd(&t, &ifds, IMAGE_PROCESSING).is_none());
+    }
 }

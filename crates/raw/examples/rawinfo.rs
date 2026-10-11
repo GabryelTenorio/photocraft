@@ -6,6 +6,8 @@
 //!
 //! `--ppm` writes the developed image (ProPhoto, gamma 1.8, 16-bit) as a binary PPM;
 //! `--png` writes an sRGB 8-bit preview at most 1600 pixels wide (for eyeballing).
+//! `--sensor-u16le FILE` writes the full stored sensor array as little-endian
+//! unsigned 16-bit samples, before cropping/development, and skips development.
 
 use std::time::Instant;
 
@@ -16,6 +18,7 @@ fn main() {
     let mut dump = false;
     let mut ppm: Option<String> = None;
     let mut png: Option<String> = None;
+    let mut sensor_out: Option<String> = None;
     let mut opts = DevelopOptions::default();
     let mut files = Vec::new();
     while let Some(a) = args.next() {
@@ -23,6 +26,7 @@ fn main() {
             "--dump" => dump = true,
             "--ppm" => ppm = args.next(),
             "--png" => png = args.next(),
+            "--sensor-u16le" => sensor_out = args.next(),
             "--demosaic" => opts.demosaic = args.next().and_then(|s| Demosaic::from_id(&s)).unwrap_or_default(),
             "--write-synthetic" => {
                 // `--write-synthetic DIR`: write 24 MP synthetic DNG (uncompressed, LJ92 tiles) and CR2 files.
@@ -119,6 +123,12 @@ fn main() {
             sensor.orientation,
             sensor.baseline_exposure
         );
+        if let Some(path) = &sensor_out {
+            if let Err(error) = write_sensor(path, &sensor.data) {
+                eprintln!("{path}: {error}");
+            }
+            continue;
+        }
         let dev = match develop_sensor(&sensor, &opts) {
             Ok(d) => d,
             Err(e) => {
@@ -157,6 +167,19 @@ fn main() {
             }
         }
     }
+}
+
+fn write_sensor(path: &str, samples: &[u16]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut output = std::io::BufWriter::new(std::fs::File::create(path)?);
+    let mut buffer = [0u8; 8192];
+    for chunk in samples.chunks(buffer.len() / 2) {
+        for (sample, dest) in chunk.iter().zip(buffer.chunks_exact_mut(2)) {
+            dest.copy_from_slice(&sample.to_le_bytes());
+        }
+        output.write_all(&buffer[..chunk.len() * 2])?;
+    }
+    output.flush()
 }
 
 fn synthetic(w: usize, h: usize, opts: &DevelopOptions) {

@@ -240,7 +240,7 @@ pub const ALL: &[&PinnedCorpus] = &[&PSD_MIXED, &PSD_TOOLS, &PHOTOSHOP, &HEIF, &
 
 /// `corpus/pixls`: real camera raws from <https://raw.pixls.us> (released into the public
 /// domain / CC0 by their photographers; see ATTRIBUTION.md). Representative supported decode
-/// paths, plus the compressed-ORF known-unsupported oracle. Fetched as single
+/// paths, including uncompressed and compressed Olympus/OM System ORF and ORI. Fetched as single
 /// files (the server 301-redirects `/data/` to `/download/`), verified against
 /// `xtask/pixls.sha256`.
 pub const PIXLS_BASE: &str = "https://raw.pixls.us/";
@@ -271,4 +271,8 @@ pub const PIXLS_FILES: &[(&str, &str)] = &[
     ("data/Olympus/XZ-2/p7166537.orf", "p7166537.orf"),
     ("data/Olympus/XZ-10/P1240016.ORF", "P1240016.ORF"),
     ("data/Olympus/SH-2/PC260009.ORF", "PC260009.ORF"),
+    ("data/Olympus/E-M1/sc000877.orf", "sc000877.orf"),
+    ("data/Olympus/E-M5%20Mark%20II/CB252215.ORI", "CB252215.ORI"),
+    ("data/OM%20System/OM-1/OM_Systems_OM1_RAW_Image_20mpx_P1010025.ORF", "OM_Systems_OM1_RAW_Image_20mpx_P1010025.ORF"),
+    ("data/OM%20System/OM-1%20Mark%20II/50mp-14bit-handheld.orf", "50mp-14bit-handheld.orf"),
 ];

@@ -183,7 +183,8 @@ jobs:
       - name: Fetch and verify corpora
         run: cargo xtask corpus --all
       - name: Corpus tests
-        run: cargo xtask test-corpus
+        # RAW fixtures are opt-in: this also fetches/verifies corpus/pixls and enables raw/corpus.
+        run: cargo xtask test-corpus --pixls
 
   wasm:
     name: wasm32 check
