@@ -527,11 +527,7 @@ impl Writer<'_> {
             // OpenRaster has only one opacity for groups. For ordinary isolated groups,
             // fold fill opacity into that attribute; groups have no pixel payload in which
             // to bake it as raster layers do (#3048).
-            if matches!(&layer.content, LayerContent::Group(_)) {
-                (layer.opacity * layer.fill_opacity).clamp(0.0, 1.0)
-            } else {
-                layer.opacity.clamp(0.0, 1.0)
-            }
+            if matches!(&layer.content, LayerContent::Group(_)) { (layer.opacity * layer.fill_opacity).clamp(0.0, 1.0) } else { layer.opacity.clamp(0.0, 1.0) }
         );
         let op = op_name(layer.blend).unwrap_or_else(|| {
             self.warnings.layer(&layer.name, &format!("the {} blend mode has no OpenRaster equivalent; it was saved as Normal", layer.blend.label()));
