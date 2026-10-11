@@ -36,6 +36,7 @@ mod camera_raw_scope_ui;
 pub mod camera_raw_ui;
 pub mod canvas;
 pub mod canvas_tool_menu;
+pub mod cas_transform;
 pub mod channel_view;
 pub mod channels_panel;
 pub mod chrome_ui;
