@@ -264,7 +264,7 @@ Never-crash attribute on 28 of 28 crate roots.
 | DIST-220-1 | Help > Check for Updates plus an opt-out periodic release-feed check on all desktops | missing | [#220](https://github.com/storytold/photocraft/issues/220) | No update check in crates |
 | DIST-220-2 | Windows ARM64 (aarch64-pc-windows-msvc) in the release matrix, signed like x64 | missing | [#220](https://github.com/storytold/photocraft/issues/220) | release.yml:113-114 only x86_64 and i686 msvc |
 | DIST-220-3 | In-app bug report with reviewable diagnostics that opens a prefilled issue | missing | [#220](https://github.com/storytold/photocraft/issues/220) | No bug report dialog in crates |
-| DIST-220-4 | Translation coverage per language reported by xtask; RTL layout for Arabic and Hebrew | partial | [#220](https://github.com/storytold/photocraft/issues/220) | `cargo xtask i18n-coverage` reports per-language coverage (#427); no RTL layout yet |
+| DIST-220-4 | Translation coverage per language reported by xtask; RTL layout for Arabic and Hebrew | partial | [#220](https://github.com/storytold/photocraft/issues/220) | `cargo xtask i18n-coverage` reports per-language coverage (#427); RTL languages mirror the shell (`direction.rs`), not yet panel interiors or dialogs |
 | DIST-220-5 | Linux AppImage x86_64 + aarch64 ship; Flatpak kept; Flathub later (#173) | partial | [#220](https://github.com/storytold/photocraft/issues/220) | AppImage and Flatpak ship (release.yml:162-216); Flathub not done |
 
 ## Open bugs
