@@ -389,6 +389,8 @@ fn tile_coordinates_outside_the_i32_pixel_range_are_rejected() {
 }
 
 /// A canvas is a few bytes of manifest JSON; one past the budget is refused before any work (#2935).
+/// The default budget is the largest canvas the app creates (300000 × 300000, as `file.new`,
+/// Canvas Size and PSB import allow), so everything a user can save reopens.
 #[test]
 fn declared_canvas_outside_the_budget_is_refused() {
     let with_size = |w: u64, h: u64| {
@@ -401,14 +403,22 @@ fn declared_canvas_outside_the_budget_is_refused() {
             Some(serde_json::to_vec(&manifest).unwrap())
         })
     };
-    for (w, h) in [(300_000, 300_000), (300_001, 1), (1, 300_001), (65_537, 65_536)] {
+    for (w, h) in [(300_001, 1), (1, 300_001), (300_001, 300_001), (u64::from(u32::MAX), u64::from(u32::MAX))] {
         let r = load_from_bytes(&with_size(w, h)).map(|d| d.size);
         assert!(matches!(r, Err(FormatError::LimitExceeded(_))), "{w}x{h}: {r:?}");
     }
     assert!(load_from_bytes(&with_size(0, 64)).is_err());
-    // The largest admitted canvas still loads, and a caller may lower the budget.
-    let edge = with_size(65_536, 65_536);
-    assert_eq!(load_from_bytes(&edge).unwrap().size, photocraft_geom::Size::new(65_536, 65_536));
+    // The largest creatable canvas loads, without allocating anything for its area: the layers
+    // keep only the tiles the bundle holds.
+    let edge = with_size(300_000, 300_000);
+    let small = load_from_bytes(&sample()).unwrap();
+    let big = load_from_bytes(&edge).unwrap();
+    assert_eq!(big.size, photocraft_geom::Size::new(300_000, 300_000));
+    let tiles = |d: &photocraft_doc::Document| d.layers.iter().filter_map(|l| l.surface()).map(|s| s.tile_count()).sum::<usize>();
+    assert_eq!(tiles(&big), tiles(&small));
+    // A caller may lower the budget.
     let opts = LoadOptions { max_canvas_pixels: 1 << 20, ..Default::default() };
     assert!(matches!(load_from_bytes_with(&edge, &opts), Err(FormatError::LimitExceeded(_))));
+    let opts = LoadOptions { max_canvas_side: 65_536, ..Default::default() };
+    assert!(matches!(load_from_bytes_with(&with_size(65_537, 1), &opts), Err(FormatError::LimitExceeded(_))));
 }
