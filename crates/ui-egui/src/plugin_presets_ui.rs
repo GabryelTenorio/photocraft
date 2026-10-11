@@ -251,4 +251,33 @@ mod tests {
         open_fields(&bare, m.manifest(), &mut f);
         assert!(!owns(&f), "no store, no Presets row ({id})");
     }
+
+    #[test]
+    fn plugin_preset_applies_params_on_every_tab() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let m = Manifest::parse(
+            br##"{"id":"org.example.tabs","name":"T","kind":"filter","params":{
+                "effect":{"type":"choice","options":["a","b"]},
+                "amount":{"type":"number","min":0,"max":100,"default":50,"group":"Bolt"},
+                "glow":{"type":"number","min":0,"max":1,"default":0.5,"group":"Glow"},
+                "inner":{"type":"color","default":"#ffffff","group":"Colour"}}}"##,
+        )
+        .unwrap();
+        let mut stored = Presets::new();
+        stored.insert("All".into(), json!({"effect": "b", "amount": 10, "glow": 0.25, "inner": "#ff8800"}).as_object().unwrap().clone());
+        *STORE.lock().unwrap() = Some(stored);
+        let mut app = app_with_store();
+        let mut f = Map::new();
+        f.insert("id".into(), json!(m.id));
+        f.insert("__tab".into(), json!("Glow"));
+        open_fields(&app, &m, &mut f);
+        assert!(apply(&m, &mut f, "All"));
+        assert_eq!((&f["effect"], &f["amount"], &f["glow"], &f["inner"]), (&json!("b"), &json!(10.0), &json!(0.25), &json!("#ff8800")));
+        assert_eq!(f["__tab"], json!("Glow"), "applying a preset keeps the tab");
+        // Saving stores every param, whichever tab it is on.
+        f.insert("amount".into(), json!(20.0));
+        save_as(&mut app, &m, &mut f, "Mine").unwrap();
+        let s = STORE.lock().unwrap().clone().unwrap();
+        assert_eq!(Value::Object(s["Mine"].clone()), json!({"effect": "b", "amount": 20.0, "glow": 0.25, "inner": "#ff8800"}));
+    }
 }

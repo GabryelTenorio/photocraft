@@ -138,6 +138,12 @@ exports. All integers are `i32` unless noted; pointers are offsets into the modu
   Types: `number`, `int`, `bool`, `choice`, `point` and `color` (below).
   The host validates the user's values before calling: missing values take the default, numbers are
   clamped to `min..max` (ints rounded), a wrong type or an unknown choice is an error.
+- `group` (optional, any parameter type): the dialog tab the parameter sits on, 1–32 printable
+  characters (the same rules as `name`). The dialog shows parameters without a `group` first,
+  always visible, then one tab per group in the order each first appears; only the selected tab's
+  parameters are shown (the first tab at first). Groups change only the layout: presets and the
+  values the plug-in receives are the same.
+  `"start": {"type": "point", "default": [12, 12], "group": "Bolt"}`
 - `overlap` (0–256): pixels of context the filter needs around each output pixel (a blur radius).
   The host pads each band by `overlap` on every side, repeating the edge pixels of the canvas (or of
   off-canvas layer content), and keeps only the inner rectangle of the result.

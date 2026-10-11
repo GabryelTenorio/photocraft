@@ -544,7 +544,31 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     if crate::select_mask_view::owns(f) {
         crate::select_mask_view::controls(ui, f);
     }
-    for p in parse_spec(&spec) {
+    // Plug-in params with a `group`: ungrouped ones first, always visible, then a row of tabs and
+    // only the selected tab's params.
+    let (tabs, group_of) = tabs_of(f);
+    let mut params = parse_spec(&spec);
+    params.sort_by_key(|p| group_of.contains_key(&p.key));
+    let mut selected = selected_tab(f, &tabs);
+    let mut tab_row = !tabs.is_empty();
+    for p in params {
+        if let Some(group) = group_of.get(&p.key) {
+            if std::mem::take(&mut tab_row) {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for name in &tabs {
+                        if crate::widgets::pill_tab(ui, name, *name == selected).clicked() {
+                            selected.clone_from(name);
+                        }
+                    }
+                });
+                f.insert(TAB.into(), json!(selected));
+                ui.add_space(6.0);
+            }
+            if *group != selected {
+                continue;
+            }
+        }
         match p.kind {
             Kind::Range { min, max, default } => {
                 let mut v = f.get(&p.key).and_then(Value::as_f64).unwrap_or(default as f64) as f32;
@@ -739,6 +763,26 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
         crate::widgets::checkbox(ui, &mut preview, tl!("Preview"));
         f.insert("__preview".into(), json!(preview));
     }
+}
+
+/// The selected tab of a plug-in dialog with grouped params.
+const TAB: &str = "__tab";
+
+/// A plug-in dialog's tabs (`__tabs`, in order) and each grouped param's tab (`__groupOf`).
+fn tabs_of(f: &Map<String, Value>) -> (Vec<String>, std::collections::HashMap<String, String>) {
+    let tabs = f.get("__tabs").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let group_of = f
+        .get("__groupOf")
+        .and_then(Value::as_object)
+        .map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|g| (k.clone(), g.to_string()))).collect())
+        .unwrap_or_default();
+    (tabs, group_of)
+}
+
+/// The dialog's selected tab: `__tab` when it names one of `tabs`, else the first.
+fn selected_tab(f: &Map<String, Value>, tabs: &[String]) -> String {
+    let chosen = f.get(TAB).and_then(Value::as_str).filter(|t| tabs.iter().any(|n| n == t));
+    chosen.or(tabs.first().map(String::as_str)).unwrap_or_default().to_string()
 }
 
 /// User-facing params (strip the dialog's private `__` keys).
@@ -1930,5 +1974,45 @@ mod tests {
         assert_eq!(params["outer"], json!("#5a8cff"));
         let resolved = m.resolve_params(&params).unwrap();
         assert_eq!((&resolved["inner"], &resolved["outer"]), (&json!("#ff8800"), &json!("#5a8cff")));
+    }
+
+    #[test]
+    fn plugin_tabs_default_to_the_first_and_keep_every_tabs_values() {
+        let m = photocraft_plugins::Manifest::parse(
+            br##"{"id":"org.example.bolt","name":"Bolt","kind":"filter","params":{
+                "effect":{"type":"choice","options":["a","b"]},
+                "glow":{"type":"number","min":0,"max":1,"default":0.5,"group":"Glow"},
+                "start":{"type":"point","default":[12,12],"group":"Bolt"},
+                "inner":{"type":"color","default":"#ffffff","group":"Colour"}}}"##,
+        )
+        .unwrap();
+        let mut fixed = Map::new();
+        fixed.insert("id".into(), json!("org.example.bolt"));
+        fixed.insert("__tabs".into(), json!(m.tabs()));
+        fixed.insert("__groupOf".into(), json!({"glow": "Glow", "start": "Bolt", "inner": "Colour"}));
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        open_with_spec(&mut app, "plugin.run", "Bolt", &m.params_notation(), fixed);
+        let fields = &mut app.ui.dialogs.last_mut().unwrap().fields;
+        let (tabs, group_of) = tabs_of(fields);
+        assert_eq!(tabs, ["Glow", "Bolt", "Colour"]);
+        assert_eq!(group_of.get("effect"), None, "ungrouped: always visible");
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        ctx.run_ui(Default::default(), |ui| body(ui, fields)).textures_delta.clear();
+        assert_eq!(fields[TAB], json!("Glow"), "the first tab is selected");
+        // Another tab: the hidden tabs' values still reach the plug-in (and the live preview).
+        fields.insert(TAB.into(), json!("Colour"));
+        fields.insert("start".into(), json!([40.0, 60.0]));
+        ctx.run_ui(Default::default(), |ui| body(ui, fields)).textures_delta.clear();
+        assert_eq!(fields[TAB], json!("Colour"));
+        let params = params_of(fields);
+        assert_eq!(
+            (&params["effect"], &params["glow"], &params["start"], &params["inner"]),
+            (&json!("a"), &json!(0.5), &json!([40.0, 60.0]), &json!("#ffffff"))
+        );
+        assert!(params.get("__tab").is_none() && params.get("__tabs").is_none());
+        // A stale or unknown tab falls back to the first.
+        fields.insert(TAB.into(), json!("Gone"));
+        assert_eq!(selected_tab(fields, &tabs), "Glow");
     }
 }

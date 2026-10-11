@@ -13,6 +13,8 @@ pub const MAX_PARAMS: usize = 64;
 pub const POINT_RANGE: (f64, f64) = (0.0, 100.0);
 /// Largest neighbourhood (`overlap`) a plug-in may ask for, in pixels.
 pub const MAX_OVERLAP: u32 = 256;
+/// Longest parameter `group` (a dialog tab label), in characters.
+pub const MAX_GROUP_CHARS: usize = 32;
 
 /// What a plug-in is. ABI v1 has filters only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,6 +101,10 @@ pub struct Manifest {
     /// Optional dotted guide line the dialog draws on the canvas between two `point` params.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guide: Option<Guide>,
+    /// Each parameter's optional `"group"` (the dialog tab it sits on), in `params` order; `None`
+    /// keeps the parameter above the tabs, always visible. Read by [`Manifest::parse`].
+    #[serde(skip)]
+    pub groups: Vec<Option<String>>,
 }
 
 /// A dotted line between two `point` parameters (`"guide": {"from": "start", "to": "end"}`).
@@ -128,7 +134,9 @@ impl Manifest {
             return Err(Error::Manifest(format!("manifest is {} bytes (limit {MAX_MANIFEST_BYTES})", bytes.len())));
         }
         let text = std::str::from_utf8(bytes).map_err(|_| Error::Manifest("manifest is not UTF-8".into()))?;
-        let man: Manifest = serde_json::from_str(text).map_err(|e| Error::Manifest(format!("manifest: {e}")))?;
+        let mut man: Manifest = serde_json::from_str(text).map_err(|e| Error::Manifest(format!("manifest: {e}")))?;
+        let groups: ParamGroups = serde_json::from_str(text).map_err(|e| Error::Manifest(format!("manifest: {e}")))?;
+        man.groups = groups.params.into_iter().map(|g| g.map(|g| g.trim().to_string())).collect();
         man.validate()?;
         Ok(man)
     }
@@ -137,9 +145,7 @@ impl Manifest {
         if !valid_id(&self.id) {
             return Err(Error::Manifest(format!("invalid id {:?}: use 1-64 characters from A-Z a-z 0-9 . _ -", self.id)));
         }
-        let name = self.name.trim();
-        let printable = name.chars().all(|c| !c.is_control() && !hidden_format(c)) && name.chars().any(visible);
-        if !printable || name.chars().count() > 64 {
+        if !printable(self.name.trim(), 64) {
             return Err(Error::Manifest("`name` must be 1-64 printable characters".into()));
         }
         if self.version.len() > 32 || self.description.len() > 1024 || self.author.len() > 128 {
@@ -151,6 +157,11 @@ impl Manifest {
         for (k, spec) in &self.params {
             if !valid_key(k) {
                 return Err(Error::Manifest(format!("invalid parameter name {k:?}")));
+            }
+            if let Some(g) = self.group(k)
+                && !printable(g, MAX_GROUP_CHARS)
+            {
+                return Err(Error::Manifest(format!("parameter `{k}`: `group` must be 1-{MAX_GROUP_CHARS} printable characters")));
             }
             match spec {
                 ParamSpec::Number { min, max, default } => {
@@ -186,6 +197,28 @@ impl Manifest {
             }
         }
         Ok(())
+    }
+
+    /// The `group` of parameter `key`, if it has one.
+    pub fn group(&self, key: &str) -> Option<&str> {
+        let i = self.params.iter().position(|(k, _)| k == key)?;
+        self.groups.get(i)?.as_deref()
+    }
+
+    /// The dialog's tabs: each distinct `group`, in the order it first appears in `params`.
+    pub fn tabs(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for g in self.groups.iter().flatten() {
+            if !out.contains(&g.as_str()) {
+                out.push(g);
+            }
+        }
+        out
+    }
+
+    /// Parameters without a `group`: shown above the tabs, always visible.
+    pub fn always_visible(&self) -> Vec<&str> {
+        self.params.iter().map(|(k, _)| k.as_str()).filter(|k| self.group(k).is_none()).collect()
     }
 
     /// The parameter notation the command registry and the generated dialogs use
@@ -300,6 +333,39 @@ fn ordered_params<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result
     d.deserialize_any(V)
 }
 
+/// The `group` of each parameter, in manifest order (a second, lenient read of the manifest).
+#[derive(Deserialize)]
+struct ParamGroups {
+    #[serde(default, deserialize_with = "ordered_groups")]
+    params: Vec<Option<String>>,
+}
+
+fn ordered_groups<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<Option<String>>, D::Error> {
+    #[derive(Deserialize)]
+    struct Entry {
+        #[serde(default)]
+        group: Option<String>,
+    }
+    struct V;
+    impl<'de> serde::de::Visitor<'de> for V {
+        type Value = Vec<Option<String>>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an object of parameter specs")
+        }
+        fn visit_unit<E: serde::de::Error>(self) -> std::result::Result<Self::Value, E> {
+            Ok(Vec::new())
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> std::result::Result<Self::Value, A::Error> {
+            let mut out = Vec::new();
+            while let Some((_, e)) = map.next_entry::<String, Entry>()? {
+                out.push(e.group);
+            }
+            Ok(out)
+        }
+    }
+    d.deserialize_any(V)
+}
+
 fn params_as_object<S: serde::Serializer>(p: &[(String, ParamSpec)], s: S) -> std::result::Result<S::Ok, S::Error> {
     use serde::ser::SerializeMap;
     let mut m = s.serialize_map(Some(p.len()))?;
@@ -363,6 +429,12 @@ fn in_ranges(c: char, ranges: &[(char, char)]) -> bool {
 /// cannot reorder text.
 pub(crate) fn hidden_format(c: char) -> bool {
     !matches!(c, '\u{200C}' | '\u{200D}') && in_ranges(c, FORMAT)
+}
+
+/// 1-`max` characters, none of them control or hidden format characters, at least one visible
+/// (the menu label's rules; `s` is already trimmed).
+fn printable(s: &str, max: usize) -> bool {
+    s.chars().all(|c| !c.is_control() && !hidden_format(c)) && s.chars().any(visible) && s.chars().count() <= max
 }
 
 /// A character that draws something on its own.
@@ -591,5 +663,61 @@ mod tests {
         // The documented limit counts characters, not bytes.
         assert!(with_name(&"é".repeat(64)).is_ok());
         assert!(with_name(&"é".repeat(65)).is_err());
+    }
+
+    fn with_group(group: Value) -> Result<Manifest> {
+        let params = json!({"amount": {"type": "number", "min": 0, "max": 1, "default": 0.5, "group": group}});
+        Manifest::parse(json!({"id": "org.example.tone", "name": "Tone", "kind": "filter", "params": params}).to_string().as_bytes())
+    }
+
+    #[test]
+    fn param_groups_follow_the_menu_label_rules() {
+        assert_eq!(with_group(json!("Glow")).unwrap().group("amount"), Some("Glow"));
+        assert_eq!(with_group(json!("  Glow ")).unwrap().group("amount"), Some("Glow"), "trimmed like the name");
+        assert_eq!(with_group(json!("色调 ±")).unwrap().group("amount"), Some("色调 ±"));
+        assert!(with_group(json!("é".repeat(MAX_GROUP_CHARS))).is_ok());
+        assert!(with_group(Value::Null).unwrap().group("amount").is_none(), "null is no group");
+        for bad in [
+            json!(""),
+            json!("   "),
+            json!("é".repeat(MAX_GROUP_CHARS + 1)),
+            json!("Glow\u{7}"),
+            json!("Glow\n2"),
+            json!("Gl\tow"),
+            json!("\u{202E}Glow"),
+            json!("\u{200B}"),
+        ] {
+            let e = with_group(bad.clone()).unwrap_err().to_string();
+            assert!(e.contains("amount") && e.contains("group"), "{bad}: {e}");
+        }
+        for bad in [json!(3), json!(true), json!(["Glow"]), json!({"name": "Glow"})] {
+            assert!(with_group(bad.clone()).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn tabs_follow_first_appearance_and_ungrouped_params_stay_visible() {
+        let m = Manifest::parse(
+            br##"{"id":"org.example.bolt","name":"Bolt","kind":"filter","params":{
+                "effect":{"type":"choice","options":["a","b"]},
+                "glow":{"type":"number","min":0,"max":1,"default":0.5,"group":"Glow"},
+                "start":{"type":"point","default":[12,12],"group":"Bolt"},
+                "seed":{"type":"int","min":0,"max":9,"group":"Bolt"},
+                "inner":{"type":"color","default":"#ffffff","group":"Colour"},
+                "width":{"type":"number","min":0,"max":1,"default":0.5,"group":"Glow"},
+                "mono":{"type":"bool"}}}"##,
+        )
+        .unwrap();
+        assert_eq!(m.tabs(), ["Glow", "Bolt", "Colour"]);
+        assert_eq!(m.always_visible(), ["effect", "mono"]);
+        assert_eq!((m.group("width"), m.group("effect"), m.group("missing")), (Some("Glow"), None, None));
+        // Groups don't change the values or the notation.
+        assert_eq!(
+            m.params_notation(),
+            r##"{"effect":"a|b","glow":0..1=0.5,"start":point=[12,12],"seed":int=0,"inner":color=#ffffff,"width":0..1=0.5,"mono":bool=false}"##
+        );
+        let plain = Manifest::parse(FULL.as_bytes()).unwrap();
+        assert!(plain.tabs().is_empty());
+        assert_eq!(plain.always_visible(), ["amount", "mode", "mono", "seed"]);
     }
 }
