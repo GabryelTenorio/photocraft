@@ -3478,6 +3478,19 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
 /// it; with Preferences › Tools › Zoom Clicked Point to Center (`center_on_point`) it moves to the
 /// centre of the view instead (#204).
 fn zoom_about(view: &mut View, xf: &ViewXform, p: Pos2, new_zoom: f32, center_on_point: bool, ppp: f32) {
+    let [w, h] = view.doc_size;
+    let p = if w > 0 && h > 0 {
+        let d = xf.to_doc(p);
+        if d[0] >= 0.0 && d[0] <= w as f64 && d[1] >= 0.0 && d[1] <= h as f64 {
+            p
+        } else {
+            // Cursor is on the pasteboard: anchor to the viewport center so the
+            // canvas stays in view instead of drifting off into the void (#3720).
+            xf.rect.center()
+        }
+    } else {
+        p
+    };
     let before = xf.to_doc(p);
     view.zoom = new_zoom;
     if center_on_point {
@@ -6524,6 +6537,32 @@ mod tests {
             assert!((view.center[0] - doc[0] as f32).abs() < 0.5, "ppp {ppp}: {:?}", view.center);
             assert!((view.center[1] - doc[1] as f32).abs() < 0.5, "ppp {ppp}: {:?}", view.center);
         }
+    }
+
+    /// #3720: Zoom with pointer on pasteboard must anchor to viewport center.
+    #[test]
+    fn zoom_about_with_pointer_on_pasteboard_anchors_to_viewport_center() {
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0));
+        let xf = ViewXform { rect, zoom: 1.0, center: [200.0, 150.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let mut view = View { zoom: 1.0, center: [200.0, 150.0], doc_size: [400, 300], ..Default::default() };
+        // Pointer is at (750, 550), which is on the pasteboard outside the 400x300 doc centered in 800x600 viewport
+        let p_pasteboard = pos2(750.0, 550.0);
+        let d = xf.to_doc(p_pasteboard);
+        assert!(d[0] > 400.0 || d[1] > 300.0, "pointer must be on pasteboard: {d:?}");
+
+        // Zooming in with cursor on pasteboard keeps doc center in place:
+        zoom_about(&mut view, &xf, p_pasteboard, 2.0, false, 1.0);
+        assert_eq!(view.center, [200.0, 150.0], "view center stays at doc center");
+
+        // Pointer on the document zooms about the pointer:
+        let p_doc = pos2(420.0, 310.0);
+        let doc_pt = xf.to_doc(p_doc);
+        assert!(doc_pt[0] >= 0.0 && doc_pt[0] <= 400.0 && doc_pt[1] >= 0.0 && doc_pt[1] <= 300.0);
+        let mut view2 = View { zoom: 1.0, center: [200.0, 150.0], doc_size: [400, 300], ..Default::default() };
+        zoom_about(&mut view2, &xf, p_doc, 2.0, false, 1.0);
+        let after = ViewXform { rect, zoom: 2.0, center: view2.center, flip: false, rotation: 0.0, aspect: 1.0 };
+        let s = after.to_screen(doc_pt[0] as f32, doc_pt[1] as f32);
+        assert!((s - p_doc).length() < 0.5, "pointer on document stays under pointer: {s:?} vs {p_doc:?}");
     }
 
     #[test]
