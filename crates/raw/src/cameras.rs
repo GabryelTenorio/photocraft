@@ -95,6 +95,9 @@ const PROFILES: &[Profile] = &[Profile {
 ///   right and bottom), the same corner as the D4.
 /// * **ILCE-7** (2 files): 12 x 12 pixels in from the left and top of the
 ///   6048 x 4024 cRAW data (36 and 12 pixels of margin on the right and bottom).
+/// * **ILCE-6000** (3 files): the same 12 x 12 origin and 6000 x 4000 image;
+///   confirmed by the file's EXIF size and SR2SubIFD's area [12, 12, 6012, 4012],
+///   and checked against the matching camera JPEGs. No colour profile is inferred.
 struct ImageArea {
     make: &'static str,
     model: &'static str,
@@ -107,6 +110,7 @@ struct ImageArea {
 const IMAGE_AREAS: &[ImageArea] = &[
     ImageArea { make: "NIKON CORPORATION", model: "NIKON D800E", size: (7424, 4924), crop: (8, 6, 7360, 4912) },
     ImageArea { make: "SONY", model: "ILCE-7", size: (6048, 4024), crop: (12, 12, 6000, 4000) },
+    ImageArea { make: "SONY", model: "ILCE-6000", size: (6048, 4024), crop: (12, 12, 6000, 4000) },
 ];
 
 /// Applies the measured profile of the camera that made `s`, when there is one,
@@ -114,7 +118,7 @@ const IMAGE_AREAS: &[ImageArea] = &[
 pub(crate) fn apply(s: &mut Sensor) {
     let (Some(make), Some(model)) = (s.make.as_deref(), s.model.as_deref()) else { return };
     let (make, model) = (make.trim(), model.trim());
-    if let Some(a) = IMAGE_AREAS.iter().find(|a| a.make == make && a.model == model && a.size == (s.width, s.height)) {
+    if let Some(a) = IMAGE_AREAS.iter().find(|a| a.make == make && a.model == model && a.size == (s.width, s.height) && s.crop == s.active) {
         let (x, y, w, h) = a.crop;
         s.crop = Rect::new(x, y, w, h);
     }
@@ -195,6 +199,19 @@ mod tests {
         let mut s = sensor("SONY", "ILCE-7", 6048, 4024);
         apply(&mut s);
         assert_eq!(s.crop, Rect::new(12, 12, 6000, 4000));
+
+        let mut s = sensor("SONY", "ILCE-6000", 6048, 4024);
+        apply(&mut s);
+        assert_eq!(s.crop, Rect::new(12, 12, 6000, 4000));
+        assert!(s.color.calibrations.is_empty() && s.tone_curve.is_empty());
+        // A file's explicit crop wins, including a different in-camera aspect ratio.
+        s.crop = Rect::new(12, 324, 6000, 3376);
+        apply(&mut s);
+        assert_eq!(s.crop, Rect::new(12, 324, 6000, 3376));
+
+        let mut s = sensor("SONY", "ILCE-6000", 3024, 2012);
+        apply(&mut s);
+        assert_eq!(s.crop, Rect::new(0, 0, 3024, 2012));
 
         // Another size or model of the same maker is left alone.
         let mut s = nef("NIKON D800E", 2496, 1646);

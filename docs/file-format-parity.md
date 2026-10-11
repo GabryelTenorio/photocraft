@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: every Photoshop 2026 format from its bundle against our readers and writers; Affinity notes moved here from `roadmap.md`) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Sony encrypted applied WB/black and measured ILCE-6000 image area; colour calibration remains partial) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -66,7 +66,7 @@ supports many more, including CR3).
 | Canon CR2 | yes | |
 | Canon CR3 | detected, unsupported | `crates/raw/src/lib.rs:219` |
 | Nikon NEF/NRW (lossless, lossy) | yes; "lossy after split" no | #50 |
-| Sony ARW/SR2/SRF (incl. compressed) | yes | |
+| Sony ARW/SR2/SRF (incl. compressed) | yes; camera calibration partial | 2026-10-11: encrypted SR2SubIFD applied WB/black (measured common key), ILCE-6000 image area; synthetic and public RX0 corpus tests. [Evidence and limits](sony-arw-metadata.md) |
 | Panasonic RW2, Pentax PEF | yes | |
 | Olympus ORF | uncompressed only | |
 | Fujifilm RAF (Bayer and X-Trans) | uncompressed only; no Fuji colour calibration | |
@@ -133,4 +133,5 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Sony encrypted applied WB/black and measured ILCE-6000 crop; camera calibration remains partial |
 | 2026-10-10 | major | First version: Photoshop 2026 27.11.0's formats from its bundle, against our codecs; Affinity notes moved from `roadmap.md` |

@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: every known shortfall ranked, from the 2026-10-10 re-measure) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G14: Sony applied WB/black corrected; camera colour and tone gap remains open) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -98,6 +98,9 @@ what an agent can't finish alone.
   sidecars, masking and calibration in the Camera Raw dialog, per-camera colour for non-DNG
   cameras, lens profiles.
 - **Evidence:** `crates/raw/src/lib.rs:219` (CR3), scorecard FILE-215-11/12, #50.
+- **Progress, 2026-10-11:** encrypted Sony applied WB/black and the measured ILCE-6000 image area
+  now read correctly; public RX0 black is 800 rather than the 512 fallback. Camera calibration
+  and JPEG tone parity remain open; see [measurement and limits](sony-arw-metadata.md).
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
@@ -212,5 +215,6 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | G14 Sony metadata/crop progress recorded without closing camera colour or tone gaps |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |
