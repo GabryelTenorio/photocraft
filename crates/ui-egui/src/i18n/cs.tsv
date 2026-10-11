@@ -507,6 +507,12 @@
 	Color Range…	Rozsah barev…
 	Focus Area…	Oblast zaostření…
 	Select and Mask…	Vybrat a maskovat…
+# Select and Mask dialog labels
+	Smart Radius	Chytrý poloměr
+	Shift Edge	Posunout okraj
+	Decontaminate	Dekontaminovat
+	Output	Výstup
+	Refine Edge	Upřesnit okraj
 	Modify	Upravit
 	Border…	Okraj…
 	Smooth…	Vyhladit…
@@ -775,6 +781,7 @@
 	Split Warp Horizontally	Rozdělit deformaci vodorovně
 	Split Warp Vertically	Rozdělit deformaci svisle
 	Statistics…	Statistika…
+	Refine Strokes	Tahy zpřesnění
 @plural	{n} item|{n} items	{n} položka|{n} položky|{n} položek
 	Auto	Automaticky
 
@@ -3049,7 +3056,6 @@ cameraData	Lens	Objektiv
 	New Group	Nová skupina
 	New Guide	Nové vodítko
 	New Guide Layout	Nové rozvržení vodítek
-	New Layer	Nová vrstva
 	New Layer Comp	Nová kompozice vrstev
 	New Layer…	Nová vrstva…
 	New Video Layer from File	Nová video vrstva ze souboru
@@ -3080,7 +3086,6 @@ cameraData	Lens	Objektiv
 	Out From Center	Ze středu ven
 	Out White	Výstupní bílá
 	Out of memory	Nedostatek paměti
-	Output	Výstup
 	Output Levels	Výstupní úrovně
 	Oval	Ovál
 	Overlay Edge	Překrýt okraje
@@ -3616,3 +3621,7 @@ navigator	Zoom	Zvětšení
 @plural	{n} step|{n} steps	{n} krok|{n} kroky|{n} kroků
 	{shortcut} assigned.	Zkratka {shortcut} přiřazena.
 	{shortcut} is already in use by {commands} and will be removed from it when you click OK.	Zkratka {shortcut} se již používá pro {commands}. Kliknutím na OK původní přiřazení zrušíte.
+# Print dialog (#2697)
+	Emulsion Down	Emulze dolů
+	Functions	Funkce
+	Print Resolution:	Rozlišení tisku:
