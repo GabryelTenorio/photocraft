@@ -2859,7 +2859,7 @@ fontWeight	Italic	Italique
 	Freeform Pen Tool	Outil Plume libre
 	Curvature Pen Tool	Outil Plume de courbure
 	Curve Fit:	Ajustement de courbe :
-	Drag: draw freehand · Release on the start point: close	Glisser : dessin à main levée · Relâcher sur le point de départ : fermer
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Glisser : dessin à main levée · {alt}-clic : segment droit · Relâcher sur le point de départ : fermer
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Clic : point lisse · Double-clic : angle · Glisser un point : déplacer · Clic sur le premier point : fermer · {key} : terminer
 	Search settings…	Rechercher des réglages…
 	No matching settings	Aucun réglage correspondant
