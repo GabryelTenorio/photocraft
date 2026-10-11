@@ -166,6 +166,68 @@ pub struct CameraRaw {
     pub vignette_highlights: f32,
     /// `highlightPriority | colorPriority | paintOverlay`.
     pub vignette_style: String,
+    // Profile
+    /// Profile › Monochrome (Camera Raw's B&W treatment): the Color Mixer becomes the B&W Mix.
+    pub monochrome: bool,
+    /// B&W Mix per hue band (red … magenta), −100..=100: how light each colour turns in gray.
+    pub gray_mixer: [f32; 8],
+    /// White balance menu: `asShot | auto | custom`. Bookkeeping for the menu; Temperature and
+    /// Tint hold the balance itself.
+    pub white_balance: String,
+    // Curve
+    /// Point curve › Refine Saturation, 0..=100 (100 = off).
+    pub curve_refine_saturation: f32,
+    // Detail
+    /// Noise Reduction › Contrast, 0..=100.
+    pub noise_luminance_contrast: f32,
+    /// Color Noise Reduction › Smoothness, 0..=100.
+    pub noise_color_smoothness: f32,
+    // Optics
+    /// Optics › Distortion, −100..=100 (positive corrects barrel distortion).
+    pub lens_distortion: f32,
+    /// Optics › Vignette (lens vignetting correction), −100..=100 (positive brightens corners).
+    pub lens_vignette: f32,
+    /// Optics › Vignette › Midpoint, 0..=100.
+    pub lens_vignette_midpoint: f32,
+    /// Optics › Defringe › Purple Amount, 0..=20.
+    pub defringe_purple_amount: f32,
+    /// Optics › Defringe › Purple Hue range, 0..=100 (at least 10 apart).
+    pub defringe_purple_hue: [f32; 2],
+    /// Optics › Defringe › Green Amount, 0..=20.
+    pub defringe_green_amount: f32,
+    /// Optics › Defringe › Green Hue range, 0..=100 (at least 10 apart).
+    pub defringe_green_hue: [f32; 2],
+    // Lens Blur (Early Access in Camera Raw; needs a depth map)
+    pub lens_blur_apply: bool,
+    /// 0..=100.
+    pub lens_blur_amount: f32,
+    // Geometry
+    /// Upright: `off | auto | level | vertical | full | guided`.
+    pub upright: String,
+    /// Manual Transformations, −100..=100 (keystone).
+    pub transform_vertical: f32,
+    pub transform_horizontal: f32,
+    /// Degrees, −10..=10.
+    pub transform_rotate: f32,
+    /// −100..=100.
+    pub transform_aspect: f32,
+    /// Percent, 50..=150.
+    pub transform_scale: f32,
+    /// −100..=100 (percent of half the image).
+    pub transform_offset_x: f32,
+    pub transform_offset_y: f32,
+    // Calibration
+    /// Process version (Camera Raw's 6 is the current one); recorded, not a different engine.
+    pub process_version: u32,
+    /// Calibration › Shadows Tint, −100..=100 (green ↔ magenta).
+    pub calibration_shadows_tint: f32,
+    /// Calibration › Red / Green / Blue Primary hue and saturation, −100..=100.
+    pub calibration_red_hue: f32,
+    pub calibration_red_sat: f32,
+    pub calibration_green_hue: f32,
+    pub calibration_green_sat: f32,
+    pub calibration_blue_hue: f32,
+    pub calibration_blue_sat: f32,
     pub seed: u32,
     /// Pixel-size multiplier for previews on downsampled proxies (radii in px scale by it).
     pub pixel_scale: f32,
@@ -225,6 +287,37 @@ impl Default for CameraRaw {
             vignette_feather: 50.0,
             vignette_highlights: 0.0,
             vignette_style: "highlightPriority".into(),
+            monochrome: false,
+            gray_mixer: [0.0; 8],
+            white_balance: "asShot".into(),
+            curve_refine_saturation: 100.0,
+            noise_luminance_contrast: 0.0,
+            noise_color_smoothness: 50.0,
+            lens_distortion: 0.0,
+            lens_vignette: 0.0,
+            lens_vignette_midpoint: 50.0,
+            defringe_purple_amount: 0.0,
+            defringe_purple_hue: [30.0, 70.0],
+            defringe_green_amount: 0.0,
+            defringe_green_hue: [40.0, 60.0],
+            lens_blur_apply: false,
+            lens_blur_amount: 50.0,
+            upright: "off".into(),
+            transform_vertical: 0.0,
+            transform_horizontal: 0.0,
+            transform_rotate: 0.0,
+            transform_aspect: 0.0,
+            transform_scale: 100.0,
+            transform_offset_x: 0.0,
+            transform_offset_y: 0.0,
+            process_version: 6,
+            calibration_shadows_tint: 0.0,
+            calibration_red_hue: 0.0,
+            calibration_red_sat: 0.0,
+            calibration_green_hue: 0.0,
+            calibration_green_sat: 0.0,
+            calibration_blue_hue: 0.0,
+            calibration_blue_sat: 0.0,
             seed: 0,
             pixel_scale: 1.0,
             encoding_gamma: 0.0,
