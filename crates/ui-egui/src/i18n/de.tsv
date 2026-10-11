@@ -2117,6 +2117,7 @@
 	Developing {name}	{name} wird entwickelt
 	Cancelled {label}	{label} abgebrochen
 	Esc to cancel	Esc zum Abbrechen
+	Opened {name}	Geöffnet: {name}
 	Opening {name}	Öffne {name}
 	Saved {name}	Gespeichert: {name}
 	Saving {name}	Speichere {name}
@@ -2573,6 +2574,8 @@ cameraData	Lens	Objektiv
 	Select the crop presets to delete	Wählen Sie die zu löschenden Freistellungsvorgaben
 	Enter a name for the crop preset	Geben Sie einen Namen für die Freistellungsvorgabe ein
 	There is no crop size or ratio to save	Es gibt keine Freistellungsgröße und kein Seitenverhältnis zum Speichern
+	Scale:	Skalierung:
+	Snap to Origin	An Ursprung ausrichten
 	Search settings…	Einstellungen durchsuchen…
 	No matching settings	Keine passenden Einstellungen
 	Apply mask to layer before removing?	Maske vor dem Entfernen auf die Ebene anwenden?

@@ -2088,6 +2088,7 @@
 	Developing {name}	Mengembangkan {name}
 	Cancelled {label}	{label} dibatalkan
 	Esc to cancel	Esc untuk batal
+	Opened {name}	Dibuka: {name}
 	Opening {name}	Membuka {name}
 	Saved {name}	Tersimpan: {name}
 	Saving {name}	Menyimpan {name}
@@ -2938,6 +2939,8 @@ cameraData	Lens	Lensa
 	Select the crop presets to delete	Pilih preset pangkas yang akan dihapus
 	Enter a name for the crop preset	Masukkan nama untuk preset pangkas
 	There is no crop size or ratio to save	Tidak ada ukuran atau rasio pangkas untuk disimpan
+	Scale:	Skala:
+	Snap to Origin	Jepret ke Titik Asal
 	Search settings…	Cari pengaturan…
 	No matching settings	Tidak ada pengaturan yang cocok
 	Apply mask to layer before removing?	Terapkan masker ke layer sebelum dihapus?
