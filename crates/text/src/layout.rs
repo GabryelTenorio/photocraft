@@ -399,6 +399,8 @@ struct KernSlot {
     blank: bool,
     /// Advance along the line (px, horizontal scale included).
     advance: f32,
+    /// What the horizontal scale adds to the font's advance (px).
+    growth: f32,
     /// A tab, shaped as a space; it advances to the next tab stop.
     tab: bool,
     /// Vertical type, upright glyph (its outline doesn't run along the column).
@@ -750,6 +752,7 @@ impl Layouter {
                             blank: first.is_none() || c.is_space_or_nbsp() || c.text_range().end <= prefix.len(),
                             upright: vertical && c.first_style().brush.1 != VClass::Rotate as u8,
                             advance: c.advance() * hs,
+                            growth: c.advance() * (hs - 1.0),
                             tab: tabs.binary_search(&c.text_range().start).is_ok(),
                             digit,
                         });
@@ -824,7 +827,10 @@ impl Layouter {
                     }
                     pos += s.advance + kern_px.get(j).copied().unwrap_or(0.0);
                 }
-                let line_kern: f32 = kern_px.iter().sum::<f32>() - trailing_tabs;
+                // Horizontal scale widens the line after shaping, so alignment must count it.
+                let visible = slots.iter().rposition(|s| !s.blank).map_or(0, |p| p + 1);
+                let scale_growth: f32 = slots[..visible].iter().map(|s| s.growth).sum();
+                let line_kern: f32 = kern_px.iter().sum::<f32>() - trailing_tabs + scale_growth;
                 // Per run on the line: (run index, glyph → slot, glyphs emitted, first slot whose
                 // kerning isn't applied yet).
                 let mut cursors: Vec<(usize, Vec<usize>, usize, usize)> = Vec::new();

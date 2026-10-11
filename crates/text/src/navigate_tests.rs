@@ -605,3 +605,40 @@ fn latin_ctrl_arrows_stop_at_word_ends() {
     let left: Vec<usize> = walk(&l, t, Caret::new(15, true), Dir::Left, Unit::Word).iter().map(|c| c.byte).collect();
     assert_eq!(left, [15, 10, 6, 0], "leftwards the stops are word starts");
 }
+
+/// Upstream #3174: at a soft-wrap or forced-break offset shared by two lines, the downstream
+/// caret is drawn on and navigates within the following line, while the caret after the previous
+/// line's last character (a click at its right edge) stays on the previous line.
+#[test]
+fn a_shared_wrap_offset_belongs_to_the_following_line_unless_the_caret_is_upstream() {
+    let mut e = TextEngine::new();
+    let t = "ab cd";
+    let l = e.layout(&boxed(t, 20.0, 70.0), 72.0);
+    assert!(l.lines.len() >= 2, "wraps: {:?}", l.lines);
+    let b = l.lines[1].range.start;
+    assert_eq!(l.lines[0].range.end, b, "shared wrap boundary");
+    let down = Caret::new(b, false);
+    assert_eq!(caret_geometry(&l, t, down).line, 1);
+    assert_eq!(home_end(&l, t, down, false), down);
+    assert_eq!(home_end(&l, t, down, true).byte, l.lines[1].range.end);
+    // The previous line's right edge shares the offset; a click there keeps that line.
+    let first = &l.lines[0];
+    let (x, y) = l.to_text(first.x1, first.baseline);
+    let clicked = hit(&l, t, x, y);
+    assert_eq!(caret_geometry(&l, t, clicked).line, 0, "{clicked:?}");
+
+    let t = "a\u{3}b";
+    let l = e.layout(&point(t), 72.0);
+    assert_eq!(l.lines.len(), 2);
+    let start = l.lines[1].range.start;
+    let down = Caret::new(start, false);
+    assert_eq!(caret_geometry(&l, t, down).line, 1);
+    assert_eq!(home_end(&l, t, down, false), down);
+    assert_eq!(home_end(&l, t, down, true).byte, t.len());
+
+    let t = "a\nb";
+    let l = e.layout(&point(t), 72.0);
+    assert_eq!(caret_geometry(&l, t, Caret::new(l.lines[0].range.end, true)).line, 0);
+    assert_eq!(caret_geometry(&l, t, Caret::new(l.lines[1].range.start, false)).line, 1);
+    assert_eq!(caret_geometry(&l, t, Caret::new(t.len(), true)).line, 1);
+}

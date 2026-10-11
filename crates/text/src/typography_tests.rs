@@ -92,6 +92,35 @@ fn digits_render_with_the_run_fonts_glyphs_and_keep_the_right_edge_on_the_anchor
 }
 
 #[test]
+fn digits_under_horizontal_scale_are_scaled_once_and_keep_the_right_edge_on_the_anchor() {
+    let mut e = TextEngine::with_system_fonts();
+    let Some(family) = pick_font(&mut e, &ARABIC_FONTS) else { return };
+    let text = "الرقم 0551234567 فقط";
+    let right = ParagraphStyle { align: TextAlign::Right, ..Default::default() };
+    let scaled = |digits| CharStyle { horizontal_scale: 1.5, ..style(&family, digits) };
+    let width = |l: &TextLayout| l.lines[0].x1 - l.lines[0].x0;
+    let plain = e.layout(&layer(text, style(&family, Digits::ArabicIndic), right.clone(), TextShape::Point), 72.0);
+    let wide = e.layout(&layer(text, scaled(Digits::ArabicIndic), right.clone(), TextShape::Point), 72.0);
+    assert!(wide.lines[0].x1.abs() < 0.01, "{family}: right edge {} stays on the anchor", wide.lines[0].x1);
+    assert!((width(&wide) - 1.5 * width(&plain)).abs() < 0.05 * width(&plain), "{family}: {} vs 1.5 x {}", width(&wide), width(&plain));
+    clusters_tile_the_line(&wide, 0);
+    let western = e.layout(&layer(text, scaled(Digits::Western), right, TextShape::Point), 72.0);
+    assert_eq!(wide.glyphs.iter().zip(&western.glyphs).filter(|(a, b)| a.id != b.id).count(), 10);
+}
+
+#[test]
+fn horizontal_scale_keeps_aligned_text_on_its_anchor_and_box_edge() {
+    let mut e = TextEngine::new();
+    let scaled = CharStyle { horizontal_scale: 1.5, ..style("Inter", Digits::Western) };
+    let right = ParagraphStyle { align: TextAlign::Right, ..Default::default() };
+    let point = e.layout(&layer("hello world", scaled.clone(), right.clone(), TextShape::Point), 72.0);
+    assert!(point.lines[0].x1.abs() < 0.01, "point text right edge {}", point.lines[0].x1);
+    let shape = TextShape::Box { x: BOX_X, y: 0.0, width: 600.0, height: 2000.0 };
+    let boxed = e.layout(&layer("hello world", scaled, right, shape), 72.0);
+    assert!((boxed.lines[0].x1 - (BOX_X + 600.0)).abs() < 0.01, "box text right edge {}", boxed.lines[0].x1);
+}
+
+#[test]
 fn digits_missing_from_a_font_fall_back_to_western_per_digit() {
     // Inter has no Arabic-Indic digits and an Arabic font has them: a run in Inter keeps its
     // Western glyphs whatever the setting says, even in a text that also has Arabic letters.
