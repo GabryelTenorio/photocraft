@@ -3537,6 +3537,12 @@ cameraRaw	Masking	Маскування
 	Quick Selection found nothing there	Швидке виділення нічого тут не знайшло
 	Object Selection found nothing there — try a tighter rectangle	Виділення об'єктів нічого тут не знайшло — спробуйте вужчий прямокутник
 	No subject found — try a rectangle around the object	Об'єкт не знайдено — спробуйте прямокутник навколо об'єкта
+
+# Save format chooser
+	Continue	Продовжити
+	This format saves a flattened image. Use Save a Copy to keep your editable document.	Цей формат зберігає зведене зображення. Використовуйте «Зберегти копію», щоб зберегти документ придатним до редагування.
+	Netpbm chooses the subtype from the image depth and channels.	Netpbm вибирає підтип за глибиною кольору та каналами зображення.
+
 # Shared panel docking
 	Activate Panel	Активувати панель
 	Change Panel Group	Змінити групу панелей
@@ -3558,3 +3564,5 @@ cameraRaw	Masking	Маскування
 	Search settings…	Пошук налаштувань…
 	No matching settings	Немає відповідних налаштувань
 	PhotoCraft — Screen Color Picker	PhotoCraft — Піпетка кольору екрана
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG зберігає підтримувані фігури та растрові шари. Непідтримувані функції можуть бути растровані.

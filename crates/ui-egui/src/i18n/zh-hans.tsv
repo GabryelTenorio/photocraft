@@ -2440,6 +2440,12 @@ fontWeight	Italic	斜体
 	Quick Selection found nothing there	快速选择在该处未找到任何内容
 	Object Selection found nothing there — try a tighter rectangle	对象选择在该处未找到任何内容 — 请尝试更紧凑的矩形
 	No subject found — try a rectangle around the object	未找到主体 — 请尝试在对象周围绘制矩形
+
+# Save format chooser
+	Continue	继续
+	This format saves a flattened image. Use Save a Copy to keep your editable document.	此格式会保存拼合后的图像。要保留可编辑的文档，请使用“保存副本”。
+	Netpbm chooses the subtype from the image depth and channels.	Netpbm 根据图像位深度和通道选择子类型。
+
 # Shared panel docking
 	Activate Panel	激活面板
 	Change Panel Group	更改面板组
@@ -2460,3 +2466,5 @@ fontWeight	Italic	斜体
 	Front Image	前面的图像
 	Search settings…	搜索设置…
 	No matching settings	没有匹配的设置
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG 会保留受支持的形状和栅格图层。不受支持的功能可能会被栅格化。

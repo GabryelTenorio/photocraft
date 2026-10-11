@@ -3011,6 +3011,12 @@ fontWeight	Italic	기울임
 	Quick Selection found nothing there	빠른 선택으로 해당 위치에서 아무것도 찾지 못했습니다
 	Object Selection found nothing there — try a tighter rectangle	개체 선택으로 해당 위치에서 아무것도 찾지 못했습니다 — 더 좁은 사각형을 사용해 보세요
 	No subject found — try a rectangle around the object	피사체를 찾을 수 없습니다 — 개체 주위에 사각형을 그려 보세요
+
+# Save format chooser
+	Continue	계속
+	This format saves a flattened image. Use Save a Copy to keep your editable document.	이 형식은 병합된 이미지를 저장합니다. 편집 가능한 문서를 유지하려면 사본 저장을 사용하세요.
+	Netpbm chooses the subtype from the image depth and channels.	Netpbm은 이미지의 비트 심도와 채널에 따라 하위 형식을 선택합니다.
+
 # Shared panel docking
 	Activate Panel	패널 활성화
 	Change Panel Group	패널 그룹 변경
@@ -3031,3 +3037,5 @@ fontWeight	Italic	기울임
 	Front Image	전면 이미지
 	Search settings…	설정 검색…
 	No matching settings	일치하는 설정 없음
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	SVG는 지원되는 모양과 래스터 레이어를 유지합니다. 지원되지 않는 기능은 래스터화될 수 있습니다.

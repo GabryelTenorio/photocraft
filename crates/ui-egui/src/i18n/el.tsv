@@ -3540,6 +3540,11 @@ fontWeight	Thin	Πολύ λεπτά
 	Quick Selection found nothing there	Η Γρήγορη επιλογή δεν βρήκε τίποτα εκεί
 	Object Selection found nothing there — try a tighter rectangle	Η Επιλογή αντικειμένου δεν βρήκε τίποτα εκεί — δοκιμάστε ένα πιο στενό ορθογώνιο
 	No subject found — try a rectangle around the object	Δεν βρέθηκε θέμα — δοκιμάστε ένα ορθογώνιο γύρω από το αντικείμενο
+
+# Save format chooser
+	This format saves a flattened image. Use Save a Copy to keep your editable document.	Αυτή η μορφή αποθηκεύει μια ισοπεδωμένη εικόνα. Χρησιμοποιήστε Αποθήκευση αντιγράφου για να διατηρήσετε το επεξεργάσιμο έγγραφο.
+	Netpbm chooses the subtype from the image depth and channels.	Το Netpbm επιλέγει τον υποτύπο από το βάθος bit και τα κανάλια της εικόνας.
+
 # Shared panel docking
 	Activate Panel	Ενεργοποίηση πάνελ
 	Change Panel Group	Αλλαγή ομάδας πάνελ
@@ -3560,3 +3565,5 @@ fontWeight	Thin	Πολύ λεπτά
 	Front Image	Μπροστινή εικόνα
 	Search settings…	Αναζήτηση ρυθμίσεων…
 	No matching settings	Δεν βρέθηκαν ρυθμίσεις
+
+	SVG preserves supported shapes and raster layers. Unsupported features may be rasterized.	Το SVG διατηρεί τα υποστηριζόμενα σχήματα και επίπεδα ράστερ. Οι μη υποστηριζόμενες λειτουργίες ενδέχεται να μετατραπούν σε ράστερ.
