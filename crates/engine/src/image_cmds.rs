@@ -257,11 +257,18 @@ fn crop_doc(doc: &mut Document, cmd: &str, r: Rect, delete_pixels: bool) -> Resu
     let (Some(dx), Some(dy)) = (r.x0.checked_neg(), r.y0.checked_neg()) else {
         return Err(bad(cmd, format!("the crop origin ({}, {}) can't be moved to (0, 0) within the 32-bit coordinate range", r.x0, r.y0)));
     };
+    let old_canvas = doc.bounds();
+    let extends = r.x0 < old_canvas.x0 || r.y0 < old_canvas.y0 || r.x1 > old_canvas.x1 || r.y1 > old_canvas.y1;
     if delete_pixels {
         for_each_surface(&mut doc.layers, false, &mut |surf, _| *surf = crop_surface(surf, r));
     }
     translate_doc(doc, cmd, dx, dy)?;
     doc.size = Size::new(r.width(), r.height());
+    // An extended Crop leaves transparent pixels beyond the old canvas. Like transparent Canvas
+    // Size, it turns a Background into a normal layer so its transparency lock cannot block Fill.
+    if extends && let Some(bg) = doc.layers.first_mut().filter(|l| crate::extra_cmds::is_background(l)) {
+        crate::extra_cmds::unlock_background(bg);
+    }
     crate::canvas_geom::refresh(doc, crate::canvas_geom::Refresh::Shapes);
     Ok(())
 }
@@ -939,6 +946,37 @@ mod tests {
         s.execute("image.crop", json!({"x": -10, "y": 0, "width": 60, "height": 20})).unwrap();
         assert_eq!(doc(&s).size, Size::new(60, 20));
         assert_eq!(doc(&s).layers[1].surface().unwrap().pixel(20, 5), vec![1.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn crop_extension_converts_background_before_fill() {
+        let mut shrink = Session::new();
+        shrink.execute("file.new", json!({"width": 16, "height": 16, "background": "#ff0000"})).unwrap();
+        shrink.execute("image.crop", json!({"x": 2, "y": 0, "width": 12, "height": 16})).unwrap();
+        let layer = &doc(&shrink).layers[0];
+        assert_eq!(layer.name, "Background", "a shrink-only crop keeps the Background");
+        assert!(layer.locks.transparency && layer.locks.position);
+
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 16, "height": 16, "background": "#ff0000"})).unwrap();
+        s.execute("image.crop", json!({"x": -4, "y": 0, "width": 20, "height": 16})).unwrap();
+        assert_eq!(doc(&s).layers[0].surface().unwrap().rgba(1, 8), [0.0; 4]);
+
+        s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
+        let layer = &doc(&s).layers[0];
+        assert_eq!(layer.surface().unwrap().rgba(1, 8), [0.0, 0.0, 1.0, 1.0], "Fill should paint the extended border");
+        assert_eq!(layer.surface().unwrap().rgba(8, 8), [0.0, 0.0, 1.0, 1.0]);
+        assert_eq!(layer.name, "Layer 0", "an extending crop makes the transparent border paintable");
+        assert!(!layer.locks.transparency && !layer.locks.position);
+
+        s.execute("edit.undo", json!({})).unwrap();
+        assert_eq!(doc(&s).layers[0].surface().unwrap().rgba(1, 8), [0.0; 4]);
+        s.execute("edit.undo", json!({})).unwrap();
+        let layer = &doc(&s).layers[0];
+        assert_eq!(doc(&s).size, Size::new(16, 16));
+        assert_eq!(layer.name, "Background");
+        assert!(layer.locks.transparency && layer.locks.position);
+        assert_eq!(layer.surface().unwrap().rgba(8, 8), [1.0, 0.0, 0.0, 1.0]);
     }
 
     /// A document (`mode`, `depth`) with a white Background and a layer holding a red pixel at
