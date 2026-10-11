@@ -414,6 +414,7 @@ fn paste_into(s: &mut Session, p: &Value, outside: bool) -> Result<Value> {
     let key = step_key(s, "pasteInto");
     params["coalesce"] = json!(key);
     params["target"] = json!("pixels");
+    let before = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     let r = s.execute("edit.paste", params)?;
     let id = layer_param(s, &Value::Null)?;
     s.execute("layer.layerMask.revealAll", json!({"layer": id.0, "coalesce": key}))?;
@@ -425,6 +426,8 @@ fn paste_into(s: &mut Session, p: &Value, outside: bool) -> Result<Value> {
     });
     s.coalesce_request = None;
     r2?;
+    // Only where the masked paste draws needs recompositing (#2901).
+    crate::layer_multi_cmds::note_insert(s, &before);
     Ok(r)
 }
 
@@ -704,7 +707,7 @@ pub(crate) fn rasterize(s: &mut Session, p: &Value, only: Option<&'static str>) 
     Ok(json!({"layer": active.unwrap_or(first), "layers": done}))
 }
 
-fn rasterize_all(s: &mut Session) -> Result<Value> {
+pub(crate) fn rasterize_all(s: &mut Session) -> Result<Value> {
     let ids: Vec<LayerId> = s.active().map(|d| d.doc.walk().into_iter().map(|(_, _, l)| l.id).collect()).unwrap_or_default();
     let key = step_key(s, "rasterizeAll");
     let mut n = 0;
