@@ -2630,10 +2630,7 @@ mod tests {
         }
         crate::view_cmds::persist(&mut app, &ctx);
         tick(&mut app, &ctx);
-        assert_eq!(
-            stored(&store)["viewExtras"],
-            json!({"extras": false, "grid": true, "show": {"pixelGrid": false}, "snapTo": {"layers": false}})
-        );
+        assert_eq!(stored(&store)["viewExtras"], json!({"extras": false, "grid": true, "show": {"pixelGrid": false}, "snapTo": {"layers": false}}));
         // A restart gets them back.
         let saved = store.lock().unwrap().clone().unwrap();
         let (mut app2, _) = app_with_saved(Some(saved));
