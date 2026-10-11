@@ -317,8 +317,17 @@ pub fn readout_in(ur: &photocraft_engine::prefs::UnitsAndRulers, dpi: f64, exten
 
 /// Draw the marquee size readout below-right of the cursor (kept on screen), like Photoshop's:
 /// two rows, `W:` / `H:` labels on the left and the values right-aligned.
-fn draw_marquee_readout(ctx: &egui::Context, cursor: Pos2, values: [String; 2]) {
-    draw_readout(ctx, "marquee-readout", cursor, ["W:", "H:"], values);
+fn draw_marquee_readout(app: &PhotocraftApp, ctx: &egui::Context, cursor: Pos2, values: [String; 2]) {
+    draw_value_readout(app, ctx, "marquee-readout", cursor, ["W:", "H:"], values);
+}
+
+/// A transformation-values readout beside the pointer (a marquee's or the crop frame's size, an
+/// angle), unless Preferences › Tools › Show Transformation Values is off, as in Photoshop (#204).
+/// The brush HUD isn't one: Show Transformation Values doesn't hide it, so it calls [`draw_readout`].
+pub(crate) fn draw_value_readout<const N: usize>(app: &PhotocraftApp, ctx: &egui::Context, id: &str, cursor: Pos2, labels: [&str; N], values: [String; N]) {
+    if app.session.prefs().tools.show_transformation_values {
+        draw_readout(ctx, id, cursor, labels, values);
+    }
 }
 
 /// A readout of `N` rows beside the pointer (labels left, values right-aligned), above everything.
@@ -3113,7 +3122,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         if app.ui.extras.grid && app.ui.view.extras {
             crate::rulers::draw_grid(app, &painter, &xf, &doc);
         }
-        if app.ui.view.shows(app.ui.view.show.canvas_guides) {
+        if app.ui.view.shows(app.ui.view.show.canvas_guides) || crate::guide_layout_ui::preview(app, &doc).is_some() {
             crate::rulers::draw_guides(app, &painter, &xf, &doc);
         }
         // The pending crop frame shows on its own document only, not on the other tiles (#1918).
@@ -3140,12 +3149,14 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         crate::type_tool::draw_overlay(app, &painter, &xf);
         crate::transform_tool::draw_overlay(app, &painter, &xf);
         crate::distort_ui::draw_overlay(app, &painter, &xf);
+        crate::perspective_crop_ui::draw_overlay(app, &painter, &xf);
         crate::retouch_ui::draw_source_marker(app, &painter, &xf);
         crate::vector_ui::draw_overlay(app, &painter, &xf, &doc);
         crate::symmetry_ui::draw(app, &painter, &xf);
         crate::analysis_ui::draw_overlay(app, &painter, &xf);
         crate::gradient_ui::draw_overlay(app, &painter, &xf);
         crate::slice_ui::draw_overlay(app, &painter, &xf);
+        crate::frame_tool::draw_overlay(app, &painter, &xf);
         crate::artboard_tool::draw_overlay(app, &painter, &xf);
         // Tool cursors (Photoshop-style).
         let guide_hover = response.hover_pos().and_then(|p| {
@@ -3820,10 +3831,10 @@ fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
         }
         // The frame's angle beside the pointer while it turns (#1792).
         if let (Some(a), Some(h)) = (crate::crop_ui::turning(app), hover) {
-            draw_readout(painter.ctx(), "crop-angle-readout", h, ["Angle:"], [format!("{a:.1}°")]);
+            draw_value_readout(app, painter.ctx(), "crop-angle-readout", h, ["Angle:"], [format!("{a:.1}°")]);
         } else if let (Some([w, h]), Some(at)) = (crate::crop_ui::sizing(app), hover) {
             // Its W × H while it is drawn or resized (#1919), like the marquee's.
-            draw_marquee_readout(painter.ctx(), at, size_readout(app, [0.0, 0.0, w, h]));
+            draw_marquee_readout(app, painter.ctx(), at, size_readout(app, [0.0, 0.0, w, h]));
         }
     }
 }
@@ -3927,7 +3938,7 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
     let last = d.points.last().map(|p| [p[0], p[1]]).unwrap_or(d.start);
     let marquee = marquee_preview_px(&app.ui.tool_options, d, app.point_zoom());
     if let Some(r) = marquee {
-        draw_marquee_readout(painter.ctx(), xf.to_screen(last[0] as f32, last[1] as f32), size_readout(app, r));
+        draw_marquee_readout(app, painter.ctx(), xf.to_screen(last[0] as f32, last[1] as f32), size_readout(app, r));
     }
     match d.tool {
         // The canvas shows the live stroke itself (`LiveStroke`); a stroke that couldn't start one
@@ -3988,6 +3999,9 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
             if let Some(lasso) = &d.lasso {
                 pts.push(xf.to_screen(lasso.cursor[0] as f32, lasso.cursor[1] as f32));
             }
+            // On pixel centres like the marquee's ants, so a 1 pt line stays crisp wherever the
+            // canvas sits (a pixel edge would blur it to grey).
+            let pts: Vec<Pos2> = pts.into_iter().map(|p| p.round() + vec2(0.5, 0.5)).collect();
             crate::tool_feedback::draw_ants(painter, &pts, false);
         }
         Tool::Gradient => {
@@ -4153,6 +4167,9 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
     if crate::distort_ui::pointer(app, ev, mods) {
         return;
     }
+    if crate::perspective_crop_ui::pointer(app, ev) {
+        return;
+    }
     // Window › Modifier Keys: sticky Shift/⌘/⌥ act as held keys.
     let mods = crate::workspace_ui::sticky_mods(app, mods);
     // ⌘⌥⌃-click with any tool selects the topmost layer with pixels there (quick_pick.rs); it
@@ -4185,6 +4202,10 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
     }
     // Slice and Slice Select tools.
     if crate::slice_ui::pointer(app, ev, mods) {
+        return;
+    }
+    // Frame tool: draw rectangular and elliptical frames.
+    if crate::frame_tool::pointer(app, ev, mods) {
         return;
     }
     // Artboard tool: draw, select, move and resize boards.
