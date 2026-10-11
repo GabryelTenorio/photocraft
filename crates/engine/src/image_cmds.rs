@@ -281,7 +281,9 @@ fn translate_doc(doc: &mut Document, cmd: &str, dx: i32, dy: i32) -> Result<()> 
 }
 
 /// Crops the document to `r` (in current document coordinates).
-fn crop_doc(doc: &mut Document, cmd: &str, r: Rect, delete_pixels: bool) -> Result<()> {
+/// A frame that extends past the canvas fills the Background's new area with `extension` (the
+/// background colour, as Photoshop's Crop tool does); other layers get transparent pixels there.
+fn crop_doc(doc: &mut Document, cmd: &str, r: Rect, delete_pixels: bool, extension: [f32; 4]) -> Result<()> {
     // The origin moves to (0, 0); `-i32::MIN` has no i32 value (#959).
     let (Some(dx), Some(dy)) = (r.x0.checked_neg(), r.y0.checked_neg()) else {
         return Err(bad(cmd, format!("the crop origin ({}, {}) can't be moved to (0, 0) within the 32-bit coordinate range", r.x0, r.y0)));
@@ -293,10 +295,21 @@ fn crop_doc(doc: &mut Document, cmd: &str, r: Rect, delete_pixels: bool) -> Resu
     }
     translate_doc(doc, cmd, dx, dy)?;
     doc.size = Size::new(r.width(), r.height());
-    // An extended Crop leaves transparent pixels beyond the old canvas. Like transparent Canvas
-    // Size, it turns a Background into a normal layer so its transparency lock cannot block Fill.
-    if extends && let Some(bg) = doc.layers.first_mut().filter(|l| crate::extra_cmds::is_background(l)) {
-        crate::extra_cmds::unlock_background(bg);
+    // A Background cannot hold transparent pixels: like an opaque Canvas Size extension, the area
+    // an extending Crop adds is filled with the extension (background) colour.
+    if extends
+        && let Some(bg) = doc.layers.first_mut().filter(|l| crate::extra_cmds::is_background(l))
+        && let LayerContent::Raster(surf) = &mut bg.content
+    {
+        let old = old_canvas.translate(dx, dy);
+        let fmt = surf.format();
+        let px = photocraft_raster::from_rgba(&fmt, [extension[0], extension[1], extension[2], 1.0]);
+        let keep = surf.content_bounds().intersect(&old);
+        let saved = surf.to_interleaved(keep);
+        surf.fill_rect(Rect::from_xywh(0, 0, r.width(), r.height()), &px);
+        if !keep.is_empty() {
+            surf.write_interleaved(keep, &saved);
+        }
     }
     crate::canvas_geom::refresh(doc, crate::canvas_geom::Refresh::Shapes);
     Ok(())
@@ -433,8 +446,9 @@ fn crop(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(EngineError::Other("nothing to crop: pass x/y/width/height or make a selection".into()));
     }
     s.set_sampler_map(photocraft_geom::Affine::translate(-f64::from(r.x0), -f64::from(r.y0)));
+    let extension = s.tools.background;
     s.edit("Crop", |doc, _| {
-        crop_doc(doc, "image.crop", r, delete)?;
+        crop_doc(doc, "image.crop", r, delete, extension)?;
         doc.selection = None;
         target.apply(doc);
         Ok(())
@@ -568,8 +582,9 @@ fn rotated_crop(s: &mut Session, r: Rect, angle: f64, delete: bool, crop_target:
         crate::mode_cmds::rotate_arbitrary(s, &json!({"angle": angle, "direction": "ccw"}))?;
         // Color Sampler points follow the crop's origin shift too (the rotation moved them above).
         s.set_sampler_map(photocraft_geom::Affine::translate(-f64::from(target.x0), -f64::from(target.y0)));
+        let extension = s.tools.background;
         s.edit("Crop", |doc, _| {
-            crop_doc(doc, CMD, target, delete)?;
+            crop_doc(doc, CMD, target, delete, extension)?;
             doc.selection = None;
             crop_target.apply(doc);
             Ok(())
@@ -612,7 +627,8 @@ fn trim(s: &mut Session, p: &Value) -> Result<Value> {
         if side("bottom") { b.y1 } else { canvas.y1 },
     );
     s.set_sampler_map(photocraft_geom::Affine::translate(-f64::from(r.x0), -f64::from(r.y0)));
-    s.edit("Trim", |doc, _| crop_doc(doc, "image.trim", r, true))?;
+    let extension = s.tools.background;
+    s.edit("Trim", |doc, _| crop_doc(doc, "image.trim", r, true, extension))?;
     Ok(json!({ "x": r.x0, "y": r.y0, "width": r.width(), "height": r.height() }))
 }
 
@@ -996,7 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn crop_extension_converts_background_before_fill() {
+    fn crop_extension_fills_the_background_with_the_background_colour() {
         let mut shrink = Session::new();
         shrink.execute("file.new", json!({"width": 16, "height": 16, "background": "#ff0000"})).unwrap();
         shrink.execute("image.crop", json!({"x": 2, "y": 0, "width": 12, "height": 16})).unwrap();
@@ -1006,24 +1022,32 @@ mod tests {
 
         let mut s = Session::new();
         s.execute("file.new", json!({"width": 16, "height": 16, "background": "#ff0000"})).unwrap();
+        s.tools.background = [0.0, 1.0, 0.0, 1.0];
         s.execute("image.crop", json!({"x": -4, "y": 0, "width": 20, "height": 16})).unwrap();
-        assert_eq!(doc(&s).layers[0].surface().unwrap().rgba(1, 8), [0.0; 4]);
+        let layer = &doc(&s).layers[0];
+        assert_eq!(layer.name, "Background", "an extending crop keeps the Background (#3081)");
+        assert!(layer.locks.transparency && layer.locks.position);
+        assert_eq!(layer.surface().unwrap().rgba(1, 8), [0.0, 1.0, 0.0, 1.0], "the added border takes the background colour");
+        assert_eq!(layer.surface().unwrap().rgba(8, 8), [1.0, 0.0, 0.0, 1.0], "the original pixels stay");
 
         s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
         let layer = &doc(&s).layers[0];
-        assert_eq!(layer.surface().unwrap().rgba(1, 8), [0.0, 0.0, 1.0, 1.0], "Fill should paint the extended border");
+        assert_eq!(layer.surface().unwrap().rgba(1, 8), [0.0, 0.0, 1.0, 1.0], "Fill paints the extended border");
         assert_eq!(layer.surface().unwrap().rgba(8, 8), [0.0, 0.0, 1.0, 1.0]);
-        assert_eq!(layer.name, "Layer 0", "an extending crop makes the transparent border paintable");
-        assert!(!layer.locks.transparency && !layer.locks.position);
 
         s.execute("edit.undo", json!({})).unwrap();
-        assert_eq!(doc(&s).layers[0].surface().unwrap().rgba(1, 8), [0.0; 4]);
         s.execute("edit.undo", json!({})).unwrap();
         let layer = &doc(&s).layers[0];
         assert_eq!(doc(&s).size, Size::new(16, 16));
-        assert_eq!(layer.name, "Background");
-        assert!(layer.locks.transparency && layer.locks.position);
         assert_eq!(layer.surface().unwrap().rgba(8, 8), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(layer.surface().unwrap().content_bounds(), Rect::new(0, 0, 16, 16), "undo removes the filled border");
+
+        // A normal layer gets transparent pixels in the added area.
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 16, "height": 16, "background": "#ff0000"})).unwrap();
+        s.execute("layer.new.layerFromBackground", json!({})).unwrap();
+        s.execute("image.crop", json!({"x": -4, "y": 0, "width": 20, "height": 16})).unwrap();
+        assert_eq!(doc(&s).layers[0].surface().unwrap().rgba(1, 8), [0.0; 4]);
     }
 
     /// A document (`mode`, `depth`) with a white Background and a layer holding a red pixel at
