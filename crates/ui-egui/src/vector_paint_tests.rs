@@ -108,7 +108,13 @@ fn fill_and_stroke_swatches_open_with_pointer_and_keyboard_without_changing_pain
 #[test]
 fn picking_independent_tool_colours_enables_paint_and_reaches_the_next_shape() {
     let mut app = app("rgb", 32);
-    let mut picks = std::collections::VecDeque::from([[0.91, 0.17, 0.32], [0.12, 0.68, 0.93]]);
+    let foreground = [0.123456, 0.345678, 0.567891, 0.372819];
+    let background = [0.891234, 0.234567, 0.456789, 0.618237];
+    app.run("tools.setColors", json!({"foreground": foreground, "background": background})).unwrap();
+    // Screen captures contain byte RGB; the existing float alpha belongs to the paint.
+    let pixels: [[u8; 3]; 2] = [[232, 43, 82], [31, 173, 237]];
+    let sampled = pixels.map(|rgb| rgb.map(|v| f32::from(v) / 255.0));
+    let mut picks = std::collections::VecDeque::from(sampled);
     app.services.screen_pick = Some(Box::new(move |_| {
         let (tx, receiver) = std::sync::mpsc::channel();
         tx.send(Ok(crate::screen_picker::Capture::Color(picks.pop_front()))).unwrap();
@@ -116,23 +122,37 @@ fn picking_independent_tool_colours_enables_paint_and_reaches_the_next_shape() {
     }));
     app.ui.tool_options.shape_fill = false;
     let globals = (app.session.tools.foreground, app.session.tools.background);
+    let original = app.session.active().unwrap().doc.clone();
+    let fill = solid_paint([sampled[0][0], sampled[0][1], sampled[0][2], foreground[3]]);
+    let stroke = solid_paint([sampled[1][0], sampled[1][1], sampled[1][2], background[3]]);
     let mut h = harness(app, false);
-    for label in ["Fill color", "Stroke color"] {
+    for (i, label) in ["Fill color", "Stroke color"].into_iter().enumerate() {
         h.get_by_label(label).click();
         h.run_steps(3);
+        h.get_by_label("Color Picker").click();
+        h.run_steps(3);
+        assert!(crate::shape_paint_ui::color_dialog_open(&h.ctx));
         h.get_by_label("Pick screen color").click();
         h.run_steps(4);
+        assert_eq!(h.state().ui.tool_options.shape_fill, i == 1, "sampling stays local until OK");
+        assert_eq!(h.state().ui.tool_options.stroke_width, 0.0);
+        assert_eq!((h.state().session.tools.foreground, h.state().session.tools.background), globals);
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(!crate::shape_paint_ui::color_dialog_open(&h.ctx));
         h.key_press(Key::Escape);
         h.run_steps(2);
     }
     assert!(h.state().ui.tool_options.shape_fill);
     assert_eq!(h.state().ui.tool_options.stroke_width, 3.0);
     assert_eq!((h.state().session.tools.foreground, h.state().session.tools.background), globals);
-    assert_eq!(h.state().ui.tool_options.shape_fill_paint, Some(solid_paint([0.91, 0.17, 0.32, 1.0])));
-    assert_eq!(h.state().ui.tool_options.shape_stroke_paint, Some(solid_paint([0.12, 0.68, 0.93, 1.0])));
+    assert_eq!(h.state().ui.tool_options.shape_fill_paint, Some(fill.clone()));
+    assert_eq!(h.state().ui.tool_options.shape_stroke_paint, Some(stroke.clone()));
+    assert_eq!(h.state().session.active().unwrap().doc, original);
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), 0);
     finish_shape(h.state_mut(), Tool::Rectangle, [20.0, 20.0], [100.0, 80.0], Modifiers::NONE);
-    assert_eq!(shape(h.state()).fill, Some(solid_paint([0.91, 0.17, 0.32, 1.0])));
-    assert_eq!(shape(h.state()).stroke.as_ref().unwrap().paint, solid_paint([0.12, 0.68, 0.93, 1.0]));
+    assert_eq!(shape(h.state()).fill, Some(fill));
+    assert_eq!(shape(h.state()).stroke.as_ref().unwrap().paint, stroke);
 }
 
 #[test]
