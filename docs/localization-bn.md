@@ -6,10 +6,11 @@ Select **Preferences > Interface > Language > বাংলা**, or set
 `bn-BD`, `bn-IN` and similar tags resolve to this catalog; with no saved
 preference, `auto` follows the system locale.
 
-The native build lazy-loads a Bengali system font (Noto Sans Bengali on Linux,
-Bangla MN on macOS, Nirmala UI on Windows) the first time Bengali text is
-drawn, the same way Thai is handled; see `crates/ui-egui/src/cjk_fonts.rs`.
-The web build has no Bengali font fallback and shows the browser's fallback.
+The native build renders Bengali through the generic non-CJK script fallback:
+the first time Bengali text is drawn, the font loader tries the system
+candidates for `Script::Bengali` (Noto Sans Bengali on Linux, Bangla MN on
+macOS, Nirmala UI on Windows; see `photocraft_text::scripts`). The web build
+has no Bengali font fallback and shows the browser's fallback.
 
 ## Files and integration
 
