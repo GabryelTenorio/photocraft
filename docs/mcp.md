@@ -13,7 +13,9 @@ described in [development.md](development.md). UI tools require a running deskto
 ## Tools and resources
 
 - `command_list`: discover engine ids, parameter docs and current enabled state; accepts
-  `filter` and `enabled_only`.
+  `filter` and `enabled_only`. Returns a bare JSON array of
+  `{id, label, menu, shortcut, params, enabled}` objects (see
+  [Command list replies](control-protocol.md#command-list-replies)).
 - `command_run`: `id`, optional `params` and `wait`. Command parameters remain engine-defined.
 - `command_batch`: ordered `steps`, optional `stop_on_error`; one history step per command,
   not an atomic transaction. Existing per-step results and reply budgets are preserved.

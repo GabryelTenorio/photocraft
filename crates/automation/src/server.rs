@@ -617,7 +617,9 @@ impl PhotocraftMcp {
         }
     }
 
-    #[tool(description = "List engine commands: id, label, menu path, shortcut, parameter doc, enabled now.")]
+    #[tool(
+        description = "List engine commands. Returns a JSON array (no wrapper object) of {id, label, menu: [path], shortcut: string|null, params: doc string, enabled: bool}."
+    )]
     async fn command_list(&self, Parameters(p): Parameters<ListParams>) -> Result<CallToolResult, McpError> {
         let all = if let Some(r) = self.headless_op(|h| Ok(h.command_list())).await {
             r

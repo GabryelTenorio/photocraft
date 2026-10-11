@@ -326,6 +326,37 @@ mod tests {
         }
     }
 
+    /// Pins the reply shape documented in docs/control-protocol.md › Command list replies
+    /// (#3684): a bare JSON array (not `{"commands": [...]}`), one object per command with
+    /// exactly these keys, from `engine.commands` (filtered or not) and `command.list`.
+    #[test]
+    fn command_list_replies_are_documented_array_of_objects() {
+        let h = session();
+        let mut g = h.lock().unwrap();
+        let all = g.handle("engine.commands", json!({})).unwrap();
+        let filtered = g.handle("engine.commands", json!({"filter": "BLUR"})).unwrap();
+        let engine = g.handle("engine.execute", json!({"command": "command.list"})).unwrap();
+        for (name, reply) in [("engine.commands", &all), ("engine.commands {filter}", &filtered), ("command.list", &engine)] {
+            let items = reply.as_array().unwrap_or_else(|| panic!("{name} must reply with a bare array, got {reply}"));
+            assert!(!items.is_empty(), "{name}");
+            for c in items {
+                let mut keys: Vec<&str> = c.as_object().unwrap().keys().map(String::as_str).collect();
+                keys.sort_unstable();
+                assert_eq!(keys, ["enabled", "id", "label", "menu", "params", "shortcut"], "{name}: {c}");
+                assert!(c["id"].is_string() && c["label"].is_string() && c["params"].is_string() && c["enabled"].is_boolean(), "{c}");
+                assert!(c["menu"].as_array().unwrap().iter().all(Value::is_string), "{c}");
+                assert!(c["shortcut"].is_string() || c["shortcut"].is_null(), "{c}");
+            }
+        }
+        let n_all = all.as_array().unwrap().len();
+        assert_eq!(engine.as_array().unwrap().len(), n_all);
+        let filtered = filtered.as_array().unwrap();
+        assert!(filtered.len() < n_all);
+        assert!(filtered.iter().all(|c| format!("{} {}", c["id"], c["label"]).to_lowercase().contains("blur")));
+        let new = all.as_array().unwrap().iter().find(|c| c["id"] == "file.new").unwrap();
+        assert_eq!((&new["menu"], &new["shortcut"], &new["enabled"]), (&json!(["File"]), &json!("Cmd+N"), &json!(true)), "{new}");
+    }
+
     #[test]
     fn lines_round_trip_and_errors() {
         let h = session();
