@@ -222,6 +222,8 @@ mod tests {
         assert_eq!(cell_color([1.0, 1.0, 1.0, 0.5]), Some(Color32::from_black_alpha(20)));
         let full = cell_color([0.0, 0.0, 0.0, 1.0]);
         assert_eq!(full, Some(Color32::from_white_alpha(64)));
+        // Opaque white keeps a full-strength black line: the grid never vanishes on a blank page.
+        assert_eq!(cell_color([1.0, 1.0, 1.0, 1.0]), Some(Color32::from_black_alpha(41)));
     }
 
     #[test]

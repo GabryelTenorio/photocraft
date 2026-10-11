@@ -281,8 +281,9 @@ fn pixel_grid_does_not_flip_colour_across_mid_tones() {
         assert!(c <= 14, "grey {grey:#04x}: grid line differs from its pixel by {c} levels, want a faint line");
     }
     // The fade must not remove the grid where it is needed: dark and light pixels keep a clear
-    // line (white over 0x60, black over 0xd0).
-    for grey in [0x60u8, 0xd0] {
+    // line (white over 0x60, black over 0xd0 and white; black itself is in the unit tests, as the
+    // dark pasteboard defeats this walk to the document edge).
+    for grey in [0x60u8, 0xd0, 0xff] {
         let c = grid_line_contrast_over_grey(&mut h, grey);
         assert!(c >= 20, "grey {grey:#04x}: grid line differs from its pixel by only {c} levels");
     }
