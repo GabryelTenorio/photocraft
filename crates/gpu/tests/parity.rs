@@ -479,6 +479,26 @@ fn assert_gradient_fallback(d: &Document) {
 }
 
 #[test]
+fn close_distinct_gradient_stops_request_cpu() {
+    // Stops closer than 1/4095 cannot be accurately interpolated across the LUT (#3053).
+    let fill = Fill::gradient(
+        vec![
+            (0.0, Color::BLACK),
+            (0.4999, Color::BLACK),
+            (0.5, Color::WHITE),
+            (1.0, Color::WHITE),
+        ],
+        0.0,
+        1.0,
+        GradientStyle::Linear,
+        false,
+    );
+    let mut d = Document::new("close stops", Size::new(8, 2), ColorMode::Rgb, SampleType::U8);
+    d.layers.push(Layer::new("gradient", LayerContent::Fill(fill)));
+    assert_gradient_fallback(&d);
+}
+
+#[test]
 fn hard_stop_effects_and_gradient_maps_request_cpu() {
     let mut d = Document::with_background("hard stops", Size::new(8, 2), ColorMode::Rgb, SampleType::U8, Color::WHITE);
     for opacity in [false, true] {
