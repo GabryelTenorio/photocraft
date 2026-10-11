@@ -174,6 +174,11 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             } else {
                 440.0
             }));
+            if (crate::prefs_ui::is_shortcuts(&d.fields) || crate::prefs_ui::is_preferences(&d.fields))
+                && let Some(w) = wide
+            {
+                ui.set_width(w);
+            }
             if let Some(w) = crate::file_ui::dialog_width(&d.fields) {
                 ui.set_min_width(w);
                 ui.set_max_width(w);
