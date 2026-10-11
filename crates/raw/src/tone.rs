@@ -544,16 +544,40 @@ fn guided(i: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> Vec<f
 /// carry the black point, so the change's map is computed from the luminance after it rather
 /// than before; that only differs in the deepest shadows.
 pub fn retone(px: &mut [[f32; 4]], w: usize, h: usize, curve: &[[f32; 2]], tone: Tone) {
-    retone_with(px, w, h, curve, tone, None, &mut None);
+    retone_with(px, w, h, curve, tone, None, None, &mut None);
+}
+
+/// Colour noise reduction in [`retone_with`] (see `chroma.rs`): the sliders, the buffer's size
+/// relative to the full frame, the full frame's noise when known, and `level`, what takes the
+/// linear values (after `pre`) to the sensor's white: the development reduces colour noise there,
+/// before the exposure gain.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StageNoise {
+    pub color: crate::chroma::ColorNoise,
+    pub pixel_scale: f32,
+    pub noise: Option<crate::chroma::ChromaNoise>,
+    pub level: f32,
 }
 
 /// [`retone`], keeping in `cache` what does not depend on the sliders' values, for previews that
 /// retone the same pixels again: `px` must hold the pixels `cache` was filled from (it is filled
 /// again when they, the size or the curve change). `pre`, when set, is a linear ProPhoto 3×3
 /// applied first, as the develop stage applies Exposure and the white balance before the tone
-/// stage (see `white_balance_of`).
-pub fn retone_with(px: &mut [[f32; 4]], w: usize, h: usize, curve: &[[f32; 2]], tone: Tone, pre: Option<[[f32; 3]; 3]>, cache: &mut Option<RetoneCache>) {
-    if (tone.is_neutral() && pre.is_none()) || w == 0 || h == 0 || px.len() < w * h {
+/// stage (see `white_balance_of`), and `noise` the colour noise reduction the development applies
+/// after it, before the tone stage.
+#[allow(clippy::too_many_arguments)]
+pub fn retone_with(
+    px: &mut [[f32; 4]],
+    w: usize,
+    h: usize,
+    curve: &[[f32; 2]],
+    tone: Tone,
+    pre: Option<[[f32; 3]; 3]>,
+    noise: Option<StageNoise>,
+    cache: &mut Option<RetoneCache>,
+) {
+    let noise = noise.filter(|n| !n.color.is_off());
+    if (tone.is_neutral() && pre.is_none() && noise.is_none()) || w == 0 || h == 0 || px.len() < w * h {
         return;
     }
     let px = &mut px[..w * h];
@@ -562,7 +586,7 @@ pub fn retone_with(px: &mut [[f32; 4]], w: usize, h: usize, curve: &[[f32; 2]], 
         *cache = Some(RetoneCache::new(px, w, h, curve, print));
     }
     let Some(c) = cache.as_mut() else { return };
-    c.set_pre(pre);
+    c.set_pre(pre, noise);
     c.analyse(tone);
     let haze = c.haze_map(tone.dehaze);
     let work = c.work_change(tone);
@@ -584,6 +608,23 @@ pub fn retone_with(px: &mut [[f32; 4]], w: usize, h: usize, curve: &[[f32; 2]], 
             }
         }
     });
+}
+
+/// The linear value of each 16-bit code a development with tone `curve` writes (the curve and
+/// gamma 1.8 undone), for working on developed pixels in linear light.
+pub fn linear_of_codes(curve: &[[f32; 2]]) -> Vec<f32> {
+    let forward = |v: f32| crate::develop::tone(curve, v.clamp(0.0, 1.0)).clamp(0.0, 1.0).powf(1.0 / 1.8);
+    const N: usize = 4096;
+    let table: Vec<f32> = (0..=N).map(|i| forward((i as f32 / N as f32).powi(2))).collect();
+    (0..=u16::MAX)
+        .map(|code| {
+            let e = f32::from(code) / 65535.0;
+            let i = table.partition_point(|t| *t < e).clamp(1, N);
+            let (a, b) = (table[i - 1], table[i]);
+            let f = if b > a { ((e - a) / (b - a)).clamp(0.0, 1.0) } else { 0.0 };
+            (((i - 1) as f32 + f) / N as f32).powi(2)
+        })
+        .collect()
 }
 
 /// A cheap check that the pixels are the ones a [`RetoneCache`] was filled from.
@@ -620,6 +661,7 @@ pub struct RetoneCache {
     /// The pixels' linear values with the curve undone, before `pre`.
     undone: Vec<[f32; 3]>,
     pre: Option<[[f32; 3]; 3]>,
+    noise: Option<StageNoise>,
     /// Linear → gamma-1.8 code through the curve, [`FORWARD_STEPS`] + 1 entries over `√v`.
     forward: Vec<f32>,
     haze: Option<HazeBase>,
@@ -724,6 +766,7 @@ impl RetoneCache {
             undone: lin.clone(),
             lin,
             pre: None,
+            noise: None,
             forward,
             haze: None,
             dehaze: None,
@@ -733,16 +776,24 @@ impl RetoneCache {
         }
     }
 
-    /// Applies `pre` to the linear values; a change drops everything computed from them.
-    fn set_pre(&mut self, pre: Option<[[f32; 3]; 3]>) {
-        if self.pre == pre {
+    /// Applies `pre`, then the colour noise reduction, to the linear values; a change drops
+    /// everything computed from them.
+    fn set_pre(&mut self, pre: Option<[[f32; 3]; 3]>, noise: Option<StageNoise>) {
+        if self.pre == pre && self.noise == noise {
             return;
         }
         self.lin = match pre {
             Some(m) => self.undone.iter().map(|v| [0, 1, 2].map(|r| (m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2]).max(0.0))).collect(),
             None => self.undone.clone(),
         };
-        self.pre = pre;
+        if let Some(n) = noise.filter(|n| n.level.is_finite() && n.level > 0.0) {
+            let frame = crate::chroma::NoiseFrame { weights: crate::chroma::prophoto_luminance(), pixel_scale: n.pixel_scale, noise: n.noise };
+            let data = self.lin.as_flattened_mut();
+            data.iter_mut().for_each(|v| *v *= n.level);
+            crate::chroma::reduce_color_noise(data, 3, self.w, self.h, &n.color, &frame);
+            data.iter_mut().for_each(|v| *v /= n.level);
+        }
+        (self.pre, self.noise) = (pre, noise);
         (self.haze, self.dehaze, self.work, self.texture) = (None, None, None, None);
     }
 
@@ -1176,7 +1227,7 @@ mod tests {
             Tone { shadows: 0.0, highlights: 10.0, clarity: 0.0, texture: 0.0, dehaze: 15.0 },
         ] {
             let (mut kept, mut fresh) = (px.clone(), px.clone());
-            retone_with(&mut kept, w, h, &curve, tone, None, &mut cache);
+            retone_with(&mut kept, w, h, &curve, tone, None, None, &mut cache);
             retone(&mut fresh, w, h, &curve, tone);
             assert_eq!(kept, fresh, "{tone:?}");
         }
@@ -1184,7 +1235,7 @@ mod tests {
         let mut other: Vec<[f32; 4]> = px.iter().map(|p| [p[0] * 0.5, p[1] * 0.5, p[2] * 0.5, 1.0]).collect();
         let mut fresh = other.clone();
         let tone = Tone { shadows: 50.0, ..Tone::NEUTRAL };
-        retone_with(&mut other, w, h, &curve, tone, None, &mut cache);
+        retone_with(&mut other, w, h, &curve, tone, None, None, &mut cache);
         retone(&mut fresh, w, h, &curve, tone);
         assert_eq!(other, fresh);
         // A linear matrix first (Exposure and the white balance): kept and fresh agree, and with
@@ -1192,12 +1243,12 @@ mod tests {
         let pre = Some([[2.0, 0.0, 0.0], [0.0, 1.5, 0.1], [0.0, 0.0, 1.2]]);
         for tone in [Tone { shadows: 50.0, ..Tone::NEUTRAL }, Tone::NEUTRAL, Tone { shadows: 50.0, dehaze: 20.0, ..Tone::NEUTRAL }] {
             let (mut kept, mut fresh) = (px.clone(), px.clone());
-            retone_with(&mut kept, w, h, &curve, tone, pre, &mut cache);
-            retone_with(&mut fresh, w, h, &curve, tone, pre, &mut None);
+            retone_with(&mut kept, w, h, &curve, tone, pre, None, &mut cache);
+            retone_with(&mut fresh, w, h, &curve, tone, pre, None, &mut None);
             assert_eq!(kept, fresh, "{tone:?}");
         }
         let mut gained = px.clone();
-        retone_with(&mut gained, w, h, &curve, Tone::NEUTRAL, Some([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]]), &mut None);
+        retone_with(&mut gained, w, h, &curve, Tone::NEUTRAL, Some([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]]), None, &mut None);
         let enc = |v: f32| crate::develop::tone(&curve, v.clamp(0.0, 1.0)).clamp(0.0, 1.0).powf(1.0 / 1.8);
         let dark = px.iter().position(|p| p[0] < 0.3).unwrap();
         // Undo the curve by search, then double.

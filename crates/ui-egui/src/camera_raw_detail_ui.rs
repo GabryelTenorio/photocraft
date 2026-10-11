@@ -32,12 +32,12 @@ type ScreenResult = Result<(ScreenKey, Arc<Vec<[f32; 4]>>), String>;
 
 /// The raw stage of a raw open: its five sliders, and Exposure / Temperature / Tint as a linear
 /// matrix applied before them (see [`raw_stage_split`]).
-type RawStage = (photocraft_io::raw::Tone, Option<[[f32; 3]; 3]>);
+type RawStage = (photocraft_io::raw::Tone, Option<[[f32; 3]; 3]>, photocraft_io::raw::ColorNoise);
 
 /// Splits `p` for a raw being opened (`raw`): the raw stage, which Open applies to the sensor data
-/// (Shadows, Highlights, Clarity, Texture, Dehaze, Exposure, and Temperature / Tint when the file
-/// has an as-shot white balance), and the settings left for the pipeline after it. Without `raw`
-/// everything is left for the pipeline.
+/// (Shadows, Highlights, Clarity, Texture, Dehaze, Exposure, the colour noise reduction, and
+/// Temperature / Tint when the file has an as-shot white balance), and the settings left for the
+/// pipeline after it. Without `raw` everything is left for the pipeline.
 pub(crate) fn raw_stage_split(p: &CameraRaw, raw: Option<&photocraft_io::raw::RawPreview>) -> (CameraRaw, Option<RawStage>) {
     let Some(raw) = raw else { return (p.clone(), None) };
     let tone = photocraft_io::raw::Tone { shadows: p.shadows, highlights: p.highlights, clarity: p.clarity, texture: p.texture, dehaze: p.dehaze };
@@ -47,7 +47,25 @@ pub(crate) fn raw_stage_split(p: &CameraRaw, raw: Option<&photocraft_io::raw::Ra
     if white_balance {
         (rest.temperature, rest.tint) = (0.0, 0.0);
     }
-    (rest, Some((tone, pre)))
+    let noise = color_noise_of(p);
+    rest.noise_color = 0.0;
+    (rest, Some((tone, pre, noise)))
+}
+
+/// What takes the raw stage's linear values (the developed pixels with `p`'s Exposure applied) to
+/// the sensor's white, where the development reduces colour noise (before its exposure gain).
+fn noise_level(raw: &photocraft_io::raw::RawPreview, p: &CameraRaw) -> f32 {
+    1.0 / (raw.baseline_gain.max(1e-6) * 2f32.powf(p.exposure.clamp(-10.0, 10.0)))
+}
+
+/// The colour noise reduction of `p` for the raw stage (off unless Color is above 0, so the
+/// other two sliders alone change nothing).
+pub(crate) fn color_noise_of(p: &CameraRaw) -> photocraft_io::raw::ColorNoise {
+    if p.noise_color > 0.0 {
+        photocraft_io::raw::ColorNoise { amount: p.noise_color, detail: p.noise_color_detail, smoothness: p.noise_color_smoothness }
+    } else {
+        photocraft_io::raw::ColorNoise::default()
+    }
 }
 
 /// Results of [`tonal_stage`] kept for the settings they were made with: the raw stage's (for
@@ -146,6 +164,15 @@ impl DetailPreview {
         let mut params = params.clone();
         params.pixel_scale = 1.0;
         develop(&self.source, self.raw.as_deref(), self.area, &params, &self.coverage)
+    }
+
+    /// The developed pixels and the rectangle of them the dialog works on.
+    pub(crate) fn source(&self) -> &Surface {
+        &self.source
+    }
+
+    pub(crate) fn area(&self) -> PixelRect {
+        self.area
     }
 
     /// The size of the screen-size develop the preview shows (`None`: the proxy or 1:1 pixels).
@@ -513,10 +540,12 @@ pub(crate) fn tonal_stage(
             Some((s, px)) if *s == stage => Some(px.clone()),
             _ => {
                 let mut px = source.to_vec();
-                let (tone, pre) = stage;
+                let (tone, pre, color) = stage;
+                let noise =
+                    Some(photocraft_io::raw::StageNoise { color, pixel_scale: p.pixel_scale.clamp(0.01, 1.0), noise: raw.noise, level: noise_level(raw, p) });
                 match cache.retone.lock() {
-                    Ok(mut kept) => photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, &mut kept),
-                    Err(_) => photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, &mut None),
+                    Ok(mut kept) => photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, noise, &mut kept),
+                    Err(_) => photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, noise, &mut None),
                 }
                 let px = Arc::new(px);
                 cache.raw = Some((stage, px.clone()));
@@ -619,11 +648,12 @@ fn reduce(source: &Surface, area: PixelRect, tw: usize, th: usize) -> Vec<[f32; 
 pub(crate) fn develop(source: &Surface, raw: Option<&photocraft_io::raw::RawPreview>, area: PixelRect, params: &CameraRaw, coverage: &Coverage) -> Surface {
     let (rest, stage) = raw_stage_split(params, raw);
     let (retoned, params) = match (raw, stage) {
-        (Some(raw), Some((tone, pre))) if !tone.is_neutral() || pre.is_some() => {
+        (Some(raw), Some((tone, pre, color))) if !tone.is_neutral() || pre.is_some() || !color.is_off() => {
             let (w, h) = (area.width() as usize, area.height() as usize);
             let mut px = vec![[0.0f32; 4]; w * h];
             source.read_rgba_into(area, &mut px);
-            photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, &mut None);
+            let noise = Some(photocraft_io::raw::StageNoise { color, pixel_scale: 1.0, noise: raw.noise, level: noise_level(raw, params) });
+            photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, noise, &mut None);
             let fmt = source.format();
             let n = fmt.channels();
             let mut data = source.read_region(area);
@@ -744,7 +774,7 @@ mod tests {
         let tone = photocraft_io::raw::Tone { shadows: 80.0, ..Default::default() };
         let gain = 2f32.powf(0.25);
         let pre = [[gain, 0.0, 0.0], [0.0, gain, 0.0], [0.0, 0.0, gain]];
-        photocraft_io::raw::retone_with(&mut px, 96, 64, &curve, tone, Some(pre), &mut None);
+        photocraft_io::raw::retone_with(&mut px, 96, 64, &curve, tone, Some(pre), None, &mut None);
         let mut retoned = source.clone();
         let flat: Vec<f32> = px.iter().flatten().copied().collect();
         retoned.write_region(area, &flat);

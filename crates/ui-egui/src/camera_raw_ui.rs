@@ -114,6 +114,8 @@ pub struct CameraRawDialog {
     pub(crate) dirty: bool,
     pub show_before: bool,
     pub render_ms: f64,
+    /// How long estimating the raw's chroma noise took at open (ms).
+    noise_ms: f64,
     /// Set for the open-time dialog ([`Target::OpenRaw`]).
     pub(crate) raw_open: Option<RawOpen>,
     /// The open-time dialog's camera tone curve: Shadows / Highlights act on the raw data there,
@@ -129,7 +131,7 @@ impl CameraRawDialog {
     pub fn describe(&self, view: &crate::state::CameraRawScopeState, navigation: &crate::state::CameraRawPreviewState) -> Value {
         let h = self.histogram();
         let mut result = json!({"layer": self.layer.0, "params": serde_json::to_value(&self.params).unwrap_or(Value::Null), "proxy": [self.pw, self.ph],
-            "renderMs": self.render_ms, "histogramMs": self.histogram_ms, "previewRevision": self.preview_revision, "before": self.show_before,
+            "renderMs": self.render_ms, "noiseMs": self.noise_ms, "histogramMs": self.histogram_ms, "previewRevision": self.preview_revision, "before": self.show_before,
             "histogram": {"source": if self.show_before { "before" } else { "after" }, "approximate": true, "size": [self.pw, self.ph],
                 "sampleDomain": "preview-rgb", "range": [0, 1], "red": h.channels[0].as_slice(), "green": h.channels[1].as_slice(), "blue": h.channels[2].as_slice(),
                 "samples": h.samples, "transparent": h.transparent, "invalid": h.invalid, "underflow": h.underflow, "overflow": h.overflow, "shadows": h.shadows, "highlights": h.highlights}});
@@ -319,6 +321,35 @@ pub fn queue_open_dialog(app: &mut PhotocraftApp, name: &str, path: Option<&str>
     }
 }
 
+/// `area` of the developed `source` in linear light (RGB, row-major) through `lut` (the linear
+/// value of each 16-bit code).
+fn linear_frame(source: &photocraft_raster::Surface, area: Rect, lut: &[f32]) -> (usize, usize, Vec<f32>) {
+    let (w, h) = (area.width() as usize, area.height() as usize);
+    let mut lin = vec![0.0f32; w * h * 3];
+    let code = |v: f32| lut.get((v.clamp(0.0, 1.0) * 65535.0).round() as usize).copied().unwrap_or(0.0);
+    let fill = |(y, out): (usize, &mut [f32])| {
+        let mut px = vec![[0.0f32; 4]; w];
+        let y = area.y0 + y as i32;
+        source.read_rgba_into(Rect::new(area.x0, y, area.x1, y + 1), &mut px);
+        for (o, p) in out.as_chunks_mut::<3>().0.iter_mut().zip(&px) {
+            o.copy_from_slice(&[code(p[0]), code(p[1]), code(p[2])]);
+        }
+    };
+    if w > 0 {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use rayon::prelude::*;
+            lin.par_chunks_mut(w * 3).enumerate().for_each(fill);
+        }
+        #[cfg(target_arch = "wasm32")]
+        lin.chunks_mut(w * 3).enumerate().for_each(fill);
+    }
+    (w, h, lin)
+}
+
+/// Camera Raw's default Detail › Noise Reduction › Color for raw files.
+pub const RAW_COLOR_NOISE: f32 = 25.0;
+
 /// Opens the queued open-time dialog on its document's (only) layer.
 fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Result<(), String> {
     let index = document_index(app, raw.document).ok_or("the raw document was closed")?;
@@ -333,10 +364,26 @@ fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Resul
     };
     if let Some(d) = app.camera_raw.as_mut() {
         d.layer_name = raw.name.clone();
+        // The full frame's chroma noise, so reduced previews of the colour noise reduction
+        // match Open's full-size one.
+        let mut curve = curve;
+        if let Some(raw) = curve.as_mut() {
+            let t = crate::gpu_canvas::now_ms();
+            // Relative to the sensor's white, as the development reduces colour noise there.
+            let lut: Vec<f32> = raw.linear_codes().iter().map(|v| v / raw.baseline_gain.max(1e-6)).collect();
+            let (w, h, lin) = linear_frame(d.detail.source(), d.detail.area(), &lut);
+            raw.estimate_noise(w, h, &lin);
+            d.noise_ms = crate::gpu_canvas::now_ms() - t;
+        }
         let curve = curve.map(std::sync::Arc::new);
         d.detail.raw = curve.clone();
         d.raw_curve = curve;
         d.tonal = Default::default();
+        // Camera Raw's defaults for a raw file: Color noise reduction 25 (Detail and Smoothness
+        // 50). The document was developed without it; Open develops with it.
+        d.params.noise_color = RAW_COLOR_NOISE;
+        d.original = d.params.clone();
+        d.dirty = true;
         d.raw_open = Some(raw);
     }
     Ok(())
@@ -393,6 +440,7 @@ fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -
         clarity: params.clarity,
         texture: params.texture,
         dehaze: params.dehaze,
+        color_noise: super::camera_raw_detail_ui::color_noise_of(params),
     };
     let as_opened = photocraft_io::raw::RawTuning { demosaic: raw.developed_with, ..Default::default() };
     // Without the file the raw-stage settings stay RGB adjustments, like the filter's.
@@ -475,6 +523,8 @@ fn finish_redevelop(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen, 
         v.get("warnings").and_then(Value::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
     crate::notices::io_warnings(app, &format!("Opened {}", raw.name), &without_develop_note(&warnings));
     let mut rest = params.clone();
+    // Applied while developing (the colour noise reduction too), not again as the filter.
+    rest.noise_color = 0.0;
     rest.exposure = 0.0;
     rest.shadows = 0.0;
     rest.highlights = 0.0;
@@ -745,6 +795,7 @@ fn open_pixels(
         prefs_tab: 0,
         text_focus_prev: false,
         render_ms: 0.0,
+        noise_ms: 0.0,
         raw_open: None,
         raw_curve: None,
         tonal: Default::default(),
@@ -2093,11 +2144,16 @@ mod tests {
         let mut raw = raw;
         raw.path = Some(path.clone());
         open_raw(&mut app, &ctx, raw).unwrap();
+        eprintln!("noise estimate at open {:.0} ms", app.camera_raw.as_ref().unwrap().noise_ms);
+        let t = std::time::Instant::now();
         menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": set}})).unwrap().unwrap();
+        eprintln!("preview render {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
         let d = app.camera_raw.as_ref().unwrap();
         let (pw, ph, fw, fh) = (d.pw, d.ph, d.full_w, d.full_h);
         let preview = d.processed.clone();
+        let t = std::time::Instant::now();
         menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
+        eprintln!("Open {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
         // The opened document box-reduced as the proxy is.
         let st = app.session.active().unwrap();
         let s = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
@@ -2142,7 +2198,7 @@ mod tests {
         let ahd = pixels(&app);
         let raw = app.pending_raw_open.take().unwrap();
         open_raw(&mut app, &ctx, raw).unwrap();
-        let d = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"demosaic": "bilinear"}})).unwrap().unwrap();
+        let d = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"demosaic": "bilinear", "set": {"noiseColor": 0}}})).unwrap().unwrap();
         assert_eq!(d["openingRaw"]["demosaic"], "bilinear");
         assert!(menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"demosaic": "amaze"}})).unwrap().is_err());
         let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
@@ -2161,7 +2217,7 @@ mod tests {
         open_raw(&mut app, &ctx, raw).unwrap();
         let d = app.camera_raw.as_ref().unwrap().describe(&app.ui.camera_raw_scope, &app.ui.camera_raw_preview);
         assert_eq!(d["openingRaw"]["demosaic"], "bilinear");
-        let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
+        let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": {"noiseColor": 0}, "commit": true}})).unwrap().unwrap();
         assert_eq!(r["redeveloped"], false, "{r}");
 
         // Only the open-time dialog has the choice.
@@ -2258,10 +2314,13 @@ mod tests {
         let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"cancel": true}})).unwrap().unwrap();
         assert_eq!(r["cancelled"], true);
         assert!(app.session.documents().is_empty(), "Cancel closes the raw being opened");
-        // Unchanged settings: Open keeps the default develop and adds no step.
+        // A raw starts with Camera Raw's Color noise reduction 25, which Open develops with.
         app.open_bytes("b.dng", &dng).unwrap();
         let raw = app.pending_raw_open.take().unwrap();
         open_raw(&mut app, &ctx, raw).unwrap();
+        assert_eq!(app.camera_raw.as_ref().unwrap().params.noise_color, RAW_COLOR_NOISE);
+        // Without it nothing changed: Open keeps the default develop and adds no step.
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": {"noiseColor": 0}}})).unwrap().unwrap();
         let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
         assert_eq!(r, json!({"document": 0, "redeveloped": false}));
         // Preference off: raws open straight away.

@@ -16,7 +16,7 @@ use photocraft_cms::{Builtin, Intent, Profile, Transform};
 use photocraft_codecs::{self as codecs, ChannelLayout, Format, Image, SampleType};
 pub use photocraft_raw::Demosaic;
 use photocraft_raw::{CameraLook, DevelopOptions, Limits, RawError, Reference, Sensor, WhiteBalance};
-pub use photocraft_raw::{RetoneCache, Tone, retone, retone_with};
+pub use photocraft_raw::{ChromaNoise, ColorNoise, RetoneCache, StageNoise, Tone, retone, retone_with};
 
 use crate::flat::image_to_document;
 use crate::{ImportResult, IoError};
@@ -66,6 +66,10 @@ pub struct RawTuning {
     pub texture: f32,
     /// −100…100, as `CameraRaw::dehaze`.
     pub dehaze: f32,
+    /// Detail › Noise Reduction › Color, Color Detail and Color Smoothness (0…100, Color 0 is
+    /// off), as `CameraRaw::noise_color*`: on the linear data after demosaicing, as Camera Raw
+    /// does for raw files ([`photocraft_raw::ColorNoise`]).
+    pub color_noise: ColorNoise,
 }
 
 /// Develops a raw file with `tuning` applied at the raw stage: Exposure as develop exposure,
@@ -92,7 +96,8 @@ pub fn import_raw_tuned(name: &str, bytes: &[u8], tuning: &RawTuning) -> Result<
     // The colour rendering the default open used (a look fitted to the camera's JPEG for files
     // without colour calibration), so re-developing changes only what the sliders change.
     let camera_look = default_look(bytes, &sensor);
-    let mut opts = DevelopOptions { limits: limits(), exposure, demosaic: tuning.demosaic, tone, camera_look, ..Default::default() };
+    let mut opts =
+        DevelopOptions { limits: limits(), exposure, demosaic: tuning.demosaic, tone, camera_look, color_noise: tuning.color_noise, ..Default::default() };
     let wb_applied = match sensor.camera_wb {
         Some(m) => {
             let g = wb_gains(tuning.temperature, tuning.tint);
@@ -112,6 +117,12 @@ pub fn import_raw_tuned(name: &str, bytes: &[u8], tuning: &RawTuning) -> Result<
         .filter(|(_, v)| *v != 0.0)
         .map(|(k, v)| format!(", {k} {v:+.0}"))
         .collect::<String>();
+    let noise = tuning.color_noise;
+    let tone = if noise.is_off() {
+        tone
+    } else {
+        format!("{tone}, colour noise {:.0} (detail {:.0}, smoothness {:.0})", noise.amount, noise.detail, noise.smoothness)
+    };
     let summary = format!("developed in Camera Raw (exposure {:+.2} EV{tone}, {wb}, {} demosaic)", tuning.exposure, tuning.demosaic.id());
     Ok((developed_document(name, format, dev, &summary)?, wb_applied))
 }
@@ -123,6 +134,12 @@ pub fn import_raw_tuned(name: &str, bytes: &[u8], tuning: &RawTuning) -> Result<
 pub struct RawPreview {
     /// The tone curve (see [`tone_curve`]).
     pub curve: Vec<[f32; 2]>,
+    /// The full frame's chroma noise, for previews of the colour noise reduction at reduced
+    /// sizes (`None`: each preview estimates it from its own pixels).
+    pub noise: Option<ChromaNoise>,
+    /// The development's gain at Exposure 0 (the file's baseline exposure): the developed linear
+    /// values over this are relative to the sensor's white, where colour noise is reduced.
+    pub baseline_gain: f32,
     /// The camera's as-shot multipliers and the white-balanced camera → linear ProPhoto matrix;
     /// `None` without an as-shot white balance (Temperature and Tint then stay RGB adjustments).
     white_balance: Option<([f64; 3], [[f64; 3]; 3])>,
@@ -141,14 +158,27 @@ pub fn raw_preview(bytes: &[u8]) -> RawPreview {
         let opts = DevelopOptions { limits: limits(), white_balance: WhiteBalance::Multipliers(wb), camera_look: camera_look.clone(), ..Default::default() };
         photocraft_raw::white_balance_of(&sensor, &opts).ok().map(|(_, m)| (wb, m))
     });
-    RawPreview { curve, white_balance }
+    let baseline_gain = 2f64.powf(sensor.baseline_exposure) as f32;
+    RawPreview { curve, noise: None, baseline_gain, white_balance }
 }
 
 impl RawPreview {
+    /// The linear value of each 16-bit code of the developed pixels (see
+    /// [`photocraft_raw::linear_of_codes`]).
+    pub fn linear_codes(&self) -> Vec<f32> {
+        photocraft_raw::linear_of_codes(&self.curve)
+    }
+
+    /// Estimates [`Self::noise`] from the developed full frame in linear light (`w × h` RGB,
+    /// from [`Self::linear_codes`], divided by [`Self::baseline_gain`]).
+    pub fn estimate_noise(&mut self, w: usize, h: usize, linear_rgb: &[f32]) {
+        self.noise = photocraft_raw::estimate_color_noise(linear_rgb, 3, w, h, photocraft_raw::prophoto_luminance());
+    }
+
     /// A raw developed with tone `curve` and no as-shot white balance (Temperature and Tint stay
     /// RGB adjustments).
     pub fn with_curve(curve: Vec<[f32; 2]>) -> Self {
-        RawPreview { curve, white_balance: None }
+        RawPreview { curve, noise: None, baseline_gain: 1.0, white_balance: None }
     }
 
     /// Exposure (EV), Temperature and Tint as one linear ProPhoto 3×3 on the developed pixels,
