@@ -1934,7 +1934,7 @@ mod tests {
         // Fill off.
         click_fill(&mut h);
         assert_eq!(shape(h.state()).0, None, "No Color removes the selected shape's fill");
-        assert!(h.state().ui.tool_options.shape_fill, "editing the selected shape preserves the next shape's default");
+        assert!(!h.state().ui.tool_options.shape_fill, "a successful toolbar edit also seeds the next shape's default");
         h.state_mut().run("edit.undo", json!({})).unwrap();
         assert!(shape(h.state()).0.is_some());
         // No shape selected: no edit.
