@@ -39,6 +39,7 @@ mod camera_raw_preview_ui;
 mod camera_raw_scope_ui;
 pub mod camera_raw_ui;
 pub mod canvas;
+mod canvas_popup;
 pub mod canvas_tool_menu;
 pub mod channel_view;
 pub mod channels_panel;
@@ -61,6 +62,7 @@ pub mod delete_layer_prompt;
 pub mod dialog_blend_ui;
 pub mod dialogs;
 pub mod direct_select;
+pub mod direction;
 pub mod discard_ui;
 pub mod distort_ui;
 pub mod doc_props_ui;
@@ -149,6 +151,7 @@ pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
 pub mod scrollbars;
+pub mod select_mask_view;
 pub mod served_fonts;
 pub mod shape_dialog;
 pub(crate) mod shape_fill_ui;
@@ -170,6 +173,7 @@ pub mod swatches_ui;
 pub mod symmetry_ui;
 mod tab_strip;
 pub mod targa_options_ui;
+pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
 mod timeline_ui;
@@ -475,7 +479,6 @@ pub struct PhotocraftApp {
     pub(crate) blend_preview: Option<blend_preview::BlendPreview>,
     /// Patch Tool drag: the healed document at the pointer (`patch_preview`).
     pub(crate) patch_preview: Option<patch_preview::PatchPreview>,
-    pub(crate) shape_stroke_preview: Option<shape_stroke_ui::ShapeStrokePreview>,
     /// The pixels a Magnetic Lasso border follows (`magnetic_lasso_ui`).
     pub(crate) magnetic: magnetic_lasso_ui::Runtime,
     /// The next tool `Down` is a right-button drag that erases (see `paint_mouse`).
@@ -689,7 +692,6 @@ impl PhotocraftApp {
             move_hover: None,
             blend_preview: None,
             patch_preview: None,
-            shape_stroke_preview: None,
             magnetic: Default::default(),
             secondary_erase: false,
             defer_live_stroke: false,
@@ -1482,12 +1484,14 @@ impl eframe::App for PhotocraftApp {
             vector_ui::pen_commit(self, false);
         }
         transform_tool::end_if_left(self);
+        shape_stroke_ui::sync_editor(self, ctx);
         self.collect_screenshots(ctx);
         self.issue_screenshots(ctx);
         prefs_ui::tick(self, ctx);
         monitor_status::poll(self, ctx);
         // Control requests and persisted preferences can change the language in this frame.
         i18n::sync_context(ctx, &self.session.prefs().interface.language);
+        type_tool::sync_font_names(ctx, self.session.prefs().type_.show_font_names_in_english);
         // A window bigger than its display (1440 × 900 on 1366 × 768) runs under the taskbar:
         // maximize it into the work area once (#315).
         work_area::fit_window(ctx);
@@ -1560,6 +1564,8 @@ impl eframe::App for PhotocraftApp {
             return;
         }
         let t0 = gpu_canvas::now_ms();
+        // A text field's right-click menu, before any field is drawn (text_field_menu.rs).
+        text_field_menu::show(&ctx);
         // Each painting tool keeps its own brush (#218), so switch the active tool's brush in
         // before anything this frame reads it (the cursor, the options bar, a stroke).
         paint_mouse::sync_tool_brush(self);
@@ -1640,6 +1646,7 @@ impl eframe::App for PhotocraftApp {
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         self.automation_input = false;
+        shape_stroke_ui::finish_frame(self, &ctx);
         native_menu::sync(self, &ctx);
         if screen_picker::busy(&ctx) {
             // Block input without a backdrop: the worker may still be capturing the screen.
@@ -1889,6 +1896,8 @@ impl PhotocraftApp {
         theme::install_fonts(ctx);
         egui_extras::install_image_loaders(ctx);
         theme::apply(ctx, kind);
+        // Right-click in any text field: its Cut / Copy / Paste menu (text_field_menu.rs).
+        ctx.add_plugin(text_field_menu::TextFieldMenu);
         // egui's own ⌘+ / ⌘- / ⌘0 scale the whole interface; PhotoCraft zooms the canvas instead
         // (shortcuts.rs), like Photoshop.
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
@@ -2134,6 +2143,9 @@ impl PhotocraftApp {
 mod color_swatch_tests;
 
 #[cfg(test)]
+mod profile_prompt_tests;
+
+#[cfg(test)]
 mod input_tests;
 
 #[cfg(test)]
@@ -2188,6 +2200,9 @@ mod dropdown_press_tests;
 
 #[cfg(test)]
 mod marquee_tests;
+
+#[cfg(test)]
+mod canvas_menu_tests;
 
 #[cfg(test)]
 mod caps_lock_tests;
