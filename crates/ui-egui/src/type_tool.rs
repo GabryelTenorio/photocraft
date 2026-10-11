@@ -1074,8 +1074,10 @@ fn axis_label(tag: &str) -> String {
 
 /// One slider row per variable-font axis of the style's font, below the font style (#2985).
 fn axis_sliders(app: &mut PhotocraftApp, ui: &mut egui::Ui, c: &photocraft_doc::text::CharStyle) {
+    // Drawn every frame: no sliders until the background font scan is done (#3021).
+    let Some(engine) = photocraft_text::try_shared() else { return };
     let axes = {
-        let faces = photocraft_text::shared().lock().unwrap_or_else(PoisonError::into_inner).fonts.faces(&c.font_family);
+        let faces = engine.lock().unwrap_or_else(PoisonError::into_inner).fonts.faces(&c.font_family);
         slider_axes(&faces, c.italic)
     };
     let t = crate::theme::Tokens::get(ui.ctx());
