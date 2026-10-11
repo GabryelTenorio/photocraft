@@ -149,6 +149,7 @@ pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
 pub mod scrollbars;
+pub mod select_mask_view;
 pub mod served_fonts;
 mod shape_canvas;
 pub mod shape_dialog;
@@ -2146,6 +2147,9 @@ impl PhotocraftApp {
 
 #[cfg(test)]
 mod color_swatch_tests;
+
+#[cfg(test)]
+mod profile_prompt_tests;
 
 #[cfg(test)]
 mod input_tests;
