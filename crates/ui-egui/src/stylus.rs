@@ -429,6 +429,54 @@ impl AndroidTouchRecovery {
             }
             events.push(event);
         }
+        // A quick S Pen tap can arrive as a complete touch pair in one frame.
+        // If winit supplied no mouse-button events, restore the missing click.
+        // Do not synthesize incomplete touches or duplicate native pointer clicks.
+        let has_button = events.iter().any(|e| matches!(
+            e, egui::Event::PointerButton { button: egui::PointerButton::Primary, .. }
+        ));
+        if !has_button {
+            let start = events.iter().find_map(|e| match e {
+                egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Start, pos, .. }
+                    => Some((*device_id, *id, *pos)),
+                _ => None,
+            });
+            if let Some((device, id, down)) = start {
+                let end = events.iter().find_map(|e| match e {
+                    egui::Event::Touch { device_id, id: touch_id, phase: egui::TouchPhase::End, pos, .. }
+                        if *device_id == device && *touch_id == id => Some(*pos),
+                    _ => None,
+                });
+                if let Some(up) = end {
+                    let mut fixed = Vec::with_capacity(events.len() + 3);
+                    for event in events {
+                        match &event {
+                            egui::Event::Touch { device_id, id: touch_id, phase: egui::TouchPhase::Start, .. }
+                                if *device_id == device && *touch_id == id => {
+                                fixed.push(egui::Event::PointerMoved(down));
+                                fixed.push(egui::Event::PointerButton {
+                                    pos: down, button: egui::PointerButton::Primary,
+                                    pressed: true, modifiers,
+                                });
+                            }
+                            _ => {}
+                        }
+                        let is_end = matches!(&event, egui::Event::Touch {
+                            device_id, id: touch_id, phase: egui::TouchPhase::End, ..
+                        } if *device_id == device && *touch_id == id);
+                        fixed.push(event);
+                        if is_end {
+                            fixed.push(egui::Event::PointerButton {
+                                pos: up, button: egui::PointerButton::Primary,
+                                pressed: false, modifiers,
+                            });
+                        }
+                    }
+                    raw.events = fixed;
+                    return;
+                }
+            }
+        }
         raw.events = events;
     }
 }
@@ -550,6 +598,45 @@ mod tests {
         s.select(0, 2);
         let r = s.sample().map_or(-1.0, |p| p.rotation);
         assert!(r.abs() < 1e-3 || (r - 360.0).abs() < 1e-3, "halfway from 350° to 10° is 0°, got {r}");
+    }
+
+    #[test]
+    fn fast_stylus_tap_without_pointer_buttons_is_clickable() {
+        let mut repair = AndroidTouchRecovery::default();
+        let mut raw = egui::RawInput {
+            events: vec![touch(egui::TouchPhase::Start, Some(0.4)),
+                         touch(egui::TouchPhase::End, None)],
+            ..Default::default()
+        };
+        repair.repair(&mut raw);
+        let buttons: Vec<bool> = raw.events.iter().filter_map(|event| match event {
+            egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed, .. }
+                => Some(*pressed),
+            _ => None,
+        }).collect();
+        assert_eq!(buttons, vec![true, false]);
+    }
+
+    #[test]
+    fn native_pointer_buttons_are_not_duplicated() {
+        let mut repair = AndroidTouchRecovery::default();
+        let mut raw = egui::RawInput {
+            events: vec![touch(egui::TouchPhase::Start, Some(0.4)),
+                         egui::Event::PointerButton {
+                             pos: egui::pos2(1.0, 1.0),
+                             button: egui::PointerButton::Primary,
+                             pressed: true, modifiers: egui::Modifiers::NONE,
+                         },
+                         touch(egui::TouchPhase::End, None),
+                         egui::Event::PointerButton {
+                             pos: egui::pos2(1.0, 1.0),
+                             button: egui::PointerButton::Primary,
+                             pressed: false, modifiers: egui::Modifiers::NONE,
+                         }],
+            ..Default::default()
+        };
+        repair.repair(&mut raw);
+        assert_eq!(raw.events.len(), 4);
     }
 
     #[test]
