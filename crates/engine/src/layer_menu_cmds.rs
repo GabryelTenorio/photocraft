@@ -127,13 +127,30 @@ fn edit_rgba(s: &mut Session, label: &str, grow: i32, f: impl FnOnce(&mut Vec<[f
 fn apply_mask(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer_param(s, p)?;
     s.edit("Apply Layer Mask", |doc, _| {
+        // Applying a feathered mask must bake the same softened coverage the compositor
+        // displays. LayerMask::values_into accounts for density but not feather (#3044).
+        let feathered = {
+            let layer = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+            if layer.mask.as_ref().is_some_and(|m| m.enabled && photocraft_compose::masks::feather_sigma(m.feather) > 0.0) {
+                // Do not bake an independent vector mask that remains attached after Apply.
+                let mut mask_only = layer.clone();
+                mask_only.vector_mask = None;
+                photocraft_compose::masks::combined_mask(&mask_only, doc.bounds())
+            } else {
+                None
+            }
+        };
         let mask = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?.mask.take().ok_or_else(|| other("the layer has no layer mask"))?;
         let surf = crate::commands::paint_surface(doc, id, &Value::Null)?;
         let r = surf.content_bounds();
         if !r.is_empty() {
             let mut px = read_rgba(surf, r);
             let mut m = Vec::new();
-            mask.values_into(r, &mut m);
+            if let Some(ref softened) = feathered {
+                softened.read_region_into(r, &mut m);
+            } else {
+                mask.values_into(r, &mut m);
+            }
             for (q, k) in px.iter_mut().zip(&m) {
                 q[3] *= k;
             }
