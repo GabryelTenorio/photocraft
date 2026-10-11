@@ -10,6 +10,7 @@ use std::sync::Arc;
 use egui::{CursorIcon, CustomCursorImage, Painter, Pos2, Stroke, vec2};
 
 mod hand;
+pub(crate) mod tip;
 
 /// The largest cursor bitmap, in physical pixels; a larger tip paints its outline instead (with a
 /// small OS crosshair at the hotspot). Windows takes winit's limit. Elsewhere, X servers and
@@ -63,6 +64,125 @@ impl egui::plugin::Plugin for CursorLifecycle {
 
 pub(crate) fn circle(painter: &Painter, at: Pos2, radius: f32, centre: bool) -> CursorIcon {
     show(painter, at, Shape::Circle { radius, centre })
+}
+
+/// The brush cursor as the tip's own outline (`tip`): `segments` are offsets from the pointer in
+/// points, already through the view. A bitmap cursor where the OS takes one, else painted (with
+/// the small crosshair for an outline too big for a cursor), as [`circle`] does.
+pub(crate) fn outline(painter: &Painter, at: Pos2, segments: &[[egui::Vec2; 2]], centre: bool) -> CursorIcon {
+    let ctx = painter.ctx();
+    let reach = segments.iter().flat_map(|s| s.iter()).map(|v| v.length()).fold(0.0f32, f32::max);
+    if !reach.is_finite() || reach <= 0.0 {
+        return crosshair(painter, at, 4.0, 0.0);
+    }
+    if native(ctx) {
+        let scale = native_scale(ctx);
+        if let Some(image) = cached_outline(ctx, segments, centre, scale) {
+            ctx.set_cursor_image(Some(image));
+            return CursorIcon::None;
+        }
+        paint_outline(painter, at, segments, centre);
+        if let Some(image) = cached_image(ctx, Shape::Crosshair { length: 6.0, gap: 2.0 }, scale) {
+            ctx.set_cursor_image(Some(image));
+        }
+        return CursorIcon::None;
+    }
+    paint_outline(painter, at, segments, centre);
+    CursorIcon::None
+}
+
+fn paint_outline(painter: &Painter, at: Pos2, segments: &[[egui::Vec2; 2]], centre: bool) {
+    let [dark, light] = crate::theme::Tokens::cursor_outline();
+    for (width, color) in [(3.0, dark), (1.0, light)] {
+        let stroke = Stroke::new(width, color);
+        for s in segments {
+            painter.line_segment([at + s[0], at + s[1]], stroke);
+        }
+        if centre {
+            paint_crosshair(painter, at, 3.0, 0.0, stroke);
+        }
+    }
+}
+
+/// The outline's bitmap, cached by its quantised geometry so an unchanged tip and view reuse it.
+fn cached_outline(ctx: &egui::Context, segments: &[[egui::Vec2; 2]], centre: bool, scale: f32) -> Option<CustomCursorImage> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (centre, scale.to_bits(), segments.len()).hash(&mut h);
+    for p in segments.iter().flat_map(|s| s.iter()) {
+        ((p.x * 8.0).round() as i32, (p.y * 8.0).round() as i32).hash(&mut h);
+    }
+    let key = h.finish();
+    let id = egui::Id::new("photocraft-tool-cursor-outline");
+    if let Some((cached, image)) = ctx.data(|d| d.get_temp::<(u64, CustomCursorImage)>(id))
+        && cached == key
+    {
+        return Some(image);
+    }
+    let image = rasterize_outline(segments, centre, scale)?;
+    ctx.data_mut(|d| d.insert_temp(id, (key, image.clone())));
+    Some(image)
+}
+
+/// Distance from `p` to the segment `a`–`b`.
+fn segment_distance(p: egui::Vec2, a: egui::Vec2, b: egui::Vec2) -> f32 {
+    let ab = b - a;
+    let len2 = ab.length_sq();
+    let t = if len2 > 0.0 { ((p - a).dot(ab) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    (p - (a + ab * t)).length()
+}
+
+/// The outline drawn into a cursor bitmap with the circle's 1 px light line between dark ones.
+/// Each segment only touches the pixels within its stroke, so the cost follows the outline's
+/// length, not the bitmap's area.
+fn rasterize_outline(segments: &[[egui::Vec2; 2]], centre: bool, scale: f32) -> Option<CustomCursorImage> {
+    if !scale.is_finite() || scale <= 0.0 {
+        return None;
+    }
+    let reach = segments.iter().flat_map(|s| s.iter()).map(|v| v.length()).fold(if centre { 3.0f32 } else { 0.0 }, f32::max);
+    let half = ((reach + 1.5) * scale + 1.0).ceil();
+    if !half.is_finite() || half > f32::from((MAX_SIDE - 1) / 2) {
+        return None;
+    }
+    let hot = half as u16;
+    let side = usize::from(hot * 2 + 1);
+    let n = side.checked_mul(side)?;
+    let (mut fill, mut outline) = (vec![0.0f32; n], vec![0.0f32; n]);
+    let mut stroke = |a: egui::Vec2, b: egui::Vec2| {
+        let (a, b) = (a * scale, b * scale);
+        let pad = 1.5 * scale + 1.0;
+        let lo = |v: f32| ((v - pad + f32::from(hot)).floor().max(0.0)) as usize;
+        let hi = |v: f32| ((v + pad + f32::from(hot)).ceil().max(0.0) as usize).min(side - 1);
+        for row in lo(a.y.min(b.y))..=hi(a.y.max(b.y)) {
+            for col in lo(a.x.min(b.x))..=hi(a.x.max(b.x)) {
+                let p = egui::vec2(col as f32 - f32::from(hot), row as f32 - f32::from(hot));
+                let (f, o) = stroke_coverage(segment_distance(p, a, b), scale);
+                if let (Some(fv), Some(ov)) = (fill.get_mut(row * side + col), outline.get_mut(row * side + col)) {
+                    *fv = fv.max(f);
+                    *ov = ov.max(o);
+                }
+            }
+        }
+    };
+    for s in segments {
+        stroke(s[0], s[1]);
+    }
+    if centre {
+        for d in [egui::vec2(3.0, 0.0), egui::vec2(-3.0, 0.0), egui::vec2(0.0, 3.0), egui::vec2(0.0, -3.0)] {
+            stroke(egui::Vec2::ZERO, d);
+        }
+    }
+    let [dark, light] = crate::theme::Tokens::cursor_outline();
+    let mut rgba = Vec::with_capacity(n.checked_mul(4)?);
+    for (f, o) in fill.iter().zip(&outline) {
+        let a_dark = o * f32::from(dark.a()) / 255.0;
+        let a_light = f * f32::from(light.a()) / 255.0;
+        let alpha = a_light + a_dark * (1.0 - a_light);
+        let white = if alpha > 0.0 { (255.0 * a_light / alpha).round() as u8 } else { 0 };
+        rgba.extend_from_slice(&[white, white, white, (255.0 * alpha).round() as u8]);
+    }
+    let size = hot * 2 + 1;
+    Some(CustomCursorImage { rgba: Arc::from(rgba), size: [size, size], hotspot: [hot, hot] })
 }
 
 pub(crate) fn crosshair(painter: &Painter, at: Pos2, length: f32, gap: f32) -> CursorIcon {

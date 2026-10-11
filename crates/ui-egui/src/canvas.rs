@@ -543,6 +543,18 @@ pub(crate) fn pencil_tip_is_round(size: f32) -> bool {
 /// Whether a brush-tip circle draws its centre mark.
 /// Clone Stamp and Healing Brush stay an empty circle until Option is held, the source-point
 /// cursor. Other brushes follow the cursor preference, the large-tip mark, or the Background Eraser.
+/// A tip outline in tip units ([`crate::tool_cursor::tip::Segment`]) as offsets from the pointer
+/// `p` on screen: scaled to the brush's radius in document pixels, then through the view, so its
+/// zoom, rotation and flips apply.
+pub(crate) fn brush_outline_on_screen(xf: &ViewXform, p: Pos2, size: f32, segs: &[crate::tool_cursor::tip::Segment]) -> Vec<[egui::Vec2; 2]> {
+    let d = xf.to_doc(p);
+    let r = f64::from(size.max(0.0)) / 2.0;
+    let o = xf.to_screen(d[0] as f32, d[1] as f32);
+    let ex = xf.to_screen((d[0] + r) as f32, d[1] as f32) - o;
+    let ey = xf.to_screen(d[0] as f32, (d[1] + r) as f32) - o;
+    segs.iter().map(|s| s.map(|q| ex * q[0] + ey * q[1])).collect()
+}
+
 fn brush_tip_centre(tool: Tool, option: bool, show_crosshair: bool, radius: f32) -> bool {
     if tool == Tool::QuickSelection {
         return false;
@@ -3362,6 +3374,15 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                                     crate::tool_cursor::crosshair(&painter, p, 4.0, 0.0);
                                 }
                                 egui::CursorIcon::None
+                            }
+                            // An elliptical, rotated or sampled tip: its own outline, as Photoshop
+                            // shows it, turned and flipped with the view.
+                            _ if crate::tool_cursor::tip::needs_outline(brush) => {
+                                let centre = brush_tip_centre(tool, alt || app.ui.shell.sticky_alt, cur.show_crosshair_in_brush_tip, r);
+                                let full_tip = cur.painting == PaintingCursor::FullSizeTip;
+                                let segs = crate::tool_cursor::tip::unit_outline(ui.ctx(), brush, full_tip);
+                                let screen = brush_outline_on_screen(&xf, p, brush.size, &segs);
+                                crate::tool_cursor::outline(&painter, p, &screen, centre)
                             }
                             _ => {
                                 let centre = brush_tip_centre(tool, alt || app.ui.shell.sticky_alt, cur.show_crosshair_in_brush_tip, r);

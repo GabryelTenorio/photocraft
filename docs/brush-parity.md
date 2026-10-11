@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: brush engine, dynamics, pressure, smoothing, cursors, retouch tools and feel audited from source and open issues) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (the brush cursor follows the tip's shape) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -70,7 +70,7 @@ tablets against Photoshop side by side.
 | ⌥-click samples a colour with painting tools; Eyedropper comparison ring | done | TOOL-213-9 |
 | ⇧-click draws a straight line from the last point | done | |
 | Right-click opens the Brush Preset picker | done | [`context-menu-parity.md`](context-menu-parity.md); XP-Pen right-click not (#1980), macOS issue #2360 |
-| Precise / normal / full-size tip cursors, crosshair in the tip | partial | Caps Lock precise cursor not audited; round Pencil cursor requested (#2662, #1057) |
+| Precise / normal / full-size tip cursors, crosshair in the tip | partial | the outline follows the tip's shape, roundness and angle (2026-10-11); Caps Lock precise cursor not audited; round Pencil cursor requested (#2662, #1057) |
 | Brush choice kept per tool (Brush, Eraser, Blur each their own) | partial | #2542 |
 
 ## Symmetry
@@ -111,3 +111,4 @@ tablets against Photoshop side by side.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-10 | major | First version, from a source audit and the open issues |
+| 2026-10-11 | minor | The brush cursor shows the tip's own outline: elliptical (Roundness), rotated (Angle), flipped and sampled tips, through the view's rotation |
