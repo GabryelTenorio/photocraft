@@ -469,6 +469,9 @@ pub struct FileHandling {
     pub recover_on_launch: bool,
     pub ignore_exif_profile_tag: bool,
     pub ask_before_saving_layered_tiff: bool,
+    /// File › Save on a document opened from a TIFF keeps its layers in the TIFF (Photoshop
+    /// layer data), as Photoshop does; off, Save asks to flatten it.
+    pub save_layers_in_tiff: bool,
     pub maximize_psd_compatibility: Ask,
     /// SVG groups deeper than this are rasterised on import; parser and document safety caps remain fixed.
     pub rasterize_svg_groups_deeper_than: u32,
@@ -488,6 +491,7 @@ impl Default for FileHandling {
             recover_on_launch: true,
             ignore_exif_profile_tag: false,
             ask_before_saving_layered_tiff: true,
+            save_layers_in_tiff: true,
             maximize_psd_compatibility: Ask::Always,
             rasterize_svg_groups_deeper_than: photocraft_doc::MAX_GROUP_DEPTH as u32,
             recent_file_count: 20,
