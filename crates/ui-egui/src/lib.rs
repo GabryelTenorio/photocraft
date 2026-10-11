@@ -1138,6 +1138,13 @@ impl PhotocraftApp {
     /// [`Self::save_as`], writing a Targa with `tga_bits` per pixel when given (no Targa Options
     /// prompt): `file.save` and `file.saveAs` with `tgaBits`.
     pub fn save_as_with(&mut self, path: Option<String>, tga_bits: Option<photocraft_io::TgaBits>) -> Result<Value, String> {
+        self.save_dialog_flow(path, tga_bits, false)
+    }
+
+    /// [`Self::save_as_with`]. `plain_save` marks File › Save that had to ask for a file name
+    /// (a flat file): confirming the document's own file is recorded as a `file.save` step,
+    /// which writes whichever file the action is played on, not as a Save As to a fixed path.
+    pub(crate) fn save_dialog_flow(&mut self, path: Option<String>, tga_bits: Option<photocraft_io::TgaBits>, plain_save: bool) -> Result<Value, String> {
         if self.save_options_open() {
             return Err("Answer TIFF or Targa Options before starting another save".into());
         }
@@ -1169,7 +1176,16 @@ impl PhotocraftApp {
             }
         };
         let doc = st.doc.id;
-        self.pick_save(&suggested, move |app, path| app.with_document(doc, |app| app.save_to(path, tga_bits)))
+        self.pick_save(&suggested, move |app, path| {
+            app.with_document(doc, |app| {
+                let own = app.session.active().and_then(|st| st.path.clone());
+                let r = app.save_to(path.clone(), tga_bits)?;
+                if plain_save && own.as_deref() == Some(path.as_str()) {
+                    app.journal_as_plain_save(&path);
+                }
+                Ok(r)
+            })
+        })
     }
 
     /// [`Self::save_as_with`] once the path is known.
@@ -1216,6 +1232,17 @@ impl PhotocraftApp {
         Ok(r)
     }
 
+    /// Re-label the Save As just journaled for `path` as File › Save (see [`Self::save_dialog_flow`]).
+    fn journal_as_plain_save(&mut self, path: &str) {
+        if let Some(last) = self.session.journal.last_mut()
+            && last.0 == "file.saveAs"
+            && last.1.get("path").and_then(Value::as_str) == Some(path)
+            && last.1.as_object().is_some_and(|o| o.len() == 1)
+        {
+            *last = ("file.save".into(), Value::Object(Default::default()));
+        }
+    }
+
     /// Replays a recorded `file.save` / `file.saveAs` step: no dialog or prompt, and the
     /// recorded TIFF or Targa answer (if any) stands in for the TIFF or Targa Options prompt.
     pub(crate) fn replay_save(&mut self, id: &str, params: &Value) -> Result<Value, String> {
@@ -1223,14 +1250,19 @@ impl PhotocraftApp {
             return Err("Answer TIFF or Targa Options before starting another save".into());
         }
         if id == "file.save" {
+            // The file the action is played on: a layered file, or a flat one a recorded Save
+            // confirmed in the dialog (#2032).
             let path = self
                 .session
                 .active()
                 .ok_or("no document")?
                 .path
                 .clone()
-                .filter(|p| photocraft_engine::file_cmds::saves_in_place(p))
-                .ok_or("Save writes back only to the document's own PSD, PSB or .pcraft file")?;
+                .filter(|p| {
+                    photocraft_engine::file_cmds::saves_in_place(p)
+                        || photocraft_engine::file_cmds::extension(p).is_some_and(|e| photocraft_codecs::from_extension(&e).is_some_and(|f| f.caps().write))
+                })
+                .ok_or("Save needs a document that was opened from, or saved to, a file it can be written back to")?;
             return self.save_in_place(path);
         }
         let path = params.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("Save As needs a `path`")?;
