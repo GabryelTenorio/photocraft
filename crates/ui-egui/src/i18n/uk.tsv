@@ -11,6 +11,10 @@
 # Menus
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Попередній перегляд щетинних пензлів ще не реалізовано
+	Artboard-specific guides are not implemented	Напрямні окремих монтажних областей ще не реалізовано
+
 	Rows	Рядки
 	Number	Кількість
 	Top:	Зверху:

@@ -20,6 +20,10 @@
 # Menus
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Предпросмотр щетинных кистей пока не реализован
+	Artboard-specific guides are not implemented	Направляющие отдельных монтажных областей пока не реализованы
+
 	Rows	Строки
 	Number	Количество
 	Margin	Поля

@@ -20,6 +20,10 @@
 # dialog commands is kept.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Les aperçus des brosses à poils ne sont pas implémentés
+	Artboard-specific guides are not implemented	Les repères propres aux plans de travail ne sont pas implémentés
+
 	Rows	Lignes
 	Number	Nombre
 	Margin	Marge

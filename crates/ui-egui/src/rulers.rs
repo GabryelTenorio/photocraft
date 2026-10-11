@@ -205,14 +205,14 @@ pub fn guide_at(app: &PhotocraftApp, x: f64, y: f64) -> Option<(bool, usize)> {
         return None;
     }
     let doc = &app.session.active()?.doc;
-    let tol = 4.0 / app.point_zoom().max(0.01) as f64;
+    let reach = crate::canvas::ScreenMetric::active(app).reach(4.0);
     for (i, g) in doc.guides.vertical.iter().enumerate() {
-        if (*g - x).abs() <= tol {
+        if (*g - x).abs() <= reach[0] {
             return Some((true, i));
         }
     }
     for (i, g) in doc.guides.horizontal.iter().enumerate() {
-        if (*g - y).abs() <= tol {
+        if (*g - y).abs() <= reach[1] {
             return Some((false, i));
         }
     }
@@ -665,6 +665,26 @@ mod tests {
             let (u0, u1) = ruler_range(&xf, top.left_top(), top.right_top(), 0, 1.0);
             assert!(u0 <= u1, "flip={flip}: u0 ({u0}) must be <= u1 ({u1})");
             assert!(u1 - u0 > 0.0, "flip={flip}: range is empty");
+        }
+    }
+    #[test]
+    fn aspect_existing_guides_have_constant_screen_reach() {
+        for aspect in [0.1, 10.0] {
+            for ppp in [1.0, 2.0] {
+                let mut a = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                a.run("file.new", json!({"width": 200, "height": 200})).unwrap();
+                a.sync_views();
+                a.ppp = ppp;
+                a.ui.views[0].zoom = ppp;
+                a.ui.views[0].rotation = 37.0;
+                a.ui.view.pixel_aspect = format!("custom:{aspect}:Test");
+                finish_drag(&mut a, GuideDrag { vertical: true, index: None, pos: 50.0 });
+                finish_drag(&mut a, GuideDrag { vertical: false, index: None, pos: 100.0 });
+                assert_eq!(guide_at(&a, 50.0 + 2.0 / aspect, 10.0), Some((true, 0)), "aspect={aspect}, ppp={ppp}");
+                assert_eq!(guide_at(&a, 50.0 + 25.0 / aspect, 10.0), None, "aspect={aspect}, ppp={ppp}");
+                assert_eq!(guide_at(&a, 0.0, 102.0), Some((false, 0)));
+                assert_eq!(guide_at(&a, 0.0, 125.0), None);
+            }
         }
     }
 }

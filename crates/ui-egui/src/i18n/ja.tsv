@@ -16,6 +16,10 @@
 # letters; the trailing "…" of dialog commands is kept.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	ブリッスルブラシのプレビューは未実装です
+	Artboard-specific guides are not implemented	アートボード固有のガイドは未実装です
+
 	Rows	行
 	Number	数
 	Top:	上:

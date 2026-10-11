@@ -216,11 +216,11 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool 
 /// that hit nothing; the Convert Point tool has nothing else to do, so it keeps the press.
 fn press(app: &mut PhotocraftApp, p: [f64; 2], mods: Modifiers, convert: bool) -> bool {
     let own_tool = app.ui.tool == Tool::ConvertPoint;
-    let tol = 6.0 / f64::from(app.point_zoom().max(0.01));
+    let metric = crate::canvas::ScreenMetric::active(app);
     let ds = &app.ui.direct_selection;
     let found = candidates(app).into_iter().find_map(|(r, path)| {
         let handles = if ds.target == Some(r) { shown_handles(ds, &path) } else { Vec::new() };
-        edit::hit(&path, Point::new(p[0], p[1]), tol, &handles).map(|h| (r, path, h))
+        edit::hit(&path.transform(&metric.affine()), Point::new(metric.point(p)[0], metric.point(p)[1]), 6.0, &handles).map(|h| (r, path, h))
     });
     let ds = &mut app.ui.direct_selection;
     let Some((target, base, hit)) = found else {
@@ -284,7 +284,7 @@ fn press(app: &mut PhotocraftApp, p: [f64; 2], mods: Modifiers, convert: bool) -
 /// End of an edit drag: commit it as one command. A click (no movement) commits nothing, except
 /// Pen + ⌥ on an anchor, which makes it a corner.
 fn release(app: &mut PhotocraftApp, target: PathRef, edit: &Edit, start: [f64; 2], end: [f64; 2]) {
-    let moved = (end[0] - start[0]).hypot(end[1] - start[1]) * f64::from(app.point_zoom()) >= 1.0;
+    let moved = crate::canvas::ScreenMetric::active(app).distance(end, start) >= 1.0;
     let (id, mut params) = match edit {
         Edit::Convert([s, k]) if !moved => ("path.convertPoint", json!({"subpath": s, "knot": k})),
         _ if !moved => return,

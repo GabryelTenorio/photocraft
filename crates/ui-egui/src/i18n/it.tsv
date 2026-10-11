@@ -13,6 +13,10 @@
 # letters; the trailing … of dialog commands is kept.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Le anteprime dei pennelli con setole non sono implementate
+	Artboard-specific guides are not implemented	Le guide specifiche delle tavole da disegno non sono implementate
+
 	Columns	Colonne
 	Rows	Righe
 	Number	Numero

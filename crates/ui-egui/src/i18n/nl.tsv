@@ -9,6 +9,10 @@
 # informally ("je") and uses sentence case.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Voorvertoningen van penselen met haren zijn nog niet geïmplementeerd
+	Artboard-specific guides are not implemented	Hulplijnen voor afzonderlijke tekengebieden zijn nog niet geïmplementeerd
+
 	Rows	Rijen
 	Number	Aantal
 	Top:	Boven:

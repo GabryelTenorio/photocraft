@@ -16,6 +16,10 @@
 # letters; the trailing "…" of dialog commands is kept. Plural rule: one|other (n != 1 -> other).
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Vorschauen für Borstenpinsel sind noch nicht implementiert
+	Artboard-specific guides are not implemented	Zeichenflächenspezifische Hilfslinien sind noch nicht implementiert
+
 	Columns	Spalten
 	Rows	Zeilen
 	Number	Anzahl
