@@ -30,8 +30,8 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Marquee | Rectangular, Elliptical, Single Row, Single Column | |
 | Lasso | Lasso, Polygonal, Magnetic | |
 | Selection | Object Selection, Quick Selection, Magic Wand | |
-| Crop and slice | Crop, Slice, Slice Select | Perspective Crop |
-| Frame | | Frame (`layer.new.frameFromLayers` exists) |
+| Crop and slice | Crop, Perspective Crop, Slice, Slice Select | |
+| Frame | Frame (frames are groups clipped by a rectangular or elliptical mask) | |
 | Eyedropper | Eyedropper, Ruler, Note, Count | Color Sampler (#1046) |
 | Retouch | Remove, Spot Healing, Healing, Patch, Content-Aware Move, Red Eye | |
 | Brush | Brush, Pencil, Mixer Brush | Color Replacement (`paint.colorReplacement` exists) |
