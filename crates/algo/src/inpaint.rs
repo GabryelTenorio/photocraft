@@ -1975,6 +1975,35 @@ mod tests {
         }
     }
 
+    /// #2805's case (upstream's own speed-up of the onion peel, superseded here): repeating
+    /// texture with many exact ties, two holes; the result must be the plain scan's to the bit.
+    #[test]
+    fn onion_peel_picks_exactly_what_the_plain_scan_picks() {
+        let (w, h, ch, r) = (48, 40, 3, 3);
+        let mut img = texture(w, h);
+        for y in 0..h {
+            for x in 6..w / 2 {
+                for c in 0..ch {
+                    img[(y * w + x) * ch + c] = img[(y * w + x % 6) * ch + c];
+                }
+            }
+        }
+        let none = photocraft_raster::Interrupt::NONE;
+        for hole in [disc(w, h, 20.0, 18.0, 7.5), disc(w, h, 34.0, 22.0, 5.0)] {
+            let px: Vec<Px> = hole.iter().map(|h| if *h { Px::Hole } else { Px::Source }).collect();
+            let near = integral(w, h, &hole);
+            let sources: Vec<(i32, i32)> = (r..h as i32 - r)
+                .flat_map(|y| (r..w as i32 - r).map(move |x| (x, y)))
+                .filter(|&(x, y)| window_count(&near, w, h, x - r, y - r, x + r + 1, y + r + 1) == 0)
+                .collect();
+            let (mut fast, mut plain) = (img.clone(), img.clone());
+            onion_peel(w, h, ch, r, &mut fast, &px, hole_bounds(w, h, &px).unwrap(), &sources, &none).unwrap();
+            onion_peel_plain(w, h, ch, r, &mut plain, &px, &sources);
+            assert!(fast.iter().zip(&plain).all(|(a, b)| a.to_bits() == b.to_bits()));
+            assert_ne!(fast, img);
+        }
+    }
+
     #[test]
     fn onion_peel_takes_the_plain_scans_sources() {
         let none = photocraft_raster::Interrupt::NONE;
