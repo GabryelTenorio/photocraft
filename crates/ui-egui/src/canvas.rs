@@ -3463,16 +3463,6 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                         pipette_cursor(ui.ctx(), p)
                     }
                 }
-                Tool::Pen => {
-                    if app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
-                        egui::CursorIcon::Crosshair
-                    } else if crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)).command {
-                        // Ctrl/Command temporarily selects the path instead of drawing it.
-                        egui::CursorIcon::Default
-                    } else {
-                        crate::tool_cursor::pen(&painter, p)
-                    }
-                }
                 // The Color Sampler: a pipette, or the crosshair for Precise Other Cursors.
                 Tool::ColorSampler => {
                     if app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
