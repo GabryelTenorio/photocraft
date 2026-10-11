@@ -106,7 +106,7 @@ fn shape_transform_preview_damage_and_external_edits_are_cached() {
     let shown = app.transform_preview.as_ref().unwrap().doc.clone();
     follow_edits(&mut app);
     assert!(Arc::ptr_eq(&shown, &app.transform_preview.as_ref().unwrap().doc));
-    enter_warp(&mut app);
+    enter_warp(&mut app, &ctx);
     follow_edits(&mut app);
     assert!(!app.transform_preview.as_ref().unwrap().shape.as_ref().unwrap().active);
     assert!(texture_meshes(&app, &ctx) > 0, "Warp retains its texture preview");
