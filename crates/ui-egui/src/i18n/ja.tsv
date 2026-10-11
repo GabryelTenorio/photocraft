@@ -902,6 +902,7 @@
 	Click to zoom in  ·  {key}-click to zoom out  ·  drag right/left to zoom in/out	クリックで拡大 · {key}+クリックで縮小 · 右/左にドラッグで拡大/縮小
 	Click with the Note tool to add a note.	注釈ツールでクリックすると注釈を追加できます。
 	Click: corner · Drag: smooth · Click first point: close · {key} finish · Esc cancel	クリック: 角 · ドラッグ: 滑らか · 最初の点をクリック: 閉じる · {key} 完了 · Esc キャンセル
+	Click: corner · Drag: smooth · {shift}: 45° · Click end: continue · Click segment: add · {key} finish · Esc cancel	クリック: 角 · ドラッグ: 滑らか · {shift}: 45° · 端をクリック: 続ける · セグメントをクリック: 追加 · {key} 完了 · Esc キャンセル
 	Clip to layer below	下のレイヤーでクリッピング
 	Clipped	クリッピング済み
 	Close Style Options	スタイルオプションを閉じる

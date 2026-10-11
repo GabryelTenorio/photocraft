@@ -915,6 +915,7 @@
 	Click to zoom in  ·  {key}-click to zoom out  ·  drag right/left to zoom in/out	Kliknutím přiblížíte  ·  {key}+kliknutím oddálíte  ·  tažením doprava/doleva přiblížíte/oddálíte
 	Click with the Note tool to add a note.	Poznámku přidáte kliknutím nástrojem poznámka.
 	Click: corner · Drag: smooth · Click first point: close · {key} finish · Esc cancel	Kliknutí: roh · tažení: hladký bod · kliknutí na první bod: uzavřít · {key} dokončit · Esc zrušit
+	Click: corner · Drag: smooth · {shift}: 45° · Click end: continue · Click segment: add · {key} finish · Esc cancel	Kliknutí: roh · tažení: hladký bod · {shift}: 45° · kliknutí na konec: pokračovat · kliknutí na segment: přidat · {key} dokončit · Esc zrušit
 	Clip to layer below	Oříznout podle vrstvy pod
 	Clipped	Oříznuto
 	Close Style Options	Zavřít možnosti stylu

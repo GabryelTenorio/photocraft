@@ -883,6 +883,7 @@
 	Click to zoom in  ·  {key}-click to zoom out  ·  drag right/left to zoom in/out	Klik untuk zoom in  ·  {key}-klik untuk zoom out  ·  seret kanan/kiri untuk zoom in/out
 	Click with the Note tool to add a note.	Klik dengan alat Catatan untuk menambah catatan.
 	Click: corner · Drag: smooth · Click first point: close · {key} finish · Esc cancel	Klik: sudut · Seret: halus · Klik titik pertama: tutup · {key} selesai · Esc batal
+	Click: corner · Drag: smooth · {shift}: 45° · Click end: continue · Click segment: add · {key} finish · Esc cancel	Klik: sudut · Seret: halus · {shift}: 45° · Klik ujung: lanjutkan · Klik segmen: tambah · {key} selesai · Esc batal
 	Clip to layer below	Klip ke layer di bawah
 	Clipped	Terklip
 	Close Style Options	Tutup Opsi Gaya

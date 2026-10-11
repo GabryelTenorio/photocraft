@@ -220,6 +220,12 @@ pub fn delete_anchor(path: &mut Path, [s, k]: [usize; 2]) -> Result<bool, String
     Ok(false)
 }
 
+/// An open subpath's first or last anchor: the Pen continues from it. Closed paths have none.
+pub fn is_endpoint(path: &Path, [s, k]: [usize; 2]) -> bool {
+    let Some(sp) = path.subpaths.get(s) else { return false };
+    !sp.closed && !sp.knots.is_empty() && k < sp.knots.len() && (k == 0 || k + 1 == sp.knots.len())
+}
+
 /// Every anchor of subpath `s` (⌥-click with Direct Selection selects the whole subpath).
 pub fn subpath_anchors(path: &Path, s: usize) -> Vec<[usize; 2]> {
     path.subpaths.get(s).map_or_else(Vec::new, |sp| (0..sp.knots.len()).map(|k| [s, k]).collect())
@@ -310,12 +316,14 @@ pub fn hit(path: &Path, p: Point, tol: f64, handles: &[([usize; 2], Handle)]) ->
     if let Some(h) = nearest(&mut anchors.into_iter()) {
         return Some(h);
     }
-    // Segments: the nearest of 64 samples, refined once around it (plenty at screen tolerances).
-    const N: usize = 64;
+    // Sample each segment finely enough that a point on the curve is within `tol` of a sample.
+    // A fixed count misses the middle of a long segment once the gap exceeds the grab radius.
     let mut segs = path.subpaths.iter().enumerate().flat_map(|(s, sp)| {
         sp.segments().into_iter().enumerate().map(move |(k, seg)| {
-            let best = (0..=N).map(|i| i as f64 / N as f64).map(|t| (dist(eval(&seg, t), p), t)).min_by(|a, b| a.0.total_cmp(&b.0)).unwrap_or((f64::MAX, 0.5));
-            let step = 1.0 / N as f64;
+            let len = dist(seg[0], seg[1]) + dist(seg[1], seg[2]) + dist(seg[2], seg[3]);
+            let n = ((len / tol.max(0.5)).ceil() as usize).clamp(16, 4096);
+            let best = (0..=n).map(|i| i as f64 / n as f64).map(|t| (dist(eval(&seg, t), p), t)).min_by(|a, b| a.0.total_cmp(&b.0)).unwrap_or((f64::MAX, 0.5));
+            let step = 1.0 / n as f64;
             let fine = (0..=16)
                 .map(|i| (best.1 - step + 2.0 * step * i as f64 / 16.0).clamp(0.0, 1.0))
                 .map(|t| (dist(eval(&seg, t), p), t))
@@ -430,6 +438,23 @@ mod tests {
         assert_eq!(r, [0, 0]);
         assert!((t - 0.5).abs() < 0.02, "{t}");
         assert_eq!(hit(&tri(), Point::new(50.0, 40.0), 3.0, &[]), None);
+        // A straight cubic is slow at the ends and fastest in the middle, so a fixed sample count
+        // leaves a gap wider than the grab radius. A click in that gap is still the segment.
+        let long = Path::new(vec![Subpath::polyline(&[(0.0, 0.0), (2000.0, 0.0)])]);
+        let gap = 32.5 / 64.0;
+        let q = eval(&long.subpaths[0].segments()[0], gap);
+        let Some(Hit::Segment(r, t)) = hit(&long, q, 4.0, &[]) else { panic!("long segment at {q:?}") };
+        assert_eq!(r, [0, 0]);
+        assert!((t - gap).abs() < 0.02, "{t}");
+    }
+
+    #[test]
+    fn an_open_subpath_ends_are_where_the_pen_continues() {
+        assert!(is_endpoint(&curve(), [0, 0]) && is_endpoint(&curve(), [0, 2]));
+        assert!(!is_endpoint(&curve(), [0, 1]));
+        assert!(!is_endpoint(&tri(), [0, 0]), "a closed path has no end to continue");
+        assert!(!is_endpoint(&curve(), [1, 0]));
+        assert!(!is_endpoint(&curve(), [0, 9]));
     }
 
     #[test]
