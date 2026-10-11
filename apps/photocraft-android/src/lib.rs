@@ -89,6 +89,7 @@ fn android_main(android_app: AndroidApp) {
             dialogs,
             picker: None,
             touch_recovery: Default::default(),
+            java_pen_down: false,
         }))
     }));
 
@@ -106,6 +107,7 @@ struct AndroidShell {
     dialogs: PendingDialogs,
     picker: Option<picker::Picker>,
     touch_recovery: photocraft_ui_egui::stylus::AndroidTouchRecovery,
+    java_pen_down: bool,
 }
 
 impl eframe::App for AndroidShell {
@@ -118,6 +120,44 @@ impl eframe::App for AndroidShell {
             FIRST_NATIVE_TOUCH.call_once(|| {
                 log::info!("Android native touch events active (first force: {force:?})");
             });
+        }
+        // Java NativeActivity may receive S Pen contacts that winit does not
+        // translate into egui pointer buttons. Prefer the native stream when
+        // present to avoid duplicate clicks.
+        let java_events = spen::drain_touch_events();
+        let native_touch = raw.events.iter().any(|e| matches!(
+            e, egui::Event::Touch { .. } | egui::Event::PointerButton { .. }
+        ));
+        if !native_touch && !java_events.is_empty() {
+            let scale = ctx.pixels_per_point().max(0.001);
+            for sample in java_events {
+                let pos = egui::pos2(sample.x / scale, sample.y / scale);
+                match sample.action {
+                    0 if !self.java_pen_down => {
+                        raw.events.push(egui::Event::PointerMoved(pos));
+                        raw.events.push(egui::Event::PointerButton {
+                            pos, button: egui::PointerButton::Primary,
+                            pressed: true, modifiers: egui::Modifiers::NONE,
+                        });
+                        self.java_pen_down = true;
+                    }
+                    2 if self.java_pen_down => {
+                        raw.events.push(egui::Event::PointerMoved(pos));
+                    }
+                    1 | 3 if self.java_pen_down => {
+                        raw.events.push(egui::Event::PointerButton {
+                            pos, button: egui::PointerButton::Primary,
+                            pressed: false, modifiers: egui::Modifiers::NONE,
+                        });
+                        self.java_pen_down = false;
+                    }
+                    _ => {}
+                }
+            }
+        } else if native_touch {
+            // Native events already own the pointer; never synthesize a
+            // competing Java click stream.
+            self.java_pen_down = false;
         }
         // Forward the editor's normal input processing: AndroidShell is an
         // eframe::App wrapper, so it must not drop the inner app's hook.
