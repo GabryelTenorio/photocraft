@@ -11,3 +11,7 @@ target/
 /craft-fonts
 *.log
 __pycache__/
+# ---
+.specstory
+.private
+.vscode
