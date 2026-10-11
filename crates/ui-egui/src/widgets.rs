@@ -351,7 +351,8 @@ pub fn scrub_label(ui: &Ui, label: &Response) -> Response {
 }
 
 fn scrub_label_within(ui: &Ui, label: &Response, max_gap: f32) -> Response {
-    let resp = label.interact(Sense::drag());
+    // Drag only, not focusable: Tab goes to the value field, not to its label as well.
+    let resp = label.interact(Sense::DRAG);
     // Whether a field took this label's drags last frame: only then is it scrubby.
     let linked = ui.data(|d| d.get_temp::<bool>(resp.id.with("pc-scrub-linked"))).unwrap_or(false);
     if linked && resp.enabled() && (resp.hovered() || resp.dragged()) {
