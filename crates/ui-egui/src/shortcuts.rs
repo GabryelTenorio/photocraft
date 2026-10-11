@@ -634,16 +634,7 @@ mod tests {
 
     #[test]
     fn malformed_bindings_do_not_silently_match_a_different_shortcut() {
-        for invalid in [
-            "Cmd+Typo+Z",
-            "Cmd+X+Z",
-            "Cmd+Z+X",
-            "Cmd+Z+",
-            "Cmd+Cmd+Z",
-            "Ctrl+Ctrl+Z",
-            "Shift+Shift+Z",
-            "Cmd+Shift+++",
-        ] {
+        for invalid in ["Cmd+Typo+Z", "Cmd+X+Z", "Cmd+Z+X", "Cmd+Z+", "Cmd+Cmd+Z", "Ctrl+Ctrl+Z", "Shift+Shift+Z", "Cmd+Shift+++"] {
             assert!(parse(invalid).is_none(), "{invalid} must not bind a command");
         }
         // '+' is a key name as well as a separator; keep existing shortcut spellings.
