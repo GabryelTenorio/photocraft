@@ -31,7 +31,7 @@ what an agent can't finish alone.
 | G10 | Missing and partial file formats | file format | medium | 120–220 h | [file-format-parity](file-format-parity.md) |
 | G11 | Actions and scripting | ecosystem | medium | 120–200 h | [target-app-parity](target-app-parity.md) |
 | G12 | Pen tablets and display hardware | hardware | medium | 80–150 h | [hardware-parity](hardware-parity.md) |
-| G13 | Languages: Hindi, Arabic, Vietnamese, RTL, engine messages | localization | medium | 80–140 h + human | [localization-parity](localization-parity.md) |
+| G13 | Languages: Hindi, Arabic, RTL, engine messages | localization | medium | 60–120 h + human | [localization-parity](localization-parity.md) |
 | G14 | Camera Raw depth | features, formats | medium | 120–200 h | [file-format-parity](file-format-parity.md#camera-raw) |
 | G15 | AI and generative features | AI | medium (high for some users) | 300–600 h + human | [target-app-parity](target-app-parity.md) |
 | G16 | Plug-in compatibility (.8BF, UXP) | ecosystem | medium | 250–450 h + human | [target-app-parity](target-app-parity.md) |
@@ -189,14 +189,15 @@ what an agent can't finish alone.
 
 ## Localization gaps
 
-### G13. Hindi, Arabic, Vietnamese, RTL and engine messages
-- **Missing:** catalogs for Hindi, Arabic and Vietnamese (3 of the 12 key languages); right-to-
-  left UI layout; Devanagari/Thai/Khmer fallback fonts; engine error and status messages in
+### G13. Hindi, Arabic, RTL and engine messages
+- **Missing:** catalogs for Hindi and Arabic (2 of the 12 key languages; Vietnamese shipped
+  2026-10-11 — [`localization-vi.md`](localization-vi.md)); right-to-left UI layout;
+  Devanagari/Thai/Khmer fallback fonts; engine error and status messages in
   English in every language; browser-locale detection and CJK fonts on the web; Japanese IME on
   Windows (#590); installed Japanese fonts missing from the font list (#2330); Arabic layer names
   as tofu (#1408, #1693).
 - **Detail:** [`localization-parity.md`](localization-parity.md).
-- **Estimate:** 80–140 h. **Human:** native-speaker review of every catalog (none is recorded).
+- **Estimate:** 60–120 h. **Human:** native-speaker review of every catalog (none is recorded).
 
 ## Platform gaps
 

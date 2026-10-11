@@ -25,6 +25,7 @@ contextual, command-ID and plural translations; missing entries fall back to Eng
 | Polski | `pl` | one / few (2–4, not 12–14) / many |
 | Ελληνικά | `el` | one / other |
 | Nederlands | `nl` | one / other |
+| Tiếng Việt | `vi` | one / other |
 
 Every non-English catalog covers the current menu labels, `tl!` literals, blend mode names,
 and generated preference labels. Tests enforce that coverage. This does not include every
@@ -90,7 +91,8 @@ file-resource hot reload are not implemented.
 The native lazy CJK font loader prioritises the selected Japanese, Korean or Chinese script.
 Switching languages rebuilds the font definitions and resets the existing loader, so fonts
 removed from the definitions can be registered again. Idle frames keep their font cache.
-Other languages retain the system's CJK fallback preference for document names and text.
+Other languages (including Vietnamese) retain the system's CJK fallback preference for document
+names and text.
 
 Font files are not added to this repository. Native rendering uses installed system fonts
 and the optional craft-fonts build input; see [Fonts](development.md#fonts-craft-fonts).

@@ -1,15 +1,16 @@
 # Localization parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: per-language status measured from the catalogs, against Photoshop 2026's language packs) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** major (Vietnamese catalog merged: `vi.tsv`, 3,665 rows, 1,669/1,669 measured keys; language registry, plural rule and coverage gates extended) · **Target:** Adobe Photoshop 2026
 
 Per-language status of PhotoCraft's UI. How catalogs work and how to add one:
 [`localization.md`](localization.md). Language notes: [Korean](localization-ko.md),
-[Simplified Chinese](localization-zh-hans.md).
+[Simplified Chinese](localization-zh-hans.md), [Vietnamese](localization-vi.md).
 
 **How measured.** `cargo xtask i18n-coverage` (`xtask/src/i18n_coverage.rs`) defines the key
 universe: `tl!("…")` literals and `trn(` plurals in `ui-egui` (tests excluded), menu-catalog
 labels and path segments, `menus.rs` UI commands, and engine `CommandSpec` labels and menu paths:
-**1,608 English keys** on 2026-10-10. Each catalog (`crates/ui-egui/src/i18n/<code>.tsv`) was
+**1,669 English keys** on 2026-10-11 (1,608 on 2026-10-10; the difference is new source strings,
+not a change of method). Each catalog (`crates/ui-egui/src/i18n/<code>.tsv`) was
 checked against that universe by a source script replicating the xtask (no build). Catalogs hold
 more rows than the universe because they also translate dynamic `tl!(expr)` strings (~159 call
 sites the tool can't enumerate). **Not covered anywhere:** engine error and status messages and
@@ -21,31 +22,31 @@ installed per Creative Cloud install, here `en_US`). It has no Hindi, Arabic, In
 Vietnamese UI; Arabic and Hebrew users get English "Middle East" builds with the World-Ready
 composer, and its text engine handles RTL, Devanagari and Indic scripts.
 
-**Summary.** 7 of the 12 key languages at 100% of measured keys (status `partial` because of the
-engine messages), 3 absent (Hindi, Arabic, Vietnamese), plus 8 other languages. Weighted by
-speakers, ~55% ready. Remaining: 80–140 h, plus native-speaker review (none recorded for any
-catalog).
+**Summary.** 8 of the 12 key languages at 100% of measured keys (status `partial` because of the
+engine messages), 2 absent (Hindi, Arabic), plus 8 other languages. Weighted by
+speakers, ~65% ready (Vietnamese added in this change). Remaining: 60–120 h, plus native-speaker
+review (none recorded for any catalog, including Vietnamese).
 
 ## The twelve key languages
 
 | Language | Code | UI strings (measured keys) | Catalog rows | Dialogs / tooltips / help | Script support | Native review | Status | To `full` |
 |---|---|---|---:|---|---|---|---|---:|
-| English | `en` | 1,608 / 1,608 (100%) | source | all | Latin | – | full | 0 h |
-| Simplified Chinese | `zh-hans` | 1,608 / 1,608 (100%) | 2,366 | dialogs, tooltips yes; engine messages English | CJK fonts (lazy loader), IME preedit/commit, vertical type | no | partial | 8–12 h |
-| Spanish | `es` | 1,608 / 1,608 (100%) | 2,413 | as above | Latin | no | partial | 6–10 h |
+| English | `en` | 1,669 / 1,669 (100%) | source | all | Latin | – | full | 0 h |
+| Simplified Chinese | `zh-hans` | 1,669 / 1,669 (100%) | 2,366 | dialogs, tooltips yes; engine messages English | CJK fonts (lazy loader), IME preedit/commit, vertical type | no | partial | 8–12 h |
+| Spanish | `es` | 1,669 / 1,669 (100%) | 2,413 | as above | Latin | no | partial | 6–10 h |
 | Hindi | `hi` | 0 (0%) | – | – | Devanagari shaping in the text engine (parley/HarfRust); no Devanagari fallback font (TYPE-218-3) | no | none | 20–30 h |
 | Arabic | `ar` | 0 (0%) | – | – | Arabic shaping and bidi in the text engine, Arabic fallback font; no RTL UI layout (DIST-220-4), paragraph direction has no UI (TYPE-218-2), layer names as tofu (#1408, #1693) | no | none | 40–60 h |
-| French | `fr` | 1,608 / 1,608 (100%) | 2,766 | as above | Latin | no | partial | 6–10 h |
-| Portuguese (Brazil) | `pt-br` | 1,608 / 1,608 (100%) | 2,788 | as above | Latin; every `pt` locale uses it | no | partial | 6–10 h |
-| Indonesian | `id` | 1,608 / 1,608 (100%) | 2,764 | as above | Latin | no | partial | 6–10 h |
-| Japanese | `ja` | 1,608 / 1,608 (100%) | 3,356 | as above | CJK fonts, IME (Windows IME broken, #590), vertical type (tategaki); installed Japanese fonts missing from the list (#2330) | no | partial | 10–16 h |
-| German | `de` | 1,608 / 1,608 (100%) | 2,400 | as above | Latin | no | partial | 6–10 h |
-| Korean | `ko` | 1,608 / 1,608 (100%) | 2,936 | as above; terminology from Photoshop's Korean UI ([notes](localization-ko.md)) | Hangul fonts, IME | no | partial | 6–10 h |
-| Vietnamese | `vi` | 0 (0%) | – | – | Latin with stacked diacritics (shaping supported) | no | none | 12–18 h |
+| French | `fr` | 1,669 / 1,669 (100%) | 2,766 | as above | Latin | no | partial | 6–10 h |
+| Portuguese (Brazil) | `pt-br` | 1,669 / 1,669 (100%) | 2,788 | as above | Latin; every `pt` locale uses it | no | partial | 6–10 h |
+| Indonesian | `id` | 1,669 / 1,669 (100%) | 2,764 | as above | Latin | no | partial | 6–10 h |
+| Japanese | `ja` | 1,669 / 1,669 (100%) | 3,356 | as above | CJK fonts, IME (Windows IME broken, #590), vertical type (tategaki); installed Japanese fonts missing from the list (#2330) | no | partial | 10–16 h |
+| German | `de` | 1,669 / 1,669 (100%) | 2,400 | as above | Latin | no | partial | 6–10 h |
+| Korean | `ko` | 1,669 / 1,669 (100%) | 2,936 | as above; terminology from Photoshop's Korean UI ([notes](localization-ko.md)) | Hangul fonts, IME | no | partial | 6–10 h |
+| Vietnamese | `vi` | 1,669 / 1,669 (100%) | 3,665 | dialogs, tooltips yes; engine messages English | Latin with stacked diacritics (shaping supported) | no | partial | 12–18 h |
 
 ## Other shipped languages
 
-8 more, each at 1,608 / 1,608 measured keys, status `partial` for the same reason: Traditional
+8 more, each at 1,669 / 1,669 measured keys, status `partial` for the same reason: Traditional
 Chinese `zh-hant` (2,329 rows), Russian `ru` (2,544), Ukrainian `uk` (3,375), Czech `cs` (2,337),
 Polish `pl` (3,366), Greek `el` (3,481), Dutch `nl` (3,568), Italian `it` (2,411).
 
@@ -61,4 +62,5 @@ Polish `pl` (3,366), Greek `el` (3,481), Dutch `nl` (3,568), Italian `it` (2,411
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | major | Vietnamese catalog merged (`vi.tsv`): 3,665 rows, 1,669/1,669 measured keys, `vi`/`vi-VN` locale resolution and a one/other plural rule; row and status updated for every language (key universe 1,608 → 1,669) |
 | 2026-10-10 | major | First version, measured from the catalogs with the `i18n-coverage` rules |

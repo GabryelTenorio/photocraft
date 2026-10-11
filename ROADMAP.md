@@ -86,7 +86,7 @@ Rows and evidence: [target-app-parity › Feature areas](docs/target-app-parity.
 
 ## Languages
 
-Measured with the `cargo xtask i18n-coverage` key universe (1,608 keys). `partial` everywhere
+Measured with the `cargo xtask i18n-coverage` key universe (1,669 keys). `partial` everywhere
 because engine messages are still English. Detail: [localization-parity](docs/localization-parity.md).
 
 | Language | Code | UI strings | Status |
@@ -102,7 +102,7 @@ because engine messages are still English. Detail: [localization-parity](docs/lo
 | Japanese | `ja` | 100% | partial |
 | German | `de` | 100% | partial |
 | Korean | `ko` | 100% | partial |
-| Vietnamese | `vi` | 0% | none |
+| Vietnamese | `vi` | 100% | partial |
 
 Also shipped: Traditional Chinese, Russian, Ukrainian, Czech, Polish, Greek, Dutch, Italian (8).
 

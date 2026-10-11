@@ -66,7 +66,7 @@ id = "DIST-220-4"
 target = "Translation coverage per language reported by xtask; RTL layout for Arabic and Hebrew"
 status = "partial"
 issue = 220
-note = "`cargo xtask i18n-coverage` reports per-language coverage (#427); no RTL layout yet"
+note = "`cargo xtask i18n-coverage` reports per-language coverage (#427), 18 registered languages, 8 of the 12 key ones at 100% of the measured keys (Vietnamese added 2026-10-11); no RTL layout yet"
 
 [[item]]
 id = "DIST-220-5"
