@@ -48,6 +48,7 @@ pub mod control;
 pub mod credits;
 pub mod crop_mode;
 pub mod crop_overlay;
+pub mod crop_presets;
 pub mod crop_shield;
 pub mod crop_size;
 pub mod crop_straighten;
@@ -351,6 +352,9 @@ pub struct Services {
     pub encode_png: Option<EncodePngFn>,
     /// Open a URL in the system browser (native). Falls back to `ctx.open_url` (web) when unset.
     pub open_url: Option<OpenUrlFn>,
+    /// Preferences ▸ General ▸ Beep When Done: the platform's default beep, played when a
+    /// background job finishes successfully. `None` in the web build (and in tests).
+    pub beep: Option<fn()>,
     /// Files delivered asynchronously (web drag-and-drop): drained every frame.
     pub inbox: Option<Inbox>,
     /// OS clipboard images: copies go out, screenshots and images from other apps come in.
@@ -1460,8 +1464,9 @@ impl eframe::App for PhotocraftApp {
             menu.raw_input(raw_input);
         }
         shortcuts::clipboard_keys(ctx, ctx.text_edit_focused() || self.ui.text_edit.is_some(), raw_input);
-        // Windows sends a touchpad pinch as Ctrl + wheel; make it a pinch again (wheel_nav.rs).
-        if cfg!(target_os = "windows") {
+        // Windows sends a touchpad pinch as Ctrl + wheel; make it a pinch again (wheel_nav.rs) —
+        // unless the pinch preference is off, leaving those fractions to scroll sideways.
+        if cfg!(target_os = "windows") && self.session.prefs().enhanced_controls.zoom_with_trackpad_pinch {
             wheel_nav::fold_legacy_pinch(ctx, raw_input);
         }
         raw_input.events.extend(self.take_synthetic_step());
@@ -2042,6 +2047,8 @@ mod color_swatch_tests;
 #[cfg(test)]
 mod input_tests;
 
+#[cfg(test)]
+mod color_replacement_tests;
 #[cfg(test)]
 mod pencil_tests;
 
