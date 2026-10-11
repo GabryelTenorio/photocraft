@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: every known shortfall ranked, from the 2026-10-10 re-measure) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G11: document events for external tools) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -88,7 +88,9 @@ what an agent can't finish alone.
 - **Missing:** document-independent action recording (AUTO-219-1), a full Actions panel with
   step toggles and .atn import (AUTO-219-2), replay tests (AUTO-219-4), Batch recursion and
   naming (AUTO-219-5), ExtendScript/UXP compatibility.
-- **Ahead of Photoshop:** CLI, MCP and the JSON control channel drive every command.
+- **Ahead of Photoshop:** CLI, MCP and the JSON control channel drive every command; external
+  tools can subscribe to `document.opened|saved|closed` events (`events.subscribe`) and
+  feature-detect with `app.capabilities`.
 - **Estimate:** 120–200 h. **Human:** whether to support a JavaScript scripting dialect at all
   (AGENTS.md forbids JS in the app).
 
@@ -211,5 +213,6 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | G11: control-channel document events and `app.capabilities` |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |

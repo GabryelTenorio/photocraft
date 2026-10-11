@@ -60,6 +60,7 @@ The transport is `apps/photocraft/src/control_server.rs`, and the handlers are i
   - Preferences (`ui.menu.invoke {id: "edit.preferences.interface"}`) exposes the sections in its `values` field. Apply (`ui.dialog.apply`) and OK (`ui.dialog.confirm`) on Preferences are refused over control because automation denies whole-preferences updates and filesystem-bearing preference sections. A refused `ui.dialog.apply` returns an error and keeps the dialog open; a refused `ui.dialog.confirm` returns an error but closes and removes the dialog. `ui.dialog.cancel` closes the dialog without saving. Individual safe preferences can instead be changed with `engine.execute` using `prefs.set` (e.g. `{"command": "prefs.set", "params": {"path": "interface.showTooltips", "value": false}}`). Settings marked for the next launch still require a restart.
   - Edit › Fill… (`ui.menu.invoke {id: "edit.fill"}`, Shift+F5, Shift+Backspace) opens the Fill dialog; its fields are `edit.fill`'s params (`contents`, `color`, `pattern`, `colorAdaptation`, `mode`, `opacity`, `preserveTransparency`), and OK remembers them in the preferences (`dialogs["edit.fill"]`).
   - A pixel tool pressed on a type, shape, Smart Object or fill layer (e.g. through `ui.pointer`) opens the "Rasterize?" prompt instead of painting: a dialog with `__rasterize` (`type|shape|smartObject|fill`), `message`, `layer`, `tool` and `at`. `ui.dialog.confirm` runs the `layer.rasterize.*` command and then paints at `at` (two history states, `{"rasterized", "painted"}`); `ui.dialog.cancel` does nothing.
+- File › Save on a layered document opened from a JPEG, PNG or WebP (or a TIFF while Preferences › File Handling › Save Layers in TIFF is off) asks before flattening: `ui.inspect.flattenSave` is then `{path, format, document}` (else `null`). `ui.dialog.confirm {dialog: "flattenSave"}` is Flatten and Save, `{dialog: "flattenSave", saveAs: true}` is Save As…, `ui.dialog.cancel {dialog: "flattenSave"}` is Cancel. A save started with `flatten: true` (`file.save {flatten: true}`, `app.save {flatten: true}`) skips the prompt
 - `ui.window.open {document?}` / `ui.window.close {window}`: extra document windows
 - `ui.pointer {events: [{kind: down|move|up, x, y, pressure?, tiltX?, tiltY?, rotation?}], tool?, modifiers?, button?}`: drive the active tool in document coordinates (pressure 0..1, tilt in degrees -90..90, barrel rotation 0..360: a simulated pen). Modifier flags (`shift`, `alt`, `command`, `ctrl`, `space`) go either at the top level or grouped under `modifiers`; when `modifiers` is present, top-level flags are ignored. `space: true` holds Space (the Crop frame, marquee, lasso or shape being drawn then moves instead of growing). With the Crop tool in its default mode (Use Classic Mode off) a drag inside the box moves the image and one outside turns it, the view panning and turning with it; a drag's `move`/`up` points are read as the view showed the document at its `down`, so an `up` where the last `move` was changes nothing more. `command: true` with a painting, retouching, eraser, gradient, eyedropper or other non-selection tool makes the gesture the Move tool's, as holding ⌘ (Ctrl off the Mac) does in the app: a drag moves the active layer (the selected pixels when there is a selection), with `alt: true` as well it duplicates the layer first, and a click picks the layer under the point; the tool is unchanged afterwards. The Hand, Rotate View, Zoom, Crop, Slice, Path Selection, Pen, shape, Type and selection tools keep `command` for themselves. `ctrl: true` with `alt: true` and a brush tool is the on-canvas brush resize instead (in the app, Ctrl+Alt-drag off the Mac). `button: "right"` (or `"secondary"`) is the right button: with the Move tool (or `command: true` with any tool) it opens the canvas layer menu (`layerMenu` in `ui.inspect` lists the layers there, topmost first; select one with `layer.select`); with Marquee, Lasso, Magic Wand, Object Selection, or Pen it opens a tool context menu (`canvasToolMenu` in `ui.inspect`, with ordered command ids, separators, and enabled states); with a painting tool it opens the Brush Preset picker, or erases with Preferences › Tools › Right-click with painting tools = erase. The menus open at the screen position of the pressed document point. Use `ui.context.choose {id}` for enabled tool-context actions. The Pen menu is documented in `docs/context-menu-parity.md`. With a Color Picker as the top dialog, `down` and `move` sample the image into its new colour instead (its eyedropper, like a click on the canvas) and the tool is not driven. A `down`/`up` at the same point with the Rectangle, Ellipse, Triangle or Polygon tool opens Create Rectangle / Ellipse / Triangle / Polygon (Photoshop's click-to-size dialog); set its `width` and `height` (document pixels), `fromCenter`, `radii` [tl, tr, br, bl] (Rectangle) or `sides` and `starRatio` (percent, Polygon) with `ui.dialog.set`, then `ui.dialog.confirm` runs `shape.create` at the clicked point.
   - Magnetic Lasso (`tool: "magneticLasso"`): a `down`/`up` pair is a click. The first sets the first fastening point (its modifiers set the selection mode); later clicks fasten a point, or close the border on the first point. `move` events trace the border with or without a button held, fastening points by themselves; with `alt: true` a click draws a straight segment and a drag a freehand one. `ui.inspect` shows the border in progress under `magnetic` (`path`, `anchors`, `live`, `mode`). `ui.key` Enter closes it along the edges, Backspace removes the last fastening point, Escape cancels. To select along edges in one call instead, use the `select.magneticLasso` command with rough points around the shape.
@@ -72,8 +73,46 @@ The transport is `apps/photocraft/src/control_server.rs`, and the handlers are i
   base64 PNG data; a path is relative to the automation write root. Raises the window first
   (default) because occluded macOS windows stop rendering
 - `ui.focus`: bring the main window to the front
-- `app.open {path}` / `app.save {path?}`: relative file I/O through the configured automation roots (`app.open` reads under the read root, `app.save` writes under the write root; absolute paths, `..` and paths escaping the root are refused, and both fail closed when no root was granted). Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name`, `app.save` the `path` written. `app.save` without `path` writes back only to the document's own PSD, PSB or `.pcraft` file, like File › Save. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
+- `app.open {path}` / `app.save {path?}`: relative file I/O through the configured automation roots (`app.open` reads under the read root, `app.save` writes under the write root; absolute paths, `..` and paths escaping the root are refused, and both fail closed when no root was granted). Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name`, `app.save` the `path` written. `app.save` without `path` writes the document back to its own file in that file's format, like File › Save: PSD, PSB, OpenRaster, `.pcraft`, TIFF (with its layers), JPEG, PNG or WebP, keeping the bit depth, ICC profile, EXIF and XMP the file was opened with. When that would flatten layers into a flat file it fails unless `flatten: true` confirms it (`app.save {"flatten": true}`); any other format (a camera raw, GIF, a template) needs `path`. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
 - `app.quit`
+- `app.capabilities`: `{app, version, protocol, features, events}` for callers that feature-detect instead of parsing versions. `features` lists what this build supports: `saveInPlace` (Save writes back to an opened TIFF, JPEG, PNG or WebP; `flatten: true` confirms flattening), `events` (`events.subscribe` below). Later additions append names; none is ever renamed
+- `events.subscribe {events?}`: push document events on this connection (see [Events](#events))
+
+## Events
+
+External tools that hand PhotoCraft a file (a photo manager's "Edit in", a build script, an editor
+integration in the style of `code --wait` or git's `core.editor`) need to know when the file was
+saved, to read it back, and when the user is done with it. After
+`{"id": 5, "method": "events.subscribe", "params": {"events": ["document.saved", "document.closed"]}}`
+(omit `events` for all of them) the reply `{"id": 5, "ok": true, "result": {"events": [...]}}` is
+followed, on the same connection, by one line per event. Event lines have no `id`:
+
+```json
+{"event": "document.opened", "params": {"path": "/photos/a.tif", "format": "tif", "docId": 7}}
+{"event": "document.saved",  "params": {"path": "/photos/a.tif", "format": "tif", "docId": 7}}
+{"event": "document.closed", "params": {"path": "/photos/a.tif", "format": "tif", "docId": 7}}
+```
+
+- `document.opened`: a document appeared (any open, File › New with `path: null`).
+- `document.saved`: a save wrote the document's own file (File › Save, Save As, a background save
+  once written, `app.save`); `path` is where. Copies and exports (Save a Copy, Export As, a flat
+  Save As that keeps the layered original) are not reported. Every save is reported, even one with
+  no changes.
+- `document.closed`: the document was closed; `path` is its file at that moment.
+- `format` is the path's lower-case extension (`null` without a path); `docId` is stable for the
+  document's lifetime in this run.
+
+Order per document is always opened → saved… → closed. Requests and replies keep working on a
+subscribed connection, and it has no idle read timeout (the 30-second write timeout stays: a client
+that stops reading is disconnected). One subscription per connection; closing the connection ends
+it; at most 64 at once. Events are desktop-only: `photocraft-cli serve` and MCP don't push them yet
+(MCP notifications are follow-up work; a bridge client can watch `document.saved` through a
+separate control connection).
+
+Without a connection, `photocraft --version --json` prints the same `app.capabilities` object
+and exits without opening a window. Builds that predate it print the plain `photocraft <version>`
+line for that command line, so a launcher can run it against any release and treat a non-JSON
+answer as "no features".
 
 ## Engine commands
 
@@ -306,7 +345,7 @@ no MCP framing, no app start-up per command. Configure its file access with the 
 | `engine.commands` | `{filter?}`: registry with params docs and enablement |
 | `session.list` | open documents and the active index |
 | `doc.open` / `doc.new` | `{path}` / `file.new` params |
-| `doc.save` | `{path?, format?, quality?, index?, tiffLayers?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF). Without `path` only a PSD, PSB or `.pcraft` document is written back to its own file, in its own format; anything else is an error and the file is left unchanged. A successful layered save (PSD, PSB or `.pcraft`) records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
+| `doc.save` | `{path?, format?, quality?, index?, tiffLayers?, flatten?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF). Without `path` the document is written back to its own file, in its own format: PSD, PSB, OpenRaster, `.pcraft`, TIFF (keeping its layers), JPEG, PNG or WebP. Flattening layers into a JPEG, PNG or WebP needs `flatten: true` (`flatten: true` on a TIFF writes it flat); any other format is an error and the file is left unchanged. A successful layered save (PSD, PSB or `.pcraft`), or a write back to the document's own file, records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
 | `doc.inspect` | `{index?}`: same JSON as `document.inspect` |
 | `doc.render` | `{index?, maxSide? (1024; 0 = full), path?}`: PNG to `path`, else `{mime, base64}` |
 | `doc.select` / `doc.close` | `{index}` / `{index?}` |
