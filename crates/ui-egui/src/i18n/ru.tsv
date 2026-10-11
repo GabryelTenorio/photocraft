@@ -2907,6 +2907,7 @@ cameraData	Lens	Объектив
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
+	Loading fonts…	Загрузка шрифтов…
 	Apply mask to layer before removing?	Применить маску к слою перед удалением?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Слой или его маска изменились. Перетащите маску в корзину ещё раз.
 	Delete the vector mask?	Удалить векторную маску?

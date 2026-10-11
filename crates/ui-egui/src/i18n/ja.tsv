@@ -3580,6 +3580,7 @@ cameraData	Lens	レンズ
 	Snap to Origin	原点にスナップ
 	Search settings…	設定を検索…
 	No matching settings	一致する設定はありません
+	Loading fonts…	フォントを読み込み中…
 	Apply mask to layer before removing?	削除する前にマスクをレイヤーに適用しますか？
 	The layer or its mask changed. Drag the mask onto the Trash again.	レイヤーまたはそのマスクが変更されました。もう一度マスクをゴミ箱にドラッグしてください。
 	Delete the vector mask?	ベクトルマスクを削除しますか？
