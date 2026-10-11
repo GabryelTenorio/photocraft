@@ -3426,6 +3426,7 @@ cameraRaw	Tint	Nádech
 cameraRaw	Vibrance	Živost
 cameraRaw	Whites	Bílé
 layerLabel	No Color	Žádná barva
+	Loading fonts…	Načítání písem…
 # Select and Mask view modes (#1754)
 	Onion Skin	Cibulová slupka
 	Marching Ants	Pochodující mravenci
@@ -3500,7 +3501,6 @@ layerLabel	No Color	Žádná barva
 # Status messages and notices
 	Nothing to paste: the clipboard holds no image	Není co vložit: schránka neobsahuje obraz
 	Preferences saved	Předvolby uloženy
-	Distort and Perspective can't be applied to a path	Zkreslení a perspektivu nelze použít na cestu
 	Invalid panel layout; restored the default dock	Neplatné rozložení panelů; obnoveno výchozí ukotvení
 @plural	{n} sample point removed|{n} sample points removed	Odstraněn {n} bod měření|Odstraněny {n} body měření|Odstraněno {n} bodů měření
 	Preferences were reset: {error}	Předvolby byly vráceny na výchozí hodnoty: {error}

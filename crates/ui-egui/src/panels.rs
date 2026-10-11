@@ -480,22 +480,9 @@ fn color_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, two_columns: bool) {
             p.add(egui::Shape::convex_polygon(vec![tip, base + side * 3.0, base - side * 3.0], ink(&s), Stroke::NONE));
         }
     } else {
-        // Switch Colors: a quarter-circle arrow with a head at each end.
-        let stroke = Stroke::new(1.3, ink(&s));
-        let (c, rad) = (pos2(sr.left() + 2.0, sr.bottom() - 1.0), sr.width() - 4.0);
-        let arc: Vec<_> = (0..=8)
-            .map(|i| {
-                let a = std::f32::consts::FRAC_PI_2 * i as f32 / 8.0;
-                c + vec2(rad * a.sin(), -rad * a.cos())
-            })
-            .collect();
-        let (start, end) = (arc[0], arc[arc.len() - 1]);
-        p.add(egui::Shape::line(arc, stroke));
-        let head = 3.0;
-        p.line_segment([start, start + vec2(head, -head)], stroke);
-        p.line_segment([start, start + vec2(head, head)], stroke);
-        p.line_segment([end, end + vec2(-head, -head)], stroke);
-        p.line_segment([end, end + vec2(head, -head)], stroke);
+        // Switch Colors: the compact clockwise bend has left- and down-pointing heads.
+        // swap_arrow.rs owns its geometry and the pixel-level render regression test.
+        crate::swap_arrow::paint(p, sr.min, ink(&s));
     }
     // Default Colors: a small black chip over a small white one.
     if let (Some(dr), Some(d)) = (dr, d.as_ref()) {
@@ -868,9 +855,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .exact_size(if t.pro { 36.0 } else { 42.0 })
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(10, 0)))
         .show(ui, |ui| {
-            let r = ui.max_rect();
-            ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, t.separator));
-            ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, t.separator));
             ui.style_mut().spacing.scroll = egui::style::ScrollStyle { bar_width: 4.0, ..egui::style::ScrollStyle::floating() };
             egui::ScrollArea::horizontal().id_salt("tool-options").auto_shrink([false, false]).show(ui, |ui| {
             // Font ink can extend beyond its advance width at fractional positions.
@@ -2703,6 +2687,10 @@ fn layer_row(
             app.ui.selected_path = Some("layer".into());
             actions.push(("ui.vectorMaskTarget".into(), json!(true)));
         } else if on_mask || (content_less && l.mask.is_some() && !on_thumb) {
+            if on_mask {
+                // The mask thumbnail also switches Properties to the mask (#3369).
+                app.ui.properties_layer = None;
+            }
             actions.push(("ui.maskTarget".into(), json!(true)));
         } else if on_thumb || !row.primary {
             actions.push(("ui.maskTarget".into(), json!(false)));
@@ -3067,7 +3055,7 @@ fn layer_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
 
 /// Docked Properties body (Pro theme).
 fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
-    let identity = app.session.active().map(|st| (st.doc.id, st.active_layer, app.ui.mask_target, app.ui.vector_mask_target));
+    let identity = app.session.active().map(|st| (st.doc.id, st.active_layer, app.ui.mask_target, app.ui.vector_mask_target, app.ui.properties_layer));
     ui.push_id(("properties-target", identity), |ui| properties_body_inner(app, ui));
 }
 
