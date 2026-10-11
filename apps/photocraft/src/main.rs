@@ -4,6 +4,11 @@
 //! --control-token-file <path>] [--automation-read-root <dir>]
 //! [--automation-write-root <dir>] [--safe-gpu] [--in-window-menus] [files…]`
 //!
+//! `--wait` blocks until every file named on the command line has been closed, for tools that
+//! launch an editor and wait for it (git's `core.editor`, a photo manager's "Edit in", scripts):
+//! exit status 0 when any of them was saved at least once, 1 when all were closed unsaved. The
+//! window closes by itself once those files are closed and no other document is open.
+//!
 //! `--safe-gpu` starts with the CPU renderer (no GPU canvas; a software adapter for the window
 //! where the platform has one) for this launch, e.g. after a graphics driver crash. A start that
 //! crashes inside the driver also falls back by itself next time (see `gpu_startup`).
@@ -157,6 +162,7 @@ fn main() -> eframe::Result {
     // reported in a notice once the app is up; a control token is a usage error like a bad port.
     let mut unreadable_paths: Vec<String> = Vec::new();
     let mut safe_gpu = false;
+    let mut wait = false;
     let mut in_window_menus = std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0");
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
@@ -177,6 +183,7 @@ fn main() -> eframe::Result {
             Some("--automation-read-root") => automation_read_root = args.next().map(std::path::PathBuf::from),
             Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
             Some("--safe-gpu") => safe_gpu = true,
+            Some("--wait") => wait = true,
             Some("--in-window-menus") => in_window_menus = true,
             // `--version --json` prints `app.capabilities` instead, so a launcher can feature-detect
             // without starting a window. Builds without it stop at `--version` and print the plain
@@ -199,6 +206,9 @@ fn main() -> eframe::Result {
     // A malformed control port must not silently drop the control server (issue #701): name the
     // bad value and fail the launch, like `photocraft-cli serve --port` does for the same typo.
     // Exit status 2 is the usual command-line usage error, so a launcher sees the failure.
+    if wait && files.is_empty() {
+        control_arg_errors.push("--wait: name the files to wait for (`photocraft --wait <file>…`)".to_string());
+    }
     if let Some(code) = control_args_exit_code(&control_arg_errors) {
         for error in &control_arg_errors {
             eprintln!("photocraft: {error}");
@@ -333,6 +343,9 @@ fn main() -> eframe::Result {
     log::info!("GPU startup: {:?} ({sentinel_ms:.2} ms)", plan);
     let retry_cpu = !safe_gpu && plan.backend != photocraft_engine::prefs::GpuBackend::Cpu;
     let keep_marker = gpu_startup::keep_marker_after_error(&plan, os);
+    // `--wait`: the outcome the waited files leave behind, read once the window closes.
+    let wait_outcome = wait.then(|| std::sync::Arc::new(std::sync::Mutex::new(photocraft_ui_egui::wait::WaitOutcome::default())));
+    let wait_in_app = wait_outcome.clone();
     let app_created = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let created_in_callback = app_created.clone();
     let started_sentinel = sentinel.clone();
@@ -473,6 +486,10 @@ fn main() -> eframe::Result {
             tablet::spawn_x11(&app.stylus.feed, display);
             // Paths on the command line (Linux/Windows file associations, `photocraft a.psd`).
             app.open_paths(&files);
+            if let Some(outcome) = wait_in_app {
+                let paths = files.iter().map(|f| photocraft_ui_egui::file_open::absolute(f)).collect();
+                app.wait_for(paths, photocraft_ui_egui::wait::WaitNotify::Process(outcome));
+            }
             if !unreadable_paths.is_empty() {
                 use photocraft_ui_egui::i18n;
                 let line = i18n::t("{path}: the path is not valid Unicode; rename the file and open it again.");
@@ -521,10 +538,19 @@ fn main() -> eframe::Result {
                 .env("PHOTOCRAFT_GPU_STARTUP_FAILURE", &reason)
                 .spawn();
             match launched {
+                // `--wait` callers block on this process: pass the restarted one's status on.
+                Ok(mut child) if wait => std::process::exit(child.wait().ok().and_then(|s| s.code()).unwrap_or(1)),
                 Ok(_) => return Ok(()),
                 Err(error) => log::error!("could not start CPU compatibility mode: {error}"),
             }
         }
+    }
+    if let Some(outcome) = wait_outcome {
+        let code = outcome.lock().unwrap_or_else(std::sync::PoisonError::into_inner).exit_code();
+        if let Err(e) = &result {
+            log::error!("{e}");
+        }
+        std::process::exit(code);
     }
     result
 }
