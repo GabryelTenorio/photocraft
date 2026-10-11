@@ -2,11 +2,19 @@
 //! in ProPhoto RGB (the embedded profile is the built-in ProPhoto-compatible
 //! profile), or, for raw variants not decoded yet, the camera's embedded
 //! JPEG preview with a warning.
+//!
+//! Files without colour calibration (everything but DNG) get their colour
+//! from the camera's own embedded JPEG: `photocraft-raw` cannot decode JPEG,
+//! so the preview is decoded here and handed to [`photocraft_raw::fit_look`],
+//! which fits a matrix and tone curve and keeps the neutral fallback when the
+//! fit is not clearly better.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
-use photocraft_codecs::{self as codecs, ChannelLayout, Format, Image};
-use photocraft_raw::{DevelopOptions, Limits, RawError, WhiteBalance};
+use photocraft_cms::{Builtin, Intent, Profile, Transform};
+use photocraft_codecs::{self as codecs, ChannelLayout, Format, Image, SampleType};
+use photocraft_raw::{CameraLook, DevelopOptions, Limits, RawError, Reference, Sensor, WhiteBalance};
 pub use photocraft_raw::{Tone, retone};
 
 use crate::flat::image_to_document;
@@ -65,7 +73,10 @@ pub fn import_raw_tuned(name: &str, bytes: &[u8], tuning: &RawTuning) -> Result<
     }
     let sensor = photocraft_raw::decode(bytes, &limits()).map_err(IoError::Raw)?;
     let tone = photocraft_raw::Tone { shadows: tuning.shadows.clamp(-100.0, 100.0), highlights: tuning.highlights.clamp(-100.0, 100.0) };
-    let mut opts = DevelopOptions { limits: limits(), exposure, tone, ..Default::default() };
+    // The colour rendering the default open used (a look fitted to the camera's JPEG for files
+    // without colour calibration), so re-developing changes only what the sliders change.
+    let camera_look = default_look(bytes, &sensor);
+    let mut opts = DevelopOptions { limits: limits(), exposure, tone, camera_look, ..Default::default() };
     let wb_applied = match sensor.camera_wb {
         Some(m) => {
             let g = wb_gains(tuning.temperature, tuning.tint);
@@ -85,10 +96,32 @@ pub fn import_raw_tuned(name: &str, bytes: &[u8], tuning: &RawTuning) -> Result<
     Ok((developed_document(name, format, dev, &summary)?, wb_applied))
 }
 
-/// The tone curve of the camera profile `bytes` develop with (empty: none, or not a raw this
-/// crate decodes), for previews of the open-time Shadows / Highlights ([`photocraft_raw::retone`]).
+/// The tone curve `bytes` develop with by default: the fitted look's for a file without colour
+/// calibration (see [`import_raw_with`]), else the camera profile's (empty: none, or not a raw
+/// this crate decodes). For previews of the open-time Shadows / Highlights
+/// ([`photocraft_raw::retone`]), in linear-light knots.
 pub fn tone_curve(bytes: &[u8]) -> Vec<[f32; 2]> {
-    photocraft_raw::decode(bytes, &limits()).map(|s| s.tone_curve).unwrap_or_default()
+    let Ok(sensor) = photocraft_raw::decode(bytes, &limits()) else { return Vec::new() };
+    match default_look(bytes, &sensor) {
+        Some(look) => look.tone.as_ref().map(look_knots).unwrap_or_default(),
+        None => sensor.tone_curve,
+    }
+}
+
+/// A fitted look's tone curve as knots for [`photocraft_raw::retone`] (which reads them
+/// log-linearly): sampled densely enough that the two agree within a fraction of a code value.
+fn look_knots(t: &photocraft_raw::ToneCurve) -> Vec<[f32; 2]> {
+    const N: usize = 256;
+    (1..=N).map(|i| (i as f64 / N as f64).powi(2)).map(|x| [x as f32, t.eval(x) as f32]).collect()
+}
+
+/// The look a default open develops `bytes` with: fitted to the embedded JPEG when the file has
+/// no colour calibration and the fit clearly helps (as [`import_raw_with`] does), else `None`.
+fn default_look(bytes: &[u8], sensor: &Sensor) -> Option<CameraLook> {
+    if !sensor.color.calibrations.is_empty() {
+        return None;
+    }
+    fit_preview_look(bytes, sensor, &DevelopOptions { limits: limits(), ..Default::default() }).ok()
 }
 
 /// "Canon" + "Canon EOS 80D" and "NIKON CORPORATION" + "NIKON D3200" read as the model alone:
@@ -130,14 +163,64 @@ pub fn import_raw(name: &str, bytes: &[u8]) -> Result<ImportResult, IoError> {
     import_raw_with(name, bytes, &DevelopOptions { limits: limits(), ..Default::default() })
 }
 
+/// Smallest preview long edge preferred for the colour fit (a smaller preview decodes faster;
+/// the fit grid is at most `PROXY_EDGE` cells and wants about two pixels per cell).
+const FIT_PREVIEW_EDGE: u32 = 2 * photocraft_raw::PROXY_EDGE as u32;
+
+/// Fits the colour of a decoded raw to the camera's embedded JPEG (see
+/// [`photocraft_raw::fit_look`]): picks the smallest preview at least
+/// `FIT_PREVIEW_EDGE` pixels long (else the largest), decodes it, turns it upright and
+/// converts it to sRGB when it carries another ICC profile. `Err` says why there is no fit.
+pub fn fit_preview_look(raw: &[u8], sensor: &Sensor, opts: &DevelopOptions) -> Result<CameraLook, String> {
+    let previews = photocraft_raw::embedded_previews(raw);
+    let long = |p: &photocraft_raw::Preview| p.width.max(p.height);
+    let pick = previews
+        .iter()
+        .filter(|p| long(p) >= FIT_PREVIEW_EDGE)
+        .min_by_key(|p| long(p))
+        .or_else(|| previews.iter().max_by_key(|p| long(p)))
+        .ok_or("no embedded JPEG preview")?;
+    let img = upright_preview(raw, pick.jpeg).map_err(|e| format!("the embedded preview does not decode: {e}"))?;
+    if img.layout() != ChannelLayout::Rgb || img.sample_type() != SampleType::U8 {
+        return Err("the embedded preview is not 8-bit RGB".into());
+    }
+    let (w, h) = img.dimensions();
+    let mut rgb: Cow<[u8]> = Cow::Borrowed(img.data());
+    if let Some(icc) = img.icc.as_deref() {
+        let srgb = Builtin::Srgb.profile();
+        let src = Profile::parse(icc).map_err(|e| format!("the preview's ICC profile does not parse: {e}"))?;
+        if !src.same_colors(srgb) {
+            let t = Transform::new(&src, srgb, Intent::RelativeColorimetric, false).map_err(|e| e.to_string())?;
+            let mut out = vec![0u8; rgb.len()];
+            t.convert_u8(&rgb, 3, &mut out, 3, false);
+            rgb = Cow::Owned(out);
+        }
+    }
+    photocraft_raw::fit_look(sensor, opts, &Reference { width: w, height: h, rgb: &rgb }).map_err(|e| e.to_string())
+}
+
+/// Decodes and develops; a file without colour calibration gets a look fitted to its preview.
+fn develop_fitted(bytes: &[u8], opts: &DevelopOptions) -> Result<photocraft_raw::Developed, RawError> {
+    let sensor = photocraft_raw::decode(bytes, &opts.limits)?;
+    let mut opts = Cow::Borrowed(opts);
+    if opts.camera_look.is_none()
+        && sensor.color.calibrations.is_empty()
+        && let Ok(look) = fit_preview_look(bytes, &sensor, &opts)
+    {
+        opts.to_mut().camera_look = Some(look);
+    }
+    photocraft_raw::develop_sensor(&sensor, &opts)
+}
+
 /// In the import note of a raw developed from its sensor data with the default settings (not of
 /// a preview fallback): what the open-time Camera Raw dialog looks for.
 pub const DEVELOPED_NOTE: &str = "developed with default settings";
 
-/// Develops a raw file with explicit settings.
+/// Develops a raw file with explicit settings. Without `opts.camera_look`, a file without
+/// colour calibration gets one fitted to its embedded JPEG when that clearly helps.
 pub fn import_raw_with(name: &str, bytes: &[u8], opts: &DevelopOptions) -> Result<ImportResult, IoError> {
     let format = photocraft_raw::identify(bytes).map(|f| f.name()).unwrap_or("camera raw");
-    match photocraft_raw::develop(bytes, opts) {
+    match develop_fitted(bytes, opts) {
         Ok(dev) => {
             let summary = format!("{DEVELOPED_NOTE} ({} demosaic, as-shot white balance)", opts.demosaic.id());
             developed_document(name, format, dev, &summary)
