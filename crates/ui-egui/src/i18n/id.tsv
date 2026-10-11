@@ -11,6 +11,25 @@
 # resource, string table or product UI was consulted or copied; add entries the same way.
 # Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept.
+
+# Guide layout dialog
+	Rows	Baris
+	Number	Jumlah
+	Margin	Margin
+	Top:	Atas:
+	Left:	Kiri:
+	Bottom:	Bawah:
+	Right:	Kanan:
+	Target:	Target:
+	Selected Artboards	Artboard yang dipilih
+	Center Columns	Pusatkan kolom
+	Clear Existing Guides	Hapus panduan yang ada
+	Invalid guide layout	Tata letak panduan tidak valid
+	Leave empty for automatic size	Kosongkan untuk ukuran otomatis
+	5 Columns, 3 Rows	5 kolom, 3 baris
+	8 Columns	8 kolom
+	12 Columns	12 kolom
+
 	File	Berkas
 	Edit	Edit
 	Image	Gambar
@@ -464,6 +483,12 @@
 	Color Range…	Rentang Warna…
 	Focus Area…	Area Fokus…
 	Select and Mask…	Seleksi dan Mask…
+# Select and Mask dialog labels
+	Smart Radius	Radius Cerdas
+	Shift Edge	Geser Tepi
+	Decontaminate	Dekontaminasi
+	Output	Keluaran
+	Refine Edge	Perbaiki Tepi
 	Modify	Ubah
 	Border…	Border…
 	Smooth…	Haluskan…
@@ -732,6 +757,7 @@
 	Split Warp Horizontally	Bagi Warp Horizontal
 	Split Warp Vertically	Bagi Warp Vertikal
 	Statistics…	Statistik…
+	Refine Strokes	Goresan penyempurnaan
 @plural	{n} item|{n} items	{n} item
 	Auto	Otomatis
 	(print to the printer)	(cetak ke printer)
@@ -805,6 +831,9 @@
 	Bend:	Lengkung:
 	Bicubic	Bicubic
 	Bicubic (smooth gradients)	Bicubic (gradien halus)
+	Automatic	Otomatis
+	Bicubic Smoother (enlargement)	Bicubic lebih halus (pembesaran)
+	Bicubic Sharper (reduction)	Bicubic lebih tajam (pengecilan)
 	Bilinear	Bilinear
 	Black	Hitam
 	Black & White	Hitam & Putih
@@ -861,6 +890,7 @@
 	Click to zoom in  ·  {key}-click to zoom out  ·  drag right/left to zoom in/out	Klik untuk zoom in  ·  {key}-klik untuk zoom out  ·  seret kanan/kiri untuk zoom in/out
 	Click with the Note tool to add a note.	Klik dengan alat Catatan untuk menambah catatan.
 	Click: corner · Drag: smooth · Click first point: close · {key} finish · Esc cancel	Klik: sudut · Seret: halus · Klik titik pertama: tutup · {key} selesai · Esc batal
+	Click: corner · Drag: smooth · {alt}-drag: break handle · Click or drag first point: close · {key} finish · Esc cancel	Klik: sudut · Seret: halus · {alt}+seret: pisahkan pegangan · Klik atau seret titik pertama: tutup · {key} selesai · Esc batal
 	Clip to layer below	Klip ke layer di bawah
 	Clipped	Terklip
 	Close Style Options	Tutup Opsi Gaya
@@ -1481,6 +1511,7 @@
 	White Balance: As Shot	White Balance: Sesuai Pemotretan
 	Whites	Putih
 	Width	Lebar
+	Slant	Kemiringan
 	Width:	Lebar:
 	Work Path	Work Path
 	Yellow	Kuning
@@ -1498,6 +1529,9 @@
 	↑↓ navigate   {key} run   esc close	↑↓ navigasi   {key} jalankan   esc tutup
 	Version {version}	Versi {version}
 	New Document	Dokumen Baru
+	New Document With Mask	Dokumen Baru dengan Mask
+	New Layer With Mask	Layer Baru dengan Mask
+	New Layer	Layer Baru
 	Preset Name	Nama Preset
 	No saved presets yet.	Belum ada preset tersimpan.
 	Error	Error
@@ -1653,6 +1687,7 @@
 	Pen Pressure	Tekanan Pena
 	Pen Tilt	Kemiringan Pena
 	Pen Tool	Alat Pen
+	Convert Point Tool	Alat Convert Point
 	Photo	Foto
 	PhotoCraft website	Situs web PhotoCraft
 	Picas	Pica
@@ -2066,6 +2101,7 @@
 	Developing {name}	Mengembangkan {name}
 	Cancelled {label}	{label} dibatalkan
 	Esc to cancel	Esc untuk batal
+	Opened {name}	Dibuka: {name}
 	Opening {name}	Membuka {name}
 	Saved {name}	Tersimpan: {name}
 	Saving {name}	Menyimpan {name}
@@ -2707,6 +2743,21 @@ cameraRaw	Blending	Pembauran
 	Domed	Kubah
 	Domed (Inverted)	Kubah (Terbalik)
 	Diagonal (Descending)	Diagonal (Menurun)
+	Contour Editor	Editor Kontur
+	Anti-aliased	Dihaluskan
+	Corner	Sudut
+	Gloss Contour	Kontur Kilap
+	Contour	Kontur
+	Cone - Inverted	Kerucut - Terbalik
+	Cove - Deep	Teluk - Dalam
+	Cove - Shallow	Teluk - Dangkal
+	Gaussian	Gaussian
+	Half Round	Setengah Bulat
+	Ring	Cincin
+	Ring - Double	Cincin - Ganda
+	Rolling Slope - Descending	Lereng Bergelombang - Menurun
+	Rounded Steps	Tangga Bulat
+	Sawtooth 1	Gigi Gergaji 1
 
 	Red Eye Tool	Alat Mata Merah
 	Pupil Size	Ukuran pupil
@@ -2894,6 +2945,9 @@ cameraData	Lens	Lensa
 	Previous Document	Dokumen Sebelumnya
 	W x H x Resolution	L x T x Resolusi
 	Front Image	Gambar Depan
+	Frame Tool	Alat Bingkai
+	Create a new rectangular frame	Buat bingkai persegi panjang baru
+	Create a new elliptical frame	Buat bingkai elips baru
 	Include in playback	Sertakan dalam pemutaran
 	Perspective Crop Tool	Alat Crop Perspektif
 	Show Grid	Tampilkan Grid
@@ -2913,5 +2967,41 @@ cameraData	Lens	Lensa
 	Select the crop presets to delete	Pilih preset pangkas yang akan dihapus
 	Enter a name for the crop preset	Masukkan nama untuk preset pangkas
 	There is no crop size or ratio to save	Tidak ada ukuran atau rasio pangkas untuk disimpan
+	Scale:	Skala:
+	Snap to Origin	Jepret ke Titik Asal
 	Search settings…	Cari pengaturan…
 	No matching settings	Tidak ada pengaturan yang cocok
+	Loading fonts…	Memuat font…
+	Tool	Alat
+	Simulate Pressure	Simulasikan Tekanan
+	Stroke Path…	Stroke Path…
+	Background Eraser	Background Eraser
+	Healing Brush	Healing Brush
+	Spot Healing Brush	Spot Healing Brush
+	Smudge	Smudge
+	Sponge	Sponge
+# Select and Mask view modes (#1754)
+	Onion Skin	Kulit Bawang
+	Marching Ants	Semut Berbaris
+	On Black	Di Atas Hitam
+	On White	Di Atas Putih
+	On Layers	Di Atas Lapisan
+	Show Edge	Tampilkan Tepi
+	Show Original	Tampilkan Asli
+	F cycles the views; hold X to see the image	F berganti tampilan; tahan X untuk melihat gambar
+# Select and Mask Refine Edge Brush (#2972)
+	Refine Edge Brush (R)	Kuas Perhalus Tepi (R)
+	Expand Detection Area	Perluas Area Deteksi
+	Restore Original Edge	Pulihkan Tepi Asli
+	Paint over hair or fur on the image; Alt paints the other mode	Lukis di atas rambut atau bulu pada gambar; Alt melukis dalam mode lainnya
+	Clear Brush Strokes	Hapus Goresan Kuas
+	Show rulers	Tampilkan Penggaris
+
+# Color Sampler (added with the i18n coverage repair)
+	Click to place · Alt-click or drag off-canvas to remove	Klik untuk menempatkan · Alt-klik atau seret ke luar kanvas untuk menghapus
+	No document open	Tidak ada dokumen yang terbuka
+	{n} of {max} sample points	{n} dari {max} titik sampel
+# Print dialog (#2697)
+	Emulsion Down	Emulsi di Bawah
+	Functions	Fungsi
+	Print Resolution:	Resolusi Cetak:

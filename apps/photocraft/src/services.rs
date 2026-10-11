@@ -21,8 +21,8 @@ mod recovery_tests;
 /// (.kys), which go to the preset libraries and Edit › Keyboard Shortcuts.
 const OPEN_EXTS: &[&str] = &[
     "pcraft", "pdn", "ora", "psd", "psb", "psdt", "png", "jpg", "jpeg", "tif", "tiff", "webp", "gif", "bmp", "tga", "ico", "qoi", "exr", "hdr", "pbm", "pgm",
-    "ppm", "pam", "pfm", "heic", "heif", "hif", "dng", "cr2", "cr3", "nef", "nrw", "arw", "pef", "orf", "rw2", "raf", "abr", "grd", "svg", "svgz", "aco",
-    "ase", "kys", "af", "afdesign", "afphoto", "afpub",
+    "ppm", "pam", "pfm", "fits", "fit", "fts", "heic", "heif", "hif", "dng", "cr2", "cr3", "nef", "nrw", "arw", "pef", "orf", "rw2", "raf", "abr", "grd",
+    "svg", "svgz", "aco", "ase", "kys", "af", "afdesign", "afphoto", "afpub",
 ];
 const SVG_EXTS: &[&str] = &["svg", "svgz"];
 
@@ -60,6 +60,7 @@ const SAVE_FILTERS: &[(&str, &[&str])] = &[
     ("TIFF", &["tif"]),
     ("Targa", &["tga"]),
     ("OpenEXR", &["exr"]),
+    ("FITS", &["fits", "fit"]),
 ];
 
 /// Non-document files the shell saves (Swatches panel exports): offered alone, so the dialog
@@ -129,7 +130,11 @@ fn show_file_dialog(request: FileDialogRequest, parent: Option<&eframe::Frame>, 
         }
     };
     // Without the thread the reply is dropped unanswered, which the app takes as Cancel.
-    if let Err(e) = std::thread::Builder::new().name("file dialog".into()).spawn(move || reply.send(block_on(answer))) {
+    if let Err(e) = std::thread::Builder::new().name("file dialog".into()).spawn(move || {
+        // An empty answer from a system with no dialog backend isn't a Cancel (#3354).
+        let answer = block_on(answer).or_else(|| crate::file_dialog_probe::known_problem().map(FileDialogAnswer::Unavailable));
+        reply.send(answer)
+    }) {
         log::error!("couldn't wait for the file dialog: {e}");
     }
 }
@@ -198,6 +203,7 @@ fn export_options(settings: &photocraft_ui_egui::ExportSettings) -> photocraft_i
     opts.tiff_layers = settings.tiff_layers;
     opts.xmp = if settings.xmp_all { photocraft_io::XmpEmbed::All } else { photocraft_io::XmpEmbed::None };
     opts.tga_bits = settings.tga_bits;
+    opts.image_previews = settings.image_previews;
     opts
 }
 
@@ -326,6 +332,13 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
     let automation_write = automation.clone().map(|workspace| {
         Box::new(move |path: &str, bytes: &[u8]| workspace.write(path, bytes).map_err(|error| error.to_string())) as photocraft_ui_egui::AutomationWriteFn
     });
+    let automation_open_pcraft = automation.clone().map(|workspace| {
+        Box::new(move |path: &str| {
+            let name = Path::new(path).file_name().and_then(|name| name.to_str()).unwrap_or(path).to_string();
+            let opened = crate::crash_guard::guard("Open", || workspace.open_pcraft(path).map_err(|e| e.to_string()))?;
+            Ok(opened.map(|doc| (name, doc)))
+        }) as photocraft_ui_egui::AutomationOpenPcraftFn
+    });
     let automation_save = automation.clone().map(|workspace| {
         std::sync::Arc::new(move |doc: &Document, path: &str, settings: &photocraft_ui_egui::ExportSettings, ctl: &photocraft_ui_egui::jobs_ui::SaveCtl| {
             save_through(doc, path, settings, ctl, |p, b| workspace.write(p, b).map_err(|e| e.to_string()))
@@ -353,6 +366,7 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
         write: Some(Box::new(|path: &str, bytes: &[u8]| write_atomic(Path::new(path), bytes))),
         automation_read,
         automation_write,
+        automation_open_pcraft,
         automation_save,
         automation_command,
         automation_authorize,

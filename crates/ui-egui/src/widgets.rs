@@ -5,8 +5,12 @@ use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, S
 
 use crate::theme::{self, Tokens};
 
+mod angle_dial;
 mod color_count;
+pub use angle_dial::angle_dial_row;
 pub use color_count::color_count_row;
+mod type_ahead;
+pub use type_ahead::list_open as dropdown_list_open;
 
 /// Match the Spectrum application-menu padding and blue/white hover state in
 /// secondary menus (status bar, dock hamburger, layer context menus; #2187).
@@ -78,10 +82,10 @@ pub struct CardResponse {
     pub chevron: Option<Rect>,
     /// A tab dragged along the strip was dropped: `(tab, before)` (#2272).
     pub tab_reorder: Option<(usize, Option<usize>)>,
-    /// A tab is being dragged away from the strip.
-    pub tab_dragging_out: bool,
-    /// A tab drag ended away from the strip.
-    pub tab_dropped_out: bool,
+    /// The index of a tab being dragged away from the strip.
+    pub tab_dragging_out: Option<usize>,
+    /// The index of a tab whose drag ended away from the strip.
+    pub tab_dropped_out: Option<usize>,
 }
 
 impl CardResponse {
@@ -302,7 +306,10 @@ fn value_field_box(
     if !t.bevel {
         ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
     }
-    let suffix_w = if suffix.is_empty() { 0.0 } else { 16.0 };
+    // The number's slot ends 1 pt left of the suffix, by its measured width (the suffix is drawn
+    // 6 pt from the right edge), so a one-character unit like `%` leaves the number room (#3040).
+    let suffix_font = theme::mono(11.0);
+    let suffix_w = if suffix.is_empty() { 0.0 } else { ui.painter().layout_no_wrap(suffix.to_owned(), suffix_font.clone(), t.text_faint).size().x + 3.0 };
     // 1 pt higher than centred: digits have no descenders, so centred text looks low. The slot
     // is at least one text row tall, so a slim box's number isn't pushed out of it (#2823).
     let font = theme::mono(12.0);
@@ -339,7 +346,7 @@ fn value_field_box(
     };
     ui.data_mut(|d| d.insert_temp(slot.id, resp.id));
     if !suffix.is_empty() {
-        ui.painter().text(pos2(rect.right() - 6.0 - trailing, rect.center().y), Align2::RIGHT_CENTER, suffix, theme::mono(11.0), t.text_faint);
+        ui.painter().text(pos2(rect.right() - 6.0 - trailing, rect.center().y), Align2::RIGHT_CENTER, suffix, suffix_font, t.text_faint);
     }
     if step != 0.0 {
         // Round to the step before adding it, so whole-number fields drop decimals (55.4 + 1 = 56).
@@ -479,7 +486,9 @@ fn number_edit(ui: &mut Ui, value: &mut f32, range: std::ops::RangeInclusive<f32
         ui.memory_mut(|m| m.request_focus(id));
     }
     // Tab in a dialog goes from one of these to the next (field_tab.rs).
-    crate::field_tab::register(&ctx, id);
+    if ui.is_enabled() {
+        crate::field_tab::register(&ctx, id);
+    }
     let held = id.with("arithmetic");
     let math = ui.memory(|m| m.has_focus(id)) && ui.data(|d| d.get_temp(held)).unwrap_or(false);
     ui.data_mut(|d| d.insert_temp(held, math));
@@ -994,7 +1003,7 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
     // The wheel's notches add up over the button and the open list alike.
     let wheel_id = ui.make_persistent_id(id).with("wheel");
     let wheel = wheel && ui.is_enabled();
-    let (mut over_list, mut wheeled) = (false, false);
+    let (mut over_list, mut wheeled, mut keyed) = (false, false, false);
     // A wheel step scrolls the open list to the new value: at once over the list, the next frame
     // after a step over the button.
     let reveal_id = wheel_id.with("reveal");
@@ -1004,6 +1013,15 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
     let response =
         egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(420.0).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
             fit_widest_option(ui, options.iter().map(|(_, l)| tl!(l)));
+            // A typed letter jumps to the next option starting with it, ↩ closes the list (#1481).
+            let labels: Vec<&str> = options.iter().map(|(_, l)| tl!(l)).collect();
+            let shown = options.iter().position(|(v, _)| v == current);
+            if let Some((v, _)) = type_ahead::keys(ui, ui.make_persistent_id(id), shown, &labels).and_then(|i| options.get(i)) {
+                *current = v.clone();
+                chosen.push(v.clone());
+                reveal = true;
+                keyed = true;
+            }
             // Over the open list the wheel steps the value too, instead of scrolling the list.
             over_list = wheel && ui.rect_contains_pointer(ui.clip_rect());
             if over_list {
@@ -1052,7 +1070,8 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
         }
         chosen.extend(stepped);
     }
-    if wheel && wheel_rests(ui, wheel_id, wheeled) {
+    // Nor is the option under a pointer resting where the keyboard picked another.
+    if wheel_rests(ui, wheel_id, wheeled || keyed) {
         hovered = None;
     }
     (chosen, hovered)
@@ -1191,6 +1210,12 @@ pub fn dropdown_with_tooltips<T: PartialEq + Clone>(ui: &mut Ui, id: &str, curre
     let response =
         egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(420.0).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
             fit_widest_option(ui, options.iter().map(|(_, l, _)| tl!(l)));
+            let labels: Vec<&str> = options.iter().map(|(_, l, _)| tl!(l)).collect();
+            let shown = options.iter().position(|(v, _, _)| v == current);
+            if let Some((v, _, _)) = type_ahead::keys(ui, ui.make_persistent_id(id), shown, &labels).and_then(|i| options.get(i)) {
+                *current = v.clone();
+                changed = true;
+            }
             for (v, l, tip) in options {
                 let item = ui.selectable_label(v == current, tl!(l)).on_hover_text(tl!(tip));
                 if press.chosen(ui, &item) {
@@ -1219,6 +1244,43 @@ pub fn checker(painter: &egui::Painter, rect: Rect, cell: f32) {
             }
         }
     }
+}
+
+/// A transparency checkerboard of `cell`-point squares clipped to `rect` with `radius` corners,
+/// for rounded swatches (#3208): [`checker`] paints square cells, which showed past a rounded
+/// fill's corners. This one is a repeating two-by-two tile textured onto the rounded rect.
+pub fn checker_rounded(painter: &egui::Painter, rect: Rect, cell: f32, radius: impl Into<CornerRadius>) {
+    let tile = checker_tile(painter.ctx());
+    painter.add(egui::epaint::RectShape::filled(rect, radius, Color32::WHITE).with_texture(tile.id(), checker_uv(rect, cell)));
+}
+
+/// The texture range that tiles `rect` with `cell`-point squares: the tile holds two cells a side.
+fn checker_uv(rect: Rect, cell: f32) -> Rect {
+    let cell = if cell.is_finite() && cell > 0.0 { cell } else { 4.0 };
+    Rect::from_min_max(Pos2::ZERO, pos2(rect.width() / (2.0 * cell), rect.height() / (2.0 * cell)))
+}
+
+fn checker_tile_id() -> egui::Id {
+    egui::Id::new("transparency-checker-tile")
+}
+
+/// The checker's two-by-two tile (light, dark / dark, light), loaded once per context and shared
+/// by every rounded checker; it repeats and never blurs.
+fn checker_tile(ctx: &egui::Context) -> egui::TextureHandle {
+    if let Some(tile) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(checker_tile_id())) {
+        return tile;
+    }
+    let (light, dark) = (Color32::from_gray(250), Color32::from_gray(214));
+    let image = egui::ColorImage::new([2, 2], vec![light, dark, dark, light]);
+    let options = egui::TextureOptions {
+        magnification: egui::TextureFilter::Nearest,
+        minification: egui::TextureFilter::Nearest,
+        wrap_mode: egui::TextureWrapMode::Repeat,
+        mipmap_mode: None,
+    };
+    let tile = ctx.load_texture("transparency-checker-tile", image, options);
+    ctx.data_mut(|d| d.insert_temp(checker_tile_id(), tile.clone()));
+    tile
 }
 
 /// Spectrum-style checkbox (blue when checked).
@@ -1298,6 +1360,32 @@ fn clean(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use egui::{Key, Modifiers};
+
+    /// #3208: a rounded swatch's checker is one shared, repeating, unblurred two-by-two tile on
+    /// the rounded rect, scaled so a cell stays `cell` points, so nothing shows past the corners.
+    #[test]
+    fn rounded_swatches_clip_their_checker_to_the_corners() {
+        use egui::{Pos2, Rect, pos2, vec2};
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(200.0, 100.0)).build_ui(|ui| {
+            super::color_swatch(ui, egui::Color32::RED);
+            super::color_swatch_button(ui, egui::Color32::from_rgba_unmultiplied(0, 0, 255, 128), "Blue");
+        });
+        crate::PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+        h.run_steps(2);
+        let tile = h.ctx.data(|d| d.get_temp::<egui::TextureHandle>(super::checker_tile_id())).expect("the tile is loaded once");
+        let manager = h.ctx.tex_manager();
+        let manager = manager.read();
+        let meta = manager.meta(tile.id()).expect("the tile is in the texture manager");
+        assert_eq!(meta.size, [2, 2]);
+        assert_eq!(meta.options.wrap_mode, egui::TextureWrapMode::Repeat);
+        assert_eq!(meta.options.magnification, egui::TextureFilter::Nearest);
+        assert_eq!(super::checker_uv(Rect::from_min_size(Pos2::ZERO, vec2(40.0, 18.0)), 4.0), Rect::from_min_max(Pos2::ZERO, pos2(5.0, 2.25)));
+        assert_eq!(
+            super::checker_uv(Rect::from_min_size(Pos2::ZERO, vec2(8.0, 8.0)), 0.0),
+            Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+            "a bad cell falls back to 4 pt"
+        );
+    }
 
     #[test]
     fn spectrum_popup_style_matches_main_menu_and_preserves_studio() {
@@ -1388,6 +1476,30 @@ mod tests {
                 assert!(field.contains_rect(number), "{what}");
                 assert!((field.center().y - number.center().y - 1.0).abs() < 0.51, "{what}");
             }
+        }
+    }
+
+    /// The number's slot ends just left of its unit, by the unit's measured width: a one-character
+    /// `%` (the status bar zoom) leaves the number more room than the old fixed 16 pt, and a longer
+    /// unit never sits under the number (#3040).
+    #[test]
+    fn value_field_number_slot_stops_at_its_measured_suffix() {
+        for suffix in ["%", "px", "°", "×"] {
+            let mut h = Harness::new_ui_state(
+                move |ui, s: &mut (f32, egui::Rect, f32)| {
+                    let before = ui.cursor().min;
+                    super::compact_value_field(ui, &mut s.0, 0.0..=3200.0, suffix, 64.0, 18.0);
+                    s.1 = egui::Rect::from_min_size(before, egui::vec2(64.0, 18.0));
+                    s.2 = ui.painter().layout_no_wrap(suffix.to_owned(), crate::theme::mono(11.0), egui::Color32::WHITE).size().x;
+                },
+                (33.33, egui::Rect::NOTHING, 0.0),
+            );
+            h.run();
+            let number = h.get_by_role(egui::accesskit::Role::SpinButton).rect();
+            let (_, field, suffix_w) = *h.state();
+            let suffix_left = field.right() - 6.0 - suffix_w;
+            assert!(number.right() <= suffix_left, "{suffix}: number {number:?} runs under the suffix at {suffix_left}");
+            assert!(suffix_left - number.right() <= 1.5, "{suffix}: {:.1} pt wasted before the suffix", suffix_left - number.right());
         }
     }
 
@@ -1747,7 +1859,7 @@ pub(crate) fn color_swatch(ui: &mut Ui, color: Color32) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(ui.spacing().interact_size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::new(egui::WidgetType::ColorButton));
-    checker(ui.painter(), rect, 4.0);
+    checker_rounded(ui.painter(), rect, 4.0, t.radius_sm);
     ui.painter().rect_filled(rect.shrink(1.0), t.radius_sm, color);
     ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
     response
@@ -1758,7 +1870,7 @@ pub fn color_swatch_button(ui: &mut Ui, color: Color32, label: &str) -> Response
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(ui.spacing().interact_size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ColorButton, true, label));
-    checker(ui.painter(), rect, 4.0);
+    checker_rounded(ui.painter(), rect, 4.0, t.radius_sm);
     ui.painter().rect_filled(rect.shrink(1.0), t.radius_sm, color);
     ui.painter().rect_stroke(rect, t.radius_sm, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
     response.on_hover_text(label)

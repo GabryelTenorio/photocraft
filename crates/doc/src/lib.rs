@@ -716,10 +716,13 @@ impl Layer {
     }
 }
 
+/// Ruler guides in document pixels. f64 like the rest of the view geometry: a guide placed in
+/// ruler units (1 cm at 300 ppi is 118.110236… px) or read from a PSD's 1/32 px positions keeps
+/// its exact place.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Guides {
-    pub horizontal: Vec<f32>,
-    pub vertical: Vec<f32>,
+    pub horizontal: Vec<f64>,
+    pub vertical: Vec<f64>,
 }
 
 /// Which areas an alpha channel's overlay colour marks (Channel Options › Color Indicates).
@@ -807,6 +810,9 @@ pub struct Document {
     /// Select › Edit in Quick Mask Mode: the temporary "Quick Mask" channel while the mode is on.
     /// Part of the document so entering and leaving are history steps (as in Photoshop).
     pub quick_mask: Option<AlphaChannel>,
+    /// Quick Mask was entered with no selection, so an untouched white mask (Color Indicates
+    /// Masked Areas) leaves no selection rather than Select All.
+    pub quick_mask_unselected: bool,
     /// Patterns stored with the document (PSD `Patt`/`Pat2`/`Pat3`): those its layers use, plus
     /// any imported with it.
     pub patterns: Vec<Pattern>,
@@ -858,6 +864,7 @@ impl Document {
             work_path: None,
             clipping_path: None,
             quick_mask: None,
+            quick_mask_unselected: false,
             patterns: Vec::new(),
             color_table: None,
             duotone: None,

@@ -48,6 +48,8 @@ pub struct Runtime {
     pub(crate) checker_key: Option<[[u8; 3]; 2]>,
     /// Style last sent to the GPU canvas.
     pub(crate) gpu_style: Option<crate::gpu_canvas::CanvasStyle>,
+    /// `unitsAndRulers.showRulers` as last applied to View › Rulers.
+    show_rulers: Option<bool>,
     /// Tool options as last remembered in the preferences (see `tool_memory`).
     pub(crate) tool_options: Option<crate::state::ToolOptions>,
 }
@@ -180,6 +182,24 @@ fn system_theme(app: &PhotocraftApp, ctx: &egui::Context) -> Option<egui::Theme>
     app.services.system_theme.as_ref().and_then(|read| read(ctx)).or_else(|| ctx.system_theme())
 }
 
+/// View › Rulers follows `unitsAndRulers.showRulers` when the preference changes (at launch, from
+/// `prefs.set` or a reset), so documents open with the rulers as last set.
+fn sync_rulers(app: &mut PhotocraftApp) {
+    let want = app.session.prefs().units_and_rulers.show_rulers;
+    if app.prefs_rt.show_rulers != Some(want) {
+        app.ui.extras.rulers = want;
+        app.prefs_rt.show_rulers = Some(want);
+    }
+}
+
+/// View › Rulers was toggled: remember it for the next launch (Photoshop keeps the last state).
+pub(crate) fn remember_rulers(app: &mut PhotocraftApp, on: bool) {
+    if app.session.prefs().units_and_rulers.show_rulers != on {
+        app.session.prefs.edit(|p| p.units_and_rulers.show_rulers = on);
+    }
+    app.prefs_rt.show_rulers = Some(on);
+}
+
 // ------------------------------------------------------------------ lifecycle
 
 /// Load saved preferences once, when the app is created. Recovery starts during frame upkeep.
@@ -191,10 +211,12 @@ pub fn load(app: &mut PhotocraftApp) {
     if let Some(text) = app.services.load_prefs.as_mut().and_then(|f| f())
         && let Err(e) = app.session.load_prefs_json(&text)
     {
-        app.ui.status = format!("Preferences were reset: {e}");
+        let template = "Preferences were reset: {error}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
     }
     crate::dock::restore(app);
     crate::brush_picker::restore(app);
+    sync_rulers(app);
     crate::tool_memory::restore(app);
     app.sync_recent();
     app.prefs_rt.saved_rev = app.session.prefs.rev();
@@ -271,7 +293,8 @@ fn finish_recovery(app: &mut PhotocraftApp, key: &str, v: &Value) {
         app.ui.chrome.home = None;
     }
     app.sync_views();
-    app.ui.status = format!("Recovered {name}");
+    let template = "Recovered {name}";
+    app.ui.status = crate::i18n::fmt(tl!(template), &[("name", &name)]);
     app.ui.status_error = false;
 }
 
@@ -289,7 +312,7 @@ pub(crate) fn on_recovery_event(app: &mut PhotocraftApp, e: &JobEvent) -> bool {
             // Native bundle decoding cannot stop midway. Cancel admission and the rest of the
             // batch so another large decoder isn't started while this worker finishes.
             app.prefs_rt.recovery_queue.clear();
-            app.ui.status = format!("Cancelled {}", e.label);
+            app.ui.status = crate::i18n::fmt(tl!("Cancelled {label}"), &[("label", tl!(&e.label))]);
             app.ui.status_error = false;
         }
     }
@@ -306,7 +329,19 @@ fn presets_store(app: &mut PhotocraftApp) {
                 app.services.preset_store = None;
                 let warnings = app.session.attach_preset_store(opened);
                 if let Some(w) = warnings.first() {
-                    app.ui.status = if warnings.len() == 1 { w.clone() } else { format!("{w} (+{} more brush preset warnings)", warnings.len() - 1) };
+                    app.ui.status = if warnings.len() == 1 {
+                        w.clone()
+                    } else {
+                        crate::i18n::fmt(
+                            &crate::i18n::trn(
+                                crate::i18n::current(),
+                                (warnings.len() - 1) as u64,
+                                "{warning} (+{n} more brush preset warning)",
+                                "{warning} (+{n} more brush preset warnings)",
+                            ),
+                            &[("warning", w)],
+                        )
+                    };
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
@@ -320,30 +355,20 @@ fn presets_store(app: &mut PhotocraftApp) {
 
 /// Resolve an absolute pixels-per-point preference without multiplying the OS DPI twice.
 /// Monitor dimensions are physical pixels, independent of window size and UI zoom.
-fn display_scale(pref: prefs::UiScale, native: Option<f32>, monitor_px: Option<egui::Vec2>) -> f32 {
+fn display_scale(pref: prefs::UiScale, native: Option<f32>) -> f32 {
     let native = native.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(1.0);
     match pref {
-        prefs::UiScale::Auto => {
-            // Follow the system's scale, fractional ones included (125%, 150%, 175%: #1072).
-            // Only when the system reports no scaling at all (100%) does a 4K display fall back
-            // to 200%, since unscaled 4K controls are unreadably small (#225). Overriding a scale
-            // the user picked in their desktop settings left only "too small" or "too big".
-            let unscaled = (native - 1.0).abs() < 0.01;
-            let is_4k = monitor_px.is_some_and(|s| s.x.is_finite() && s.y.is_finite() && s.x.min(s.y) >= 2160.0 && s.x.max(s.y) >= 3840.0);
-            if unscaled && is_4k { 2.0 } else { native }
-        }
+        // The system's scale, fractional ones included (125%, 150%, 175%: #1072), and 100% on a
+        // large 4K display run unscaled (#1278); 200% there is a fixed choice.
+        prefs::UiScale::Auto => native,
         fixed => fixed.name().parse::<f32>().map_or(1.0, |pct| pct / 100.0),
     }
 }
 
 fn sync_display_scale(app: &PhotocraftApp, ctx: &egui::Context) {
     let native = ctx.native_pixels_per_point();
-    // ViewportInfo uses egui points, including the current UI zoom. Converting back to
-    // physical pixels avoids oscillating between 100% and 200% on successive frames.
-    // logic() can receive new viewport DPI before InputState::pixels_per_point updates.
     let native_scale = native.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(1.0);
-    let monitor_px = ctx.input(|i| i.viewport().monitor_size).map(|s| s * (native_scale * ctx.zoom_factor()));
-    let scale = display_scale(app.session.prefs().interface.ui_scale, native, monitor_px);
+    let scale = display_scale(app.session.prefs().interface.ui_scale, native);
     ctx.set_zoom_factor(scale / native_scale);
 }
 
@@ -375,6 +400,7 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         load(app);
     }
     recovery(app);
+    sync_rulers(app);
     sync_display_scale(app, ctx);
     sync_appearance(app, ctx);
     crate::theme::set_ui_font_size(ctx, app.session.prefs().interface.ui_font_size);
@@ -392,6 +418,8 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         app.prefs_rt.gpu_style = Some(style);
     }
     autosave(app);
+    #[cfg(not(target_arch = "wasm32"))]
+    link_updates(app, ctx);
     history_log(app);
 }
 
@@ -439,7 +467,8 @@ fn persist(app: &mut PhotocraftApp, now: f64) -> Option<f64> {
             app.prefs_rt.saved_value = Some(ours);
             let r = std::mem::take(&mut app.prefs_rt.save_retry);
             if r.failures > 0 {
-                app.ui.status = "Preferences saved".into();
+                let message = "Preferences saved";
+                app.ui.status = tl!(message).into();
                 app.ui.status_error = false;
                 if let Some(id) = r.notice {
                     app.ui.notices.retain(|n| n.id != id);
@@ -455,7 +484,8 @@ fn persist(app: &mut PhotocraftApp, now: f64) -> Option<f64> {
             r.at = now + delay;
             let failures = r.failures;
             if failures == 1 {
-                app.ui.status = format!("Couldn't save preferences: {e}. Retrying…");
+                let template = "Couldn't save preferences: {error}. Retrying…";
+                app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
                 app.ui.status_error = true;
             } else if failures == SAVE_NOTICE_AFTER {
                 let lines = vec![e, "PhotoCraft keeps retrying; until a save succeeds, preference changes are lost when it closes.".into()];
@@ -524,6 +554,44 @@ pub(crate) fn save_preferences(app: &mut PhotocraftApp) -> Result<(), String> {
     Ok(())
 }
 
+/// Linked smart objects follow their files while the document is open, as in Photoshop: every two
+/// seconds, and as soon as the window comes back to the front (after saving in another app), stamp
+/// the active document's linked files on a worker thread and re-render the layers of the ones that
+/// changed ([`photocraft_engine::link_watch`]).
+#[cfg(not(target_arch = "wasm32"))]
+fn link_updates(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    match app.session.poll_link_scan() {
+        Some(Ok(r)) => {
+            if let Some(n) = r["updated"].as_array().map(Vec::len).filter(|n| *n > 0) {
+                app.ui.status = crate::i18n::trn(
+                    crate::i18n::current(),
+                    n as u64,
+                    "Updated {n} linked smart object changed on disk",
+                    "Updated {n} linked smart objects changed on disk",
+                );
+            }
+        }
+        Some(Err(e)) => app.ui.status = e.to_string(),
+        None => {}
+    }
+    let (last_key, focus_key) = (egui::Id::new("linkWatch.lastScan"), egui::Id::new("linkWatch.focused"));
+    let now = ctx.input(|i| i.time);
+    let focused = ctx.input(|i| i.focused);
+    let was_focused: bool = ctx.data(|d| d.get_temp(focus_key)).unwrap_or(focused);
+    ctx.data_mut(|d| d.insert_temp(focus_key, focused));
+    let has_links = app.session.active().is_some_and(|d| !photocraft_engine::link_watch::linked_files(&d.doc).is_empty());
+    if !has_links {
+        return;
+    }
+    let last: f64 = ctx.data(|d| d.get_temp(last_key)).unwrap_or(f64::NEG_INFINITY);
+    if now - last >= 2.0 || (focused && !was_focused) {
+        ctx.data_mut(|d| d.insert_temp(last_key, now));
+        app.session.start_link_scan();
+    }
+    let wait = if app.session.link_scan.is_some() { 100 } else { 2000 };
+    ctx.request_repaint_after(std::time::Duration::from_millis(wait));
+}
+
 /// Background autosave of documents with unsaved changes every N minutes (File Handling).
 fn autosave(app: &mut PhotocraftApp) {
     let fh = &app.session.prefs().file_handling;
@@ -545,7 +613,8 @@ fn autosave(app: &mut PhotocraftApp) {
                     app.prefs_rt.autosaved.insert(id, revision);
                 }
                 Err(e) => {
-                    app.ui.status = format!("Autosave failed: {e}");
+                    let template = "Autosave failed: {error}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
                     app.ui.status_error = true;
                 }
             }
@@ -594,7 +663,8 @@ fn autosave(app: &mut PhotocraftApp) {
                     }
                 }
                 Err(e) => {
-                    app.ui.status = format!("Autosave failed: {e}");
+                    let template = "Autosave failed: {error}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
                     app.ui.status_error = true;
                 }
             }
@@ -914,13 +984,11 @@ pub fn open_shortcuts(app: &mut PhotocraftApp, tab: u64) -> u64 {
 /// Open the Embedded Profile Mismatch prompt for the active document.
 pub fn open_mismatch(app: &mut PhotocraftApp, report: &Value) -> u64 {
     let msg = if report.get("missing").and_then(Value::as_bool) == Some(true) {
-        format!("The document does not have an embedded colour profile. Working space: {}.", report["working"].as_str().unwrap_or("?"))
+        let template = "The document does not have an embedded colour profile. Working space: {working}.";
+        crate::i18n::fmt(tl!(template), &[("working", report["working"].as_str().unwrap_or("?"))])
     } else {
-        format!(
-            "The document has an embedded colour profile that does not match the working space.\nEmbedded: {}\nWorking: {}",
-            report["embedded"].as_str().unwrap_or("?"),
-            report["working"].as_str().unwrap_or("?")
-        )
+        let template = "The document has an embedded colour profile that does not match the working space.\nEmbedded: {embedded}\nWorking: {working}";
+        crate::i18n::fmt(tl!(template), &[("embedded", report["embedded"].as_str().unwrap_or("?")), ("working", report["working"].as_str().unwrap_or("?"))])
     };
     let action = match report["action"].as_str() {
         Some("converted") => "convert",
@@ -1390,6 +1458,8 @@ fn section_fields(
             // Settings nothing reads yet stay out of the dialog (issue #204); their stored values
             // pass through untouched.
             if (section == "interface" && matches!(k.as_str(), "theme" | "appearanceMode" | "darkTheme" | "lightTheme" | "favoriteThemes"))
+                // View › Rulers (⌘R) sets it, as in Photoshop.
+                || path == "unitsAndRulers.showRulers"
                 || prefs::is_hidden(&path)
                 || (section == "performance" && matches!(k.as_str(), "useGpu" | "gpuBackend" | "renderingMode"))
                 || (section == "export" && !export_field_visible(obj, &k))
@@ -1537,6 +1607,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
     let mut selected = f.get("selected").and_then(Value::as_str).unwrap_or("").to_string();
     let mut capture = f.get("capture").and_then(Value::as_bool).unwrap_or(false);
     let mut message = f.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+    let mut message_warning = f.get("messageWarning").and_then(Value::as_bool).unwrap_or(false);
     let items = shortcut_items(app);
     // Menu path and command label as shown in the menus, in the UI language.
     let shown = |id: &str, label: &str, path: &[String]| -> (Vec<String>, String) {
@@ -1568,6 +1639,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 overrides.insert(selected.clone(), String::new());
                 capture = false;
                 message = tl!("Shortcut removed.").into();
+                message_warning = false;
             } else if let Some(sc) = shortcut_text(key, m) {
                 let clash: Vec<String> = items
                     .iter()
@@ -1578,10 +1650,13 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                     })
                     .collect();
                 overrides.insert(selected.clone(), sc.clone());
+                message_warning = !clash.is_empty();
                 message = if clash.is_empty() {
-                    format!("{} assigned.", crate::shortcuts::pretty(&sc))
+                    let template = "{shortcut} assigned.";
+                    crate::i18n::fmt(tl!(template), &[("shortcut", &crate::shortcuts::pretty(&sc))])
                 } else {
-                    format!("{} is already in use by {} and will be removed from it when you click OK.", crate::shortcuts::pretty(&sc), clash.join(", "))
+                    let template = "{shortcut} is already in use by {commands} and will be removed from it when you click OK.";
+                    crate::i18n::fmt(tl!(template), &[("shortcut", &crate::shortcuts::pretty(&sc)), ("commands", &clash.join(", "))])
                 };
                 capture = false;
             }
@@ -1628,6 +1703,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                         selected = id.clone();
                         capture = true;
                         message.clear();
+                        message_warning = false;
                     }
                     ui.label(if changed { RichText::new(tl!("modified")).color(t.text_faint).size(10.5) } else { RichText::new("") });
                 } else {
@@ -1659,14 +1735,17 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
             if ui.add_enabled(has_sel, egui::Button::new(tl!("Use Default"))).clicked() {
                 overrides.remove(&selected);
                 message = tl!("Default restored.").into();
+                message_warning = false;
             }
             if ui.add_enabled(has_sel, egui::Button::new(tl!("Delete Shortcut"))).clicked() {
                 overrides.insert(selected.clone(), String::new());
                 message = tl!("Shortcut removed.").into();
+                message_warning = false;
             }
             if ui.button(tl!("Reset All to Defaults")).clicked() {
                 overrides.clear();
                 message = tl!("All shortcuts reset to PhotoCraft defaults.").into();
+                message_warning = false;
             }
             // A Photoshop set (`.kys`) fills the overrides; the file arrives after this frame
             // and `kys_import` writes the dialog's fields then (#1163).
@@ -1674,6 +1753,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 && let Err(e) = crate::kys_import::import_dialog(app)
             {
                 message = e;
+                message_warning = false;
             }
         });
     } else if ui.button(tl!("Show All Menu Items")).clicked() {
@@ -1681,7 +1761,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
         colors.clear();
     }
     if !message.is_empty() {
-        ui.label(RichText::new(&message).color(if message.contains("already in use") { t.warning } else { t.text_dim }));
+        ui.label(RichText::new(&message).color(if message_warning { t.warning } else { t.text_dim }));
     }
     if overrides_ok {
         f.insert("overrides".into(), json!(overrides));
@@ -1691,6 +1771,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
     f.insert("selected".into(), json!(selected));
     f.insert("capture".into(), json!(capture));
     f.insert("message".into(), json!(message));
+    f.insert("messageWarning".into(), json!(message_warning));
 }
 
 fn toolbar_tab(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
@@ -1865,7 +1946,8 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
                 app.pick_save("Presets.pcpresets", move |app, path| {
                     let write = app.services.write.as_mut().ok_or("no writer configured")?;
                     write(&path, text.as_bytes())?;
-                    app.ui.status = format!("Exported presets to {path}");
+                    let template = "Exported presets to {path}";
+                    app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
                     Ok(json!({"path": path}))
                 })
             }
@@ -2404,28 +2486,16 @@ mod tests {
     }
 
     #[test]
-    fn auto_scale_detects_4k_and_preserves_system_scale() {
+    fn auto_scale_preserves_system_scale() {
         use prefs::UiScale::Auto;
-        for size in [vec2(3840.0, 2160.0), vec2(4096.0, 2160.0), vec2(2160.0, 3840.0)] {
-            assert_eq!(display_scale(Auto, Some(1.0), Some(size)), 2.0);
-            // A fractional system scale is the user's choice and is kept as is (#1072).
-            for dpi in [1.25, 1.5, 1.75, 2.0, 2.5] {
-                assert_eq!(display_scale(Auto, Some(dpi), Some(size)), dpi);
-            }
+        // Whatever the monitor, 4K included: an unscaled desktop stays at 100% (#1278), and a
+        // fractional or below-100% system scale is the user's choice (#1072).
+        for dpi in [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0] {
+            assert_eq!(display_scale(Auto, Some(dpi)), dpi);
         }
-        // Below 100% is a system choice too, even on 4K.
-        assert_eq!(display_scale(Auto, Some(0.75), Some(vec2(3840.0, 2160.0))), 0.75);
-        for size in [vec2(1920.0, 1080.0), vec2(2560.0, 1440.0)] {
-            for dpi in [1.25, 1.5, 1.75] {
-                assert_eq!(display_scale(Auto, Some(dpi), Some(size)), dpi);
-            }
-        }
-        assert_eq!(display_scale(Auto, Some(3.0), Some(vec2(3840.0, 2160.0))), 3.0);
-        for size in [vec2(1920.0, 1080.0), vec2(2560.0, 1440.0), vec2(3840.0, 1080.0)] {
-            assert_eq!(display_scale(Auto, Some(1.0), Some(size)), 1.0);
-        }
-        assert_eq!(display_scale(Auto, None, None), 1.0);
-        assert_eq!(display_scale(Auto, Some(f32::NAN), Some(vec2(f32::INFINITY, 2160.0))), 1.0);
+        assert_eq!(display_scale(Auto, None), 1.0);
+        assert_eq!(display_scale(Auto, Some(f32::NAN)), 1.0);
+        assert_eq!(display_scale(Auto, Some(-2.0)), 1.0);
     }
 
     #[test]
@@ -2448,13 +2518,13 @@ mod tests {
                 assert!((ctx.pixels_per_point() - expected).abs() < 1e-4);
             };
             for _ in 0..4 {
-                step(vec2(3840.0, 2160.0), 1.0, 2.0);
+                step(vec2(3840.0, 2160.0), 1.0, 1.0);
             }
             step(vec2(1920.0, 1080.0), 1.0, 1.0);
             step(vec2(3840.0, 2160.0), 1.5, 1.5);
             step(vec2(3840.0, 2160.0), 1.25, 1.25);
             step(vec2(2560.0, 1440.0), 1.75, 1.75);
-            step(vec2(3840.0, 2160.0), 1.0, 2.0);
+            step(vec2(3840.0, 2160.0), 1.0, 1.0);
         }
         for (pref, expected) in [("200", 2.0), ("125", 1.25), ("150", 1.5), ("100", 1.0), ("95", 0.95), ("90", 0.9), ("85", 0.85), ("80", 0.8), ("auto", 1.5)] {
             app.run("prefs.set", json!({"values": {"interface.uiScale": pref}})).unwrap();
@@ -2607,6 +2677,7 @@ mod tests {
         assert!(!prefs::is_hidden("type.fillNewTypeLayersWithPlaceholder"));
         assert!(!prefs::is_hidden("type.useEscToCommit"));
         assert!(!prefs::is_hidden("type.smartQuotes"));
+        assert!(!prefs::is_hidden("type.showFontNamesInEnglish"));
         // Rotate View with Trackpad and the pinch zoom are live; the other Enhanced Controls rows
         // stay hidden.
         assert!(has_visible_fields(&values, "enhancedControls"));
