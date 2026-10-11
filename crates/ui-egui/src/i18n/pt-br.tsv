@@ -1592,6 +1592,8 @@
 	Highlights from:	Realces a partir de:
 	History Brush Tool	Ferramenta Pincel do histórico
 	Horizontal Type Tool	Ferramenta Texto horizontal
+	Horizontal Type Mask Tool	Ferramenta Máscara de texto horizontal
+	Vertical Type Mask Tool	Ferramenta Máscara de texto vertical
 	Image Size:	Tamanho:
 	Inches	Polegadas
 	Indexed	Indexado
@@ -2907,6 +2909,10 @@ cameraData	Lens	Lente
 	Previous Document	Documento anterior
 	W x H x Resolution	L x A x Resolução
 	Front Image	Imagem frontal
+	Artboard Tool	Ferramenta Prancheta
+	Make Portrait	Tornar retrato
+	Make Landscape	Tornar paisagem
+	Add New Artboard	Adicionar nova prancheta
 	Freeform Pen Tool	Ferramenta Caneta de forma livre
 	Curvature Pen Tool	Ferramenta Caneta de curvatura
 	Curve Fit:	Ajuste de curva:

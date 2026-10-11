@@ -1632,6 +1632,8 @@
 	Highlights from:	Světla od:
 	History Brush Tool	Nástroj štětec historie
 	Horizontal Type Tool	Nástroj vodorovný text
+	Horizontal Type Mask Tool	Nástroj maska vodorovného textu
+	Vertical Type Mask Tool	Nástroj maska svislého textu
 	Image Size:	Velikost obrazu:
 	Inches	Palce
 	Indexed	Indexované
@@ -2488,6 +2490,12 @@ cameraData	Lens	Objektiv
 	Previous Document	Předchozí dokument
 	W x H x Resolution	Š x V x Rozlišení
 	Front Image	Přední obraz
+	Artboard Tool	Nástroj kreslicí plocha
+	Make Portrait	Na výšku
+	Make Landscape	Na šířku
+	Add New Artboard	Přidat novou kreslicí plochu
+	W	Š
+	H	V
 	Freeform Pen Tool	Nástroj pero od ruky
 	Curvature Pen Tool	Nástroj pero křivosti
 	Curve Fit:	Přizpůsobení křivky:

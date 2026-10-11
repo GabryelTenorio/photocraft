@@ -22,6 +22,7 @@ pub mod adjust_ui;
 mod alt_grab;
 pub mod analysis_ui;
 pub mod anchor_tools;
+pub mod artboard_tool;
 pub mod artboard_ui;
 pub(crate) mod blend_preview;
 mod brand;
@@ -1455,7 +1456,8 @@ impl eframe::App for PhotocraftApp {
         }
         self.drain_control(ctx);
         native_menu::run(self, ctx);
-        if self.ui.text_edit.is_some() && !self.ui.tool.is_type() {
+        // Switching tools commits, also between the Type and Type Mask tools.
+        if self.ui.text_edit.as_ref().is_some_and(|ed| !self.ui.tool.is_type() || ed.mask != self.ui.tool.is_type_mask()) {
             type_tool::commit(self);
         }
         if self.ui.pen.as_ref().is_some_and(|p| !p.drawn_with(self.ui.tool)) {
