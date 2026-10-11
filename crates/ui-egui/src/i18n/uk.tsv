@@ -3678,3 +3678,7 @@ cameraData	Lens	Об'єктив
 	Click to place · Alt-click or drag off-canvas to remove	Клацніть, щоб розмістити · Alt-клацання або перетягування за межі полотна для видалення
 	No document open	Документ не відкрито
 	{n} of {max} sample points	{n} з {max} точок вимірювання
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Зробити інтерфейс темнішим
+	Lighten Interface	Зробити інтерфейс світлішим

@@ -3741,3 +3741,7 @@ cameraData	Lens	Lens
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Klik om te plaatsen · Alt-klik of sleep buiten het canvas om te verwijderen
 	{n} of {max} sample points	{n} van {max} steekproefpunten
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Interface donkerder maken
+	Lighten Interface	Interface lichter maken

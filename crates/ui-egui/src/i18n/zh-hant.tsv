@@ -2561,3 +2561,7 @@ cameraData	Lens	鏡頭
 	Click to place · Alt-click or drag off-canvas to remove	按一下以放置 · Alt 按一下或拖曳至畫布外以移除
 	No document open	未開啟任何文件
 	{n} of {max} sample points	{max} 個取樣點中的 {n} 個
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	介面變暗
+	Lighten Interface	介面變亮
