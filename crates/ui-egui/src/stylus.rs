@@ -431,18 +431,19 @@ impl AndroidTouchRecovery {
                             });
                             log::info!("S Pen touch recovery: synthesized missing click");
                         }
+                        let release_pos = *pos;
                         out.push(event);
                         if (self.native_down || cancelled) && !native_release {
                             // On cancellation winit can send PointerGone without
                             // releasing the mouse-emulated primary button.
                             out.push(egui::Event::PointerButton {
-                                pos: *pos, button: egui::PointerButton::Primary,
+                                pos: release_pos, button: egui::PointerButton::Primary,
                                 pressed: false, modifiers,
                             });
                             log::info!("S Pen touch recovery: synthesized missing release");
                         } else if !cancelled && !self.native_down && !native_press && !native_release {
                             out.push(egui::Event::PointerButton {
-                                pos: *pos, button: egui::PointerButton::Primary,
+                                pos: release_pos, button: egui::PointerButton::Primary,
                                 pressed: false, modifiers,
                             });
                         }
