@@ -898,6 +898,18 @@ pub fn tonal_part(p: &CameraRaw) -> CameraRaw {
 /// The first half of [`develop`]: Optics, Geometry, Calibration, White Balance and Exposure,
 /// the B&W Mix, Dehaze and the tone stages up to Whites and Blacks (no clamping).
 pub fn develop_tonal(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw) {
+    develop_tonal_with(px, w, h, p, &mut DevelopCache::default());
+}
+
+/// What [`develop_tonal_with`] keeps between calls on the same pixels for a preview: Shadows and
+/// Highlights' filter split into parts that any slider value combines (see `local_tone`).
+#[derive(Default)]
+pub struct DevelopCache {
+    local_tone: local_tone::Kept,
+}
+
+/// [`develop_tonal`], reusing `cache` when a stage sees the pixels it saw last time.
+pub fn develop_tonal_with(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, cache: &mut DevelopCache) {
     if px.is_empty() || px.len() != w.saturating_mul(h) {
         return;
     }
@@ -948,7 +960,7 @@ pub fn develop_tonal(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw) {
     }
     // 3. Tone. Highlights and Shadows: a local Laplacian filter (see `local_tone`).
     if p.highlights != 0.0 || p.shadows != 0.0 {
-        local_tone::apply(px, w, h, p.shadows, p.highlights, Encoding::of(p.encoding_gamma));
+        local_tone::apply_with(px, w, h, p.shadows, p.highlights, Encoding::of(p.encoding_gamma), &mut cache.local_tone);
     }
     if !p.local_tone_neutral() && [p.contrast, p.texture, p.clarity].iter().any(|v| *v != 0.0) {
         let l: Vec<f32> = px.iter().map(|q| luma([q[0], q[1], q[2]]).max(0.0)).collect();

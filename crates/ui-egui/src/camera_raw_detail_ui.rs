@@ -38,6 +38,8 @@ pub(crate) struct TonalCache {
     tonal: Option<(CameraRaw, Arc<Vec<[f32; 4]>>)>,
     /// The raw stage's slider-independent part, so dragging one of its sliders is cheap.
     retone: Arc<std::sync::Mutex<Option<photocraft_io::raw::RetoneCache>>>,
+    /// The same for the tonal stages (Shadows and Highlights of the filter).
+    develop: Arc<std::sync::Mutex<photocraft_algo::camera_raw::DevelopCache>>,
 }
 
 /// Pixels (straight RGBA, row-major) shared between the dialog and its worker.
@@ -511,7 +513,11 @@ pub(crate) fn tonal_stage(
         None => None,
     };
     let mut px = raw.map_or_else(|| source.to_vec(), |r| r.to_vec());
-    photocraft_algo::camera_raw::develop_tonal(&mut px, w, h, &photocraft_algo::camera_raw::tonal_part(&colour));
+    let tonal = photocraft_algo::camera_raw::tonal_part(&colour);
+    match cache.develop.lock() {
+        Ok(mut kept) => photocraft_algo::camera_raw::develop_tonal_with(&mut px, w, h, &tonal, &mut kept),
+        Err(_) => photocraft_algo::camera_raw::develop_tonal(&mut px, w, h, &tonal),
+    }
     let px = Arc::new(px);
     cache.tonal = Some((key, px.clone()));
     (colour, px)

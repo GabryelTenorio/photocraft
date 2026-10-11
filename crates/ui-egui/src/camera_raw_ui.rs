@@ -2013,6 +2013,20 @@ mod tests {
         let t = Instant::now();
         let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
         eprintln!("commit {:.0} ms {r}", ms(t));
+        // The Camera Raw Filter on the developed layer (no raw stage): its own Shadows / Highlights.
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({})).unwrap().unwrap();
+        for (name, set) in [
+            ("filter shadows", json!({"shadows": 40})),
+            ("filter drag shadows", json!({"shadows": 45})),
+            ("filter + highlights", json!({"highlights": -40})),
+            ("filter drag highlights", json!({"highlights": -45})),
+            ("filter drag shadows", json!({"shadows": 50})),
+            ("filter colour", json!({"saturation": 15})),
+        ] {
+            let t = Instant::now();
+            menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": set}})).unwrap().unwrap();
+            eprintln!("{name:26} proxy {:7.1} ms", ms(t));
+        }
     }
 
     fn pixels(app: &PhotocraftApp) -> Vec<f32> {
