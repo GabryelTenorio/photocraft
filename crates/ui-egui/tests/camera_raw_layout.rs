@@ -181,3 +181,51 @@ fn every_panel_and_tool_draws_without_editing_the_document() {
     assert_eq!(inspect(&h)["params"], before);
     assert!(std::sync::Arc::ptr_eq(&doc, &h.state().session.active().unwrap().doc));
 }
+
+/// A click focuses a slider; then the arrow keys and the wheel over it step its value (Shift: ten),
+/// the wheel elsewhere does not, and Tab moves to the next slider.
+#[test]
+fn a_focused_slider_steps_with_the_keys_and_the_wheel() {
+    let mut h = fixture();
+    let key = |h: &mut Harness<'_, PhotocraftApp>, key: egui::Key, modifiers: Modifiers| {
+        h.event(Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
+        h.event(Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers });
+        h.run_steps(2);
+    };
+    let wheel = |h: &mut Harness<'_, PhotocraftApp>, at: Pos2, notches: f32| {
+        h.event(Event::PointerMoved(at));
+        h.event(Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta: vec2(0.0, notches), modifiers: Modifiers::NONE, phase: egui::TouchPhase::Move });
+        h.run_steps(2);
+    };
+    let contrast = h.get_by_role_and_label(Role::Slider, "Contrast").rect();
+    click(&mut h, contrast.center(), 1);
+    let start = inspect(&h)["params"]["contrast"].as_f64().unwrap();
+    for _ in 0..3 {
+        key(&mut h, egui::Key::ArrowUp, Modifiers::NONE);
+    }
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 3.0);
+    key(&mut h, egui::Key::ArrowRight, Modifiers::SHIFT);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 13.0);
+    key(&mut h, egui::Key::ArrowLeft, Modifiers::NONE);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 12.0);
+    let row = contrast.center() - vec2(0.0, 12.0);
+    wheel(&mut h, row, 2.0);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 14.0, "the wheel over the row");
+    wheel(&mut h, row, -4.0);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 10.0);
+    let preview = pos2(300.0, 400.0);
+    wheel(&mut h, preview, 3.0);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 10.0, "not the wheel elsewhere");
+    // Tab: the next slider (Highlights) takes the keys.
+    key(&mut h, egui::Key::Tab, Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowDown, Modifiers::NONE);
+    let p = inspect(&h)["params"].clone();
+    assert_eq!(p["contrast"].as_f64().unwrap(), start + 10.0);
+    assert_eq!(p["highlights"], -1.0, "{p}");
+    // Exposure steps by 0.05.
+    let exposure = h.get_by_role_and_label(Role::Slider, "Exposure").rect();
+    click(&mut h, exposure.center(), 1);
+    let e0 = inspect(&h)["params"]["exposure"].as_f64().unwrap();
+    key(&mut h, egui::Key::ArrowUp, Modifiers::NONE);
+    assert!((inspect(&h)["params"]["exposure"].as_f64().unwrap() - (e0 + 0.05)).abs() < 1e-6);
+}
