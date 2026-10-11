@@ -652,12 +652,12 @@ fn adjust(c: vec3<f32>) -> vec3<f32> {
                 ss = clamp(lh.y * (1.0 + sat), 0.0, 1.0);
             }
             var rgb = hsl_to_rgb(hh, ss, lh.z);
-            // compose::adjust::range_lightness: a range's Lightness raises towards the brightest channel.
+            // compose::adjust::range_lightness: towards the brightest channel when raised, the darkest when lowered.
             let rl = clamp(dl, -1.0, 1.0);
             if (rl > 0.0) {
                 rgb = rgb + (vec3(max(rgb.r, max(rgb.g, rgb.b))) - rgb) * rl;
             } else if (rl < 0.0) {
-                rgb = rgb * (1.0 + rl);
+                rgb = rgb + (vec3(min(rgb.r, min(rgb.g, rgb.b))) - rgb) * -rl;
             }
             return rgb;
         }

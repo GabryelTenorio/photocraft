@@ -365,20 +365,14 @@ pub fn hue_saturation(c: [f32; 3], hue: f32, s: f32, l: f32, colorize: bool) -> 
     hsl_to_rgb(hh, ss, ll)
 }
 
-/// A colour range's Lightness, applied after the master edits. Raising it lightens each channel
-/// towards the pixel's brightest channel, not towards white: Blues +50 turns (0, 29, 115) into
-/// (57, 71, 115) (measured in Photoshop 27.11). Lowering it darkens towards black, as the master
-/// Lightness does (not yet measured per range).
+/// A colour range's Lightness, applied after the master edits. It moves each channel towards the
+/// pixel's brightest channel when raised and towards its darkest when lowered, not towards white
+/// or black: Blues +50 turns (0, 29, 115) into (57, 71, 115), Blues -50 turns (102, 128, 204) into
+/// (102, 115, 153) (measured in Photoshop 27.11).
 pub fn range_lightness(c: [f32; 3], l: f32) -> [f32; 3] {
     let l = l.clamp(-1.0, 1.0);
-    if l > 0.0 {
-        let top = c[0].max(c[1]).max(c[2]);
-        c.map(|v| v + (top - v) * l)
-    } else if l < 0.0 {
-        c.map(|v| v * (1.0 + l))
-    } else {
-        c
-    }
+    let target = if l > 0.0 { c[0].max(c[1]).max(c[2]) } else { c[0].min(c[1]).min(c[2]) };
+    c.map(|v| v + (target - v) * l.abs())
 }
 
 /// Black & White grey value. Each colour is the sum of a grey part (its smallest channel), a
@@ -1111,11 +1105,18 @@ mod tone_tests {
         }
     }
 
-    /// Photoshop 27.11, measured: a range's Lightness +50 (Blues) lightens towards the brightest channel.
+    /// Photoshop 27.11, measured: a range's Lightness (Blues ±50) moves towards the brightest or darkest channel.
     #[test]
     fn range_lightness_matches_photoshop() {
-        for (input, want) in [([0u8, 29, 115], [57u8, 71, 115]), ([0, 64, 255], [125, 157, 255]), ([102, 128, 204], [152, 165, 204])] {
-            let got = range_lightness(input.map(|v| v as f32 / 255.0), 0.5);
+        let measured = [
+            ([0u8, 29, 115], 0.5, [57u8, 71, 115]),
+            ([0, 64, 255], 0.5, [125, 157, 255]),
+            ([102, 128, 204], 0.5, [152, 165, 204]),
+            ([102, 128, 204], -0.5, [102, 115, 154]),
+            ([0, 18, 115], -0.5, [0, 9, 58]),
+        ];
+        for (input, l, want) in measured {
+            let got = range_lightness(input.map(|v| v as f32 / 255.0), l);
             for i in 0..3 {
                 assert!((got[i] * 255.0 - want[i] as f32).abs() <= 2.5, "{input:?} channel {i}: {} vs {}", got[i] * 255.0, want[i]);
             }
