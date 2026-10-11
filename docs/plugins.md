@@ -30,6 +30,41 @@ Plug-ins are installed **per process**, not per document. A smart filter recorde
 installed; if it is missing, the filter is skipped (the cached pixels stay as they were), like other
 filters PhotoCraft does not implement.
 
+### Presets
+
+Every plug-in dialog has a **Presets** row: a list of saved names (choosing one applies it and
+updates the live preview), **Save As…** and **Delete**. Plug-ins get this automatically; there is
+nothing to declare and the ABI is unchanged.
+
+The desktop app keeps each plug-in's presets in one file named after its id, in a `plugins` folder
+inside the settings folder (`PHOTOCRAFT_CONFIG_DIR`, the portable data folder, or
+`~/.config/photocraft` on Linux, `~/Library/Application Support/Photocraft` on macOS,
+`%APPDATA%\Photocraft` on Windows), for example
+`~/.config/photocraft/plugins/com.stack-tech.freecandy7.json`:
+
+```json
+{
+  "version": 1,
+  "presets": {
+    "Soft glow": { "amount": 25.0, "mode": "screen", "center": [50.0, 40.0] }
+  }
+}
+```
+
+- **Plug-ins have no file access.** The host reads and writes this file on the plug-in's behalf;
+  the plug-in never sees the path, the file or other plug-ins' presets, and only ever receives
+  parameter values through `pc_filter` as before.
+- The file name comes only from the validated plug-in id; ids with `..`, a leading dot or a path
+  separator get no presets. Preset names are 1–64 printable characters without `/`, `\` or `..`.
+- Saves are atomic (a temporary file in the same folder, then a rename).
+- A missing, unreadable or damaged file just means no presets (a warning is logged). A file with
+  another `version` is ignored and never overwritten.
+- Stored values are checked against the plug-in's current manifest when listed and applied:
+  unknown keys and values of the wrong type are dropped, numbers and points are clamped into
+  range, unknown choices are dropped (the parameter keeps its default), and a preset with nothing
+  usable left is skipped while the rest still load.
+- The web build has no presets store, so its plug-in dialogs show no Presets row.
+
 ## The sandbox
 
 The host is [`wasmi`](https://github.com/wasmi-labs/wasmi), a pure-Rust WebAssembly interpreter

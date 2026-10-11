@@ -70,6 +70,8 @@ pub fn menu(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<
     if let Some(g) = &m.guide {
         fixed.insert("__guide".into(), json!([g.from, g.to]));
     }
+    // Named presets of this plug-in's values (kept by the shell, per plug-in id).
+    crate::plugin_presets_ui::open_fields(app, m, &mut fixed);
     let d = crate::filter_dialog::open_with_spec(app, "plugin.run", &m.name, &m.params_notation(), fixed);
     Some(Ok(json!({"dialog": d})))
 }

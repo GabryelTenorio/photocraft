@@ -22,6 +22,7 @@
 
 mod apply;
 pub mod manifest;
+pub mod presets;
 pub mod registry;
 mod runtime;
 

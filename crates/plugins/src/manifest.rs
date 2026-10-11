@@ -344,7 +344,7 @@ fn in_ranges(c: char, ranges: &[(char, char)]) -> bool {
 /// A format character a menu label must not carry: it hides in the label or reorders it. The zero-width
 /// non-joiner and joiner stay allowed, since Persian, Indic scripts and emoji sequences need them and they
 /// cannot reorder text.
-fn hidden_format(c: char) -> bool {
+pub(crate) fn hidden_format(c: char) -> bool {
     !matches!(c, '\u{200C}' | '\u{200D}') && in_ranges(c, FORMAT)
 }
 

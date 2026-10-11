@@ -256,7 +256,13 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                     }
                     // Long parameter lists (Flame, Lighting Effects) scroll, so the title and the
                     // OK / Cancel buttons stay inside a small window.
-                    let room = (ctx.content_rect().height() - DIALOG_CHROME).max(120.0);
+                    let mut room = (ctx.content_rect().height() - DIALOG_CHROME).max(120.0);
+                    // Plug-in dialogs: the plug-in's saved presets, above its parameters.
+                    if crate::plugin_presets_ui::owns(&fields) {
+                        let top = ui.cursor().top();
+                        crate::plugin_presets_ui::body(app, ui, &mut fields);
+                        room = (room - (ui.cursor().top() - top)).max(120.0);
+                    }
                     let body = |ui: &mut egui::Ui, fields: &mut serde_json::Map<String, Value>| {
                         egui::ScrollArea::vertical().id_salt(id.with("body")).max_height(room).show(ui, |ui| crate::filter_dialog::body(ui, fields));
                     };
