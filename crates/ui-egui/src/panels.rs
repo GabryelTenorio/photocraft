@@ -1857,8 +1857,8 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Keep the last edited HSB while it still gives the foreground: black and greys have no hue or
     // saturation of their own, so recomputing them from RGB would reset what was just typed to 0.
     let key = egui::Id::new("color-picker-hsva");
-    let stored: Option<egui::ecolor::Hsva> = ui.data(|d| d.get_temp(key));
-    let hsva0 = stored.filter(|h| h.to_srgb() == srgb_bytes(fg)).unwrap_or_else(|| srgb_hsva(fg));
+    let stored: Option<Hsb> = ui.data(|d| d.get_temp(key));
+    let hsva0 = stored.filter(|h| h.srgb_bytes() == srgb_bytes(fg)).unwrap_or_else(|| Hsb::from_srgb(fg));
     let mut h = hsva0.h * 360.0;
     let mut s = hsva0.s * 100.0;
     let mut v = hsva0.v * 100.0;
@@ -1866,27 +1866,25 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Preferences ▸ Interface ▸ Dynamic Color Sliders: off, the tracks are the plain ones.
     let dynamic = app.session.prefs().interface.dynamic_color_sliders;
     let mut changed = widgets::slider_row(ui, tl!("Hue"), &mut h, 0.0..=360.0, "°", dynamic.then_some(&hue)).changed();
-    let sat_stops =
-        [egui::ecolor::Hsva::new(hsva0.h, 0.0, hsva0.v.max(0.2), 1.0), egui::ecolor::Hsva::new(hsva0.h, 1.0, hsva0.v.max(0.2), 1.0)].map(Color32::from);
+    let sat_stops = [Hsb::new(hsva0.h, 0.0, hsva0.v.max(0.2)).color32(), Hsb::new(hsva0.h, 1.0, hsva0.v.max(0.2)).color32()];
     changed |= widgets::slider_row(ui, tl!("Saturation"), &mut s, 0.0..=100.0, "%", dynamic.then_some(&sat_stops)).changed();
-    let val_stops = [Color32::BLACK, Color32::from(egui::ecolor::Hsva::new(hsva0.h, hsva0.s, 1.0, 1.0))];
+    let val_stops = [Color32::BLACK, Hsb::new(hsva0.h, hsva0.s, 1.0).color32()];
     changed |= widgets::slider_row(ui, tl!("Brightness"), &mut v, 0.0..=100.0, "%", dynamic.then_some(&val_stops)).changed();
-    let hsva = egui::ecolor::Hsva::new(h / 360.0, s / 100.0, v / 100.0, 1.0);
+    let hsva = Hsb::new(h / 360.0, s / 100.0, v / 100.0);
     // Only an edit counts: the h/s/v round trip isn't exact, so comparing values would rewrite
     // the foreground (and recolour selected type) every frame.
     if changed {
-        app.session.tools.foreground = hsva_srgb(hsva);
+        app.session.tools.foreground = hsva.to_srgb();
         ui.data_mut(|d| d.insert_temp(key, hsva));
         crate::type_tool::foreground_changed(app);
     }
-    let [r, g, b, _] = hsva.to_srgba_unmultiplied();
     ui.horizontal(|ui| {
         let (sw, _) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::hover());
-        ui.painter().rect_filled(sw, 6.0, Color32::from_rgb(r, g, b));
+        ui.painter().rect_filled(sw, 6.0, hsva.color32());
         let mut c = app.session.tools.foreground;
         if color_readout(ui, ui.id().with("color-panel"), &mut c) {
             app.session.tools.foreground = c;
-            ui.data_mut(|d| d.insert_temp(key, srgb_hsva(c)));
+            ui.data_mut(|d| d.insert_temp(key, Hsb::from_srgb(c)));
             crate::type_tool::foreground_changed(app);
         }
     });
@@ -3098,7 +3096,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let bg_active = app.ui.color_panel.background;
     let key = egui::Id::new(("color-field-hue", bg_active));
-    let mut hsva = srgb_hsva(if bg_active { app.session.tools.background } else { app.session.tools.foreground });
+    let mut hsva = Hsb::from_srgb(if bg_active { app.session.tools.background } else { app.session.tools.foreground });
     // Keep hue stable for greys (where RGB->HSV hue is undefined).
     let remembered: f32 = ui.data(|d| d.get_temp(key)).unwrap_or(hsva.h);
     if hsva.s < 0.01 || hsva.v < 0.01 {
@@ -3121,7 +3119,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         for j in 0..=n {
             for i in 0..=n {
                 let (sx, vy) = (i as f32 / n as f32, j as f32 / n as f32);
-                let c = Color32::from(egui::ecolor::Hsva::new(hsva.h, sx, 1.0 - vy, 1.0));
+                let c = Hsb::new(hsva.h, sx, 1.0 - vy).color32();
                 mesh.colored_vertex(pos2(field.left() + sx * field.width(), field.top() + vy * field.height()), c);
             }
         }
@@ -3152,7 +3150,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         let steps = 24;
         for k in 0..=steps {
             let f = k as f32 / steps as f32;
-            let c = Color32::from(egui::ecolor::Hsva::new(1.0 - f, 1.0, 1.0, 1.0));
+            let c = Hsb::new(1.0 - f, 1.0, 1.0).color32();
             m2.colored_vertex(pos2(strip.left(), strip.top() + f * strip.height()), c);
             m2.colored_vertex(pos2(strip.right(), strip.top() + f * strip.height()), c);
         }
@@ -3172,9 +3170,9 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.painter().add(egui::Shape::convex_polygon(tri, t.text, Stroke::NONE));
         if fresp.dragged() || fresp.clicked() || sresp.dragged() || sresp.clicked() {
             if bg_active {
-                app.session.tools.background = hsva_srgb(hsva);
+                app.session.tools.background = hsva.to_srgb();
             } else {
-                app.session.tools.foreground = hsva_srgb(hsva);
+                app.session.tools.foreground = hsva.to_srgb();
                 crate::type_tool::foreground_changed(app);
             }
             ui.data_mut(|d| d.insert_temp(key, hsva.h));
@@ -3191,7 +3189,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 crate::type_tool::foreground_changed(app);
             }
             // Keep the hue for greys, so the field marker doesn't jump to red.
-            let h = srgb_hsva(c);
+            let h = Hsb::from_srgb(c);
             if h.s >= 0.01 && h.v >= 0.01 {
                 ui.data_mut(|d| d.insert_temp(key, h.h));
             }
@@ -3199,20 +3197,47 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     });
 }
 
-/// Tool colours are sRGB-encoded floats; egui's Hsva works on sRGB bytes via these helpers
-/// (its `from_rgba_unmultiplied` expects *linear* RGB, which gave wrong readouts).
+/// Tool colours are sRGB-encoded floats; the readout shows them as bytes.
 fn srgb_bytes(c: [f32; 4]) -> [u8; 3] {
     let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
     [q(c[0]), q(c[1]), q(c[2])]
 }
 
-fn srgb_hsva(c: [f32; 4]) -> egui::ecolor::Hsva {
-    egui::ecolor::Hsva::from_srgb(srgb_bytes(c))
+/// Hue (0..1), saturation and brightness (0..1) over the *encoded* sRGB components, as
+/// Photoshop's HSB and the Color Picker dialog (`color_picker_ui::rgb_to_hsv`). Not egui's
+/// `Hsva`: that is HSV over *linear* RGB, which put the field's midpoint and the sliders' 50 %
+/// at sRGB 188 instead of 128 (#3323).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Hsb {
+    h: f32,
+    s: f32,
+    v: f32,
 }
 
-fn hsva_srgb(h: egui::ecolor::Hsva) -> [f32; 4] {
-    let [r, g, b] = h.to_srgb();
-    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+impl Hsb {
+    fn new(h: f32, s: f32, v: f32) -> Self {
+        Self { h, s, v }
+    }
+
+    fn from_srgb(c: [f32; 4]) -> Self {
+        let [h, s, v] = crate::color_picker_ui::rgb_to_hsv([c[0].clamp(0.0, 1.0), c[1].clamp(0.0, 1.0), c[2].clamp(0.0, 1.0)]);
+        Self { h: h / 360.0, s, v }
+    }
+
+    /// The sRGB-encoded colour, opaque.
+    fn to_srgb(self) -> [f32; 4] {
+        let [r, g, b] = crate::color_picker_ui::hsv_to_rgb(self.h * 360.0, self.s, self.v);
+        [r, g, b, 1.0]
+    }
+
+    fn srgb_bytes(self) -> [u8; 3] {
+        srgb_bytes(self.to_srgb())
+    }
+
+    fn color32(self) -> Color32 {
+        let [r, g, b] = self.srgb_bytes();
+        Color32::from_rgb(r, g, b)
+    }
 }
 
 /// The Color panel's editable colour readout: a hex field and R, G, B fields, all drawn like the
@@ -3641,13 +3666,31 @@ mod color_tests {
     use super::*;
 
     #[test]
-    fn srgb_hsva_roundtrip() {
-        for c in [[0.847, 0.271, 0.180, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0], [0.2, 0.6, 0.4, 1.0]] {
-            let back = hsva_srgb(srgb_hsva(c));
+    fn srgb_hsb_roundtrip() {
+        for c in [[0.847, 0.271, 0.180, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0], [0.2, 0.6, 0.4, 1.0], [0.5, 0.5, 0.5, 1.0]] {
+            let back = Hsb::from_srgb(c).to_srgb();
             for i in 0..3 {
                 assert!((back[i] - c[i]).abs() <= 1.0 / 255.0, "{c:?} -> {back:?}");
             }
         }
+    }
+
+    /// #3323: the Color panel's HSB is over the encoded values, like Photoshop's: half-way between
+    /// black and white is grey 128 (egui's linear `Hsva` put 188 there), 50 % brightness reads
+    /// back as 50 %, and a full hue keeps its encoded mix.
+    #[test]
+    fn color_panel_hsb_is_in_gamma_space() {
+        assert_eq!(Hsb::new(0.0, 0.0, 0.5).srgb_bytes(), [128, 128, 128]);
+        assert_eq!(Hsb::new(0.0, 0.5, 1.0).srgb_bytes(), [255, 128, 128]);
+        assert_eq!(Hsb::new(30.0 / 360.0, 1.0, 1.0).srgb_bytes(), [255, 128, 0]);
+        let grey = Hsb::from_srgb([128.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0, 1.0]);
+        assert_eq!(grey.s, 0.0);
+        assert!((grey.v - 0.5).abs() < 0.01, "{grey:?}");
+        let orange = Hsb::from_srgb([1.0, 128.0 / 255.0, 0.0, 1.0]);
+        assert!((orange.h * 360.0 - 30.0).abs() < 0.5 && (orange.s - 1.0).abs() < 1e-6 && (orange.v - 1.0).abs() < 1e-6, "{orange:?}");
+        // The dialog and the panel agree, so the same colour reads the same HSB in both.
+        let [h, s, v] = crate::color_picker_ui::rgb_to_hsv([0.2, 0.6, 0.4]);
+        assert_eq!(Hsb::from_srgb([0.2, 0.6, 0.4, 1.0]), Hsb::new(h / 360.0, s, v));
     }
 
     /// Click the hex field, select its text and type `text` one key per frame.
