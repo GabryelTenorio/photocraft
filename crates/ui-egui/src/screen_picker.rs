@@ -250,6 +250,8 @@ pub fn cancel(ctx: &Context) {
     lock(&r).answer = Some(Ok(None));
     ctx.request_repaint();
 }
+
+/// The picker window: hidden until its snapshot has been painted (#3210).
 fn viewport_builder(ctx: &Context, image: &ScreenImage) -> egui::ViewportBuilder {
     let mut builder = egui::ViewportBuilder::default()
         .with_title(tl!("PhotoCraft — Screen Color Picker"))
@@ -479,4 +481,3 @@ mod tests {
         assert_eq!(app.session.tools.foreground, foreground);
     }
 }
-
