@@ -1264,6 +1264,7 @@
 	Offset	Desplazamiento
 	Only Web Colors	Solo colores web
 	Opacity	Opacidad
+	Stop opacity	Opacidad de la parada
 	Opacity Jitter	Variación de opacidad
 	Opacity:	Opacidad:
 	Open a document to define variables.	Abra un documento para definir variables.
@@ -2704,7 +2705,6 @@ cameraData	Lens	Objetivo
 	Click to place · Alt-click or drag off-canvas to remove	Clic para colocar · Alt-clic o arrastrar fuera del lienzo para quitar
 	No document open	Ningún documento abierto
 	{n} of {max} sample points	{n} de {max} puntos de muestreo
-	Stop opacity	Opacidad de la parada
 # Print dialog (#2697)
 	Emulsion Down	Emulsión hacia abajo
 	Functions	Funciones

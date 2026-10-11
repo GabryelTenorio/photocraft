@@ -1258,6 +1258,7 @@
 	Offset	Versatz
 	Only Web Colors	Nur Webfarben
 	Opacity	Deckkraft
+	Stop opacity	Deckkraft des Verlaufsstopps
 	Opacity Jitter	Deckkraftschwankung
 	Opacity:	Deckkraft:
 	Open a document to define variables.	Öffne ein Dokument, um Variablen zu definieren.
@@ -2569,7 +2570,6 @@ fontWeight	Italic	Kursiv
 	Color Picker	Farbwähler
 	Recent Colors	Zuletzt verwendete Farben
 	No recent colors	Noch keine Farben verwendet
-	Stop opacity	Deckkraft des Verlaufsstopps
 	Color opacity	Farbdeckkraft
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Klicke auf den ersten Punkt oder drücke {key} zum Schließen · {del} entfernt einen Punkt · Esc bricht ab
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Klicke und bewege dich entlang einer Kante · Klicken setzt einen Ankerpunkt · {alt}-Klick für ein gerades Segment · Doppelklick schließt

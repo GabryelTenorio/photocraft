@@ -1269,6 +1269,7 @@
 	Offset	位移
 	Only Web Colors	僅限網頁色彩
 	Opacity	不透明度
+	Stop opacity	色標不透明度
 	Opacity Jitter	不透明度快速變換
 	Opacity:	不透明度：
 	Open a document to define variables.	請開啟文件以定義變數。
@@ -2614,7 +2615,6 @@ cameraData	Lens	鏡頭
 	Click to place · Alt-click or drag off-canvas to remove	按一下以放置 · Alt 按一下或拖曳至畫布外以移除
 	No document open	未開啟任何文件
 	{n} of {max} sample points	{max} 個取樣點中的 {n} 個
-	Stop opacity	色標不透明度
 # Print dialog (#2697)
 	Emulsion Down	感光乳劑面朝下
 	Functions	功能

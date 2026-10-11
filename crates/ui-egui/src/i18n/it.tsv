@@ -1263,6 +1263,7 @@
 	Offset	Scostamento
 	Only Web Colors	Solo colori web
 	Opacity	Opacità
+	Stop opacity	Opacità del punto
 	Opacity Jitter	Variazione opacità
 	Opacity:	Opacità:
 	Open a document to define variables.	Apri un documento per definire variabili.
@@ -2695,7 +2696,6 @@ cameraData	Lens	Obiettivo
 	Click to place · Alt-click or drag off-canvas to remove	Fai clic per posizionare · Alt-clic o trascina fuori dalla tela per rimuovere
 	No document open	Nessun documento aperto
 	{n} of {max} sample points	{n} di {max} punti di campionamento
-	Stop opacity	Opacità del punto
 # Print dialog (#2697)
 	Emulsion Down	Emulsione sotto
 	Functions	Funzioni

@@ -1271,6 +1271,7 @@
 	Offset	偏移
 	Only Web Colors	仅 Web 颜色
 	Opacity	不透明度
+	Stop opacity	色标不透明度
 	Opacity Jitter	不透明度抖动
 	Opacity:	不透明度：
 	Open a document to define variables.	打开文档以定义变量。
@@ -2644,7 +2645,6 @@ cameraData	Lens	镜头
 	Click to place · Alt-click or drag off-canvas to remove	单击以放置 · Alt 单击或拖到画布外以移除
 	No document open	未打开任何文档
 	{n} of {max} sample points	{max} 个取样点中的 {n} 个
-	Stop opacity	色标不透明度
 # Print dialog (#2697)
 	Emulsion Down	药膜朝下
 	Functions	功能

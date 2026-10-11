@@ -1240,6 +1240,7 @@
 	Offset	Offset
 	Only Web Colors	Hanya Warna Web
 	Opacity	Opasitas
+	Stop opacity	Opasitas titik
 	Opacity Jitter	Jitter Opasitas
 	Opacity:	Opasitas:
 	Open a document to define variables.	Buka dokumen untuk menentukan variabel.
@@ -3027,7 +3028,6 @@ cameraData	Lens	Lensa
 	Click to place · Alt-click or drag off-canvas to remove	Klik untuk menempatkan · Alt-klik atau seret ke luar kanvas untuk menghapus
 	No document open	Tidak ada dokumen yang terbuka
 	{n} of {max} sample points	{n} dari {max} titik sampel
-	Stop opacity	Opasitas titik
 # Print dialog (#2697)
 	Emulsion Down	Emulsi di Bawah
 	Functions	Fungsi

@@ -1243,6 +1243,7 @@
 	Offset	Deslocamento
 	Only Web Colors	Somente cores da Web
 	Opacity	Opacidade
+	Stop opacity	Opacidade da parada
 	Opacity Jitter	Variação da opacidade
 	Opacity:	Opacidade:
 	Open a document to define variables.	Abra um documento para definir variáveis.
@@ -3812,7 +3813,6 @@ layerLabel	No Color	Sem cor
 	Set Colors	Definir cores
 	Switch Foreground and Background Colors	Alternar cores de primeiro plano e plano de fundo
 	Target	Alvo
-	Stop opacity	Opacidade da parada
 # Print dialog (#2697)
 	Emulsion Down	Emulsão para baixo
 	Functions	Funções

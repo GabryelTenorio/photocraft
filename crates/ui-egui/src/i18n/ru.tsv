@@ -561,6 +561,7 @@
 	Default colours (D)	Цвета по умолчанию (D)
 	Brush Tool Options	Параметры кисти
 	Opacity	Непрозрачность
+	Stop opacity	Непрозрачность точки
 	Flow	Нажим
 	Smoothing	Сглаживание
 	Size	Размер
@@ -2969,7 +2970,6 @@ cameraData	Lens	Объектив
 	Click to place · Alt-click or drag off-canvas to remove	Щёлкните, чтобы разместить · Alt-щелчок или перетаскивание за пределы холста для удаления
 	No document open	Документ не открыт
 	{n} of {max} sample points	{n} из {max} точек замера
-	Stop opacity	Непрозрачность точки
 # Print dialog (#2697)
 	Emulsion Down	Эмульсией вниз
 	Functions	Функции
