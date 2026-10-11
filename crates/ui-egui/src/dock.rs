@@ -5,7 +5,7 @@
 //! between two groups to resize them, double-click a tab (or use the panel menu) to collapse a
 //! group to its tab strip, drag a tab strip (outside its tabs, or a tab dragged off the strip) to
 //! move the group up or down the column, and drag a tab along its strip to reorder the group's
-//! tabs (#2272); Window › Workspace › Lock Workspace stops all three moves.
+//! tabs (#2272), or drop a tab on another group's strip to move only that tab. Window › Workspace › Lock Workspace stops all these moves.
 //!
 //! The layout is [`DockLayout`] in `UiState::dock` (serialisable, drivable with `ui.set`), saved
 //! with Window › Workspace › New Workspace…, reset by Reset Workspace, and remembered across
