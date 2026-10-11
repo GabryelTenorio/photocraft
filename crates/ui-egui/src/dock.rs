@@ -729,6 +729,9 @@ pub fn restore(app: &mut PhotocraftApp) {
     }
     let saved = app.session.prefs().panel_layout.clone();
     apply(app, &saved);
+    // A floating Brush Settings window is opened explicitly in the new session (#3548).
+    // Keep it in named workspaces, but don't reopen it while restoring the startup layout.
+    app.ui.panels.brush_settings = false;
     if let Some(ws) = saved.get("workspace").and_then(Value::as_str) {
         app.ui.workspace = ws.to_string();
     }

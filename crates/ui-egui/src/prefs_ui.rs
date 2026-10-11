@@ -2328,6 +2328,48 @@ mod tests {
         app_with_saved(None)
     }
 
+    /// #3548: a floating Brush Settings window should not reopen on a fresh launch.
+    #[test]
+    fn brush_settings_starts_closed_after_loading_saved_layout() {
+        let (mut first, store) = app_with_store();
+        let ctx = egui::Context::default();
+        first.ui.panels.brush_settings = true;
+        first.ui.panels.history = true;
+        first.ui.dock.set_collapsed(crate::dock::Group::Color, true);
+        first.session.prefs.edit(|p| p.workspace.remember_workspace_changes = true);
+        crate::menus::invoke(&mut first, &ctx, "window.workspace.newWorkspace", json!({"name": "Brush workspace"})).unwrap();
+        crate::dock::persist(&mut first, &ctx);
+        save_preferences(&mut first).unwrap();
+        let saved = stored(&store);
+        assert_eq!(saved["panelLayout"]["panels"]["brush_settings"], true);
+
+        let text = store.lock().unwrap().clone();
+        let (mut restarted, _) = app_with_saved(text.clone());
+        if let Some(dir) = std::env::var_os("CRAFT_UI_VISUAL_FIXTURES") {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut h = egui_kittest::Harness::builder().with_size(vec2(1100.0, 850.0)).with_pixels_per_point(1.0).wgpu().build_eframe(move |cc| {
+                PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+                app_with_saved(text).0
+            });
+            h.run_steps(4);
+            h.render().unwrap().save(dir.join("photocraft-brush-settings-startup.png")).unwrap();
+        }
+        assert!(restarted.session.active().is_none(), "a fresh launch has no document");
+        assert!(!restarted.ui.panels.brush_settings, "the floating window starts closed");
+        assert!(restarted.ui.panels.history, "other panel visibility still restores");
+        assert!(restarted.ui.dock.is_collapsed(crate::dock::Group::Color), "dock layout still restores");
+        assert_eq!(restarted.ui.workspace, "Brush workspace");
+
+        // An explicitly selected workspace may still open the window during this session.
+        crate::menus::invoke(&mut restarted, &ctx, "window.workspace.select", json!({"name": "Brush workspace"})).unwrap();
+        assert!(restarted.ui.panels.brush_settings);
+        crate::menus::invoke(&mut restarted, &ctx, "window.toggle.brushSettings", json!({})).unwrap();
+        assert!(!restarted.ui.panels.brush_settings);
+        crate::menus::invoke(&mut restarted, &ctx, "window.toggle.brushSettings", json!({})).unwrap();
+        assert!(restarted.ui.panels.brush_settings, "the window can still be opened manually");
+    }
+
     fn app_with_saved(text: Option<String>) -> (PhotocraftApp, Arc<Mutex<Option<String>>>) {
         let store: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(text));
         (app_on(&store, Arc::default()), store)
