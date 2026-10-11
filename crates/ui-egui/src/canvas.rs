@@ -2931,13 +2931,14 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         }
         let lasso_retracted = response.secondary_clicked()
             && match tool {
-                Tool::Lasso => crate::lasso_ui::undo_last_vertex(app),
+                Tool::Lasso | Tool::FreeformPen => crate::lasso_ui::undo_last_vertex(app),
                 Tool::PolygonLasso => polygon_retract(app),
                 _ => false,
             };
-        // The Lasso reads its own presses and drops the moves of a drag it didn't start, so an
-        // open Free Transform box takes the usual drag path instead (#2153).
-        if tool == Tool::Lasso && !transform_owns_pointer {
+        // The Lasso (and the Freeform Pen, which draws the same way) reads its own presses and
+        // drops the moves of a drag it didn't start, so an open Free Transform box takes the
+        // usual drag path instead (#2153).
+        if crate::lasso_ui::owns(tool) && !transform_owns_pointer {
             crate::lasso_ui::canvas_input(app, &ctx, &xf, &response);
             (buttons.started, buttons.dragged, buttons.stopped, buttons.clicked) = (false, false, false, false);
         }
@@ -3176,8 +3177,24 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         if tool == Tool::Crop && response.double_clicked() && response.interact_pointer_pos().is_some_and(|p| crate::crop_ui::commits_at(app, xf.to_doc(p))) {
             commit_crop(app);
         }
-        if tool.is_type() && response.double_clicked() && !crate::type_transform::visible(app, crate::workspace_ui::sticky_mods(app, mods)) {
-            crate::type_tool::select_word(app);
+        // Type: 2 clicks select a word, 3 the line, 4 the paragraph, 5 all text (Photoshop).
+        if tool.is_type()
+            && response.clicked()
+            && let Some(p) = response.interact_pointer_pos()
+        {
+            if crate::type_transform::visible(app, crate::workspace_ui::sticky_mods(app, mods)) {
+                app.type_clicks = None;
+            } else {
+                let n = if response.triple_clicked() {
+                    3
+                } else if response.double_clicked() {
+                    2
+                } else {
+                    1
+                };
+                let d = xf.to_doc(p);
+                crate::type_tool::multi_click(app, n, d[0], d[1]);
+            }
         }
     }
     if crop_camera && let (Some((center, rotation)), Some(now)) = (camera, app.ui.views.get(idx)) {
@@ -4084,7 +4101,11 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
             }
         }
         Tool::FreeformPen => {
-            let pts: Vec<Pos2> = d.points.iter().map(|p| xf.to_screen(p[0] as f32, p[1] as f32)).collect();
+            let mut pts: Vec<Pos2> = d.points.iter().map(|p| xf.to_screen(p[0] as f32, p[1] as f32)).collect();
+            // Between ⌥-clicks: the straight segment the next click makes.
+            if let Some(lasso) = &d.lasso {
+                pts.push(xf.to_screen(lasso.cursor[0] as f32, lasso.cursor[1] as f32));
+            }
             painter.add(egui::Shape::line(pts, Stroke::new(1.5, crate::theme::Tokens::get(painter.ctx()).accent)));
         }
         Tool::Lasso | Tool::Patch | Tool::ContentAwareMove => {
@@ -4522,9 +4543,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                     polygon_click(app, x, y, mods);
                     return;
                 }
-                Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask
-                    if crate::type_tool::pointer_down(app, x, y, mods.shift) =>
-                {
+                Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask if crate::type_tool::pointer_down(app, x, y, mods) => {
                     return;
                 }
                 _ => {}
@@ -4841,7 +4860,7 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
     }
     match d.tool {
         Tool::ObjectSelection => crate::retouch_ui::finish_object_selection(app, d.start, [end[0], end[1]], d.modifiers),
-        Tool::FreeformPen => crate::vector_ui::freeform_finish(app, &d.points),
+        Tool::FreeformPen => crate::vector_ui::freeform_finish(app, &d.points, d.lasso.as_ref().map_or(&[], |l| l.straight())),
         // Photoshop: a click without dragging opens Create Rectangle / Ellipse / … instead.
         t if crate::vector_ui::is_shape_tool(t)
             && crate::shape_dialog::is_click(d.start, &d.points, app.current_zoom())
@@ -5020,6 +5039,8 @@ pub fn commit_polygon(app: &mut PhotocraftApp) {
 pub fn commit_crop(app: &mut PhotocraftApp) {
     // Never another document's frame (#1918).
     crate::crop_ui::cancel_stale(app);
+    // Committing ends the box's own Undo/Redo: from here Edit › Undo reverts the document.
+    crate::crop_ui::clear_history(app);
     let Some(r) = app.ui.crop_rect.take() else { return };
     // The crop's default mode leaves the view upright (`crop_mode`).
     crate::crop_mode::upright(app);

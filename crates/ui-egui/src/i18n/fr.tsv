@@ -2972,7 +2972,7 @@ cameraData	Lens	Objectif
 	Freeform Pen Tool	Outil Plume libre
 	Curvature Pen Tool	Outil Plume de courbure
 	Curve Fit:	Ajustement de courbe :
-	Drag: draw freehand · Release on the start point: close	Glisser : dessin à main levée · Relâcher sur le point de départ : fermer
+	Drag: draw freehand · {alt}-click: straight segment · Release on the start point: close	Glisser : dessin à main levée · {alt}-clic : segment droit · Relâcher sur le point de départ : fermer
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Clic : point lisse · Double-clic : angle · Glisser un point : déplacer · Clic sur le premier point : fermer · {key} : terminer
 	New Crop Preset…	Nouveau paramètre prédéfini de recadrage…
 	Delete Crop Preset…	Supprimer le paramètre prédéfini de recadrage…
@@ -3018,3 +3018,8 @@ cameraData	Lens	Objectif
 	Emulsion Down	Émulsion verso
 	Functions	Fonctions
 	Print Resolution:	Résolution d’impression :
+	Use Previous Layer to Create Clipping Mask	Utiliser le calque précédent pour créer un masque de découpe
+	Fill with {mode}-neutral color (white)	Remplir avec la couleur neutre de {mode} (blanc)
+	Fill with {mode}-neutral color (black)	Remplir avec la couleur neutre de {mode} (noir)
+	Fill with {mode}-neutral color (50% gray)	Remplir avec la couleur neutre de {mode} (gris 50 %)
+	(No neutral color exists for {mode} mode.)	(Il n’existe aucune couleur neutre pour le mode {mode}.)
