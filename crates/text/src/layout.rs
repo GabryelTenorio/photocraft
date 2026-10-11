@@ -34,6 +34,10 @@ mod kashida_justify;
 /// readable hierarchy for every font instead of silently rendering lowercase text unchanged.
 const SYNTHETIC_SMALL_CAPS_SCALE: f32 = 0.7;
 
+/// Photoshop's default tab stops: every half inch, measured from the anchor of point text or the
+/// left edge of a paragraph box. PSD type carries no custom tab stops, so these are the only ones.
+pub const DEFAULT_TAB_STOP_PT: f32 = 36.0;
+
 /// The rendering path for a `SmallCaps` character style.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SmallCapsMode {
@@ -231,18 +235,26 @@ impl TextLayout {
         })
     }
 
+    /// The visual line nearest to a line-space ordinate, including its ascent and descent.
+    /// Pointer hit testing uses this even where adjacent lines share a caret byte offset.
+    fn closest_line(&self, y: f32) -> Option<(usize, &LineInfo)> {
+        self.lines.iter().enumerate().min_by(|a, b| {
+            let d = |l: &LineInfo| {
+                if y < l.baseline - l.ascent {
+                    l.baseline - l.ascent - y
+                } else if y > l.baseline + l.descent {
+                    y - l.baseline - l.descent
+                } else {
+                    0.0
+                }
+            };
+            d(a.1).total_cmp(&d(b.1))
+        })
+    }
+
     /// Index of the line nearest to a line-space y.
     pub(crate) fn nearest_line(&self, y: f32) -> Option<usize> {
-        let d = |l: &LineInfo| {
-            if y < l.baseline - l.ascent {
-                l.baseline - l.ascent - y
-            } else if y > l.baseline + l.descent {
-                y - l.baseline - l.descent
-            } else {
-                0.0
-            }
-        };
-        self.lines.iter().enumerate().min_by(|a, b| d(a.1).total_cmp(&d(b.1))).map(|(i, _)| i)
+        self.closest_line(y).map(|(index, _)| index)
     }
 
     /// The caret nearest to line-space `x` on line `li`: (byte offset, upstream). Upstream means
@@ -315,9 +327,10 @@ pub fn char_index(text: &str, byte: usize) -> usize {
     text[..byte].chars().count()
 }
 
-/// Line containing a byte offset (the last line when the offset sits past every line).
+/// Line containing a byte offset. At a shared wrap boundary the caret belongs to
+/// the following line, while an offset at the end of the text stays on the last.
 pub fn line_index(layout: &TextLayout, byte: usize) -> usize {
-    layout.lines.iter().position(|ln| byte >= ln.range.start && byte <= ln.range.end).unwrap_or_else(|| layout.lines.len().saturating_sub(1))
+    layout.lines.iter().rposition(|ln| byte >= ln.range.start && byte <= ln.range.end).unwrap_or_else(|| layout.lines.len().saturating_sub(1))
 }
 
 /// Text-space point inside the laid-out line boxes, expanded by `slop` px on every side.
@@ -384,6 +397,10 @@ struct KernSlot {
     size: f32,
     rtl: bool,
     blank: bool,
+    /// Advance along the line (px, horizontal scale included).
+    advance: f32,
+    /// A tab, shaped as a space; it advances to the next tab stop.
+    tab: bool,
     /// Vertical type, upright glyph (its outline doesn't run along the column).
     upright: bool,
     /// The cluster is one ASCII digit shown with another digit's glyph.
@@ -476,6 +493,9 @@ impl Layouter {
             // They have the same UTF-8 length as their uppercase form, so the layer's byte-based
             // run and caret offsets remain unchanged.
             let mut synthetic_small_caps: Vec<(Range<usize>, f32)> = Vec::new();
+            // Offsets in `ptext` of the spaces standing in for tabs.
+            let mut tabs: Vec<usize> = Vec::new();
+            let tab_px = DEFAULT_TAB_STOP_PT * k;
             for (i, ch) in content.char_indices() {
                 // A forced line break ends the line but not the paragraph. The line breaker knows
                 // it as a newline, which has the same length, so text offsets don't move.
@@ -485,8 +505,10 @@ impl Layouter {
                 }
                 // Imported PSD text can contain literal tab controls. Font shaping may
                 // render those as .notdef boxes; a space preserves the one-byte source
-                // and style/caret offsets while supplying a real whitespace advance.
+                // and style/caret offsets while supplying a real whitespace advance. The space
+                // is widened to its tab stop after line breaking (`tab_px` below).
                 if ch == '\t' {
+                    tabs.push(ptext.len());
                     ptext.push(' ');
                     continue;
                 }
@@ -515,8 +537,9 @@ impl Layouter {
             let words = crate::segment::cursive_words(&ptext);
             // Grapheme boundaries of `ptext`: kerning goes between graphemes, never inside one.
             let pgraphemes = crate::segment::grapheme_boundaries(&ptext);
-            let mut layout: Layout<RunBrush> = {
-                let mut b = self.lcx.ranged_builder(&mut fonts.fcx, &ptext, 1.0, false);
+            // Shapes the paragraph, each tab widened by its letter spacing in `tab_spacing` (px).
+            let build = |lcx: &mut LayoutContext<RunBrush>, fcx: &mut parley::FontContext, tab_spacing: &[f32]| -> Layout<RunBrush> {
+                let mut b = lcx.ranged_builder(fcx, &ptext, 1.0, false);
                 // Paragraph-start style as the default (covers the direction mark and empty
                 // paragraphs), then every run piece intersecting this paragraph.
                 let si0 = style_at(prange.start);
@@ -568,21 +591,49 @@ impl Layouter {
                 for w in &words {
                     b.push(StyleProperty::LetterSpacing(0.0), w.clone());
                 }
-                for (range, size) in synthetic_small_caps {
-                    b.push(StyleProperty::FontSize(size), range);
+                for (range, size) in &synthetic_small_caps {
+                    b.push(StyleProperty::FontSize(*size), range.clone());
+                }
+                for (&at, &spacing) in tabs.iter().zip(tab_spacing) {
+                    b.push(StyleProperty::LetterSpacing(spacing), at..at + 1);
                 }
                 b.build(&ptext)
             };
-            let rtl = layout.is_rtl();
             let indent_start = ps.start_indent_pt * k;
             let indent_end = ps.end_indent_pt * k;
-            if ps.first_line_indent_pt != 0.0 {
-                layout.set_text_indent(ps.first_line_indent_pt * k, IndentOptions::default());
-            }
+            let first_indent = ps.first_line_indent_pt * k;
             // Box extent along the lines: width, or height for vertical type (columns).
             let (line_origin, line_len) = if vertical { (box_rect.1, box_rect.3) } else { (box_rect.0, box_rect.2) };
             let avail = if is_box { Some((line_len - indent_start - indent_end).max(1.0)) } else { None };
-            layout.break_all_lines(avail);
+            let break_lines = |layout: &mut Layout<RunBrush>| {
+                if first_indent != 0.0 {
+                    layout.set_text_indent(first_indent, IndentOptions::default());
+                }
+                layout.break_all_lines(avail);
+            };
+            // Paragraph text: a tab is never wider than a space plus one tab interval, so breaking
+            // lines at that width keeps the expanded tabs inside the box, but can wrap early.
+            // Break again with the tab widths that layout gives until they agree; if they don't
+            // settle, keep the safe layout.
+            let wide = if is_box { tab_px } else { 0.0 };
+            let mut layout = build(&mut self.lcx, &mut fonts.fcx, &vec![wide; tabs.len()]);
+            break_lines(&mut layout);
+            if is_box && !tabs.is_empty() {
+                let first = tab_widths(&layout, &tabs, &out.styles, indent_start, first_indent, tab_px);
+                let mut want: Vec<f32> = first.iter().map(|t| t.width).collect();
+                for _ in 0..4 {
+                    let spacing: Vec<f32> = first.iter().zip(&want).map(|(t, w)| w / t.scale - (t.advance - tab_px)).collect();
+                    let mut next = build(&mut self.lcx, &mut fonts.fcx, &spacing);
+                    break_lines(&mut next);
+                    let got: Vec<f32> = tab_widths(&next, &tabs, &out.styles, indent_start, first_indent, tab_px).iter().map(|t| t.width).collect();
+                    if got.iter().zip(&want).all(|(a, b)| (a - b).abs() < 0.01) {
+                        layout = next;
+                        break;
+                    }
+                    want = got;
+                }
+            }
+            let rtl = layout.is_rtl();
             let kashida_para = is_box && ps.kashida && !vertical && ps.align.is_justified();
             let kashida_cands = if kashida_para { kashida_justify::candidates(&ptext, &words, &pgraphemes) } else { Vec::new() };
             let alignment = if is_box {
@@ -671,6 +722,7 @@ impl Layouter {
                         continue;
                     }
                     line_runs.push(run.index());
+                    let hs = out.styles.get(gr.style().brush.0 as usize).map_or(1.0, |st| if st.horizontal_scale > 0.0 { st.horizontal_scale } else { 1.0 });
                     let digit_font = if vertical { None } else { digits::DigitFont::new(run.font(), run.normalized_coords(), run.font_size()) };
                     for c in run.visual_clusters() {
                         let mut gl = c.glyphs();
@@ -697,6 +749,8 @@ impl Layouter {
                             rtl: c.is_rtl(),
                             blank: first.is_none() || c.is_space_or_nbsp() || c.text_range().end <= prefix.len(),
                             upright: vertical && c.first_style().brush.1 != VClass::Rotate as u8,
+                            advance: c.advance() * hs,
+                            tab: tabs.binary_search(&c.text_range().start).is_ok(),
                             digit,
                         });
                     }
@@ -755,7 +809,22 @@ impl Layouter {
                 for (kern, slot) in kern_px.iter_mut().zip(&slots) {
                     *kern += slot.digit.map_or(0.0, |d| d.delta);
                 }
-                let line_kern: f32 = kern_px.iter().sum();
+                // Tabs: the "kerning" after a tab takes the pen to the next stop, measured from
+                // the anchor or the box edge as if the line were left-aligned (alignment then
+                // moves the whole line).
+                let mut pos = indent_start + if li == 0 { first_indent } else { 0.0 };
+                let mut trailing_tabs = 0.0f32;
+                for (j, s) in slots.iter().enumerate() {
+                    if s.tab {
+                        kern_px[j] = next_tab_stop(pos, tab_px) - pos - s.advance;
+                        // Trailing whitespace is outside the line's extent (`adv`).
+                        if slots[j + 1..].iter().all(|n| n.blank) {
+                            trailing_tabs += kern_px[j];
+                        }
+                    }
+                    pos += s.advance + kern_px.get(j).copied().unwrap_or(0.0);
+                }
+                let line_kern: f32 = kern_px.iter().sum::<f32>() - trailing_tabs;
                 // Per run on the line: (run index, glyph → slot, glyphs emitted, first slot whose
                 // kerning isn't applied yet).
                 let mut cursors: Vec<(usize, Vec<usize>, usize, usize)> = Vec::new();
@@ -992,7 +1061,7 @@ impl Layouter {
                     range: map(lr.start)..map(lr.end).min(content_end),
                     baseline,
                     x0,
-                    x1: x0 + adv + extra,
+                    x1: x0 + adv + extra - trailing_tabs,
                     ascent,
                     descent,
                     paragraph: pi,
@@ -1005,6 +1074,52 @@ impl Layouter {
         }
         out
     }
+}
+
+/// The first tab stop after `pos` (px from the anchor or box edge); stops are `interval` apart.
+fn next_tab_stop(pos: f32, interval: f32) -> f32 {
+    if interval > 0.0 && pos.is_finite() { ((pos + 1e-3) / interval).floor() * interval + interval } else { pos }
+}
+
+/// A tab as line breaking saw it: its shaped advance (before horizontal scale), the horizontal
+/// scale, and the width that takes it to its tab stop on its line.
+struct TabWidth {
+    advance: f32,
+    scale: f32,
+    width: f32,
+}
+
+/// The width of each tab (offsets `tabs` in the paragraph text) on the broken lines of `layout`,
+/// before kerning and alignment.
+fn tab_widths(layout: &Layout<RunBrush>, tabs: &[usize], styles: &[CharStyle], indent: f32, first_indent: f32, interval: f32) -> Vec<TabWidth> {
+    let mut out: Vec<TabWidth> = tabs.iter().map(|_| TabWidth { advance: interval, scale: 1.0, width: interval }).collect();
+    for (li, line) in layout.lines().enumerate() {
+        let mut pos = indent + if li == 0 { first_indent } else { 0.0 };
+        let mut seen: Vec<usize> = Vec::new();
+        for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(gr) = item else {
+                continue;
+            };
+            let run = gr.run();
+            if seen.contains(&run.index()) {
+                continue;
+            }
+            seen.push(run.index());
+            let scale = styles.get(gr.style().brush.0 as usize).map_or(1.0, |st| if st.horizontal_scale > 0.0 { st.horizontal_scale } else { 1.0 });
+            for c in run.visual_clusters() {
+                let advance = c.advance();
+                match tabs.binary_search(&c.text_range().start).ok().and_then(|i| out.get_mut(i)) {
+                    Some(t) => {
+                        let stop = next_tab_stop(pos, interval);
+                        *t = TabWidth { advance, scale, width: stop - pos };
+                        pos = stop;
+                    }
+                    None => pos += advance * scale,
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Byte ranges of paragraphs (each including its `\r`, `\n` or `\r\n` terminator). Text ending
@@ -1186,6 +1301,18 @@ fn feature_list(st: &CharStyle, small_caps: SmallCapsMode) -> Vec<String> {
     feats
 }
 
+/// The font variations for a run: the explicit axis values, plus `opsz` at the type size when the
+/// style doesn't set it (as CSS `font-optical-sizing: auto`). A font without an `opsz` axis
+/// ignores it.
+fn variation_list(st: &CharStyle) -> Vec<String> {
+    let mut vars: Vec<String> =
+        st.variations.iter().filter(|v| v.axis.len() == 4 && v.axis.is_ascii() && v.value.is_finite()).map(|v| format!("\"{}\" {}", v.axis, v.value)).collect();
+    if st.size_pt.is_finite() && !st.variations.iter().any(|v| v.axis == "opsz") {
+        vars.push(format!("\"opsz\" {}", st.size_pt.max(0.01)));
+    }
+    vars
+}
+
 fn style_props(st: &CharStyle, k: f32, fallback: &[String], idx: u32, small_caps: SmallCapsMode) -> Vec<StyleProperty<'static, RunBrush>> {
     let px = (st.size_pt * k).max(0.01);
     let mut fam: Vec<String> = Vec::new();
@@ -1200,7 +1327,7 @@ fn style_props(st: &CharStyle, k: f32, fallback: &[String], idx: u32, small_caps
     }
     fam.push("sans-serif".into());
     let feats = feature_list(st, small_caps);
-    let vars: Vec<String> = st.variations.iter().filter(|v| v.axis.len() == 4 && v.axis.is_ascii()).map(|v| format!("\"{}\" {}", v.axis, v.value)).collect();
+    let vars = variation_list(st);
     vec![
         StyleProperty::FontFamily(FontFamily::Source(Cow::Owned(fam.join(", ")))),
         StyleProperty::FontSize(px),
@@ -1393,8 +1520,17 @@ fn justify_all_line(line: &mut JustifyLine<'_>, text: &str, slack: f32, rtl: boo
 
 #[cfg(test)]
 mod tests {
-    use super::{ClusterInfo, SmallCapsMode, feature_list, fold_graphemes, grapheme_step, small_caps_mode};
-    use photocraft_doc::text::{Caps, CharStyle};
+    use super::{ClusterInfo, SmallCapsMode, feature_list, fold_graphemes, grapheme_step, small_caps_mode, variation_list};
+    use photocraft_doc::text::{Caps, CharStyle, FontVariation};
+
+    /// A variable font's optical size follows the type size unless the style sets `opsz` (#2985).
+    #[test]
+    fn optical_size_follows_the_type_size_unless_set() {
+        let style = CharStyle { size_pt: 36.0, variations: vec![FontVariation { axis: "wght".into(), value: 650.0 }], ..Default::default() };
+        assert_eq!(variation_list(&style), ["\"wght\" 650", "\"opsz\" 36"]);
+        let set = CharStyle { size_pt: 36.0, variations: vec![FontVariation { axis: "opsz".into(), value: 12.0 }], ..Default::default() };
+        assert_eq!(variation_list(&set), ["\"opsz\" 12"]);
+    }
 
     fn piece(range: std::ops::Range<usize>, x: f32, advance: f32) -> ClusterInfo {
         ClusterInfo { range, x, advance, line: 0, rtl: false }
