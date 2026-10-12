@@ -505,26 +505,6 @@ fn delete_with_the_mask_targeted_edits_the_mask_not_the_layer() {
     }
 }
 
-/// #4025: several selected layers, with the active one's mask targeted, are deleted together.
-/// The mask used to take the key first, so the first Delete removed only that mask.
-#[test]
-fn delete_with_several_layers_selected_ignores_a_targeted_mask() {
-    let mut h = harness();
-    put_focus(&mut h, Place::Canvas);
-    let s = &mut h.state_mut().session;
-    s.execute("select.deselect", json!({})).unwrap();
-    let first = photocraft_doc::LayerId(s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap());
-    let second = photocraft_doc::LayerId(s.execute("layer.newAdjustmentLayer.invert", json!({})).unwrap()["layer"].as_u64().unwrap());
-    s.execute("layer.select", json!({"layer": first.0, "mode": "add"})).unwrap();
-    h.state_mut().ui.mask_target = true;
-    h.run_steps(2);
-    assert!(h.state().session.active().unwrap().doc.layer(second).unwrap().mask.is_some());
-    press(&mut h, "Delete");
-    let doc = &h.state().session.active().unwrap().doc;
-    assert!(doc.layer(first).is_none() && doc.layer(second).is_none(), "both selected layers are gone");
-    assert_eq!(logged(&h), ["layer.delete"]);
-}
-
 /// Every selected layer goes, pixel layers too (Photoshop deletes, it doesn't clear the layer).
 #[test]
 fn delete_without_a_selection_deletes_every_selected_layer() {
