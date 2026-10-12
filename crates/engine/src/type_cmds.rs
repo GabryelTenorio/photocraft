@@ -128,6 +128,10 @@ pub fn apply_char_props(s: &mut CharStyle, p: &Value) -> bool {
     if let Some(v) = p.get("font").or_else(|| p.get("family")).and_then(Value::as_str) {
         s.font_family = v.to_string();
         s.postscript_name = None;
+        let mut eng = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(face) = eng.fonts.named_face(&s.font_family, &s.font_style).or_else(|| eng.fonts.faces(&s.font_family).into_iter().next()) {
+            s.postscript_name = face.postscript_name;
+        }
         hit(true);
     }
     if let Some(v) = p.get("fontStyle").and_then(Value::as_str) {
@@ -995,6 +999,14 @@ mod tests {
         assert!(style.postscript_name.is_none());
         apply_char_props(&mut style, &json!({"fontStyle": "Regular", "postscriptName": "ExplicitFace"}));
         assert_eq!(style.postscript_name.as_deref(), Some("ExplicitFace"));
+    }
+
+    #[test]
+    fn font_family_change_resolves_postscript_name() {
+        let mut style = CharStyle { font_family: "Inter".into(), font_style: "Regular".into(), ..Default::default() };
+        apply_char_props(&mut style, &json!({"font": "Inter"}));
+        assert_eq!(style.font_family, "Inter");
+        assert_eq!(style.postscript_name.as_deref(), Some("Inter-Regular"));
     }
 
     /// Picking a style or weight resets the weight axis to it; other axes keep their values (#2985).
