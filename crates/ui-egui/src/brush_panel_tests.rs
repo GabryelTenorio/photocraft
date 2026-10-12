@@ -877,3 +877,43 @@ fn hand_tool_offers_scale_buttons_and_requests_the_right_view() {
     assert!(h.state().ui.views[0].fill_pending);
     assert!(!h.state().ui.views[0].fit_pending);
 }
+
+#[test]
+fn brush_tip_shape_is_indented_with_other_section_labels() {
+    use egui_kittest::kittest::Queryable;
+
+    fn collect_text_positions(shape: &egui::Shape, out: &mut Vec<(String, egui::Pos2)>) {
+        match shape {
+            egui::Shape::Text(text) => out.push((text.galley.job.text.clone(), text.pos)),
+            egui::Shape::Vec(shapes) => {
+                for s in shapes {
+                    collect_text_positions(s, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let h = harness(0, 1);
+    let row_left = h.get_by_label("Brush Tip Shape").rect().left();
+    let mut texts = Vec::new();
+    for clipped in &h.output().shapes {
+        collect_text_positions(&clipped.shape, &mut texts);
+    }
+
+    let label_x = |name: &str| -> f32 {
+        texts
+            .iter()
+            .filter(|(t, pos)| t == name && (pos.x - (row_left + 26.0)).abs() < 40.0)
+            .map(|(_, pos)| pos.x)
+            .next()
+            .unwrap_or_else(|| panic!("missing section label {name}"))
+    };
+
+    let expected_x = row_left + 26.0;
+    for (name, _) in SECTIONS {
+        let x = label_x(name);
+        assert!((x - expected_x).abs() < 0.5, "{name} label at x={x}, expected {expected_x}");
+    }
+}
+
