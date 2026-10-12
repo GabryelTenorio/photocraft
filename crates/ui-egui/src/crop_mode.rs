@@ -55,7 +55,7 @@ pub fn moves_image(app: &PhotocraftApp) -> bool {
 /// goes from `from` to `to` degrees (zoom and flip unchanged). `center` itself when anything isn't
 /// finite.
 pub fn pivot_center(center: [f32; 2], c: [f64; 2], from: f32, to: f32, flip: bool) -> [f32; 2] {
-    let a = ViewXform { rect: Rect::ZERO, zoom: 1.0, center, flip, rotation: from };
+    let a = ViewXform { rect: Rect::ZERO, zoom: 1.0, center, flip, rotation: from, aspect: 1.0 };
     // c's offset from the view centre on screen (at zoom 1), then the same offset in the new view.
     let off = a.to_screen(c[0] as f32, c[1] as f32).to_vec2();
     let u = ViewXform { rotation: to, ..a }.unmap_vec(off);
@@ -132,7 +132,8 @@ pub struct LiveResize {
 /// press and grows or shrinks symmetrically there, so the handle stays under the pointer, while on
 /// the image the opposite edge stays put (the centre with ⌥), as in a plain resize. Everything is
 /// computed from the press, so the view following the frame can't feed back into the drag.
-pub fn live_resize(app: &mut PhotocraftApp, g: LiveResize, press: PressView) {
+/// Returns the proposed frame and the camera's document-space offset without changing the app.
+pub(crate) fn resized_frame(g: LiveResize) -> Option<([f64; 4], [f64; 2])> {
     let LiveResize { rect, deg, hx, hy, start, q, ratio, alt } = g;
     let c0 = crate::crop_ui::center(rect);
     let (w0, h0) = (rect[2] - rect[0], rect[3] - rect[1]);
@@ -147,9 +148,12 @@ pub fn live_resize(app: &mut PhotocraftApp, g: LiveResize, press: PressView) {
     let s = crate::crop_ui::turn(shift, [0.0, 0.0], deg);
     let c1 = [c0[0] + s[0], c0[1] + s[1]];
     let f = [c1[0] - w1 / 2.0, c1[1] - h1 / 2.0, c1[0] + w1 / 2.0, c1[1] + h1 / 2.0];
-    if !f.iter().all(|v| v.is_finite()) {
-        return;
-    }
+    f.iter().all(|v| v.is_finite()).then_some((f, s))
+}
+
+/// Move the camera with the resized frame to keep the crop box's centre stationary on screen.
+pub fn live_resize(app: &mut PhotocraftApp, g: LiveResize, press: PressView) {
+    let Some((f, s)) = resized_frame(g) else { return };
     app.ui.crop_rect = Some(f);
     // The view follows the centre, so the box stays where it was on screen.
     if let Some(v) = app.session.active_index().and_then(|i| app.ui.views.get_mut(i)) {
@@ -202,7 +206,7 @@ pub fn press_view(app: &PhotocraftApp) -> Option<PressView> {
 /// `to` shows at the screen position where `from` shows `p` (zoom and flip are the same). `p`
 /// itself when anything isn't finite.
 fn remap(p: [f64; 2], from: PressView, to: PressView, flip: bool) -> [f64; 2] {
-    let at = |v: PressView| ViewXform { rect: Rect::ZERO, zoom: 1.0, center: v.center, flip, rotation: v.rotation };
+    let at = |v: PressView| ViewXform { rect: Rect::ZERO, zoom: 1.0, center: v.center, flip, rotation: v.rotation, aspect: 1.0 };
     let q = at(to).to_doc(at(from).to_screen(p[0] as f32, p[1] as f32));
     if q.iter().all(|v| v.is_finite()) { q } else { p }
 }
@@ -213,6 +217,14 @@ pub fn to_press(app: &PhotocraftApp, press: Option<PressView>, p: [f64; 2]) -> [
     match (press, press_view(app)) {
         (Some(press), Some(now)) => remap(p, now, press, app.ui.view.flip_horizontal),
         _ => p,
+    }
+}
+
+/// A press-view point mapped back into the current camera after snapping the crop handle.
+pub(crate) fn from_press(app: &PhotocraftApp, press: PressView, p: [f64; 2]) -> [f64; 2] {
+    match press_view(app) {
+        Some(now) => remap(p, press, now, app.ui.view.flip_horizontal),
+        None => p,
     }
 }
 
@@ -251,7 +263,7 @@ pub fn offset_image(app: &mut PhotocraftApp, rect: [f64; 4], press: Option<Press
 /// A screen vector `s` (points, at the current zoom ignored) as a document vector of the same
 /// length: undoes the view's flip and rotation.
 pub fn screen_to_doc_vec(app: &PhotocraftApp, s: [f64; 2]) -> [f64; 2] {
-    let xf = ViewXform { rect: Rect::ZERO, zoom: 1.0, center: [0.0, 0.0], flip: app.ui.view.flip_horizontal, rotation: view_rotation(app) };
+    let xf = ViewXform { rect: Rect::ZERO, zoom: 1.0, center: [0.0, 0.0], flip: app.ui.view.flip_horizontal, rotation: view_rotation(app), aspect: 1.0 };
     let u = xf.unmap_vec(vec2(s[0] as f32, s[1] as f32));
     [f64::from(u.x), f64::from(u.y)]
 }
@@ -335,6 +347,45 @@ mod tests {
         crate::crop_ui::ensure_frame(app);
         app.ui.crop_rect = Some([40.0, 30.0, 100.0, 70.0]);
         app.crop.default_frame = false;
+    }
+
+    #[test]
+    fn a_live_resize_snaps_the_handle_without_feedback_from_the_camera() {
+        for (hx, hy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)] {
+            for alt in [false, true] {
+                for (zoom, ppp, flip, ratio) in [(1.0, 1.0, false, false), (0.5, 1.0, false, true), (3.0, 2.0, false, false), (3.0, 2.0, true, true)] {
+                    let mut app = app();
+                    app.ppp = ppp;
+                    app.ui.views[0].zoom = zoom;
+                    app.ui.view.flip_horizontal = flip;
+                    if ratio {
+                        app.ui.tool_options.crop_ratio = "original".into();
+                    }
+                    app.ui.extras.snap = true;
+                    crate::crop_ui::ensure_frame(&mut app);
+                    let box0 = screen_box(&app);
+                    let c = mid_of(box0);
+                    let from = xf(&app).to_screen(100.0 + hx as f32 * 100.0, 50.0 + hy as f32 * 50.0);
+                    let direction = (from - c).normalized();
+                    let mods = if alt { Modifiers::ALT } else { NONE };
+                    let d = xf(&app).to_doc(from);
+                    tool_event(&mut app, ToolEvent::Down { x: d[0], y: d[1], pressure: 1.0 }, mods);
+                    // Leave the snap radius, then return just inside it. A still pointer must
+                    // settle on the canvas edge instead of alternating on opposite sides of it.
+                    for offset in [20.0, -2.0, -2.0, -2.0, -2.0, -2.0] {
+                        let p = from + direction * offset;
+                        let d = xf(&app).to_doc(p);
+                        tool_event(&mut app, ToolEvent::Move { x: d[0], y: d[1], pressure: 1.0 }, mods);
+                        if offset == -2.0 {
+                            assert!(close(screen_box(&app), box0), "handle ({hx}, {hy}), Alt {alt}: {:?}", app.ui.crop_rect);
+                        }
+                    }
+                    let d = xf(&app).to_doc(from + direction * -2.0);
+                    tool_event(&mut app, ToolEvent::Up { x: d[0], y: d[1] }, mods);
+                    assert!(close(screen_box(&app), box0), "release: {:?}", app.ui.crop_rect);
+                }
+            }
+        }
     }
 
     #[test]
@@ -761,7 +812,7 @@ mod tests {
             for (from, to) in [(0.0, 30.0), (45.0, -90.0), (170.0, -170.0)] {
                 let center = [100.0f32, 50.0];
                 let c = [70.0, 20.0];
-                let a = ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)), zoom: 2.0, center, flip, rotation: from };
+                let a = ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)), zoom: 2.0, center, flip, rotation: from, aspect: 1.0 };
                 let n = pivot_center(center, c, from, to, flip);
                 let b = ViewXform { center: n, rotation: to, ..a };
                 let (p, q) = (a.to_screen(70.0, 20.0), b.to_screen(70.0, 20.0));
