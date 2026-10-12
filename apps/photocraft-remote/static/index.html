@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PhotoCraft">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon.png">
+  <title>PhotoCraft Remote</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #1e1e1e; overscroll-behavior: none;
+      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    #screen { position: fixed; inset: 0; width: 100vw; height: 100dvh; object-fit: contain; touch-action: none; display: block; }
+    #cursor { position: fixed; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
+    #status { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #aaa;
+      font: 15px -apple-system, system-ui, sans-serif; pointer-events: none; }
+    #status:empty { display: none; }
+    #bar { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom));
+      display: flex; gap: 6px; padding: 6px; border-radius: 14px; background: rgba(40, 40, 40, 0.82);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 2px 12px rgba(0,0,0,.4); }
+    #bar button { width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #e6e6e6;
+      font: 22px -apple-system, system-ui, sans-serif; touch-action: manipulation; }
+    #bar button:active { background: rgba(255,255,255,.15); }
+    #bar button.on { background: rgba(80, 150, 255, .35); }
+  </style>
+</head>
+<body>
+  <canvas id="screen"></canvas>
+  <canvas id="cursor"></canvas>
+  <div id="status">Connecting to PhotoCraft…</div>
+  <div id="bar">
+    <button data-menu="edit.undo" title="Undo (two-finger tap)">↶</button>
+    <button data-menu="edit.redo" title="Redo (three-finger tap)">↷</button>
+    <button data-menu="view.fitOnScreen" title="Fit on screen">⤢</button>
+    <button id="finger" title="One finger pans (tap to draw with a finger)">☝</button>
+    <button id="mode" title="Full window">▣</button>
+  </div>
+  <script type="module">import init from "./photocraft_remote.js"; init();</script>
+</body>
+</html>

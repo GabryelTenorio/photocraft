@@ -41,6 +41,7 @@ mod linux_libs;
 mod logging;
 mod monitor_profile;
 mod photoshop_settings;
+mod remote_server;
 mod screen_color;
 mod services;
 // Windows gets pen pressure from winit (WM_POINTER); the web runner has its own listener.
@@ -122,6 +123,37 @@ fn control_args_exit_code(errors: &[String]) -> Option<i32> {
     if errors.is_empty() { None } else { Some(2) }
 }
 
+/// Window › Remote Canvas's server (`remote_server.rs`) on `port`. Turning it on writes
+/// `remote-canvas.on` in the settings directory and turning it off removes it, so PhotoCraft
+/// starts with Remote Canvas the way it was left.
+fn remote_service(port: u16) -> photocraft_ui_egui::remote::RemoteServerFn {
+    Box::new(move |link| {
+        let dir = app_dirs::config_dir();
+        let key = remote_server::pairing_key(dir.as_deref())?;
+        let started = remote_server::start(port, key, link.clone())?;
+        for url in &started.urls {
+            eprintln!("photocraft: Remote Canvas: open {url} on your tablet");
+        }
+        let marker = dir.map(|d| d.join(REMOTE_MARKER));
+        if let Some(m) = &marker
+            && let Err(e) = std::fs::write(m, b"")
+        {
+            log::warn!("Remote Canvas: couldn't remember it is on ({}): {e}", m.display());
+        }
+        let qr = started.urls.first().and_then(|u| remote_server::qr(u));
+        let stop = started.stop;
+        Ok(photocraft_ui_egui::remote::Served::new(started.urls, qr, move || {
+            stop();
+            if let Some(m) = marker {
+                let _ = std::fs::remove_file(m);
+            }
+        }))
+    })
+}
+
+/// Present in the settings directory while Remote Canvas is on.
+const REMOTE_MARKER: &str = "remote-canvas.on";
+
 #[cfg(test)]
 mod control_port_tests {
     use super::{control_args_exit_code, parse_control_port};
@@ -175,8 +207,14 @@ fn main() -> eframe::Result {
     // reported in a notice once the app is up; a control token is a usage error like a bad port.
     let mut unreadable_paths: Vec<String> = Vec::new();
     let mut safe_gpu = false;
+    // Remote Canvas (remote_server.rs): `--remote [port]` or PHOTOCRAFT_REMOTE=<port>.
+    let mut remote_port: Option<u16> = std::env::var("PHOTOCRAFT_REMOTE").ok().and_then(|v| match v.trim() {
+        "" | "0" => None,
+        "1" => Some(remote_server::DEFAULT_PORT),
+        v => v.parse().ok(),
+    });
     let mut in_window_menus = std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0");
-    let mut args = std::env::args_os().skip(1);
+    let mut args = std::env::args_os().skip(1).peekable();
     while let Some(a) = args.next() {
         match a.to_str() {
             Some("--control") => match args.next() {
@@ -195,6 +233,14 @@ fn main() -> eframe::Result {
             Some("--automation-read-root") => automation_read_root = args.next().map(std::path::PathBuf::from),
             Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
             Some("--safe-gpu") => safe_gpu = true,
+            Some("--remote") => {
+                // The port is optional: a number right after `--remote` is the port.
+                let port = args.peek().and_then(|v| v.to_str().and_then(|v| v.parse::<u16>().ok()));
+                if port.is_some() {
+                    args.next();
+                }
+                remote_port = Some(port.unwrap_or(remote_server::DEFAULT_PORT));
+            }
             Some("--in-window-menus") => in_window_menus = true,
             Some("--version") => {
                 println!("photocraft {}", photocraft_engine::build_info::long_version());
@@ -464,6 +510,22 @@ fn main() -> eframe::Result {
             if let Some((port, token, _)) = control {
                 let rx = control_server::start(port, token, cc.egui_ctx.clone());
                 app = app.with_control(rx);
+            }
+            // Remote Canvas (Window › Remote Canvas…): on at launch with `--remote`, or when it was
+            // left on.
+            app.services.remote_server = Some(remote_service(remote_port.unwrap_or(remote_server::DEFAULT_PORT)));
+            let left_on = app_dirs::config_dir().is_some_and(|d| d.join(REMOTE_MARKER).exists());
+            if remote_port.is_some() || left_on {
+                match photocraft_ui_egui::remote::turn_on(&mut app, &cc.egui_ctx) {
+                    Ok(()) => {
+                        let lines = vec!["Your tablet or phone can connect. Window › Remote Canvas… shows the QR code.".to_string()];
+                        photocraft_ui_egui::notices::post(&mut app, "Remote Canvas is on", lines, false, None);
+                    }
+                    Err(e) => {
+                        log::warn!("{e}");
+                        photocraft_ui_egui::notices::post(&mut app, "Remote Canvas", vec![e], true, None);
+                    }
+                }
             }
             #[cfg(target_os = "macos")]
             {

@@ -92,6 +92,8 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.theme.system", "Sync with system", &["Window", "Theme"], None),
     ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),
     ("help.discord", "Join the ArtCraft Discord…", &["Help"], None),
+    // Remote Canvas: draw from an iPad's browser (`remote`). Not a Photoshop item.
+    (crate::remote::MENU_ID, "Remote Canvas…", &["Window"], None),
     ("help.website", "PhotoCraft Website", &["Help"], None),
     ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),
     ("help.github", "PhotoCraft on GitHub", &["Help"], None),
@@ -178,6 +180,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     }
     if let Some(result) = crate::panel_docking::command(app, id, &params) {
         return result;
+    }
+    if let Some(r) = crate::remote::menu(app, ctx, id) {
+        return r;
     }
     // Help › Discord, website, GitHub, Report an Issue.
     if let Some(url) = crate::links::url_for(id) {
@@ -691,6 +696,8 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         i if i.starts_with("file.openRecent.") => true,
         i if i.starts_with(DOCUMENT_ITEM) => true,
         i if crate::links::url_for(i).is_some() => true,
+        // Remote Canvas needs the desktop app's server (the web build has none).
+        crate::remote::MENU_ID => app.services.remote_server.is_some() || app.remote.link.is_some(),
         i if i.starts_with("window.theme.") => true,
         "file.save" | "file.saveAs" | "file.export.exportAs" | "file.export.quickExportAsPng" => {
             app.session.active().is_some() && app.services.export.is_some()

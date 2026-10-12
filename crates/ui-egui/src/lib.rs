@@ -153,6 +153,7 @@ pub mod proxy;
 pub mod puppet_ui;
 pub mod quick_pick;
 pub mod rasterize_prompt;
+pub mod remote;
 pub mod retouch_ui;
 mod rgb_histogram;
 pub mod rotate_view;
@@ -429,6 +430,8 @@ pub struct Services {
     /// Caps Lock toggled on (desktop; `None` on Wayland and the web). Read once per frame, so
     /// the canvas can show the precise crosshair for painting tools, whatever the preference.
     pub caps_lock: Option<CapsLockFn>,
+    /// Start the Remote Canvas server (desktop; `None` on the web). See `remote`.
+    pub remote_server: Option<remote::RemoteServerFn>,
     /// Keeps the undecorated window borderless, so the content and the pointer stay aligned
     /// (Windows custom title bar, #2246). Called once per frame; `None` when the window is
     /// decorated or the platform needs no fixing.
@@ -681,6 +684,8 @@ pub struct PhotocraftApp {
     pub(crate) allow_close: bool,
     /// Pen pressure/tilt from the platform (see `stylus`).
     pub stylus: stylus::Stylus,
+    /// Remote Canvas: a tablet's browser drawing in this window (see `remote`).
+    pub remote: remote::RemoteState,
     /// Run long commands and file opens as background jobs with progress and Cancel (#210; see
     /// `jobs_ui`). The desktop app turns it on; off (the default), everything runs inline as
     /// before, which tests and scripts rely on.
@@ -801,6 +806,7 @@ impl PhotocraftApp {
             targa_options: None,
             allow_close: false,
             stylus: Default::default(),
+            remote: Default::default(),
             background_jobs: false,
             jobs: Default::default(),
             #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
@@ -1541,6 +1547,7 @@ impl eframe::App for PhotocraftApp {
         shape_stroke_ui::sync_editor(self, ctx);
         self.collect_screenshots(ctx);
         self.issue_screenshots(ctx);
+        remote::tick(self, ctx);
         prefs_ui::tick(self, ctx);
         monitor_status::poll_frame(self, ctx, frame);
         // Control requests and persisted preferences can change the language in this frame.
@@ -1603,6 +1610,11 @@ impl eframe::App for PhotocraftApp {
             wheel_nav::fold_legacy_pinch(ctx, raw_input);
         }
         raw_input.events.extend(self.take_synthetic_step());
+        for id in remote::inject(self, ctx, raw_input) {
+            if let Err(e) = menus::invoke(self, ctx, &id, serde_json::json!({})) {
+                log::warn!("remote command {id}: {e}");
+            }
+        }
         if self.custom_titlebar {
             titlebar::release_after_os_resize(ctx, raw_input);
         }
@@ -1690,6 +1702,7 @@ impl eframe::App for PhotocraftApp {
         camera_raw_ui::show(self, &ctx);
         wide_angle_ui::show(self, &ctx);
         canvas::extra_windows(self, &ctx);
+        remote::window(self, &ctx);
         notices::show(self, &ctx);
         gpu_status::show_fallback(self, &ctx);
         kys_import::show_offer(self, &ctx);

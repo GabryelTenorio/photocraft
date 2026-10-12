@@ -40,6 +40,12 @@ arboard = { version = "3.6", features = ["wayland-data-control"] }
 open = "5"
 # Reads the saved window layout (eframe persistence) to drop values that would abort startup.
 ron = "0.12"
+# Remote Canvas (remote_server.rs): the tablet page's WebSocket (sync, std::net, no TLS) and the
+# frame compression (flate2 is already in Cargo.lock).
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+flate2 = "1"
+# The Remote Canvas window's QR code (pure Rust; no image rendering).
+qrcode = { version = "0.14", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Safe CoreGraphics bindings, compatible with the existing macOS 11 deployment target.

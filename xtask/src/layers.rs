@@ -69,6 +69,8 @@ pub const TABLE: &[(&str, Class)] = &[
     ("photocraft", Class::Exempt),
     ("cli", Class::Exempt),
     ("web", Class::Exempt),
+    // The Remote Canvas tablet page (wasm, served by the desktop app).
+    ("remote", Class::Exempt),
     ("xtask", Class::Exempt),
 ];
 
