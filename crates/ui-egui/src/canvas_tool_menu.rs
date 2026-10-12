@@ -49,7 +49,7 @@ pub struct Spelling {
 }
 
 /// Most suggestions the type edit menu lists.
-const MAX_SUGGESTIONS: usize = 5;
+const MAX_SUGGESTIONS: usize = 3;
 /// The spelling rows' ids: `spelling.replace.<n>` picks the n-th suggestion.
 const SPELLING_REPLACE: &str = "spelling.replace.";
 const SPELLING_NONE: &str = "spelling.none";
@@ -983,6 +983,7 @@ mod tests {
         let rows = spelling_rows(&menu);
         assert!(rows.iter().any(|(l, _)| l == "The"), "{rows:?}");
         assert_eq!(rows.last().map(|(_, id)| id.as_str()), Some(SPELLING_ADD));
+        assert!(rows.len() <= MAX_SUGGESTIONS + 1, "at most {MAX_SUGGESTIONS} suggestions and Add to Dictionary: {rows:?}");
         assert!(available(&app, &menu, &rows[0].1));
         let pick = rows.iter().find(|(l, _)| l == "The").unwrap().1.clone();
         choose(&mut app, &ctx, &pick);
