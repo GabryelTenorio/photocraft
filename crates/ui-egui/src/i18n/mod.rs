@@ -39,7 +39,7 @@ pub struct LangInfo {
     /// Catalog file contents, raw-deflated by build.rs (empty for the built-in English); see
     /// [`LangInfo::text`].
     pub source: &'static [u8],
-    /// Plural form index for a count (English: 0 = one, 1 = other; Japanese and Chinese: always 0;
+    /// Plural form index for a count (English: 0 = one, 1 = other; Japanese, Chinese and Hungarian: always 0;
     /// Czech: 0 = one, 1 = few (2–4), 2 = other; French: 0 = one (0 and 1), 1 = other). A catalog's `@plural` entries list one form per
     /// index.
     pub plural: fn(u64) -> usize,
@@ -141,7 +141,7 @@ fn inflate(source: &[u8]) -> Result<String, String> {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 17] = [
+pub static LANGUAGES: [LangInfo; 20] = [
     LangInfo { code: "en", name: "English", source: b"", plural: plural_one_other, complete_menus: false, catalog: OnceLock::new() },
     LangInfo { code: "ja", name: "日本語", source: catalog!("ja"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "zh-hans", name: "简体中文", source: catalog!("zh-hans"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
@@ -164,6 +164,12 @@ pub static LANGUAGES: [LangInfo; 17] = [
     // Dutch; `nl-NL` and `nl-BE` locales both resolve here.
     LangInfo { code: "nl", name: "Nederlands", source: catalog!("nl"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "it", name: "Italiano", source: catalog!("it"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
+    // Hungarian: a count takes the singular noun ("3 réteg"), so one plural form.
+    LangInfo { code: "hu", name: "Magyar", source: catalog!("hu"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
+    // Turkish; `tr`, `tr-TR` and `tr_TR` locales resolve here.
+    LangInfo { code: "tr", name: "Türkçe", source: catalog!("tr"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
+    // Vietnamese; `vi-VN` resolves here.
+    LangInfo { code: "vi", name: "Tiếng Việt", source: catalog!("vi"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
 ];
 
 impl LangInfo {
@@ -379,6 +385,7 @@ mod tests {
     const ZH: fn() -> Lang = || Lang::from_code("zh-hant").expect("zh-hant registered");
     const CS: fn() -> Lang = || Lang::from_code("cs").expect("cs registered");
     const ID: fn() -> Lang = || Lang::from_code("id").expect("id registered");
+    const VI: fn() -> Lang = || Lang::from_code("vi").expect("vi registered");
 
     #[test]
     fn indonesian_tags_resolve() {
@@ -386,6 +393,17 @@ mod tests {
             assert_eq!(lang_from_tag(tag), Some(ID()), "{tag}");
         }
         assert_eq!(ID().name(), "Bahasa Indonesia");
+    }
+
+    #[test]
+    fn vietnamese_tags_resolve() {
+        for tag in ["vi", "vi-VN", "vi_VN", "vi_VN.UTF-8"] {
+            assert_eq!(lang_from_tag(tag), Some(VI()), "{tag}");
+        }
+        assert_eq!(VI().name(), "Tiếng Việt");
+        assert!(VI().complete_menus(), "Vietnamese translates every source key");
+        assert_eq!(Lang::from_pref("vi"), VI());
+        assert_eq!(Lang::from_pref("VI"), VI());
     }
 
     #[test]
@@ -404,6 +422,11 @@ mod tests {
         assert_eq!(lang_from_tag("it-CH"), Lang::from_code("it"));
         assert_eq!(lang_from_tag("nl_NL.UTF-8"), Lang::from_code("nl"));
         assert_eq!(lang_from_tag("nl-BE"), Lang::from_code("nl"));
+        assert_eq!(lang_from_tag("hu_HU.UTF-8"), Lang::from_code("hu"));
+        assert_eq!(lang_from_tag("hu-HU"), Lang::from_code("hu"));
+        assert_eq!(lang_from_tag("tr_TR.UTF-8"), Lang::from_code("tr"));
+        assert_eq!(lang_from_tag("tr-TR"), Lang::from_code("tr"));
+        assert_eq!(lang_from_tag("tr"), Lang::from_code("tr"));
         // Traditional Chinese: by region, by script, and with a region after the script.
         assert_eq!(lang_from_tag("zh_TW.UTF-8"), Some(ZH()));
         assert_eq!(lang_from_tag("zh-TW"), Some(ZH()));
@@ -497,6 +520,22 @@ mod tests {
         assert_eq!(tr(es, "Layer"), "Capa");
         assert_eq!(trn(es, 1, "{n} item", "{n} items"), "1 elemento");
         assert_eq!(trn(es, 3, "{n} item", "{n} items"), "3 elementos");
+    }
+
+    #[test]
+    fn hungarian_resolves_and_keeps_the_singular_after_counts() {
+        let hu = Lang::from_code("hu").expect("hu registered");
+        for tag in ["hu", "hu_HU.UTF-8", "hu-HU"] {
+            assert_eq!(lang_from_tag(tag), Some(hu), "{tag}");
+        }
+        assert!(hu.complete_menus());
+        assert_eq!(hu.name(), "Magyar");
+        assert_eq!(tr(hu, "Layer"), "Réteg");
+        for (n, expected) in [(0, "0 réteg"), (1, "1 réteg"), (3, "3 réteg"), (21, "21 réteg")] {
+            assert_eq!(trn(hu, n, "{n} layer", "{n} layers"), expected);
+        }
+        assert_eq!(tr_ctx(hu, "layerLabel", "Red"), "Piros");
+        assert_eq!(tr(hu, "Red"), "Vörös");
     }
 
     #[test]
@@ -793,6 +832,73 @@ mod tests {
         assert!(code.contains("tl!(\"seen\")"), "code after the first test module is scanned: {code}");
         assert!(!code.contains("hidden"), "{code}");
         assert!(code.starts_with("a\n") && code.ends_with("\nc"), "{code}");
+    }
+
+    #[test]
+    fn czech_status_templates_preserve_details_and_plural_counts() {
+        let cs = CS();
+        let template = "Step {step} ({id}) failed: {error}";
+        let args = [("step", "2"), ("id", "file.export"), ("error", "disk full: /tmp/image.psd")];
+        assert_eq!(fmt(tr(cs, template), &args), "Krok 2 (file.export) selhal: disk full: /tmp/image.psd");
+        assert_eq!(fmt(tr(Lang::EN, template), &args), "Step 2 (file.export) failed: disk full: /tmp/image.psd");
+        // Languages without these dynamic templates keep the English source.
+        assert_eq!(tr(JA(), template), template);
+        for (n, expected) in [(0, "Odstraněno 0 bodů měření"), (1, "Odstraněn 1 bod měření"), (2, "Odstraněny 2 body měření"), (5, "Odstraněno 5 bodů měření")]
+        {
+            assert_eq!(trn(cs, n, "{n} sample point removed", "{n} sample points removed"), expected);
+        }
+        let one = "Imported {n} swatch from {file}";
+        let other = "Imported {n} swatches from {file}";
+        assert_eq!(fmt(&trn(cs, 3, one, other), &[("file", "English name.aco")]), "Importovány 3 vzorky ze souboru English name.aco");
+        assert_eq!(tr(cs, "Preferences can't be saved"), "Předvolby nelze uložit");
+    }
+
+    #[test]
+    fn czech_dialog_and_hardware_labels_preserve_names() {
+        let cs = CS();
+        for label in [
+            "New Crop Preset…",
+            "Delete Crop Preset…",
+            "Color Picker (Background Color)",
+            "Color Picker (Foreground Color)",
+            "Pro (Medium Gray)",
+            "Grid view",
+            "List view",
+            "Scroll menu up",
+            "Scroll menu down",
+            "Commit transform",
+            "Cancel transform",
+        ] {
+            assert_ne!(tr(cs, label), label, "{label}");
+        }
+        for kind in [
+            crate::rasterize_prompt::Kind::Type,
+            crate::rasterize_prompt::Kind::Shape,
+            crate::rasterize_prompt::Kind::SmartObject,
+            crate::rasterize_prompt::Kind::Fill,
+        ] {
+            assert_ne!(tr(cs, kind.message()), kind.message());
+        }
+        assert_eq!(fmt(tr(cs, "Driver: {driver}"), &[("driver", "Mesa 25.0")]), "Ovladač: Mesa 25.0");
+        assert_eq!(
+            fmt(tr(cs, "Monitor profile on {display}: {profile}"), &[("display", "DELL U2720Q"), ("profile", "sRGB IEC61966-2.1")]),
+            "Profil monitoru DELL U2720Q: sRGB IEC61966-2.1"
+        );
+    }
+
+    #[test]
+    fn czech_composed_labels_use_context_and_preserve_document_names() {
+        let cs = CS();
+        assert_eq!(tr(cs, "Zoom"), "Lupa");
+        assert_eq!(tr_ctx(cs, "navigator", "Zoom"), "Zvětšení");
+        assert_eq!(tr_ctx(Lang::EN, "navigator", "Zoom"), "Zoom");
+        let template = "Data Set: {name}  ({index}/{total})";
+        assert_eq!(fmt(tr(cs, template), &[("name", "Data Set 1"), ("index", "1"), ("total", "2")]), "Datová sada: Data Set 1  (1/2)");
+        for (n, expected) in
+            [(1, "Importován 1 přechod ze souboru Sunset"), (3, "Importovány 3 přechody ze souboru Sunset"), (5, "Importováno 5 přechodů ze souboru Sunset")]
+        {
+            assert_eq!(fmt(&trn(cs, n, "Imported {n} gradient from {file}", "Imported {n} gradients from {file}"), &[("file", "Sunset")]), expected);
+        }
     }
 
     /// Every `tl!("literal")` in the shell has an entry in each language that claims complete menus
