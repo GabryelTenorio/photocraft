@@ -1,6 +1,6 @@
 # Localization parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Italian dynamic labels; previously minor: Czech review follow-ups) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (right-to-left layer names in bidi order; font menu samples per script; previously minor: Italian dynamic labels) · **Target:** Adobe Photoshop 2026
 
 Per-language status of PhotoCraft's UI. How catalogs work and how to add one:
 [`localization.md`](localization.md). Language notes: [Korean](localization-ko.md), [Spanish](localization-es.md),
@@ -34,7 +34,7 @@ catalog).
 | Simplified Chinese | `zh-hans` | 1,608 / 1,608 (100%) | 2,366 | dialogs, tooltips yes; engine messages English | CJK fonts (lazy loader), IME preedit/commit, vertical type | no | partial | 8–12 h |
 | Spanish | `es` | 1,608 / 1,608 (100%) | 2,413 | as above | Latin | no | partial | 6–10 h |
 | Hindi | `hi` | 0 (0%) | – | – | Devanagari shaping in the text engine (parley/HarfRust); no Devanagari fallback font (TYPE-218-3) | no | none | 20–30 h |
-| Arabic | `ar` | 0 (0%) | – | – | Arabic shaping and bidi in the text engine, Arabic fallback font; RTL shell layout but not inside panels, and UI labels in LTR word order (DIST-220-4), paragraph direction has no UI (TYPE-218-2), layer names as tofu (#1408, #1693) | no | none | 40–60 h |
+| Arabic | `ar` | 0 (0%) | – | – | Arabic shaping and bidi in the text engine, Arabic fallback font; RTL shell layout but not inside panels, and UI labels in LTR word order (DIST-220-4), paragraph direction has no UI (TYPE-218-2); layer names are laid out by the text engine in the Layers and Properties panels (#1408), but menus and tab titles still show them in LTR word order | no | none | 40–60 h |
 | French | `fr` | 1,608 / 1,608 (100%) | 2,766 | as above | Latin | no | partial | 6–10 h |
 | Portuguese (Brazil) | `pt-br` | 1,608 / 1,608 (100%) | 2,788 | as above | Latin; every `pt` locale uses it | no | partial | 6–10 h |
 | Indonesian | `id` | 1,608 / 1,608 (100%) | 2,764 | as above | Latin | no | partial | 6–10 h |
@@ -65,8 +65,10 @@ engine localization or native review is complete.
 - Engine error, status and parameter-help messages are English in every language.
 - Right-to-left UI layout is partial (2026-10-10): the shell mirrors for Arabic, Hebrew, Persian,
   Urdu and other right-to-left codes (`direction.rs`), but panel interiors, dialogs, menu rows,
-  submenus and document tabs stay left to right. UI labels also lack an Arabic fallback font, and
-  egui 0.36 joins letters within a word but orders a line's words left to right (no bidi).
+  submenus and document tabs stay left to right. egui 0.36 joins letters within a word but
+  orders a line's words left to right (no bidi). Layer names with right-to-left text in the
+  Layers panel, the Properties header and the layer drag label are laid out by the text engine
+  instead (`rtl_label.rs`); other labels are not yet.
 - Web build: no browser-locale detection, no CJK web fonts.
 - WebAssembly plug-ins disappear from Filter › Plug-ins when the UI isn't English (#2540).
 - A user couldn't find the language option (#2532): it is in Preferences › Interface.
@@ -81,3 +83,4 @@ engine localization or native review is complete.
 | 2026-10-11 | minor | Czech review follow-ups: English System Info diagnostics, id-aware shortcut labels, display-only auto translation, warning punctuation and wording; catalog row count refreshed |
 | 2026-10-11 | minor | Italian: 1,287 dynamic labels added (filter parameters, Camera Raw, lighting, panels, dialogs) and terminology made consistent |
 | 2026-10-12 | minor | Added Turkish (`tr`) catalog with 100% measured UI coverage |
+| 2026-10-12 | minor | Right-to-left layer names in bidi order in the Layers and Properties panels (#1408); font menu samples for 15 scripts |

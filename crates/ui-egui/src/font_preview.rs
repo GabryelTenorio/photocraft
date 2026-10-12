@@ -10,13 +10,9 @@ use photocraft_engine::prefs::FontPreview;
 use photocraft_geom::Affine;
 
 const SAMPLE: &str = "AaBbCc";
-/// Alef, lam, meem and ain: a face lacking any of them is not treated as an Arabic face.
-const ARABIC_CORE: [char; 4] = ['\u{627}', '\u{644}', '\u{645}', '\u{639}'];
-/// Short, recognisable, and joins letters, so it shows the face's shaping.
-const ARABIC_SAMPLE: &str = "أبجد هوز";
-/// The Latin and Arabic sample widths and the sample height at the menu's medium (18 pt).
+/// The Latin and second-script sample widths and the sample height at the menu's medium (18 pt).
 const WIDTH: f32 = 100.0;
-const ARABIC_WIDTH: f32 = 72.0;
+const SECOND_WIDTH: f32 = 72.0;
 const GAP: f32 = 6.0;
 const HEIGHT: f32 = 24.0;
 /// The medium point size the widths above are measured at.
@@ -55,26 +51,28 @@ type Key = (String, u32, (u64, u64), u32);
 #[derive(Clone)]
 struct Samples {
     latin: TextureHandle,
-    arabic: Option<TextureHandle>,
+    second: Option<TextureHandle>,
 }
 #[derive(Clone, Default)]
 struct Cache(VecDeque<(Key, Option<Samples>)>);
 
 struct SampleImages {
     latin: ColorImage,
-    arabic: Option<ColorImage>,
+    second: Option<ColorImage>,
 }
 
-/// The Latin sample text, and the Arabic one for a face that has both scripts. `chars` is the
-/// face's ascending charmap. Arabic-only and symbol faces show their own glyphs instead of the
-/// Latin sample and get no second sample.
-fn sample_texts(chars: &[char]) -> (String, Option<&'static str>) {
-    let has = |c: char| chars.binary_search(&c).is_ok();
-    if !SAMPLE.chars().all(has) {
-        return (chars.iter().copied().filter(|c| !c.is_whitespace()).take(6).collect(), None);
+/// The first sample's text, and the second script's sample for a face with Latin and another
+/// script ([`crate::font_samples`]). `chars` is the face's ascending charmap and `code_pages`
+/// its OS/2 code page bits. A face without Latin shows its own script's sample alone, and a
+/// symbol face its first six glyphs.
+fn sample_texts(chars: &[char], code_pages: u64) -> (String, Option<&'static str>) {
+    let latin = SAMPLE.chars().all(|c| chars.binary_search(&c).is_ok());
+    let script = crate::font_samples::primary(chars, latin, code_pages).map(|s| s.sample);
+    match (latin, script) {
+        (true, second) => (SAMPLE.into(), second),
+        (false, Some(own)) => (own.into(), None),
+        (false, None) => (chars.iter().copied().filter(|c| !c.is_whitespace()).take(6).collect(), None),
     }
-    let arabic = ARABIC_CORE.into_iter().chain(ARABIC_SAMPLE.chars().filter(|c| !c.is_whitespace())).all(has);
-    (SAMPLE.into(), arabic.then_some(ARABIC_SAMPLE))
 }
 
 fn render(engine: &mut photocraft_text::TextEngine, family: &str, text: &str, slot: f32, scale: u32, size: f32) -> Option<ColorImage> {
@@ -103,10 +101,10 @@ fn images(engine: &mut photocraft_text::TextEngine, family: &str, scale: u32, si
     if !engine.fonts.has_family(family) {
         return None;
     }
-    let (latin, arabic) = sample_texts(&engine.fonts.charmap(family, 400, false));
-    let latin = render(engine, family, &latin, scaled(WIDTH, size), scale, size)?;
-    let arabic = arabic.and_then(|text| render(engine, family, text, scaled(ARABIC_WIDTH, size), scale, size));
-    Some(SampleImages { latin, arabic })
+    let (first, second) = sample_texts(&engine.fonts.charmap(family, 400, false), engine.fonts.code_pages(family, 400, false));
+    let latin = render(engine, family, &first, scaled(WIDTH, size), scale, size)?;
+    let second = second.and_then(|text| render(engine, family, text, scaled(SECOND_WIDTH, size), scale, size));
+    Some(SampleImages { latin, second })
 }
 
 fn key(ctx: &egui::Context, family: &str, size: f32) -> Key {
@@ -114,16 +112,16 @@ fn key(ctx: &egui::Context, family: &str, size: f32) -> Key {
     (family.to_owned(), scale, (photocraft_text::fonts::generation(), photocraft_text::served::generation()), size as u32)
 }
 
-/// Width a row reserves for its samples: wider once a painted row showed the family covers
-/// Arabic, so the label truncates before the samples. Never renders, so rows scrolled out of
+/// Width a row reserves for its samples: wider once a painted row showed the family has a
+/// second script, so the label truncates before the samples. Never renders, so rows scrolled out of
 /// view cost nothing.
 pub(crate) fn slot_width(ctx: &egui::Context, family: &str, size: f32) -> f32 {
     let key = key(ctx, family, size);
-    let arabic = ctx.data_mut(|d| {
+    let second = ctx.data_mut(|d| {
         let cache = d.get_temp_mut_or_default::<Cache>(egui::Id::new(CACHE_ID));
-        cache.0.iter().any(|(k, samples)| k == &key && samples.as_ref().is_some_and(|s| s.arabic.is_some()))
+        cache.0.iter().any(|(k, samples)| k == &key && samples.as_ref().is_some_and(|s| s.second.is_some()))
     });
-    if arabic { scaled(WIDTH, size) + GAP + scaled(ARABIC_WIDTH, size) } else { scaled(WIDTH, size) }
+    if second { scaled(WIDTH, size) + GAP + scaled(SECOND_WIDTH, size) } else { scaled(WIDTH, size) }
 }
 
 pub(crate) fn paint(ui: &egui::Ui, family: &str, row: Rect, size: f32) {
@@ -142,9 +140,9 @@ pub(crate) fn paint(ui: &egui::Ui, family: &str, row: Rect, size: f32) {
     let samples = cached.unwrap_or_else(|| {
         let samples = images(&mut photocraft_text::shared().lock().unwrap_or_else(PoisonError::into_inner), family, scale, size).map(|img| {
             let load = |image| ctx.load_texture(format!("font-sample-{family}"), image, TextureOptions::LINEAR);
-            Samples { latin: load(img.latin), arabic: img.arabic.map(load) }
+            Samples { latin: load(img.latin), second: img.second.map(load) }
         });
-        if samples.as_ref().is_some_and(|s| s.arabic.is_some()) {
+        if samples.as_ref().is_some_and(|s| s.second.is_some()) {
             // The row reserved only the Latin width until now.
             ctx.request_repaint();
         }
@@ -163,10 +161,10 @@ pub(crate) fn paint(ui: &egui::Ui, family: &str, row: Rect, size: f32) {
         let [w, h] = box_for(size);
         let latin = Rect::from_min_size(pos2(row.right() - w - 8.0, row.center().y - h / 2.0), vec2(w, h));
         ui.painter().image(samples.latin.id(), latin, uv, tint);
-        if let Some(arabic) = samples.arabic {
-            let aw = scaled(ARABIC_WIDTH, size);
-            let rect = Rect::from_min_size(pos2(latin.left() - GAP - aw, latin.top()), vec2(aw, h));
-            ui.painter().image(arabic.id(), rect, uv, tint);
+        if let Some(second) = samples.second {
+            let sw = scaled(SECOND_WIDTH, size);
+            let rect = Rect::from_min_size(pos2(latin.left() - GAP - sw, latin.top()), vec2(sw, h));
+            ui.painter().image(second.id(), rect, uv, tint);
         }
     }
 }
@@ -211,44 +209,76 @@ mod tests {
     }
 
     #[test]
-    fn latin_only_families_get_no_arabic_sample() {
+    fn latin_only_families_get_no_second_sample() {
         let mut engine = photocraft_text::TextEngine::new();
         for family in ["Inter", "JetBrains Mono"] {
-            assert!(images(&mut engine, family, 1, MEDIUM).expect("bundled").arabic.is_none(), "{family}");
+            assert!(images(&mut engine, family, 1, MEDIUM).expect("bundled").second.is_none(), "{family}");
         }
         assert!(images(&mut engine, "", 1, MEDIUM).is_none());
         assert!(images(&mut engine, "Missing font", 1, MEDIUM).is_none());
     }
 
+    /// The Arabic sample and core letters (alef, lam, meem, ain).
+    const ARABIC: &str = "أبجد هوز\u{627}\u{644}\u{645}\u{639}";
+
     #[test]
-    fn only_faces_with_both_scripts_get_the_arabic_sample() {
+    fn faces_with_latin_and_another_script_get_its_sample() {
         let latin = format!("{SAMPLE} ");
-        let arabic = format!("{ARABIC_SAMPLE}{}", ARABIC_CORE.iter().collect::<String>());
-        let (text, second) = sample_texts(&charmap(&format!("{latin}{arabic}")));
-        assert_eq!((text.as_str(), second), (SAMPLE, Some(ARABIC_SAMPLE)));
-        assert_eq!(sample_texts(&charmap(&latin)), (SAMPLE.into(), None));
-        let (own_glyphs, none) = sample_texts(&charmap(&arabic));
-        assert_eq!((own_glyphs.chars().count(), none), (6, None));
-        assert!(own_glyphs.chars().all(|c| arabic.contains(c)));
-        assert_eq!(sample_texts(&[]), (String::new(), None));
-        for missing in ARABIC_CORE.into_iter().chain(ARABIC_SAMPLE.chars().filter(|c| !c.is_whitespace())) {
-            let partial: String = format!("{latin}{arabic}").chars().filter(|&c| c != missing).collect();
-            assert_eq!(sample_texts(&charmap(&partial)).1, None, "without U+{:04X}", missing as u32);
-        }
+        let (text, second) = sample_texts(&charmap(&format!("{latin}{ARABIC}")), 0);
+        assert_eq!((text.as_str(), second), (SAMPLE, Some("أبجد هوز")));
+        assert_eq!(sample_texts(&charmap(&latin), 0), (SAMPLE.into(), None));
+        let (text, second) = sample_texts(&charmap(&format!("{latin}हिन्दी\u{915}\u{930}\u{93E}")), 0);
+        assert_eq!((text.as_str(), second), (SAMPLE, Some("हिन्दी")), "Hindi");
+        let (text, second) = sample_texts(&charmap(&format!("{latin}あア亜\u{306E}\u{30F3}\u{65E5}\u{FF71}")), 0);
+        assert_eq!((text.as_str(), second), (SAMPLE, Some("あア亜")), "Japanese");
     }
 
     #[test]
-    fn a_system_arabic_face_renders_both_samples() {
-        let mut engine = photocraft_text::TextEngine::new();
-        engine.fonts.load_system_fonts();
-        let both = engine.fonts.families().into_iter().find(|f| sample_texts(&engine.fonts.charmap(f, 400, false)).1.is_some());
-        let Some(family) = both else {
-            eprintln!("skipped: no installed family covers both Latin and Arabic");
+    fn faces_without_latin_show_their_own_script_or_glyphs() {
+        assert_eq!(sample_texts(&charmap(ARABIC), 0), ("أبجد هوز".into(), None), "an Arabic-only face");
+        let symbols = "\u{2605}\u{2606}\u{2660}\u{2663}\u{2665}\u{2666}\u{266A}";
+        let (own_glyphs, none) = sample_texts(&charmap(symbols), 0);
+        assert_eq!((own_glyphs.chars().count(), none), (6, None));
+        assert!(own_glyphs.chars().all(|c| symbols.contains(c)));
+        assert_eq!(sample_texts(&[], 0), (String::new(), None));
+    }
+
+    /// The first installed family whose second sample is `sample` renders it in the second slot.
+    fn renders_second_sample(engine: &mut photocraft_text::TextEngine, sample: &str) {
+        let found = engine
+            .fonts
+            .families()
+            .into_iter()
+            .find(|f| sample_texts(&engine.fonts.charmap(f, 400, false), engine.fonts.code_pages(f, 400, false)).1 == Some(sample));
+        let Some(family) = found else {
+            eprintln!("skipped: no installed family has Latin and {sample}");
             return;
         };
-        let images = images(&mut engine, &family, 1, MEDIUM).expect(&family);
-        let arabic = images.arabic.expect("Arabic sample");
-        assert_eq!(arabic.size, [ARABIC_WIDTH as usize, HEIGHT as usize]);
-        assert!(arabic.pixels.iter().any(|p| p.a() > 0), "{family}");
+        let images = images(engine, &family, 1, MEDIUM).expect(&family);
+        let second = images.second.expect("second sample");
+        assert_eq!(second.size, [SECOND_WIDTH as usize, HEIGHT as usize]);
+        assert!(second.pixels.iter().any(|p| p.a() > 0), "{family}");
+    }
+
+    #[test]
+    fn system_faces_render_their_second_samples() {
+        let mut engine = photocraft_text::TextEngine::new();
+        engine.fonts.load_system_fonts();
+        for sample in ["أبجد هوز", "हिन्दी", "あア亜", "汉字", "가나다", "สวัสดี"] {
+            renders_second_sample(&mut engine, sample);
+        }
+    }
+
+    /// Prints what each installed family samples:
+    /// `cargo test -p photocraft-ui-egui --lib list_system_samples -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "prints the samples of the installed fonts"]
+    fn list_system_samples() {
+        let mut engine = photocraft_text::TextEngine::new();
+        engine.fonts.load_system_fonts();
+        for family in engine.fonts.families() {
+            let (first, second) = sample_texts(&engine.fonts.charmap(&family, 400, false), engine.fonts.code_pages(&family, 400, false));
+            println!("{family}: {first} {}", second.unwrap_or(""));
+        }
     }
 }

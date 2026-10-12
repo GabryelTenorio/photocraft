@@ -74,23 +74,38 @@ impl FontDb {
         self.charmap(&style.font_family, style.weight, style.italic)
     }
 
+    /// The data and collection index of the face of `family` nearest to `weight`/`italic`.
+    fn nearest_face(&mut self, family: &str, weight: u16, italic: bool) -> Option<(parley::fontique::Blob<u8>, u32)> {
+        let info = self.fcx.collection.family_by_name(family)?;
+        let fonts = info.fonts();
+        let font = fonts.iter().min_by_key(|f| {
+            let it = !matches!(f.style(), parley::fontique::FontStyle::Normal);
+            (u32::from(it != italic) * 10_000) + (f.weight().value() - f32::from(weight)).abs() as u32
+        })?;
+        Some((font.load(Some(&mut self.fcx.source_cache))?, font.index()))
+    }
+
+    /// The code pages the face of `family` nearest to `weight`/`italic` declares functional
+    /// (OS/2 `ulCodePageRange1` in the low 32 bits, `ulCodePageRange2` in the high ones; bit 17
+    /// is Japanese, 18 Simplified Chinese, 19 Korean, 20 Traditional Chinese). 0 for an unknown
+    /// family or a face without them.
+    pub fn code_pages(&mut self, family: &str, weight: u16, italic: bool) -> u64 {
+        let Some((blob, index)) = self.nearest_face(family, weight, italic) else {
+            return 0;
+        };
+        let Ok(os2) = skrifa::FontRef::from_index(blob.as_ref(), index).and_then(|fr| skrifa::raw::TableProvider::os2(&fr)) else {
+            return 0;
+        };
+        u64::from(os2.ul_code_page_range_1().unwrap_or(0)) | (u64::from(os2.ul_code_page_range_2().unwrap_or(0)) << 32)
+    }
+
     /// Characters mapped by the face of `family` nearest to `weight`/`italic`, ascending
     /// (controls and whitespace other than the space excluded). Empty for an unknown family.
     pub fn charmap(&mut self, family: &str, weight: u16, italic: bool) -> Vec<char> {
-        let Some(info) = self.fcx.collection.family_by_name(family) else {
+        let Some((blob, index)) = self.nearest_face(family, weight, italic) else {
             return Vec::new();
         };
-        let fonts = info.fonts();
-        let Some(font) = fonts.iter().min_by_key(|f| {
-            let it = !matches!(f.style(), parley::fontique::FontStyle::Normal);
-            (u32::from(it != italic) * 10_000) + (f.weight().value() - f32::from(weight)).abs() as u32
-        }) else {
-            return Vec::new();
-        };
-        let Some(blob) = font.load(Some(&mut self.fcx.source_cache)) else {
-            return Vec::new();
-        };
-        let Ok(fr) = skrifa::FontRef::from_index(blob.as_ref(), font.index()) else {
+        let Ok(fr) = skrifa::FontRef::from_index(blob.as_ref(), index) else {
             return Vec::new();
         };
         let mut out: Vec<char> = fr
@@ -151,6 +166,15 @@ mod tests {
         assert_eq!(latin.len(), 95);
         assert!(in_category('€', "Currency") && in_category('—', "Punctuation") && in_category('→', "Arrows"));
         assert!(!in_category('A', "Punctuation") && in_category('A', "Entire Font"));
+    }
+
+    #[test]
+    fn code_pages_come_from_the_face() {
+        let mut db = FontDb::new();
+        let inter = db.code_pages(crate::fonts::DEFAULT_FAMILY, 400, false);
+        assert_eq!(inter & 1, 1, "Inter declares Latin 1: {inter:#x}");
+        assert_eq!(inter & (0b1111 << 17), 0, "and no CJK code page");
+        assert_eq!(db.code_pages("No Such Family", 400, false), 0);
     }
 
     #[test]

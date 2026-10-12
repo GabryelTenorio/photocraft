@@ -2714,10 +2714,10 @@ fn layer_row(
     let italic = !t.pro && doc.is_background(l.id);
     // Photoshop rows show only the name; the kind sub-label is a Studio-theme addition.
     let is_pixel = t.pro || matches!(l.content, LayerContent::Raster(_));
-    let name_rect = crate::layer_row_ui::truncated(&painter, &l.name, font, name_color, italic, name_right - x).map(|galley| {
-        let text_pos = pos2(x, rect.center().y - galley.size().y / 2.0 - if is_pixel { 0.0 } else { 7.0 });
-        let r = Rect::from_min_size(text_pos, galley.size());
-        painter.galley(text_pos, galley, name_color);
+    let name_rect = crate::layer_row_ui::truncated(&painter, &l.name, font, name_color, italic, name_right - x).map(|line| {
+        let text_pos = pos2(x, rect.center().y - line.size().y / 2.0 - if is_pixel { 0.0 } else { 7.0 });
+        let r = Rect::from_min_size(text_pos, line.size());
+        line.paint(&painter, text_pos, name_color);
         r
     });
     if !is_pixel {
@@ -3136,7 +3136,12 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 ui.painter().rect_filled(r, t.radius_sm, t.field);
                 icons::paint(ui, r, icon, 17.0, t.icon);
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(&layer.name).font(theme::medium(13.0)).color(t.text));
+                    let name = crate::layer_row_ui::truncated(ui.painter(), &layer.name, theme::medium(13.0), t.text, false, ui.available_width());
+                    if let Some(name) = name {
+                        let (r, resp) = ui.allocate_exact_size(name.size(), Sense::hover());
+                        name.paint(ui.painter(), r.min, t.text);
+                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &layer.name));
+                    }
                     let kind = match &layer.content {
                         LayerContent::Adjustment(a) => crate::i18n::fmt(tl!("{name} Properties"), &[("name", tl!(a.label()))]),
                         // Whole phrases ("Type Layer"), as the Properties header translates them.
