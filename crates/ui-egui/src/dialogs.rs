@@ -550,6 +550,12 @@ pub fn cancel(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
 /// schema dialog for filters, the Color Range dialog for `select.colorRange`, otherwise a bare
 /// confirm dialog.
 pub fn open_command_dialog(app: &mut PhotocraftApp, command: &str, label: &str) -> u64 {
+    if command == "file.sendTelegram"
+        && let Ok(value) = crate::telegram::command(app)
+        && let Some(id) = value.get("dialog").and_then(serde_json::Value::as_u64)
+    {
+        return id;
+    }
     if command == "view.newGuideLayout" {
         return crate::guide_layout_ui::open(app);
     }

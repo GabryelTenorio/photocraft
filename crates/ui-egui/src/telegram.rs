@@ -366,7 +366,11 @@ fn start_send(app: &mut PhotocraftApp, path: String, temporary: bool, chats: Vec
     };
     let (name, bytes) = read_file(&path)?;
     let preview_file = match preview.as_deref() {
-        Some(path) => Some(read_file(path)?),
+        Some(preview_path) => {
+            let (preview_name, preview_bytes) = read_file(preview_path)?;
+            let preview_caption = caption(preview_path, &preview_name, preview_bytes.len() as u64, file_secs(preview_path));
+            Some((preview_name, preview_bytes, preview_caption))
+        }
         None => None,
     };
     let caption = caption(&path, &name, bytes.len() as u64, file_secs(&path));
@@ -385,11 +389,7 @@ fn start_send(app: &mut PhotocraftApp, path: String, temporary: bool, chats: Vec
         .spawn({
             let name = name.clone();
             move || {
-                let mut files = vec![(name.clone(), bytes)];
-                if let Some((preview_name, preview_bytes)) = preview_file {
-                    files.push((preview_name, preview_bytes));
-                }
-                let result = send_to_chats(&send, &url, &report_token, &chats, &caption, &files);
+                let result = send_to_chats(&send, &url, &report_token, &chats, &caption, &name, &bytes, preview_file.as_ref());
                 let _ = tx.send(result);
             }
         })
@@ -563,12 +563,17 @@ fn markdown_text(text: &str) -> String {
 }
 
 /// `multipart/form-data` body and its `Content-Type` value.
-pub fn multipart(chat_id: &str, caption: &str, filename: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+pub fn multipart(chat_id: &str, caption: &str, filename: &str, bytes: &[u8], reply_to: Option<i64>) -> (String, Vec<u8>) {
     let boundary = boundary_for(bytes);
     let mut body = Vec::new();
     part(&mut body, &boundary, "chat_id", chat_id);
     part(&mut body, &boundary, "caption", caption);
     part(&mut body, &boundary, "parse_mode", "Markdown");
+    if let Some(message_id) = reply_to {
+        // The preview answers the document message, so the chat shows them as one pair.
+        let reply = format!("{{\"message_id\":{message_id},\"allow_sending_without_reply\":true}}");
+        part(&mut body, &boundary, "reply_parameters", &reply);
+    }
     body.extend_from_slice(
         format!("--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n")
             .as_bytes(),
@@ -648,11 +653,25 @@ fn png_preview(app: &mut PhotocraftApp, path: &str) -> Result<Option<String>, St
     export_temp(app, "png").map(Some)
 }
 
-fn send_to_chats(send: &crate::TelegramSendFn, url: &str, token: &str, chats: &[String], caption: &str, files: &[(String, Vec<u8>)]) -> Result<String, String> {
+fn send_to_chats(
+    send: &crate::TelegramSendFn,
+    url: &str,
+    token: &str,
+    chats: &[String],
+    caption: &str,
+    name: &str,
+    bytes: &[u8],
+    preview: Option<&(String, Vec<u8>, String)>,
+) -> Result<String, String> {
     let mut links = Vec::new();
     for chat in chats {
-        for (name, bytes) in files {
-            let (content_type, body) = multipart(chat, caption, name, bytes);
+        let (content_type, body) = multipart(chat, caption, name, bytes, None);
+        let text = send(url, &content_type, &body).map_err(|error| redact(&error, token))?;
+        if let Some(link) = message_link(&text) {
+            links.push(link);
+        }
+        if let Some((preview_name, preview_bytes, preview_caption)) = preview {
+            let (content_type, body) = multipart(chat, preview_caption, preview_name, preview_bytes, sent_message_id(&text));
             let text = send(url, &content_type, &body).map_err(|error| redact(&error, token))?;
             if let Some(link) = message_link(&text) {
                 links.push(link);
@@ -660,6 +679,12 @@ fn send_to_chats(send: &crate::TelegramSendFn, url: &str, token: &str, chats: &[
         }
     }
     Ok(links.join("\n"))
+}
+
+/// `message_id` from a successful `sendDocument` reply. Absent when the body is not that shape.
+pub fn sent_message_id(body: &str) -> Option<i64> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    value.get("result")?.get("message_id")?.as_i64()
 }
 
 /// Split a settings document into the part safe to store on disk and the bot token.
@@ -765,7 +790,7 @@ mod tests {
         assert!(text.contains("2020-01-01"), "{text}");
         assert!(text.contains("/tmp/photo_1.psd"), "{text}");
         assert!(!text.contains('#'), "{text}");
-        let (_, body) = multipart("1", &text, "photo_1.psd", b"x");
+        let (_, body) = multipart("1", &text, "photo_1.psd", b"x", None);
         let raw = String::from_utf8_lossy(&body);
         assert!(raw.contains("name=\"parse_mode\""));
         assert!(raw.contains("Markdown"));
@@ -773,14 +798,26 @@ mod tests {
 
     #[test]
     fn multipart_carries_the_file_and_not_the_token() {
-        let (ctype, body) = multipart("99", "caption", "photo.png", b"PNGDATA");
+        let (ctype, body) = multipart("99", "caption", "photo.png", b"PNGDATA", None);
         assert!(ctype.starts_with("multipart/form-data; boundary="));
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("name=\"chat_id\""));
         assert!(text.contains("99"));
         assert!(text.contains("filename=\"photo.png\""));
         assert!(text.contains("PNGDATA"));
+        assert!(!text.contains("reply_parameters"));
         assert!(!text.contains("123456789"));
+    }
+
+    #[test]
+    fn preview_replies_to_the_document_message() {
+        let (_, body) = multipart("99", "preview", "photo.png", b"PNG", Some(42));
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.contains("name=\"reply_parameters\""));
+        assert!(text.contains("\"message_id\":42"));
+        assert!(text.contains("allow_sending_without_reply"));
+        assert_eq!(sent_message_id(r#"{"ok":true,"result":{"message_id":42,"chat":{"id":1}}}"#), Some(42));
+        assert_eq!(sent_message_id("{}"), None);
     }
 
     #[test]
@@ -799,6 +836,17 @@ mod tests {
         let result = crate::menus::invoke(&mut app, &egui::Context::default(), "file.sendTelegram", json!({})).unwrap();
         assert!(result.get("dialog").is_some());
         assert_eq!(*sent.lock().unwrap_or_else(std::sync::PoisonError::into_inner), 0);
+    }
+
+    /// A generic command dialog for this id used to show only the raw id and OK/Cancel.
+    #[test]
+    fn generic_command_opener_shows_the_telegram_form() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let id = crate::dialogs::open_command_dialog(&mut app, "file.sendTelegram", "file.sendTelegram");
+        let dialog = app.ui.dialogs.iter().find(|d| d.id == id).expect("dialog");
+        assert!(owns(&dialog.fields));
+        assert_eq!(dialog.fields.get("__label").and_then(Value::as_str), Some("Send to Telegram"));
+        assert_ne!(crate::dialogs::title(dialog), "file.sendTelegram");
     }
 
     #[test]
