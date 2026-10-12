@@ -302,7 +302,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 Some(path) => app.save_as_with(Some(path.to_string()), tga_bits),
                 None => match app.session.active().and_then(|d| d.path.clone()).filter(|p| photocraft_engine::file_cmds::saves_in_place(p)) {
                     Some(path) => app.save_in_place(path),
-                    None => app.save_as_with(None, tga_bits),
+                    None => app.save_dialog_flow(None, tga_bits, true),
                 },
             }
         }
