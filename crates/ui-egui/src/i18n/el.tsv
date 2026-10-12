@@ -4,6 +4,10 @@
 # Covers every source label the i18n coverage check lists.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Οι προεπισκοπήσεις πινέλων με τρίχες δεν έχουν υλοποιηθεί
+	Artboard-specific guides are not implemented	Οι οδηγοί για μεμονωμένους πίνακες γραφικών δεν έχουν υλοποιηθεί
+
 	Rows	Γραμμές
 	Number	Πλήθος
 	Top:	Επάνω:

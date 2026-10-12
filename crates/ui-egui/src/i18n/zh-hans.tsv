@@ -12,6 +12,10 @@
 # Product and technology names retain their spelling. See docs/localization-zh-hans.md.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	尚未实现鬃毛画笔预览
+	Artboard-specific guides are not implemented	尚未实现画板专用参考线
+
 	Columns	列
 	Rows	行
 	Number	数量

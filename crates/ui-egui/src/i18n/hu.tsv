@@ -17,6 +17,10 @@
 # singular noun in Hungarian, so every @plural entry has a single form.
 
 # Plural messages and command id overrides
+# Unsupported view controls
+	Bristle brush previews are not implemented	A sörteecset előnézete még nincs megvalósítva.
+	Artboard-specific guides are not implemented	A rajztáblához tartozó segédvonalak még nincsenek megvalósítva.
+
 @id	edit.purge.undo	Visszavonási adatok
 @id	edit.stroke	Körvonalazás…
 @id	edit.transform.scale	Méretezés

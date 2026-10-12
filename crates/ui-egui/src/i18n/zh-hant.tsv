@@ -20,6 +20,10 @@
 # separators as in the English.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	尚未實作鬃毛筆刷預覽
+	Artboard-specific guides are not implemented	尚未實作工作區域專用參考線
+
 	Columns	欄
 	Rows	列
 	Number	數量

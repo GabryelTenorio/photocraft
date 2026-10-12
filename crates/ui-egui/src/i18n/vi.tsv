@@ -19,6 +19,9 @@
 # stay as they are; the trailing "…" of dialog commands is kept. Plural rule: one form
 # (`plural_none` in i18n/mod.rs).
 
+# View overlay availability (#1119)
+	Bristle brush previews are not implemented	Xem trước cọ lông chưa được triển khai
+	Artboard-specific guides are not implemented	Đường căn riêng cho artboard chưa được triển khai
 
 # Phase 3.1 — top-level menus, File menu, Edit menu
 	Again	Lặp lại

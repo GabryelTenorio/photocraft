@@ -7,6 +7,10 @@
 # entries the same way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...)
 # stay as they are; the trailing "…" of dialog commands is kept.
 #
+# Unsupported view controls
+	Bristle brush previews are not implemented	Kıllı fırça önizlemeleri henüz uygulanmadı.
+	Artboard-specific guides are not implemented	Çalışma yüzeyine özgü kılavuzlar henüz uygulanmadı.
+
 	Rows	Satırlar
 	Number	Sayı
 	Top:	Üst:

@@ -19,6 +19,10 @@
 # Zapisz jako…), sentence case as in the English source. Quotes: „…”.
 
 # Guide layout dialog
+# Unavailable View overlays
+	Bristle brush previews are not implemented	Podglądy pędzli z włosiem nie są zaimplementowane
+	Artboard-specific guides are not implemented	Linie pomocnicze poszczególnych obszarów kompozycji nie są zaimplementowane
+
 	Rows	Wiersze
 	Number	Liczba
 	Top:	Góra:
