@@ -373,8 +373,10 @@ mod tests {
             for c in items {
                 let mut keys: Vec<&str> = c.as_object().unwrap().keys().map(String::as_str).collect();
                 keys.sort_unstable();
-                assert_eq!(keys, ["enabled", "id", "label", "menu", "params", "shortcut"], "{name}: {c}");
+                assert_eq!(keys, ["disabledReason", "enabled", "id", "label", "menu", "needsDocument", "params", "shortcut"], "{name}: {c}");
                 assert!(c["id"].is_string() && c["label"].is_string() && c["params"].is_string() && c["enabled"].is_boolean(), "{c}");
+                assert!(c["needsDocument"].is_boolean(), "{c}");
+                assert_eq!(c["disabledReason"].is_null(), c["enabled"] == true, "disabledReason is null exactly when enabled: {c}");
                 assert!(c["menu"].as_array().unwrap().iter().all(Value::is_string), "{c}");
                 assert!(c["shortcut"].is_string() || c["shortcut"].is_null(), "{c}");
             }
@@ -386,6 +388,7 @@ mod tests {
         assert!(filtered.iter().all(|c| format!("{} {}", c["id"], c["label"]).to_lowercase().contains("blur")));
         let new = all.as_array().unwrap().iter().find(|c| c["id"] == "file.new").unwrap();
         assert_eq!((&new["menu"], &new["shortcut"], &new["enabled"]), (&json!(["File"]), &json!("Cmd+N"), &json!(true)), "{new}");
+        assert_eq!((&new["disabledReason"], &new["needsDocument"]), (&Value::Null, &json!(false)), "{new}");
     }
 
     #[test]
