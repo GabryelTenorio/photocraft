@@ -189,7 +189,7 @@ pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
 mod timeline_ui;
-mod titlebar;
+pub mod titlebar;
 pub mod tone;
 mod tool_cursor;
 pub mod tool_feedback;
@@ -1731,6 +1731,9 @@ impl eframe::App for PhotocraftApp {
         kys_import::show_offer(self, &ctx);
         if self.custom_titlebar {
             titlebar::resize_zones(ui);
+            if let Some(window_frame) = self.services.window_frame.as_mut() {
+                window_frame();
+            }
         }
         // A device lost while drawing this frame: switch to the CPU canvas before the next one.
         gpu_status::check(self, &ctx);
