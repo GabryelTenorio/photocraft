@@ -131,6 +131,7 @@ fn render_on(h: &mut Harness, gpu: bool, zoom: f32, doc: u32, black: bool, grid:
 
 #[test]
 fn checker_cells_are_8_screen_pixels_at_every_zoom() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
     h.run_steps(4);
     // The 8 px cell never changes with the zoom.
@@ -160,6 +161,7 @@ fn checker_cells_are_8_screen_pixels_at_every_zoom() {
 
 #[test]
 fn checker_phase_moves_with_the_image() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
     h.run_steps(4);
     // The document origin moves four screen pixels between these two views, and the checker
@@ -180,6 +182,7 @@ fn lit_columns(img: &Shot, x0: u32, y: u32, len: u32) -> Vec<u32> {
 
 #[test]
 fn pixel_grid_shows_above_500_percent_with_a_quarter_opacity_neutral_line() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
     h.run_steps(4);
     let (flat, x0, y0, _) = render(&mut h, 5.0, 48, true, true);
@@ -196,6 +199,7 @@ fn pixel_grid_shows_above_500_percent_with_a_quarter_opacity_neutral_line() {
 
 #[test]
 fn pixel_grid_is_not_drawn_over_empty_checker() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
     h.run_steps(4);
     for zoom in [8.0f32, 16.0] {
@@ -211,6 +215,7 @@ fn pixel_grid_is_not_drawn_over_empty_checker() {
 
 #[test]
 fn cpu_pixel_grid_shows_above_500_percent_over_content() {
+    let _gpu = photocraft_testkit::gpu_lock();
     for ppp in [1.0, 2.0] {
         let Some(mut h) = harness_with_scale(false, ppp) else { return };
         h.run_steps(4);
@@ -230,6 +235,7 @@ fn cpu_pixel_grid_shows_above_500_percent_over_content() {
 
 #[test]
 fn cpu_pixel_grid_is_not_drawn_over_empty_checker() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness_with(false) else { return };
     h.run_steps(4);
     // The CPU checker has soft cell edges of its own, so compare with and without the grid.
@@ -247,6 +253,7 @@ fn cpu_pixel_grid_is_not_drawn_over_empty_checker() {
 
 #[test]
 fn pixel_grid_preserves_a_linear_gray_ramp_on_both_canvases() {
+    let _gpu = photocraft_testkit::gpu_lock();
     use photocraft_color::{ColorMode, PixelFormat, SampleType};
     use photocraft_doc::{Document, Layer, LayerContent, Size};
     use photocraft_geom::Rect;
@@ -307,6 +314,7 @@ fn pixel_grid_preserves_a_linear_gray_ramp_on_both_canvases() {
 
 #[test]
 fn pixel_grid_is_solid_and_visible_on_white_and_black_at_both_display_scales() {
+    let _gpu = photocraft_testkit::gpu_lock();
     use photocraft_color::{ColorMode, PixelFormat, SampleType};
     use photocraft_doc::{Document, Layer, LayerContent, Size};
     use photocraft_geom::Rect;
