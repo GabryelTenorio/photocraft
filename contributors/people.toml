@@ -117,3 +117,7 @@ sync_github_name = true
 
 [people.FredApps]
 sync_github_name = true
+
+[people.dotCooCoo]
+real_name = "Robert Lee"
+sync_github_name = true
