@@ -1,14 +1,15 @@
 //! Raw development: linearize, subtract black, scale to white, white
 //! balance, clip highlights, demosaic, camera → XYZ (D50) → linear ProPhoto,
-//! exposure, Shadows / Highlights and the black point (`tone.rs`), the profile's
-//! tone curve, gamma 1.8 encode to 16 bits, orientation.
+//! exposure, Dehaze, Shadows / Highlights / Clarity / Texture and the black
+//! point (`tone.rs`), the profile's tone curve, gamma 1.8 encode to 16 bits,
+//! orientation.
 
 use crate::color::{self, Mat3};
 use crate::demosaic::{Demosaic, PAD, Padded, Pattern, demosaic, demosaic_cfa};
 use crate::error::{RawError, Result};
 use crate::look::{CameraLook, ToneCurve};
 use crate::sensor::Sensor;
-use crate::tone::{Tone, ToneMap};
+use crate::tone::{Haze, Tone, ToneMap, black_level};
 use crate::{Limits, RawFormat, par};
 
 /// White balance choice.
@@ -32,7 +33,8 @@ pub struct DevelopOptions {
     pub exposure: f64,
     /// Apply the file's orientation (rotate / flip the pixels).
     pub orient: bool,
-    /// Camera Raw's Shadows and Highlights, applied in linear light before the tone curve.
+    /// Camera Raw's Shadows, Highlights, Clarity, Texture and Dehaze, applied in linear light
+    /// before the tone curve.
     pub tone: Tone,
     pub limits: Limits,
     /// A colour rendering fitted to the camera's own JPEG ([`crate::fit_look`]). When set it
@@ -335,12 +337,24 @@ pub fn develop_sensor(s: &Sensor, opts: &DevelopOptions) -> Result<Developed> {
         }
     }
 
-    // Camera → ProPhoto, exposure, Shadows / Highlights and the black point, the look's (or the
-    // profile's) tone curve, gamma 1.8, 16 bits.
-    let y_row = color::rgb_to_xyz(color::ROMM, color::D50_XY)[1];
-    let luma: [f32; 3] = [0, 1, 2].map(|c| (0..3).map(|k| y_row[k] * f64::from(out_m[k][c])).sum::<f64>() as f32);
-    let lum = |p: &[f32]| if mono { grey_gain * p[0] } else { luma[0] * p[0] + luma[1] * p[1] + luma[2] * p[2] };
-    let map = ToneMap::new(w, h, |i| lum(&rgb[i * 3..i * 3 + 3]), opts.tone, s.black_point);
+    // Camera → ProPhoto, exposure, Dehaze, Shadows / Highlights / Clarity / Texture and the black
+    // point, the look's (or the profile's) tone curve, gamma 1.8, 16 bits.
+    let y_row = color::rgb_to_xyz(color::ROMM, color::D50_XY)[1].map(|v| v as f32);
+    let lum = |v: &[f32; 3]| y_row[0] * v[0] + y_row[1] * v[1] + y_row[2] * v[2];
+    // Monochrome: the one sample, grey; no colour matrix.
+    let pro = |p: &[f32]| if mono { [grey_gain * p[0]; 3] } else { [0, 1, 2].map(|k| out_m[k][0] * p[0] + out_m[k][1] * p[1] + out_m[k][2] * p[2]) };
+    let haze = Haze::new(w, h, |i| pro(&rgb[i * 3..i * 3 + 3]), opts.tone.dehaze);
+    // Linear ProPhoto of pixel `i` after Dehaze.
+    let linear = |i: usize, p: &[f32]| {
+        let v = pro(p);
+        haze.as_ref().map_or(v, |z| z.apply(i % w, i / w, v))
+    };
+    let mut map = ToneMap::new(w, h, |i| lum(&linear(i, &rgb[i * 3..i * 3 + 3])), opts.tone, s.black_point);
+    if let (Some(m), Some(_)) = (&mut map, &haze) {
+        // The black point belongs to the default rendering: Dehaze does not move it (taken after
+        // Dehaze it fell to almost 0, and Dehaze darkened less than Photoshop's).
+        m.black = black_level(w, h, |i| lum(&pro(&rgb[i * 3..i * 3 + 3])), s.black_point);
+    }
     let mut out = vec![0u16; w * h * 3];
     let lut = match look {
         Some(l) => GammaLut::with_tone(l.tone.as_ref()),
@@ -350,10 +364,9 @@ pub fn develop_sensor(s: &Sensor, opts: &DevelopOptions) -> Result<Developed> {
         let start = b * band * w * 3;
         let src = &rgb[start..start + chunk.len()];
         for (i, (o, p)) in chunk.as_chunks_mut::<3>().0.iter_mut().zip(src.as_chunks::<3>().0).enumerate() {
-            // Monochrome: the one sample, grey; no colour matrix.
-            let mut v = if mono { [grey_gain * p[0]; 3] } else { [0, 1, 2].map(|k| out_m[k][0] * p[0] + out_m[k][1] * p[1] + out_m[k][2] * p[2]) };
+            let mut v = linear(b * band * w + i, p);
             if let Some(m) = &map {
-                let g = m.gain(i % w, b * band + i / w, lum(p));
+                let g = m.gain(i % w, b * band + i / w, lum(&v));
                 // The black point first, as Camera Raw: lifting before it would flatten the
                 // deepest shadows' contrast.
                 v = v.map(|c| m.unblack(c) * g);
