@@ -158,6 +158,10 @@
 	Duplicate Layer…	Δημιουργία αντιγράφου επιπέδου…
 	Delete Layer	Διαγραφή επιπέδου
 	Layer Mask	Μάσκα επιπέδου
+	Copy Mask	Αντιγραφή μάσκας
+	Paste Mask	Επικόλληση μάσκας
+	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
+	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;
 	Clipping Mask	Μάσκα αποκοπής
 	Merge Layers	Συγχώνευση επιπέδων
 	Flatten Image	Ισοπέδωση εικόνας
@@ -3745,7 +3749,3 @@ curves	Smooth	Εξομάλυνση
 	Light Red	Ανοιχτό κόκκινο
 	Medium Blue	Μεσαίο μπλε
 	Light Gray	Ανοιχτό γκρι
-	Copy Mask	Αντιγραφή μάσκας
-	Paste Mask	Επικόλληση μάσκας
-	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
-	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;

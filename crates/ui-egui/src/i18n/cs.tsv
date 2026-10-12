@@ -335,6 +335,10 @@
 	Gradient…	Přechod…
 	Pattern…	Vzorek…
 	Layer Mask	Maska vrstvy
+	Copy Mask	Kopírovat masku
+	Paste Mask	Vložit masku
+	Replace Layer Mask?	Nahradit masku vrstvy?
+	Replace the existing pixel mask on “{layer}”?	Nahradit stávající pixelovou masku vrstvy „{layer}“?
 	Vector Mask	Vektorová maska
 	Reveal Selection	Odkrýt výběr
 	Hide Selection	Skrýt výběr
@@ -3661,7 +3665,3 @@ navigator	Zoom	Zvětšení
 	Light Blue	Světle modrá
 	Light Red	Světle červená
 	Medium Blue	Středně modrá
-	Copy Mask	Kopírovat masku
-	Paste Mask	Vložit masku
-	Replace Layer Mask?	Nahradit masku vrstvy?
-	Replace the existing pixel mask on “{layer}”?	Nahradit stávající pixelovou masku vrstvy „{layer}“?

@@ -317,6 +317,11 @@
 	Gradient…	Gradien…
 	Pattern…	Pola…
 	Layer Mask	Mask Layer
+	Copy Mask	Salin Masker
+	Paste Mask	Tempel Masker
+	Replace Layer Mask?	Ganti Masker Layer?
+	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
+	Replace	Ganti
 	Vector Mask	Mask Vektor
 	Reveal Selection	Tampilkan Seleksi
 	Hide Selection	Sembunyikan Seleksi
@@ -3035,8 +3040,3 @@ curves	Smooth	Haluskan
 	Light Red	Merah Terang
 	Medium Blue	Biru Sedang
 	Light Gray	Abu-abu Muda
-	Copy Mask	Salin Masker
-	Paste Mask	Tempel Masker
-	Replace Layer Mask?	Ganti Masker Layer?
-	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
-	Replace	Ganti

@@ -326,6 +326,11 @@
 	Gradient…	Gradient…
 	Pattern…	Wzór…
 	Layer Mask	Maska warstwy
+	Copy Mask	Kopiuj maskę
+	Paste Mask	Wklej maskę
+	Replace Layer Mask?	Zastąpić maskę warstwy?
+	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
+	Replace	Zastąp
 	Vector Mask	Maska wektorowa
 	Reveal Selection	Pokaż zaznaczenie
 	Hide Selection	Ukryj zaznaczenie
@@ -3644,8 +3649,3 @@ curves	Smooth	Wygładź
 	Light Red	Jasnoczerwony
 	Medium Blue	Średnioniebieski
 	Light Gray	Jasnoszary
-	Copy Mask	Kopiuj maskę
-	Paste Mask	Wklej maskę
-	Replace Layer Mask?	Zastąpić maskę warstwy?
-	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
-	Replace	Zastąp
