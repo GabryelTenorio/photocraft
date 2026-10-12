@@ -859,7 +859,6 @@ pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(all(test, unix))]
 #[test]
 fn gc_unlinks_from_pinned_directory_after_subdirectory_swap() {
