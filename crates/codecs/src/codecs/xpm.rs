@@ -3,11 +3,11 @@
 
 use std::collections::HashMap;
 
+use crate::SampleType;
 use crate::error::CodecError;
 use crate::format::Format;
 use crate::image::{ChannelLayout, Image};
 use crate::options::Limits;
-use crate::SampleType;
 
 const MAX_SOURCE: usize = 256 << 20;
 const MAX_COLOURS: usize = 65_536;
@@ -101,6 +101,17 @@ fn named(name: &str) -> Option<[u8; 3]> {
         "orange" => [255, 165, 0],
         "pink" => [255, 192, 203],
         "brown" => [165, 42, 42],
+        "lightgray" | "lightgrey" => [211, 211, 211],
+        "darkgray" | "darkgrey" => [169, 169, 169],
+        "darkblue" => [0, 0, 139],
+        "lightblue" => [173, 216, 230],
+        "darkred" => [139, 0, 0],
+        "darkgreen" => [0, 100, 0],
+        "gold" => [255, 215, 0],
+        "ivory" => [255, 255, 240],
+        "beige" => [245, 245, 220],
+        "snow" => [255, 250, 250],
+        "ghostwhite" => [248, 248, 255],
         _ => return None,
     })
 }
@@ -110,15 +121,17 @@ fn color(name: &str) -> Option<[u8; 4]> {
         return Some([0, 0, 0, 0]);
     }
     let rgb = if let Some(hex) = name.strip_prefix('#') {
+        // UTF-8 byte lengths can match a supported hex width while slicing would panic.
+        if !hex.is_ascii() {
+            return None;
+        }
         let digits = match hex.len() {
             3 => 1,
             6 => 2,
             12 => 4,
             _ => return None,
         };
-        let rgb = (0..3)
-            .map(|i| channel(&hex[i * digits..(i + 1) * digits]))
-            .collect::<Option<Vec<_>>>()?;
+        let rgb = (0..3).map(|i| channel(&hex[i * digits..(i + 1) * digits])).collect::<Option<Vec<_>>>()?;
         [rgb[0], rgb[1], rgb[2]]
     } else {
         named(name)?
@@ -159,21 +172,29 @@ pub(crate) fn decode(bytes: &[u8], limits: &Limits) -> Result<Image, CodecError>
             return Err(bad("truncated colour key"));
         }
         let fields = std::str::from_utf8(&line[cpp..]).map_err(|_| bad("invalid colour name"))?;
-        let mut terms = fields.split_ascii_whitespace();
-        let mut picked = None;
-        while let Some(tag) = terms.next() {
-            if matches!(tag, "c" | "g" | "g4" | "m")
-                && let Some(value) = terms.next()
-            {
-                if tag == "c" || picked.is_none() {
-                    picked = Some(value);
-                }
-                if tag == "c" {
-                    break;
-                }
+        // XPM priority is colour, gray, four-level gray, then monochrome,
+        // regardless of the order of keys in the palette entry.
+        let terms: Vec<&str> = fields.split_ascii_whitespace().collect();
+        let mut picked: Option<(u8, String)> = None;
+        let mut i = 0;
+        while i < terms.len() {
+            let priority = match terms[i] {
+                "c" => 4,
+                "g" => 3,
+                "g4" => 2,
+                "m" => 1,
+                _ => 0, // Symbolic names ('s') are not colour values.
+            };
+            let start = i + 1;
+            i = start;
+            while i < terms.len() && !matches!(terms[i], "c" | "g" | "g4" | "m" | "s") {
+                i += 1;
+            }
+            if priority > 0 && i > start && picked.as_ref().is_none_or(|(current, _)| priority > *current) {
+                picked = Some((priority, terms[start..i].join(" ")));
             }
         }
-        let value = picked.and_then(color).ok_or_else(|| bad("unsupported or missing XPM colour"))?;
+        let value = picked.as_ref().and_then(|(_, name)| color(name)).ok_or_else(|| bad("unsupported or missing XPM colour"))?;
         if palette.insert(line[..cpp].to_vec(), value).is_some() {
             return Err(bad("duplicate XPM palette key"));
         }

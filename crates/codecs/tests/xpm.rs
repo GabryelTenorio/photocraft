@@ -1,4 +1,4 @@
-use photocraft_codecs::{caps, decode, decode_as, detect, encode, from_extension, ChannelLayout, CodecError, Format, Image};
+use photocraft_codecs::{ChannelLayout, CodecError, Format, Image, caps, decode, decode_as, detect, encode, from_extension};
 
 const SAMPLE: &[u8] = br#"/* XPM */
 static char *icon[] = {
@@ -18,10 +18,7 @@ fn xpm3_decodes_palette_transparency_and_spaces_in_keys() {
     let img = decode(SAMPLE).unwrap();
     assert_eq!(img.layout(), ChannelLayout::Rgba);
     assert_eq!(img.dimensions(), (2, 2));
-    assert_eq!(
-        img.data(),
-        &[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 0, 0, 255, 0, 255]
-    );
+    assert_eq!(img.data(), &[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 0, 0, 255, 0, 255]);
 }
 
 #[test]
@@ -43,6 +40,7 @@ fn rejects_truncation_unsupported_colours_and_unknown_keys() {
     for bytes in [
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c None\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c NotAColor\", \"a\" };"[..],
+        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #aé\", \"a\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c black\", \"z\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c black\", \"aa\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 2 1\", \"a c black\", \"a c white\", \"a\" };"[..],
@@ -51,6 +49,21 @@ fn rejects_truncation_unsupported_colours_and_unknown_keys() {
     }
     assert!(decode_as(Format::Xpm, b"/* XPM */\n\"4294967295 4294967295 1 1\"").is_err());
     assert!(decode_as(Format::Xpm, b"/* XPM */\n\"2 1 1 1\" \"a c black\" \"aa\" /* bad").is_err());
+}
+
+#[test]
+fn x11_names_and_field_priority() {
+    let xpm = br#"/* XPM */
+static char *i[] = {
+"4 1 4 1",
+"a c LightGray",
+"b c DarkBlue",
+"c m black g white c light blue",
+"d m black g4 red g green",
+"abcd"
+};"#;
+    let image = decode(xpm).unwrap();
+    assert_eq!(image.data(), &[211, 211, 211, 255, 0, 0, 139, 255, 173, 216, 230, 255, 0, 128, 0, 255]);
 }
 
 #[test]
