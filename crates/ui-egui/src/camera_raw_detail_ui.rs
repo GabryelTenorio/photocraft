@@ -799,6 +799,21 @@ fn mix_by_coverage(source: &Surface, result: &mut Surface, part: PixelRect, cove
     }
 }
 
+/// `from` copied into the buffer of `old` when nothing else holds it (a frame-sized buffer is
+/// slow to touch for the first time), else into a new one; the copy runs in parallel.
+fn reuse(old: Option<Pixels>, from: &[[f32; 4]]) -> Vec<[f32; 4]> {
+    let mut px = old.and_then(|px| Arc::try_unwrap(px).ok()).unwrap_or_default();
+    px.resize(from.len(), [0.0; 4]);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use rayon::prelude::*;
+        px.par_chunks_mut(65536).zip(from.par_chunks(65536)).for_each(|(d, s)| d.copy_from_slice(s));
+    }
+    #[cfg(target_arch = "wasm32")]
+    px.copy_from_slice(from);
+    px
+}
+
 /// What [`develop`] makes of `part` of `area`, through `cache`: the raw stage and the tonal stages
 /// run on the whole area as Open runs them, and are kept for the settings they were made with;
 /// the colour stages run only on `part` grown by their reach. The rest of the surface is
@@ -837,7 +852,7 @@ pub(crate) fn develop_region(
         (Some(raw), Some(stage)) => match &cache.raw {
             Some((s, px)) if *s == stage => px.clone(),
             _ => {
-                let mut px = original.to_vec();
+                let mut px = reuse(cache.raw.take().map(|(_, px)| px), &original);
                 let (tone, pre, color) = stage;
                 let noise = Some(photocraft_io::raw::StageNoise { color, pixel_scale: 1.0, noise: raw.noise, level: noise_level(raw, params) });
                 photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, noise, &mut cache.retone);
@@ -860,7 +875,7 @@ pub(crate) fn develop_region(
         Some((k, px)) if *k == key => px.clone(),
         _ if key.1.is_identity() => base,
         _ => {
-            let mut px = base.to_vec();
+            let mut px = reuse(cache.tonal.take().map(|(_, px)| px), &base);
             develop_tonal_with(&mut px, w, h, &key.1, &mut cache.develop);
             let px = Arc::new(px);
             cache.tonal = Some((key, px.clone()));
