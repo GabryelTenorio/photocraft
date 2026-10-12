@@ -611,14 +611,19 @@ impl PcraftWriter {
     pub fn save_dir(&mut self, doc: &Document, dir: &Path, opts: &SaveOptions) -> Result<SaveStats> {
         let p = self.prepare(doc, opts)?;
         let mut stats = p.stats;
-        for sub in ["tiles", "blobs", "composite"] {
-            std::fs::create_dir_all(dir.join(sub))?;
-        }
+        // A project root may itself be a symlink (for example into a synced
+        // folder). Resolve it once; reject only links at managed child paths.
+        std::fs::create_dir_all(dir)?;
         let canonical_dir = std::fs::canonicalize(dir)?;
-        if self.verified_directory.as_ref().is_none_or(|cache| cache.directory != canonical_dir) {
-            self.verified_directory = Some(DirectoryVerificationCache { directory: canonical_dir, ..Default::default() });
+        check_bundle_paths(&canonical_dir)?;
+        for sub in ["tiles", "blobs", "composite"] {
+            std::fs::create_dir_all(canonical_dir.join(sub))?;
         }
-        let existing = list_objects(dir)?;
+        check_bundle_paths(&canonical_dir)?;
+        if self.verified_directory.as_ref().is_none_or(|cache| cache.directory != canonical_dir) {
+            self.verified_directory = Some(DirectoryVerificationCache { directory: canonical_dir.clone(), ..Default::default() });
+        }
+        let existing = list_objects(&canonical_dir)?;
         let generation = match &mut self.verified_directory {
             Some(cache) => {
                 cache.generation = cache.generation.saturating_add(1);
@@ -628,7 +633,10 @@ impl PcraftWriter {
         };
         let recheck = self.rolling_recheck(&p.objects);
         for (path, obj) in &p.objects {
-            let object_path = dir.join(path);
+            let object_path = canonical_dir.join(path);
+            // Checked per referenced object, not by a second full directory
+            // scan on every autosave. This also protects cached objects.
+            reject_bundle_symlink(&object_path)?;
             let signature = path_signature(&object_path)?;
             let already_verified = !recheck.contains(path)
                 && signature.is_some_and(|signature| {
@@ -658,7 +666,7 @@ impl PcraftWriter {
                 Object::Tile(..) => stats.tiles_written += 1,
                 Object::Blob(_) => stats.blobs_written += 1,
             }
-            write_atomic(&object_path, &obj.compressed())?;
+            write_bundle_file(&object_path, &obj.compressed())?;
             let written = path_signature(&object_path)?;
             if let Some(cache) = &mut self.verified_directory {
                 match written {
@@ -672,17 +680,22 @@ impl PcraftWriter {
             }
         }
         for (name, data) in &p.previews {
-            write_atomic(&dir.join(name), data)?;
+            write_bundle_file(&canonical_dir.join(name), data)?;
         }
+        // Open the directories for deletion only after their final check.
+        // On Unix, unlinkat uses pinned directory handles: swapping a path
+        // during GC cannot redirect the unlink to a symlink target.
+        check_bundle_paths(&canonical_dir)?;
+        let gc = BundleGc::new(&canonical_dir)?;
         for stale in [THUMB, COMPOSITE] {
             if !p.previews.iter().any(|(n, _)| *n == stale) {
-                let _ = std::fs::remove_file(dir.join(stale));
+                gc.remove(stale)?;
             }
         }
-        write_atomic(&dir.join(MANIFEST), &p.manifest)?;
+        write_bundle_file(&canonical_dir.join(MANIFEST), &p.manifest)?;
         for path in existing {
             if !p.objects.contains_key(&path) {
-                std::fs::remove_file(dir.join(&path))?;
+                gc.remove(&path)?;
                 stats.objects_removed += 1;
                 if let Some(cache) = &mut self.verified_directory {
                     cache.objects.remove(&path);
@@ -729,6 +742,102 @@ impl PcraftWriter {
     }
 }
 
+/// Check only the fixed bundle-owned child paths. Enumerating and lstat-ing
+/// every existing tile twice made autosave O(all objects) beyond its own work.
+fn reject_bundle_symlink(path: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => Err(FormatError::Unsupported(format!("directory bundle contains a symbolic link at {}", path.display()))),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn check_bundle_paths(dir: &Path) -> Result<()> {
+    for sub in ["tiles", "blobs", "composite"] {
+        reject_bundle_symlink(&dir.join(sub))?;
+    }
+    for name in [MANIFEST, THUMB, COMPOSITE] {
+        reject_bundle_symlink(&dir.join(name))?;
+    }
+    Ok(())
+}
+
+/// Re-check only destinations actually written. The atomic rename never
+/// follows the destination leaf symlink.
+fn write_bundle_file(path: &Path, data: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        reject_bundle_symlink(parent)?;
+    }
+    reject_bundle_symlink(path)?;
+    crate::atomic::atomic_write_no_follow(path, data)?;
+    Ok(())
+}
+
+/// On Unix, descriptor-relative deletion keeps GC inside the directory that
+/// was opened even if another process swaps its pathname while saving.
+#[cfg(unix)]
+struct BundleGc {
+    root: rustix::fd::OwnedFd,
+    tiles: rustix::fd::OwnedFd,
+    blobs: rustix::fd::OwnedFd,
+    composite: rustix::fd::OwnedFd,
+}
+
+#[cfg(unix)]
+impl BundleGc {
+    fn new(root: &Path) -> Result<Self> {
+        use rustix::fs::{Mode, OFlags, open, openat};
+
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let root = open(root, flags, Mode::empty()).map_err(std::io::Error::from)?;
+        let tiles = openat(&root, "tiles", flags, Mode::empty()).map_err(std::io::Error::from)?;
+        let blobs = openat(&root, "blobs", flags, Mode::empty()).map_err(std::io::Error::from)?;
+        let composite = openat(&root, "composite", flags, Mode::empty()).map_err(std::io::Error::from)?;
+        Ok(Self { root, tiles, blobs, composite })
+    }
+
+    fn remove(&self, path: &str) -> Result<()> {
+        let target = match path {
+            THUMB => (&self.root, "thumb.png"),
+            COMPOSITE => (&self.composite, "preview.png"),
+            _ => match path.split_once('/') {
+                Some(("tiles", name)) if name.strip_suffix(".zst").is_some_and(is_valid_hash) => (&self.tiles, name),
+                Some(("blobs", name)) if name.strip_suffix(".zst").is_some_and(is_valid_hash) => (&self.blobs, name),
+                _ => return Err(FormatError::Unsupported(format!("invalid bundle cleanup target: {path}"))),
+            },
+        };
+        match rustix::fs::unlinkat(target.0, target.1, rustix::fs::AtFlags::empty()) {
+            Ok(()) | Err(rustix::io::Errno::NOENT) => Ok(()),
+            Err(e) => Err(std::io::Error::from(e).into()),
+        }
+    }
+}
+
+/// Non-Unix platforms re-check each directory and leaf before deleting it.
+/// Windows rename and remove operations do not follow the final file link.
+#[cfg(not(unix))]
+struct BundleGc {
+    root: PathBuf,
+}
+
+#[cfg(not(unix))]
+impl BundleGc {
+    fn new(root: &Path) -> Result<Self> {
+        Ok(Self { root: root.to_path_buf() })
+    }
+
+    fn remove(&self, path: &str) -> Result<()> {
+        check_bundle_paths(&self.root)?;
+        reject_bundle_symlink(&self.root.join(path))?;
+        match std::fs::remove_file(self.root.join(path)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 fn list_objects(dir: &Path) -> Result<HashSet<String>> {
     let mut out = HashSet::new();
     for sub in ["tiles", "blobs"] {
@@ -736,7 +845,7 @@ fn list_objects(dir: &Path) -> Result<HashSet<String>> {
         for e in rd {
             let e = e?;
             let name = e.file_name().to_string_lossy().into_owned();
-            if name.ends_with(".zst") {
+            if name.strip_suffix(".zst").is_some_and(is_valid_hash) {
                 out.insert(format!("{sub}/{name}"));
             }
         }
@@ -748,4 +857,32 @@ fn list_objects(dir: &Path) -> Result<HashSet<String>> {
 pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     crate::atomic::atomic_write(path, data)?;
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn gc_unlinks_from_pinned_directory_after_subdirectory_swap() {
+    use std::os::unix::fs::symlink;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = std::env::temp_dir().join(format!("pcraft-gc-race-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let bundle = root.join("project.pcraft");
+    let outside = root.join("outside");
+    for sub in ["tiles", "blobs", "composite"] {
+        std::fs::create_dir_all(bundle.join(sub)).unwrap();
+    }
+    std::fs::create_dir(&outside).unwrap();
+    let file = format!("{}.zst", "c".repeat(64));
+    std::fs::write(bundle.join("tiles").join(&file), b"stale object").unwrap();
+    std::fs::write(outside.join(&file), b"external content").unwrap();
+
+    let gc = BundleGc::new(&bundle).unwrap();
+    std::fs::rename(bundle.join("tiles"), bundle.join("old-tiles")).unwrap();
+    symlink(&outside, bundle.join("tiles")).unwrap();
+    gc.remove(&format!("tiles/{file}")).unwrap();
+
+    assert!(!bundle.join("old-tiles").join(&file).exists());
+    assert_eq!(std::fs::read(outside.join(&file)).unwrap(), b"external content");
+    std::fs::remove_dir_all(root).unwrap();
 }
