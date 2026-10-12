@@ -24,15 +24,9 @@ fn missing_font_warnings_emitted_in_headless_and_type_commands() {
 
     // 1. type.create with missing font
     let created = h
-        .handle(
-            "engine.execute",
-            json!({"command": "type.create", "params": {"x": 30, "y": 100, "text": "Headline", "font": "NoSuchFamily123", "size": 40}}),
-        )
+        .handle("engine.execute", json!({"command": "type.create", "params": {"x": 30, "y": 100, "text": "Headline", "font": "NoSuchFamily123", "size": 40}}))
         .unwrap();
-    assert_eq!(
-        created["warnings"],
-        json!(["font 'NoSuchFamily123' is not installed; text may render using a fallback face"])
-    );
+    assert_eq!(created["warnings"], json!(["font 'NoSuchFamily123' is not installed; text may render using a fallback face"]));
 
     // 2. doc.save card.psd
     let saved_psd = h.handle("doc.save", json!({"path": psd_path.to_str().unwrap()})).unwrap();

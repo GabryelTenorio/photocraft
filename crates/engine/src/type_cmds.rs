@@ -1599,16 +1599,10 @@ mod tests {
     fn missing_font_emits_warning_in_create_set_style_and_edit() {
         let mut s = session();
         let r = s.execute("type.create", json!({"x": 10, "y": 20, "text": "Hello", "font": "NoSuchFamily123"})).unwrap();
-        assert_eq!(
-            r["warnings"],
-            json!(["font 'NoSuchFamily123' is not installed; text may render using a fallback face"])
-        );
+        assert_eq!(r["warnings"], json!(["font 'NoSuchFamily123' is not installed; text may render using a fallback face"]));
         let id = r["layer"].as_u64().unwrap();
         let styled = s.execute("type.setStyle", json!({"layer": id, "font": "StillNoSuchFamily456"})).unwrap();
-        assert_eq!(
-            styled["warnings"],
-            json!(["font 'StillNoSuchFamily456' is not installed; text may render using a fallback face"])
-        );
+        assert_eq!(styled["warnings"], json!(["font 'StillNoSuchFamily456' is not installed; text may render using a fallback face"]));
         let edited = s.execute("type.edit", json!({"layer": id, "runs": [{"start": 0, "end": 2, "font": "AnotherMissingFont789"}]})).unwrap();
         assert_eq!(
             edited["warnings"],
