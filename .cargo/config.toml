@@ -5,5 +5,6 @@ xtask = "run -p xtask --"
 ui-check = "check -p photocraft-ui-egui"
 
 # Starts photocraft with control on 127.0.0.1:7878 (creates .private/control.token if missing). Not release.
-manual-ui-testing = "run -p photocraft -- --control 7878 --control-token-file .private/control.token"
+# --timings: build timing summary + target/cargo-timings/cargo-timing.html after compile/link.
+manual-ui-testing = "run --timings -p photocraft -- --control 7878 --control-token-file .private/control.token"
 

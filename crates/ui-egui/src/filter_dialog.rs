@@ -377,11 +377,8 @@ pub fn reset_fields(app: &PhotocraftApp, fields: &mut Map<String, Value>) {
         return;
     }
     let Some(command) = fields.get("__command").and_then(Value::as_str).map(str::to_owned) else { return };
-    let spec = fields
-        .get("__spec")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .or_else(|| photocraft_engine::commands::find(&command).map(|c| c.params.to_owned()));
+    let spec =
+        fields.get("__spec").and_then(Value::as_str).map(str::to_owned).or_else(|| photocraft_engine::commands::find(&command).map(|c| c.params.to_owned()));
     let Some(spec) = spec else { return };
     // Drop user params; keep private `__` chrome (and fixed keys outside the schema for `__spec`).
     let schema_keys: std::collections::HashSet<String> = parse_spec(&spec).into_iter().map(|p| p.key).collect();
