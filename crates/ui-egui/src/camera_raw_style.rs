@@ -306,9 +306,20 @@ pub(crate) fn slider(ui: &mut Ui, id: &str, label: &str, value: &mut f32, spec: 
 /// and the wheel up (or tilted right) raise it, ↓ / ← and the wheel down (or left) lower it, one
 /// step per key press or wheel notch (Shift: ten). The step is 1, or 0.1 / 0.05 for one or two
 /// decimals (Exposure). The wheel acts while the pointer is over the row, and then does not also
-/// scroll the panels. Returns the new value when it changed.
+/// scroll the panels; elsewhere it scrolls them. A press outside the row, or the pointer leaving
+/// the panels (the slider's scroll area), takes the focus away. Returns the new value when it
+/// changed.
 fn nudge(ui: &Ui, resp: &egui::Response, row: Rect, value: f32, spec: &Spec) -> Option<f32> {
     if !resp.has_focus() {
+        return None;
+    }
+    let (pointer, pressed) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.any_pressed()));
+    let inside_id = resp.id.with("pointer-in-panels");
+    let inside = pointer.is_some_and(|p| ui.clip_rect().contains(p));
+    let was_inside = ui.data(|d| d.get_temp::<bool>(inside_id)).unwrap_or(inside);
+    ui.data_mut(|d| d.insert_temp(inside_id, inside));
+    if (pressed && pointer.is_some_and(|p| !row.contains(p))) || (was_inside && !inside) {
+        ui.memory_mut(|m| m.surrender_focus(resp.id));
         return None;
     }
     // Arrow keys belong to the slider, not to focus moves; Tab still moves on.
@@ -340,8 +351,10 @@ fn nudge(ui: &Ui, resp: &egui::Response, row: Rect, value: f32, spec: &Spec) -> 
         }
         (keys, wheel)
     });
-    if wheel != 0.0 {
-        // Don't scroll the panel under the slider as well.
+    if over {
+        // Don't scroll the panels under the slider as well. egui spreads a wheel notch over
+        // several frames, so the scroll is taken every frame the pointer is over the row, not
+        // only in the notch's own.
         ui.ctx().input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
     }
     // Trackpads send fractions of a notch: keep what is left for the next frame.

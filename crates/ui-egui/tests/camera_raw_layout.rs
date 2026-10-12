@@ -187,6 +187,8 @@ fn every_panel_and_tool_draws_without_editing_the_document() {
 #[test]
 fn a_focused_slider_steps_with_the_keys_and_the_wheel() {
     let mut h = fixture();
+    // Enough open panels for the settings to scroll.
+    ui(&mut h, json!({"layout":{"open":["light","color","effects","detail","optics","geometry"]}})).unwrap();
     let key = |h: &mut Harness<'_, PhotocraftApp>, key: egui::Key, modifiers: Modifiers| {
         h.event(Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
         h.event(Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers });
@@ -213,14 +215,30 @@ fn a_focused_slider_steps_with_the_keys_and_the_wheel() {
     assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 14.0, "the wheel over the row");
     wheel(&mut h, row, -4.0);
     assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 10.0);
+    // egui spreads a notch over several frames: none of it scrolls the panels under the slider.
+    h.run_steps(30);
+    assert_eq!(h.get_by_role_and_label(Role::Slider, "Contrast").rect(), contrast, "the panels did not scroll");
+    // Elsewhere over the panels the wheel scrolls them and leaves the focused slider alone.
+    wheel(&mut h, row + vec2(0.0, 120.0), -3.0);
+    h.run_steps(30);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 10.0, "not the wheel elsewhere");
+    assert!(h.get_by_role_and_label(Role::Slider, "Contrast").rect().top() < contrast.top() - 10.0, "the panels scrolled");
+    key(&mut h, egui::Key::ArrowUp, Modifiers::NONE);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 11.0, "still focused");
+    // The pointer leaving the panels takes the focus away: the keys and the wheel are free again.
     let preview = pos2(300.0, 400.0);
     wheel(&mut h, preview, 3.0);
-    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 10.0, "not the wheel elsewhere");
+    key(&mut h, egui::Key::ArrowUp, Modifiers::NONE);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 11.0, "unfocused");
     // Tab: the next slider (Highlights) takes the keys.
+    // A click on the label focuses the slider again without moving it.
+    let contrast = h.get_by_role_and_label(Role::Slider, "Contrast").rect();
+    click(&mut h, contrast.center() - vec2(0.0, 13.0), 1);
+    assert_eq!(inspect(&h)["params"]["contrast"].as_f64().unwrap(), start + 11.0);
     key(&mut h, egui::Key::Tab, Modifiers::NONE);
     key(&mut h, egui::Key::ArrowDown, Modifiers::NONE);
     let p = inspect(&h)["params"].clone();
-    assert_eq!(p["contrast"].as_f64().unwrap(), start + 10.0);
+    assert_eq!(p["contrast"].as_f64().unwrap(), start + 11.0);
     assert_eq!(p["highlights"], -1.0, "{p}");
     // Exposure steps by 0.05.
     let exposure = h.get_by_role_and_label(Role::Slider, "Exposure").rect();
