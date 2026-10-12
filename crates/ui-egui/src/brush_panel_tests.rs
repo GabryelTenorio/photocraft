@@ -818,6 +818,61 @@ fn f5_edits_the_default_brush_with_every_section() {
     assert!(!h.state().ui.panels.brush_settings);
 }
 
+/// The fills painted exactly over `rect` this frame (a stroked-only box paints none).
+fn fills_at(h: &Harness<'static, PhotocraftApp>, rect: egui::Rect) -> Vec<Color32> {
+    fn walk(shape: &egui::Shape, rect: egui::Rect, out: &mut Vec<Color32>) {
+        match shape {
+            egui::Shape::Rect(r) if r.rect == rect && r.fill != Color32::TRANSPARENT => out.push(r.fill),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, rect, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for shape in &h.output().shapes {
+        walk(&shape.shape, rect, &mut out);
+    }
+    out
+}
+
+#[test]
+fn section_boxes_show_the_pressed_state_while_held() {
+    // #4476: like Photoshop, a held box (or its name) changes look until the release, which then
+    // toggles exactly as before.
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness(0, 0);
+    let t = Tokens::get(&h.ctx);
+    let n = h.state().session.journal.len();
+    assert!(!h.state().session.tools.brush.scattering.enabled);
+    let bx = h.get_by_label("Enable Scattering").rect();
+    let name = h.get_by_label("Scattering").rect();
+    let on_name = egui::pos2(bx.right() + 30.0, name.center().y);
+    h.hover_at(on_name);
+    h.run_steps(2);
+    assert!(fills_at(&h, bx).is_empty(), "hovering leaves the empty box unfilled");
+    // Pressing the name counts as pressing the box.
+    h.drag_at(on_name);
+    h.run_steps(2);
+    assert_eq!(fills_at(&h, bx), vec![t.pressed], "held, unchecked");
+    assert_eq!(h.state().session.journal.len(), n, "nothing changes before the release");
+    h.drop_at(on_name);
+    h.run_steps(2);
+    assert!(h.state().session.tools.brush.scattering.enabled);
+    assert_eq!(h.state().ui.brush_section, 2);
+    assert_eq!(fills_at(&h, bx), vec![t.accent], "released, checked");
+    // A held checked box is less opaque, and the release on it only unchecks it.
+    h.hover_at(bx.center());
+    h.run_steps(2);
+    h.drag_at(bx.center());
+    h.run_steps(2);
+    assert_eq!(fills_at(&h, bx), vec![t.accent.gamma_multiply(0.8)], "held, checked");
+    h.drop_at(bx.center());
+    h.run_steps(2);
+    assert!(!h.state().session.tools.brush.scattering.enabled);
+    assert_eq!(h.state().ui.brush_section, 2);
+    assert!(fills_at(&h, bx).is_empty(), "released, unchecked");
+    assert_eq!(h.state().session.journal.len(), n + 2);
+}
+
 #[test]
 fn update_current_brush_button_overwrites_the_picked_preset_in_place() {
     use egui_kittest::kittest::Queryable;

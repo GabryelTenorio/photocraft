@@ -259,15 +259,20 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                 box_resp.widget_info(|| {
                     egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, checked, crate::i18n::fmt(tl!("Enable {name}"), &[("name", tl!(*name))]))
                 });
+                let on_lock = resp.interact_pointer_pos().is_some_and(|p| p.x > r.right() - 22.0);
+                // Photoshop: holding the box or its name shows the box pressed until the release.
+                let held = box_resp.is_pointer_button_down_on() || (resp.is_pointer_button_down_on() && !on_lock);
                 if *flag {
-                    ui.painter().rect_filled(br, 2.0, t.accent);
+                    ui.painter().rect_filled(br, 2.0, if held { t.accent.gamma_multiply(0.8) } else { t.accent });
                     let (a, m, c) = (br.left_center() + vec2(3.0, 0.5), br.center_bottom() + vec2(-1.0, -3.5), br.right_top() + vec2(-3.0, 3.5));
                     ui.painter().line_segment([a, m], Stroke::new(1.6, Color32::WHITE));
                     ui.painter().line_segment([m, c], Stroke::new(1.6, Color32::WHITE));
                 } else {
+                    if held {
+                        ui.painter().rect_filled(br, 2.0, t.pressed);
+                    }
                     ui.painter().rect_stroke(br, 2.0, Stroke::new(1.2, t.text_faint), egui::StrokeKind::Inside);
                 }
-                let on_lock = resp.interact_pointer_pos().is_some_and(|p| p.x > r.right() - 22.0);
                 if box_resp.clicked() {
                     *flag = !*flag;
                 } else if resp.clicked() && !on_lock {
