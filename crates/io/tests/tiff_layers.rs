@@ -579,8 +579,9 @@ fn flat_tiff_warns_when_extra_channels_matte_transparency() {
     assert_eq!(extra, vec![0]);
     // 4 samples per pixel: RGB + spot. (0, 0) was transparent and is now white.
     assert_eq!(&samples[..3], &[255, 255, 255]);
-    // Half-red over white is about (255, 128, 128).
-    let at = (1 * 4 + 1) * 4;
+    // Half-red over white is about (255, 128, 128). Pixel (1, 1), 4 samples per pixel.
+    let (x, y, width, spp) = (1usize, 1usize, 4usize, 4usize);
+    let at = (y * width + x) * spp;
     let rgb = &samples[at..at + 3];
     assert!(rgb[0] > 250 && (rgb[1] as i16 - 128).abs() <= 2 && (rgb[2] as i16 - 128).abs() <= 2, "{rgb:?}");
 }
