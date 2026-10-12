@@ -22,6 +22,21 @@ fn too_deep() -> FormatError {
     FormatError::LimitExceeded(format!("layer groups nested deeper than {MAX_GROUP_DEPTH}"))
 }
 
+/// A pattern's declared size is untrusted JSON: 0 or > 30 000 px on a side must fail before
+/// paint allocates `width × height × 16` bytes (#3478).
+fn admit_pattern(width: u32, height: u32) -> Result<()> {
+    if width == 0 || height == 0 {
+        return Err(FormatError::corrupt(format!("pattern size {width}x{height} is empty")));
+    }
+    if width > photocraft_doc::MAX_PATTERN_EDGE || height > photocraft_doc::MAX_PATTERN_EDGE {
+        return Err(FormatError::LimitExceeded(format!(
+            "pattern {width}x{height} exceeds {} pixels per side",
+            photocraft_doc::MAX_PATTERN_EDGE
+        )));
+    }
+    Ok(())
+}
+
 /// Refuses to save a document the loader would reject for its group nesting.
 pub(crate) fn check_nesting(layers: &[Layer]) -> Result<()> {
     // Bounded recursion: it stops at the first layer past the limit.
@@ -574,6 +589,7 @@ impl Loader<'_> {
         }
         let mut patterns = Vec::with_capacity(m.patterns.len());
         for p in &m.patterns {
+            admit_pattern(p.width, p.height)?;
             patterns.push(Pattern { id: p.id.clone(), name: p.name.clone(), width: p.width, height: p.height, surface: self.surface(&p.surface)? });
         }
         let layer_comps = m.layer_comps.iter().map(|c| self.comp(c)).collect::<Result<Vec<_>>>()?;

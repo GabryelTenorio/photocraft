@@ -5,6 +5,9 @@
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
 
+/// Longest pattern edge the PSD pattern reader admits (`photocraft_psd` `MAX_EDGE`).
+pub const MAX_PATTERN_EDGE: u32 = 30_000;
+
 /// One pattern tile. Pixels cover `0..width × 0..height` of `surface`, in any pixel format
 /// (depth and colour model are the pattern's own, as in Photoshop).
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +59,17 @@ impl Pattern {
     /// Whether the tile has pixels.
     pub fn is_empty(&self) -> bool {
         self.width == 0 || self.height == 0
+    }
+
+    /// Pixel count as `usize`, or `None` when `width * height` overflows.
+    pub fn pixel_count(&self) -> Option<usize> {
+        usize::try_from(self.width).ok()?.checked_mul(usize::try_from(self.height).ok()?)
+    }
+
+    /// Whether this tile is small enough to paint (non-empty, each edge within
+    /// [`MAX_PATTERN_EDGE`], and the pixel count fits in `usize`).
+    pub fn is_paintable(&self) -> bool {
+        !self.is_empty() && self.width <= MAX_PATTERN_EDGE && self.height <= MAX_PATTERN_EDGE && self.pixel_count().is_some()
     }
 }
 

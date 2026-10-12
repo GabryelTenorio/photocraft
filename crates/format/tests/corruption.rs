@@ -388,6 +388,28 @@ fn tile_coordinates_outside_the_i32_pixel_range_are_rejected() {
     }
 }
 
+/// A pattern's width/height is untrusted JSON; 0 or > 30 000 px must fail before paint (#3478).
+#[test]
+fn declared_pattern_size_is_checked_on_load() {
+    let with_pattern_size = |w: u64, h: u64| {
+        rebuild(&sample(), |name, data| {
+            if name != "manifest.json" {
+                return Some(data);
+            }
+            let mut manifest: serde_json::Value = serde_json::from_slice(&data).unwrap();
+            manifest["document"]["patterns"][0]["width"] = serde_json::json!(w);
+            manifest["document"]["patterns"][0]["height"] = serde_json::json!(h);
+            Some(serde_json::to_vec(&manifest).unwrap())
+        })
+    };
+    for (w, h) in [(65_535, 65_535), (30_001, 8), (8, 30_001), (0, 8), (8, 0)] {
+        let r = load_from_bytes(&with_pattern_size(w, h));
+        assert!(r.is_err(), "{w}x{h} loaded: {r:?}");
+    }
+    let ok = load_from_bytes(&with_pattern_size(32, 24)).unwrap();
+    assert_eq!((ok.patterns[0].width, ok.patterns[0].height), (32, 24));
+}
+
 /// A canvas is a few bytes of manifest JSON; one past the budget is refused before any work (#2935).
 /// The default budget is the largest canvas the app creates (300000 × 300000, as `file.new`,
 /// Canvas Size and PSB import allow), so everything a user can save reopens.

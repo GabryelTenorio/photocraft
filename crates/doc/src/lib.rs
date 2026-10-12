@@ -36,7 +36,7 @@ pub use effects::{
     GradientStyle, Satin, Shadow, StrokeFx, StrokePosition,
 };
 pub use mode::{ColorTable, Duotone, DuotoneInk, StackMode};
-pub use pattern::Pattern;
+pub use pattern::{MAX_PATTERN_EDGE, Pattern};
 pub use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, SampleType};
 pub use photocraft_geom::{Affine, Rect, Size};
 pub use photocraft_raster::Surface;

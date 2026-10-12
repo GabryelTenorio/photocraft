@@ -78,7 +78,10 @@ impl<'a> PreparedPatterns<'a> {
                 // Run on the requesting worker to preserve its active CMYK profile.
                 slot.get_or_init(|| Tile::new_in(p, self.mode).map(Arc::new)).clone()
             }
-            None => Tile::new_in(p, self.mode).map(Arc::new),
+            None => {
+                // Budget miss: still refuse a pattern too large to paint (#3478).
+                if p.is_paintable() { Tile::new_in(p, self.mode).map(Arc::new) } else { None }
+            }
         }
     }
 }
@@ -89,7 +92,10 @@ impl<'a> PreparedPatterns<'a> {
 /// colours: what Edit › Fill writes into the document's pixels, and what Photoshop shows (the
 /// pattern in colour in its picker, filled in grey).
 pub fn pattern_rgba(p: &Pattern, mode: ColorMode) -> Vec<[f32; 4]> {
-    let mut px = vec![[0.0f32; 4]; (p.width as usize).saturating_mul(p.height as usize)];
+    let Some(n) = p.pixel_count().filter(|_| p.is_paintable()) else {
+        return Vec::new();
+    };
+    let mut px = vec![[0.0f32; 4]; n];
     p.surface.read_rgba_into(p.rect(), &mut px);
     let paints_in = matches!(mode, ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone | ColorMode::Cmyk);
     if paints_in && p.surface.format().mode != mode {
@@ -118,11 +124,14 @@ impl Tile {
 
     /// The tile of `p` painted into a document of colour mode `mode` (see [`pattern_rgba`]).
     pub fn new_in(p: &Pattern, mode: ColorMode) -> Option<Tile> {
-        if p.is_empty() {
+        if !p.is_paintable() {
             return None;
         }
         let (w, h) = (p.width as usize, p.height as usize);
         let mut px = pattern_rgba(p, mode);
+        if px.len() != w.checked_mul(h)? {
+            return None;
+        }
         for q in &mut px {
             for c in 0..3 {
                 q[c] *= q[3];
@@ -270,5 +279,20 @@ mod tests {
         let rot = Placement::new(Rect::EMPTY, false, (0.0, 0.0), 1.0, 90.0);
         let (u, v) = rot.map(1.0, 3.0);
         assert!((u - -3.0).abs() < 1e-9 && (v - 1.0).abs() < 1e-9, "{u},{v}");
+    }
+
+    #[test]
+    fn oversized_pattern_is_not_materialized() {
+        let huge = Pattern {
+            id: "huge".into(),
+            name: "huge".into(),
+            width: 65_535,
+            height: 65_535,
+            surface: Surface::new(PixelFormat::RGBA8),
+        };
+        assert!(Tile::new(&huge).is_none());
+        assert!(pattern_rgba(&huge, ColorMode::Rgb).is_empty());
+        let prepared = PreparedPatterns::new(std::slice::from_ref(&huge), 0);
+        assert!(prepared.get(&huge.id, "").is_none());
     }
 }

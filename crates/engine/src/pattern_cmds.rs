@@ -327,7 +327,8 @@ fn new_fill_layer(s: &mut Session, p: &Value) -> Result<Value> {
 fn brush_texture(s: &mut Session, p: &Value) -> Result<Value> {
     let pat = resolve_param(s, "brush.texturePattern", p)?;
     // Brush textures are grey: luminance of the composite over white.
-    let mut px = vec![[0.0f32; 4]; (pat.width * pat.height) as usize];
+    let n = pat.pixel_count().filter(|_| pat.is_paintable()).ok_or_else(|| EngineError::Other("pattern is too large to use as a brush texture".into()))?;
+    let mut px = vec![[0.0f32; 4]; n];
     pat.surface.read_rgba_into(pat.rect(), &mut px);
     let lum: Vec<f32> = px
         .iter()
@@ -348,7 +349,10 @@ fn brush_texture(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// A swatch colour for UIs (average of the tile), straight RGB.
 pub fn average_color(p: &Pattern) -> Color {
-    let mut px = vec![[0.0f32; 4]; (p.width * p.height) as usize];
+    let Some(n) = p.pixel_count().filter(|_| p.is_paintable()) else {
+        return Color::rgb(0.0, 0.0, 0.0);
+    };
+    let mut px = vec![[0.0f32; 4]; n];
     p.surface.read_rgba_into(p.rect(), &mut px);
     let n = px.len().max(1) as f32;
     let s = px.iter().fold([0.0f32; 3], |a, q| [a[0] + q[0], a[1] + q[1], a[2] + q[2]]);
