@@ -4108,3 +4108,6 @@ cameraRaw	Visualize Spots	Foltok megjelenítése
 cameraRaw	Vivid	Élénk
 cameraRaw	White balance	Fehéregyensúly
 cameraRaw	Zoom and Pan	Nagyítás és pásztázás
+# Camera Raw: Camera Standard profile
+cameraRaw	Camera Standard	Kamera: standard
+	The raw file is still being developed	A RAW-fájl előhívása még folyamatban van
