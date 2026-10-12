@@ -61,6 +61,7 @@ pub mod crop_size;
 pub mod crop_straighten;
 pub mod crop_ui;
 pub mod delete_layer_prompt;
+pub mod dialog_alt_reset;
 pub mod dialog_blend_ui;
 pub mod dialogs;
 pub mod direct_select;
@@ -70,6 +71,7 @@ pub mod distort_ui;
 pub mod doc_props_ui;
 pub mod dock;
 pub mod duplicate_layer_ui;
+pub mod egui_fonts;
 pub mod enable_rules;
 pub mod eraser_ui;
 pub mod export_dialog;
@@ -1423,6 +1425,11 @@ impl PhotocraftApp {
         self.tiff_options.is_some() || self.targa_options.is_some()
     }
 
+    /// A print worker may still be handing a job to the system queue.
+    pub(crate) fn printing(&self) -> bool {
+        self.session.jobs().iter().any(|j| matches!(j.command.as_str(), "file.print" | "file.printOneCopy"))
+    }
+
     /// A save is running in the background.
     pub(crate) fn saving(&self) -> bool {
         !self.jobs.saves.is_empty()
@@ -2293,6 +2300,8 @@ mod color_replacement_tests;
 mod layer_shortcut_tests;
 #[cfg(test)]
 mod pencil_tests;
+#[cfg(test)]
+mod tool_shortcut_tests;
 
 #[cfg(test)]
 mod pixel_aspect_tests;
