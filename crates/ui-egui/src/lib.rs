@@ -100,8 +100,6 @@ pub mod jobs_ui;
 pub mod kys_import;
 pub mod lasso_ui;
 pub mod layer_menu_ui;
-#[cfg(test)]
-mod layer_pick_shortcut_tests;
 pub mod layer_pick_ui;
 pub mod layer_picker;
 pub mod layer_props_ui;
@@ -2273,6 +2271,9 @@ impl PhotocraftApp {
         true
     }
 }
+
+#[cfg(test)]
+mod layer_pick_shortcut_tests;
 
 #[cfg(test)]
 mod color_swatch_tests;
