@@ -689,8 +689,8 @@ pub fn windows(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 });
             });
             let cols: Vec<&str> = photocraft_engine::analysis_cmds::log_columns(&rows).into_iter().filter(|c| *c != "histogram").collect();
-            egui::ScrollArea::both().max_height(220.0).max_width(620.0).show(ui, |ui| {
-                egui::Grid::new("mlog-grid").striped(true).spacing(vec2(10.0, 2.0)).show(ui, |ui| {
+            egui::ScrollArea::both().max_height(220.0).max_width(620.0).auto_shrink([false, true]).show(ui, |ui| {
+                egui::Grid::new(("mlog-grid", &cols)).striped(true).spacing(vec2(10.0, 2.0)).show(ui, |ui| {
                     for c in &cols {
                         let name = photocraft_engine::analysis_cmds::COLUMNS.iter().find(|x| x.0 == *c).map_or(*c, |x| x.1);
                         ui.label(RichText::new(tl!(name)).color(t.text_dim).size(10.5).strong());

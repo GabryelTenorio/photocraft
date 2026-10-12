@@ -906,6 +906,10 @@ pub fn is_preferences(fields: &Map<String, Value>) -> bool {
     fields.get("__prefsui").and_then(Value::as_str) == Some("prefs")
 }
 
+pub fn is_shortcuts(fields: &Map<String, Value>) -> bool {
+    fields.get("__prefsui").and_then(Value::as_str) == Some("shortcuts")
+}
+
 fn preference_values(p: &prefs::Preferences) -> Map<String, Value> {
     let values = p.to_json();
     SECTIONS.iter().filter_map(|(id, _)| Some((id.to_string(), values.get(id)?.clone()))).collect()
@@ -936,7 +940,7 @@ pub fn apply(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
 pub fn width(fields: &Map<String, Value>, available: f32) -> Option<f32> {
     match fields.get("__prefsui").and_then(Value::as_str)? {
         "prefs" => Some(available.clamp(380.0, 1040.0)),
-        "shortcuts" => Some(720.0),
+        "shortcuts" => Some(available.clamp(380.0, 720.0)),
         _ => Some(460.0),
     }
 }
@@ -1186,7 +1190,7 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
                 || tl!(&title).to_lowercase().contains(&search.trim().to_lowercase());
             let filter = if show_all { "" } else { search.trim() };
             ui.add_space(6.0);
-            egui::ScrollArea::vertical().max_height(content_height - 30.0).id_salt("prefs-scroll").show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(content_height - 30.0).auto_shrink([false, true]).id_salt(("prefs-scroll", &section)).show(ui, |ui| {
                 let order: Vec<String> =
                     f.get("__order").and_then(|o| o.get(&section)).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
                 if !has_visible_fields(&values, &section) {
@@ -1452,7 +1456,19 @@ fn section_fields(
     }
     let mut keys: Vec<String> = order.iter().filter(|k| obj.contains_key(*k)).cloned().collect();
     keys.extend(obj.keys().filter(|k| !order.contains(k)).cloned());
-    egui::Grid::new(("prefs-grid", section)).num_columns(2).spacing([14.0, 7.0]).show(ui, |ui| {
+    const COLUMN_SPACING: f32 = 14.0;
+    const LABEL_MAX_WIDTH: f32 = 220.0;
+    let field_width = 260.0_f32.min((ui.available_width() - COLUMN_SPACING).max(1.0));
+    // Keep fields beside their labels instead of filling the label column with spare dialog width.
+    let label_width = (ui.available_width() - field_width - COLUMN_SPACING).clamp(1.0, LABEL_MAX_WIDTH);
+    let row_height = ui.spacing().interact_size.y;
+    let draw_label = |ui: &mut egui::Ui, text: &str| {
+        ui.allocate_ui_with_layout(vec2(label_width, row_height), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.add(egui::Label::new(RichText::new(text).color(t.text_dim)).wrap());
+        });
+    };
+    egui::Grid::new(("prefs-grid", section)).num_columns(2).max_col_width(field_width).spacing([COLUMN_SPACING, 7.0]).show(ui, |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         for k in keys {
             let path = format!("{section}.{k}");
             if !query.is_empty() && !preference_matches(section, &k, &query) {
@@ -1474,7 +1490,7 @@ fn section_fields(
             let label = tl!(&human).to_string();
             match &v {
                 Value::Bool(b) => {
-                    ui.label("");
+                    draw_label(ui, "");
                     let mut b = *b;
                     if path == "interface.systemTitleBar" && cfg!(all(not(target_arch = "wasm32"), not(target_os = "macos"))) {
                         ui.vertical(|ui| {
@@ -1487,24 +1503,24 @@ fn section_fields(
                     obj.insert(k, json!(b));
                 }
                 Value::String(s) if path == "interface.language" => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
+                    draw_label(ui, &label);
                     let mut pairs: Vec<(String, &str)> = vec![("auto".into(), tl!("Auto"))];
                     pairs.extend(crate::i18n::Lang::all().map(|l| (l.code().to_string(), l.name())));
                     let mut cur = s.clone();
-                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0);
+                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0_f32.min(field_width));
                     obj.insert(k, json!(cur));
                 }
                 Value::String(s) if prefs::choices(&path).is_some() => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
+                    draw_label(ui, &label);
                     let opts = prefs::choices(&path).unwrap_or(&[]);
                     let labels: Vec<String> = opts.iter().map(|o| choice_label(o)).collect();
                     let pairs: Vec<(String, &str)> = opts.iter().map(|o| o.to_string()).zip(labels.iter().map(String::as_str)).collect();
                     let mut cur = s.clone();
-                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0);
+                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0_f32.min(field_width));
                     obj.insert(k, json!(cur));
                 }
                 Value::String(s) if prefs::is_color(&path) => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
+                    draw_label(ui, &label);
                     let c = prefs::parse_hex(s).unwrap_or([128, 128, 128]);
                     let mut rgb = c;
                     ui.horizontal(|ui| {
@@ -1518,13 +1534,13 @@ fn section_fields(
                     let _ = color_of(s);
                 }
                 Value::String(s) => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
+                    draw_label(ui, &label);
                     let mut s = s.clone();
-                    ui.add(egui::TextEdit::singleline(&mut s).desired_width(260.0));
+                    ui.add(egui::TextEdit::singleline(&mut s).desired_width(field_width));
                     obj.insert(k, json!(s));
                 }
                 Value::Number(n) => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
+                    draw_label(ui, &label);
                     let (lo, hi) = prefs::range(&path).unwrap_or((-1e9, 1e9));
                     if n.is_u64() || n.is_i64() {
                         let mut x = n.as_i64().unwrap_or(0);
@@ -1537,13 +1553,13 @@ fn section_fields(
                     }
                 }
                 Value::Array(_) if path == "tools.pressureCurve" => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
+                    draw_label(ui, &label);
                     if let Some(next) = crate::pressure_curve_ui::editor(ui, &v) {
                         obj.insert(k, next);
                     }
                 }
                 Value::Array(items) if k == "disks" => {
-                    ui.label(RichText::new(tl!("Scratch disks")).color(t.text_dim));
+                    draw_label(ui, tl!("Scratch disks"));
                     let mut items = items.clone();
                     ui.vertical(|ui| {
                         for d in &mut items {
@@ -1562,11 +1578,13 @@ fn section_fields(
                     obj.insert(k, Value::Array(items));
                 }
                 Value::Array(items) => {
-                    ui.label(RichText::new(tl!(&label)).color(t.text_dim));
-                    ui.label(RichText::new(crate::i18n::trn(lang, items.len() as u64, "{n} item", "{n} items")).color(t.text_faint));
-                    if !items.is_empty() && ui.small_button(tl!("Clear")).clicked() {
-                        obj.insert(k, json!([]));
-                    }
+                    draw_label(ui, &label);
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(crate::i18n::trn(lang, items.len() as u64, "{n} item", "{n} items")).color(t.text_faint));
+                        if !items.is_empty() && ui.small_button(tl!("Clear")).clicked() {
+                            obj.insert(k, json!([]));
+                        }
+                    });
                 }
                 _ => continue,
             }
@@ -1578,9 +1596,13 @@ fn section_fields(
 /// Keyboard Shortcuts and Menus: a searchable list of commands by menu with editable shortcuts
 /// (click a shortcut, press keys; ⌫ removes it), menu visibility and colours, toolbar tools.
 fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+    const CONTROL_WIDTH: f32 = 120.0;
+    const STATUS_WIDTH: f32 = 90.0;
+    const COLUMN_SPACING: f32 = 12.0;
+
     let t = Tokens::get(ui.ctx());
     let mut tab = f.get("tab").and_then(Value::as_u64).unwrap_or(0);
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for (i, name) in [tl!("Keyboard Shortcuts"), tl!("Menus"), tl!("Toolbar")].iter().enumerate() {
             if crate::widgets::pill_tab(ui, name, tab == i as u64).clicked() {
                 tab = i as u64;
@@ -1666,9 +1688,12 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
         }
     }
     let needle = filter.to_ascii_lowercase();
-    egui::ScrollArea::vertical().max_height(420.0).id_salt("shortcuts-scroll").show(ui, |ui| {
+    egui::ScrollArea::vertical().max_height(420.0).auto_shrink([false, true]).id_salt(("shortcuts-scroll", tab)).show(ui, |ui| {
+        let name_width = (ui.available_width() - CONTROL_WIDTH - STATUS_WIDTH - 2.0 * COLUMN_SPACING).max(1.0);
+        let row_height = ui.spacing().interact_size.y;
         let mut last_top = String::new();
-        egui::Grid::new("shortcut-grid").num_columns(3).spacing([12.0, 3.0]).striped(true).show(ui, |ui| {
+        // Grid widths are remembered between frames; each tab has a different column layout.
+        egui::Grid::new(("shortcut-grid", tab)).num_columns(3).spacing([COLUMN_SPACING, 3.0]).striped(true).show(ui, |ui| {
             for (id, label, path, def) in &items {
                 let cur = eff(&overrides, id, def);
                 let (shown_path, shown_label) = shown(id, label, path);
@@ -1682,7 +1707,9 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 }
                 let top = shown_path.first().cloned().unwrap_or_else(|| tl!("Other").into());
                 if top != last_top {
-                    ui.label(RichText::new(&top).font(crate::theme::semibold(12.5)).color(t.text));
+                    ui.allocate_ui_with_layout(vec2(name_width, row_height), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new(RichText::new(&top).font(crate::theme::semibold(12.5)).color(t.text)).truncate()).on_hover_text(&top);
+                    });
                     ui.label("");
                     ui.label("");
                     ui.end_row();
@@ -1693,25 +1720,35 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                     _ => shown_label,
                 };
                 let sel = selected == *id;
-                if ui.selectable_label(sel, RichText::new(format!("   {name}")).color(t.text_dim)).clicked() {
+                let label = egui::Button::selectable(sel, ()).left_text(RichText::new(format!("   {name}")).color(t.text_dim)).truncate();
+                if ui.add_sized(vec2(name_width, row_height), label).on_hover_text(&name).clicked() {
                     selected = id.clone();
                 }
                 if tab == 0 {
                     let text = if sel && capture { tl!("Press keys…").to_string() } else { cur.as_deref().map(crate::shortcuts::pretty).unwrap_or_default() };
                     let changed = overrides.contains_key(id);
-                    let r = ui.add(
-                        egui::Button::new(RichText::new(tl!(&text)).size(12.0).color(if changed { t.accent_text } else { t.text })).min_size(vec2(120.0, 18.0)),
-                    );
+                    let r = ui
+                        .add_sized(
+                            vec2(CONTROL_WIDTH, row_height),
+                            egui::Button::new(RichText::new(tl!(&text)).size(12.0).color(if changed { t.accent_text } else { t.text })).truncate(),
+                        )
+                        .on_hover_text(tl!(&text));
                     if r.clicked() {
                         selected = id.clone();
                         capture = true;
                         message.clear();
                         message_warning = false;
                     }
-                    ui.label(if changed { RichText::new(tl!("modified")).color(t.text_faint).size(10.5) } else { RichText::new("") });
+                    ui.add_sized(
+                        vec2(STATUS_WIDTH, row_height),
+                        egui::Label::new(if changed { RichText::new(tl!("modified")).color(t.text_faint).size(10.5) } else { RichText::new("") }).truncate(),
+                    );
                 } else {
                     let mut visible = !hidden.contains(id);
-                    crate::widgets::checkbox(ui, &mut visible, tl!("Visible"));
+                    ui.allocate_ui(vec2(CONTROL_WIDTH, row_height), |ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                        crate::widgets::checkbox(ui, &mut visible, tl!("Visible")).on_hover_text(tl!("Visible"));
+                    });
                     if visible {
                         hidden.retain(|h| h != id);
                     } else if !hidden.contains(id) {
@@ -1720,7 +1757,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                     let mut col = colors.get(id).cloned().unwrap_or_else(|| "none".into());
                     let opts: Vec<(String, &str)> =
                         ["none", "red", "orange", "yellow", "green", "blue", "violet", "gray"].iter().map(|c| (c.to_string(), *c)).collect();
-                    crate::widgets::dropdown(ui, &format!("menu-color-{id}"), &mut col, &opts, 90.0);
+                    crate::widgets::dropdown(ui, &format!("menu-color-{id}"), &mut col, &opts, STATUS_WIDTH);
                     if col == "none" {
                         colors.remove(id);
                     } else {
@@ -1733,7 +1770,7 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
     });
     ui.add_space(6.0);
     if tab == 0 {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let has_sel = !selected.is_empty();
             if ui.add_enabled(has_sel, egui::Button::new(tl!("Use Default"))).clicked() {
                 overrides.remove(&selected);
