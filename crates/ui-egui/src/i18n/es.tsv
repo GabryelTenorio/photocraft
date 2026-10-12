@@ -1963,6 +1963,7 @@
 	Show only crosshair while painting	Mostrar solo la retícula al pintar
 	Show slice numbers	Mostrar los números de sector
 	Show tooltips	Mostrar las descripciones emergentes
+	Enable animations	Activar las animaciones
 	Show highlight on rollover	Mostrar resaltado al pasar el cursor
 	Show bounding box when dragging layer	Mostrar el cuadro delimitador al arrastrar la capa
 	System title bar	Barra de título del sistema
@@ -2658,6 +2659,9 @@ cameraData	Lens	Objetivo
 	Spot Healing Brush	Pincel corrector puntual
 	Smudge	Dedo
 	Sponge	Esponja
+	Amount:	Cantidad:
+	Protect:	Proteger:
+	Protect skin tones	Proteger tonos de piel
 # Select and Mask view modes (#1754)
 	Onion Skin	Papel cebolla
 	Marching Ants	Hormigas en marcha
@@ -2688,3 +2692,6 @@ cameraData	Lens	Objetivo
 	Fill with {mode}-neutral color (black)	Rellenar con el color neutro de {mode} (negro)
 	Fill with {mode}-neutral color (50% gray)	Rellenar con el color neutro de {mode} (gris al 50%)
 	(No neutral color exists for {mode} mode.)	(No existe un color neutro para el modo {mode}.)
+	Apply mask to layer before removing?	¿Aplicar la máscara a la capa antes de eliminarla?
+	The layer or its mask changed. Drag the mask onto the Trash again.	La capa o su máscara ha cambiado. Arrastre de nuevo la máscara a la papelera.
+	Delete the vector mask?	¿Eliminar la máscara vectorial?

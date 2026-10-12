@@ -1934,6 +1934,7 @@
 	Show only crosshair while painting	N'afficher que le réticule pendant la peinture
 	Show slice numbers	Afficher les numéros de tranche
 	Show tooltips	Afficher les info-bulles
+	Enable animations	Activer les animations
 	Show highlight on rollover	Afficher la mise en surbrillance au survol
 	Show transformation values	Afficher les valeurs de transformation
 	Slice color	Couleur des tranches
@@ -2995,6 +2996,9 @@ cameraData	Lens	Objectif
 	Spot Healing Brush	Correcteur localisé
 	Smudge	Doigt
 	Sponge	Éponge
+	Amount:	Quantité :
+	Protect:	Protéger :
+	Protect skin tones	Protéger les tons chair
 # Select and Mask view modes (#1754)
 	Onion Skin	Pelure d'oignon
 	Marching Ants	Fourmis en marche
@@ -3025,3 +3029,6 @@ cameraData	Lens	Objectif
 	Fill with {mode}-neutral color (black)	Remplir avec la couleur neutre de {mode} (noir)
 	Fill with {mode}-neutral color (50% gray)	Remplir avec la couleur neutre de {mode} (gris 50 %)
 	(No neutral color exists for {mode} mode.)	(Il n’existe aucune couleur neutre pour le mode {mode}.)
+	Apply mask to layer before removing?	Appliquer le masque au calque avant de le supprimer ?
+	The layer or its mask changed. Drag the mask onto the Trash again.	Le calque ou son masque a changé. Faites de nouveau glisser le masque sur la corbeille.
+	Delete the vector mask?	Supprimer le masque vectoriel ?
