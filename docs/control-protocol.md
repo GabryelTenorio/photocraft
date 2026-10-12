@@ -613,7 +613,9 @@ Dock previews measure the validated candidate arrangement using the renderer's s
 rules, including saved dock sizes, panel/canvas minimums and space released by the source.
 Workspace-edge destinations take precedence over group destinations, except when reordering
 inside the source group's tab strip; document-edge drops preview an inner document-area
-dock. Same-group tab-strip destinations show only an insertion line, including unchanged
+dock. The moving panel UI is 70% opaque over any eligible panel tab strip and fully opaque
+elsewhere; insertion lines and destination highlights retain their normal opacity.
+Document tab strips are unaffected. Same-group tab-strip destinations show only an insertion line, including unchanged
 positions, with the marker contained inside the visible strip. Unchanged releases preserve
 position. Floating groups move from the grip, empty header or top border; their left, right
 and bottom edges and both bottom corners resize within panel and viewport limits. Workspace

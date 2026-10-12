@@ -1339,6 +1339,45 @@ fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str) {
     }
 }
 
+/// The same front-to-back target ordering drives both destination feedback and drag opacity.
+fn eligible_drag_targets(
+    app: &PhotocraftApp,
+    ctx: &egui::Context,
+    host: DockHost,
+    targets: &[craft_ui::docking::DropTarget<String>],
+    excluded: &[String],
+) -> Vec<craft_ui::docking::DropTarget<String>> {
+    let Some(layout) = app.ui.docking.as_ref() else { return Vec::new() };
+    let mut registry = ctx
+        .data(|data| {
+            data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
+        })
+        .unwrap_or_default();
+    registry.insert(host, targets.to_vec());
+    registry.retain(|host, _| match host {
+        DockHost::DocumentView(doc) => app.ui.floating_documents.contains_key(doc),
+        _ => true,
+    });
+    let mut eligible: Vec<_> = registry
+        .values()
+        .flatten()
+        .filter(|target| (crate::document_docking::is_canvas(&target.anchor) || layout.contains(&target.anchor)) && !excluded.contains(&target.anchor))
+        .cloned()
+        .collect();
+    eligible.sort_by_key(|target| {
+        if layout.floating.iter().any(|g| g.panels.contains(&target.anchor)) {
+            2
+        } else if matches!(app.ui.dock_regions.host(&target.anchor), DockHost::DocumentView(_))
+            || crate::document_docking::canvas_document(&target.anchor).is_some()
+        {
+            1
+        } else {
+            0
+        }
+    });
+    eligible
+}
+
 impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn live_drag(&self) -> bool {
         true
@@ -1352,6 +1391,22 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     }
     fn render_drag_ui(&self) -> bool {
         self.host == DockHost::Workspace
+    }
+    fn drag_opacity(&self, ctx: &egui::Context, request: &craft_ui::docking::DropRequest<'_, String>) -> f32 {
+        if self.app.session.prefs().workspace_locked {
+            return 1.0;
+        }
+        let Some(layout) = self.app.ui.docking.as_ref() else { return 1.0 };
+        let whole =
+            request.whole_group || ctx.data(|data| data.get_temp::<HeaderDrag>(egui::Id::new("photocraft-panel-docking").with("header-drag"))).is_some();
+        let excluded = if whole { group_members(layout, request.panel) } else { Vec::new() };
+        let targets = eligible_drag_targets(self.app, ctx, self.host, request.targets, &excluded);
+        let strip = targets.iter().rev().find(|target| target.rect.contains(request.pointer)).is_some_and(|target| {
+            !crate::document_docking::is_canvas(&target.anchor)
+                && craft_ui::docking::resolve_drop(request.panel, request.pointer, std::slice::from_ref(target))
+                    .is_some_and(|proposal| proposal.insertion.is_some())
+        });
+        if strip { 0.7 } else { 1.0 }
     }
     fn floating_size(&self, panel: &String) -> Option<egui::Vec2> {
         let rect = floating_rect(self.app, panel, &json!({})).ok()?;
@@ -1381,35 +1436,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let whole = request.whole_group || ctx.data(|data| data.get_temp::<HeaderDrag>(key.with("header-drag"))).is_some();
         let panel = if whole { selected_member(layout, request.panel) } else { request.panel.clone() };
         let members = if whole { group_members(layout, &panel) } else { vec![panel.clone()] };
-        let mut registry = ctx
-            .data(|data| {
-                data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
-            })
-            .unwrap_or_default();
-        registry.insert(self.host, request.targets.to_vec());
-        registry.retain(|host, _| match host {
-            DockHost::DocumentView(doc) => self.app.ui.floating_documents.contains_key(doc),
-            _ => true,
-        });
-        let mut eligible: Vec<_> = registry
-            .values()
-            .flatten()
-            .filter(|target| {
-                (crate::document_docking::is_canvas(&target.anchor) || layout.contains(&target.anchor)) && (!whole || !members.contains(&target.anchor))
-            })
-            .cloned()
-            .collect();
-        eligible.sort_by_key(|target| {
-            if layout.floating.iter().any(|g| g.panels.contains(&target.anchor)) {
-                2
-            } else if matches!(self.app.ui.dock_regions.host(&target.anchor), DockHost::DocumentView(_))
-                || crate::document_docking::canvas_document(&target.anchor).is_some()
-            {
-                1
-            } else {
-                0
-            }
-        });
+        let eligible = eligible_drag_targets(self.app, ctx, self.host, request.targets, if whole { &members } else { &[] });
         let proposal = eligible
             .iter()
             .rev()

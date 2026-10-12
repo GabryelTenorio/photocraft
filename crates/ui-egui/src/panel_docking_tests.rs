@@ -1096,6 +1096,7 @@ fn first_regional_drop_from_legacy_custom_dock_accounts_for_the_icon_rail() {
 }
 
 fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
+    assert_drag_opacity(h, 0.7);
     let feedback = drop_preview(h).expect("tab-strip feedback");
     assert!(feedback.preview.is_none(), "same-group reorder must not highlight the group");
     let marker = feedback.insertion.expect("insertion marker even at unchanged slots");
@@ -1103,6 +1104,55 @@ fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
     let tab = tab_rect(h, panel);
     assert!(marker.top() >= tab.top() - 0.1 && marker.bottom() <= tab.bottom() + 0.1);
     assert!(marker.width() > 0.0 && marker.width() <= 2.01);
+    let accent = crate::theme::Tokens::get(&h.ctx).accent;
+    assert!(h.output().shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == marker && r.fill == accent)));
+}
+fn assert_drag_opacity(h: &Harness<'static, PhotocraftApp>, opacity: f32) {
+    fn large_fill(shape: &egui::Shape, fill: egui::Color32) -> bool {
+        match shape {
+            egui::Shape::Rect(r) => r.fill == fill && r.rect.width() >= 200.0 && r.rect.height() >= 200.0,
+            egui::Shape::Vec(shapes) => shapes.iter().any(|shape| large_fill(shape, fill)),
+            _ => false,
+        }
+    }
+    let card = crate::theme::Tokens::get(&h.ctx).card;
+    assert!(h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(opacity))), "moving UI opacity {opacity}");
+    if opacity == 1.0 {
+        assert!(!h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(0.7))));
+    }
+}
+
+#[test]
+fn drag_opacity_tracks_same_and_cross_group_strips_and_restores_outside() {
+    for floating in [false, true] {
+        let mut app = app();
+        enable_workspace(&mut app);
+        if floating {
+            app.run("window.panel.group", json!({"panel":"properties","operation":"float","x":150,"y":130,"width":330,"height":450})).unwrap();
+        }
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let before = h.state().ui.docking.clone();
+        let from = tab_rect(&h, "layers").center();
+        let own = egui::pos2(tab_rect(&h, "layers").left() + 3.0, from.y);
+        hold_drag(&mut h, from, own);
+        assert_insertion_only(&h, "layers");
+        capture_insertion(&mut h, &format!("opacity-own-{floating}"));
+        let outside = rendered_group(&h, CANVAS).center();
+        h.event(Event::PointerMoved(outside));
+        h.run_steps(2);
+        assert_drag_opacity(&h, 1.0);
+        capture_insertion(&mut h, &format!("opacity-outside-{floating}"));
+        let target = tab_rect(&h, "properties").center();
+        h.event(Event::PointerMoved(target));
+        h.run_steps(2);
+        assert_drag_opacity(&h, 0.7);
+        let feedback = drop_preview(&h).unwrap();
+        assert!(feedback.insertion.is_some() && feedback.preview.is_some());
+        assert_eq!(h.state().ui.docking, before);
+        capture_insertion(&mut h, &format!("opacity-cross-{floating}"));
+        release_and_compare_preview(&mut h, target, "layers");
+        assert!(group_members(h.state().ui.docking.as_ref().unwrap(), "properties").contains(&"layers".to_owned()));
+    }
 }
 fn capture_insertion(h: &mut Harness<'static, PhotocraftApp>, name: &str) {
     if let Some(directory) = std::env::var_os("PHOTOCRAFT_DOCK_PREVIEW_FIXTURES").map(std::path::PathBuf::from) {
