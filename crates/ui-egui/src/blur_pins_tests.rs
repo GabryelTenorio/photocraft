@@ -275,3 +275,36 @@ fn iris_pins_are_cleaned() {
     assert_eq!((s.rx, s.ry, s.angle, s.roundness, s.feather), (0.01, 1.0, -180.0, 100.0, 0.99));
     h.run_steps(2);
 }
+
+/// Alt+Cancel → Reset (#3871) starts the workspace again from one pin in the middle, as when it
+/// opened, instead of leaving it with no pins; the bounds captured on opening stay. An Iris pin
+/// gets the command's default shape back.
+#[test]
+fn alt_reset_starts_again_from_one_pin() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let id = crate::filter_dialog::open(&mut app, COMMAND).unwrap();
+    let mut fields = app.ui.dialog_mut(id).unwrap().fields.clone();
+    let bounds = fields["__bounds"].clone();
+    fields.insert("pins".into(), json!([{"x": 0.1, "y": 0.2, "blur": 40.0}, {"x": 0.8, "y": 0.7, "blur": 90.0}]));
+    fields.insert("__selected".into(), json!(1));
+    assert!(crate::dialog_alt_reset::supported(&fields));
+    crate::dialog_alt_reset::apply(&mut app, &egui::Context::default(), &mut fields);
+    assert_eq!(pins(&fields), [Pin { x: 0.5, y: 0.5, blur: 15.0, iris: None }]);
+    assert_eq!(selected(&fields), Some(0));
+    assert_eq!(fields["__bounds"], bounds);
+    assert!(!fields.contains_key("centerX") && !fields.contains_key("centerY"), "{fields:?}");
+    let id = crate::filter_dialog::open(&mut app, IRIS).unwrap();
+    let mut fields = app.ui.dialog_mut(id).unwrap().fields.clone();
+    let bent = json!([{"x": 0.2, "y": 0.2, "blur": 40.0, "radiusX": 0.1, "radiusY": 0.1, "angle": 30.0, "roundness": 50.0, "feather": 0.2}]);
+    fields.insert("pins".into(), bent);
+    crate::dialog_alt_reset::apply(&mut app, &egui::Context::default(), &mut fields);
+    let list = pins(&fields);
+    assert_eq!(list.len(), 1);
+    assert_eq!((list[0].x, list[0].y, list[0].blur), (0.5, 0.5, 15.0));
+    // The dialog's defaults come from the command spec (f32), so compare loosely.
+    let (s, d) = (list[0].iris.unwrap(), Iris::default());
+    for (got, want) in [(s.rx, d.rx), (s.ry, d.ry), (s.angle, d.angle), (s.roundness, d.roundness), (s.feather, d.feather)] {
+        assert!((got - want).abs() < 1e-6, "{s:?}");
+    }
+}
