@@ -50,7 +50,15 @@ fn setup(h: &mut Harness, width: u32, height: u32, zoom: f32, center: [f32; 2]) 
 }
 
 fn open(h: &mut Harness) -> u64 {
-    control(h, "ui.menu.invoke", json!({"id":"image.rotation.arbitrary"}))["dialog"].as_u64().expect("rotation dialog")
+    let id = control(h, "ui.menu.invoke", json!({"id":"image.rotation.arbitrary"}))["dialog"].as_u64().expect("rotation dialog");
+    let area = egui::Id::new(("dialog", id));
+    let rect = h.ctx.memory(|m| m.area_rect(area)).expect("laid-out dialog");
+    let screen = h.ctx.content_rect();
+    // The larger preview pane can cover the image's uppermost blue pixels. Place the dialog
+    // beside this fixture before measuring its canvas bounds, keeping the pan/visibility checks.
+    h.ctx.data_mut(|d| d.insert_temp(area, egui::vec2((screen.width() - rect.width() - 8.0).max(0.0), 8.0)));
+    h.run_steps(4);
+    id
 }
 
 fn angle(h: &mut Harness, id: u64, value: f64) {
