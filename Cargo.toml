@@ -4,7 +4,7 @@ members = ["crates/*", "apps/*", "xtask"]
 default-members = ["crates/*", "apps/photocraft", "apps/photocraft-cli", "xtask"]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.8.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -109,36 +109,22 @@ opt-level = "z"
 [profile.wasm-release.package.photocraft-web]
 opt-level = "z"
 
-# File-format parsing and serialization favor browser download size; pixel kernels keep level 3.
+# Large crates off the per-frame and per-pixel paths: the document model, file parsers run once
+# per open/save, JSON (settings, presets, control channel), SVG parsing, and shader translation
+# (runs when a pipeline is created). "z" keeps the wasm well under the size gate.
+[profile.wasm-release.package.photocraft-doc]
+opt-level = "z"
 [profile.wasm-release.package.photocraft-psd]
 opt-level = "z"
 [profile.wasm-release.package.photocraft-format]
 opt-level = "z"
-[profile.wasm-release.package.photocraft-doc]
-opt-level = "z"
-[profile.wasm-release.package.photocraft-codecs]
-opt-level = "z"
-[profile.wasm-release.package.image]
-opt-level = "z"
-
-# Shader and protocol parsing favor download size; runtime pixel kernels retain level 3.
-[profile.wasm-release.package.naga]
+[profile.wasm-release.package.photocraft-affinity]
 opt-level = "z"
 [profile.wasm-release.package.serde_json]
 opt-level = "z"
-[profile.wasm-release.package.wasmparser]
+[profile.wasm-release.package.usvg]
 opt-level = "z"
-[profile.wasm-release.package.read-fonts]
-opt-level = "z"
-[profile.wasm-release.package.exr]
-opt-level = "z"
-[profile.wasm-release.package.tiff]
-opt-level = "z"
-
-# Browser UI layout and painting also favor download size; native profiles stay unchanged.
-[profile.wasm-release.package.egui]
-opt-level = "z"
-[profile.wasm-release.package.epaint]
+[profile.wasm-release.package.naga]
 opt-level = "z"
 
 [profile.wasm-release.package.photocraft-raster]

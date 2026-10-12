@@ -50,15 +50,7 @@ fn setup(h: &mut Harness, width: u32, height: u32, zoom: f32, center: [f32; 2]) 
 }
 
 fn open(h: &mut Harness) -> u64 {
-    let id = control(h, "ui.menu.invoke", json!({"id":"image.rotation.arbitrary"}))["dialog"].as_u64().expect("rotation dialog");
-    let area = egui::Id::new(("dialog", id));
-    let width = h.ctx.memory(|m| m.area_rect(area)).expect("laid-out dialog").width();
-    // The preview thumbnail makes the dialog tall enough to hide the image's top corner.
-    // Keep the synthetic canvas image unobscured so its visible bounds measure its center.
-    let screen = h.ctx.content_rect();
-    h.ctx.data_mut(|m| m.insert_temp(area, egui::vec2(screen.width() - width - 8.0, 100.0)));
-    h.run_steps(4);
-    id
+    control(h, "ui.menu.invoke", json!({"id":"image.rotation.arbitrary"}))["dialog"].as_u64().expect("rotation dialog")
 }
 
 fn angle(h: &mut Harness, id: u64, value: f64) {

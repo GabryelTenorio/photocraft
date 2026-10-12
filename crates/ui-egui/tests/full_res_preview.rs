@@ -24,8 +24,6 @@ fn harness() -> Option<Harness> {
             PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
             let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
             if let Some(rs) = cc.wgpu_render_state.as_ref() {
-                // Match eframe's renderer input instead of egui's 2048-pixel fallback.
-                cc.egui_ctx.input_mut(|input| input.max_texture_side = rs.device.limits().max_texture_dimension_2d as usize);
                 app.set_wgpu(rs.clone());
             }
             app
