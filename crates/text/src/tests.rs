@@ -381,6 +381,41 @@ fn styles_change_pixels() {
     assert!(hrect.width() as f32 > prect.width() as f32 * 1.7);
 }
 
+/// #3705: Faux bold dilation must scale with horizontal and vertical glyph scaling.
+#[test]
+fn faux_bold_scales_with_glyph_scaling() {
+    let mut e = TextEngine::new();
+    let base = CharStyle { size_pt: 40.0, ..Default::default() };
+    let ink = |e: &mut TextEngine, s: CharStyle| {
+        let (_, r) = e.render(&TextLayer { transform: Affine::translate(5.0, 50.0), ..styled("Hi", s) }, 72.0, PixelFormat::RGBA8);
+        (alpha_sum(&r.surface, r.rect), r.rect)
+    };
+    let (_plain, prect) = ink(&mut e, base.clone());
+    let (_bold, brect) = ink(&mut e, CharStyle { faux_bold: true, ..base.clone() });
+    let unscaled_extra_w = brect.width() - prect.width();
+    let unscaled_extra_h = brect.height() - prect.height();
+
+    // With 2x horizontal scale, the horizontal dilation scales with the glyph:
+    let hscaled = CharStyle { size_pt: 40.0, horizontal_scale: 2.0, ..Default::default() };
+    let (_, phrect) = ink(&mut e, hscaled.clone());
+    let (_, bhrect) = ink(&mut e, CharStyle { faux_bold: true, ..hscaled });
+    let hscaled_extra_w = bhrect.width() - phrect.width();
+    assert!(
+        hscaled_extra_w >= unscaled_extra_w * 2 - 1 && hscaled_extra_w <= unscaled_extra_w * 2 + 1,
+        "hscaled extra width {hscaled_extra_w} vs unscaled {unscaled_extra_w}"
+    );
+
+    // With 2x vertical scale, the vertical dilation scales with the glyph:
+    let vscaled = CharStyle { size_pt: 40.0, vertical_scale: 2.0, ..Default::default() };
+    let (_, pvrect) = ink(&mut e, vscaled.clone());
+    let (_, bvrect) = ink(&mut e, CharStyle { faux_bold: true, ..vscaled });
+    let vscaled_extra_h = bvrect.height() - pvrect.height();
+    assert!(
+        vscaled_extra_h >= unscaled_extra_h * 2 - 1 && vscaled_extra_h <= unscaled_extra_h * 2 + 1,
+        "vscaled extra height {vscaled_extra_h} vs unscaled {unscaled_extra_h}"
+    );
+}
+
 #[test]
 fn multicolor_runs() {
     let mut e = TextEngine::new();
@@ -733,6 +768,22 @@ fn build_txt2_round_trips_kerning_modes() {
     crate::psd::apply_txt2(&mut back, &tysh, &txt2);
     let modes: Vec<(usize, Kerning)> = back.char_runs().iter().map(|r| (r.len, r.style.kerning)).collect();
     assert_eq!(modes, vec![(1, Kerning::Off), (1, Kerning::Metrics)]);
+}
+
+/// #3514: the document `Txt2` is only needed for a non-Metrics (`Optical`) auto-kern mode. A fresh
+/// document of ordinary Metrics (or EngineData-carried Off) text must not write Photoshop's empty
+/// stub, which some readers (Photopea) reject.
+#[test]
+fn needs_txt2_only_for_optical() {
+    use photocraft_doc::text::Kerning;
+    let style = |kerning: Kerning| CharStyle { kerning, ..Default::default() };
+    let metrics = runs_of("AV", &[(2, style(Kerning::Metrics))]);
+    assert!(!crate::psd::needs_txt2(&[(0, &metrics)]));
+    let off = runs_of("AV", &[(2, style(Kerning::Off))]);
+    assert!(!crate::psd::needs_txt2(&[(0, &off)]), "Off lives in EngineData, not Txt2");
+    let optical = runs_of("AV", &[(1, style(Kerning::Optical)), (1, CharStyle::default())]);
+    assert!(crate::psd::needs_txt2(&[(0, &optical)]));
+    assert!(!crate::psd::needs_txt2(&[]));
 }
 
 /// A kept `Txt2` object — same text, so its extras are still true — keeps everything the file
@@ -1488,4 +1539,44 @@ fn translate_tysh_moves_only_the_translation() {
     assert_eq!((&moved[..34], &moved[50..]), (&tysh[..34], &tysh[50..]));
     assert_eq!(crate::psd::parse_tysh(&tysh).unwrap().bounds, back.bounds, "bounds are in text space");
     assert!(crate::psd::translate_tysh(&tysh[..40], 1.0, 1.0).is_none(), "a truncated block is refused");
+}
+
+/// The four values after the `TySh` warp descriptor are big-endian f32, as Photoshop writes them:
+/// zeros for unwarped type, the text-space bounds for warped type.
+#[test]
+fn tysh_trailing_bounds_are_f32() {
+    use photocraft_doc::text::TextWarp;
+    let tail = |b: &[u8]| -> [f32; 4] {
+        let t = b.get(b.len() - 16..).unwrap();
+        std::array::from_fn(|i| f32::from_be_bytes(t[i * 4..i * 4 + 4].try_into().unwrap()))
+    };
+    let ink = [0.0, -34.316406, 288.90625, 15.058594];
+    let plain = crate::psd::build_tysh(&point("Type", 20.0), 72.0, Some(ink));
+    assert_eq!(tail(&plain), [0.0; 4]);
+    let warped = TextLayer {
+        warp: Some(TextWarp { style: "warpArc".into(), value: 50.0, horizontal_distortion: 0.0, vertical_distortion: 0.0, horizontal: true }),
+        ..point("Type", 20.0)
+    };
+    let bytes = crate::psd::build_tysh(&warped, 72.0, Some(ink));
+    assert_eq!(tail(&bytes), ink);
+    let parsed = crate::psd::parse_tysh(&bytes).unwrap();
+    assert_eq!(parsed.bounds, ink);
+    assert_eq!(crate::psd::write_tysh(&parsed), bytes);
+}
+
+/// EngineData's `AntiAlias` numbers as Photoshop writes them, beside the `AntA` descriptor:
+/// 0 None, 1 Crisp, 2 Strong, 3 Smooth, 4 Sharp. Read back from EngineData alone (no `AntA`),
+/// every mode survives.
+#[test]
+fn engine_data_antialias_numbers_match_photoshop() {
+    use photocraft_doc::text::AntiAlias;
+    for (mode, n) in [(AntiAlias::None, 0), (AntiAlias::Crisp, 1), (AntiAlias::Strong, 2), (AntiAlias::Smooth, 3), (AntiAlias::Sharp, 4)] {
+        let t = TextLayer { antialias: mode, ..point("Type", 20.0) };
+        let mut tysh = crate::psd::parse_tysh(&crate::psd::build_tysh(&t, 72.0, None)).unwrap();
+        let e = crate::psd::engine_data(&tysh.text).unwrap();
+        assert_eq!(e.path(&["EngineDict", "AntiAlias"]).and_then(crate::engine_data::Value::as_f64), Some(f64::from(n)), "{mode:?}");
+        tysh.text.items.retain(|(k, _)| !k.is("AntA"));
+        let back = crate::psd::text_layer_from_tysh(&crate::psd::write_tysh(&tysh), 72.0).unwrap();
+        assert_eq!(back.antialias, mode, "{n}");
+    }
 }
