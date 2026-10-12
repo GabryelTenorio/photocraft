@@ -16,7 +16,7 @@ use photocraft_cms::{Builtin, Intent, Profile, Transform};
 use photocraft_codecs::{self as codecs, ChannelLayout, Format, Image, SampleType};
 pub use photocraft_raw::Demosaic;
 use photocraft_raw::{CameraLook, DevelopOptions, Limits, RawError, Reference, Sensor, WhiteBalance};
-pub use photocraft_raw::{ChromaNoise, ColorNoise, RetoneCache, StageNoise, Tone, retone, retone_with};
+pub use photocraft_raw::{ChromaNoise, ColorNoise, EXTENSIONS, RetoneCache, StageNoise, Tone, retone, retone_with};
 
 use crate::flat::image_to_document;
 use crate::{ImportResult, IoError};
@@ -315,10 +315,16 @@ pub fn fit_preview_look(raw: &[u8], sensor: &Sensor, opts: &DevelopOptions) -> R
         .or_else(|| previews.iter().max_by_key(|p| long(p)))
         .ok_or("no embedded JPEG preview")?;
     let img = upright_preview(raw, pick.jpeg).map_err(|e| format!("the embedded preview does not decode: {e}"))?;
+    let rgb = srgb8(&img)?;
+    let (w, h) = img.dimensions();
+    photocraft_raw::fit_look(sensor, opts, &Reference { width: w, height: h, rgb: &rgb }).map_err(|e| e.to_string())
+}
+
+/// An 8-bit RGB preview's pixels in sRGB: converted when it carries another ICC profile.
+fn srgb8(img: &Image) -> Result<Cow<'_, [u8]>, String> {
     if img.layout() != ChannelLayout::Rgb || img.sample_type() != SampleType::U8 {
         return Err("the embedded preview is not 8-bit RGB".into());
     }
-    let (w, h) = img.dimensions();
     let mut rgb: Cow<[u8]> = Cow::Borrowed(img.data());
     if let Some(icc) = img.icc.as_deref() {
         let srgb = Builtin::Srgb.profile();
@@ -330,7 +336,47 @@ pub fn fit_preview_look(raw: &[u8], sensor: &Sensor, opts: &DevelopOptions) -> R
             rgb = Cow::Owned(out);
         }
     }
-    photocraft_raw::fit_look(sensor, opts, &Reference { width: w, height: h, rgb: &rgb }).map_err(|e| e.to_string())
+    Ok(rgb)
+}
+
+/// A small upright picture of a raw file for a filmstrip (the open-time Camera Raw dialog's,
+/// when several raws open together), from its embedded JPEG preview without decoding the sensor
+/// data: the smallest preview whose long edge reaches `max_edge` (else the largest), in sRGB,
+/// box-reduced so its long edge is at most `max_edge`. `(width, height, RGBA8)`, or `None`
+/// without a decodable 8-bit RGB preview.
+pub fn preview_thumbnail(bytes: &[u8], max_edge: u32) -> Option<(u32, u32, Vec<u8>)> {
+    let previews = photocraft_raw::embedded_previews(bytes);
+    let long = |p: &photocraft_raw::Preview| p.width.max(p.height);
+    let pick = previews.iter().filter(|p| long(p) >= max_edge).min_by_key(|p| long(p)).or_else(|| previews.iter().max_by_key(|p| long(p)))?;
+    let img = upright_preview(bytes, pick.jpeg).ok()?;
+    let rgb = srgb8(&img).ok()?;
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    if w == 0 || h == 0 || rgb.len() < w.checked_mul(h)?.checked_mul(3)? {
+        return None;
+    }
+    let k = w.max(h).div_ceil(max_edge.max(1) as usize).max(1);
+    let (tw, th) = (w.div_ceil(k), h.div_ceil(k));
+    let mut out = vec![0u8; tw * th * 4];
+    for (ty, row) in out.chunks_exact_mut(tw * 4).enumerate() {
+        for (tx, px) in row.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let mut acc = [0u32; 3];
+            let mut n = 0u32;
+            for y in ty * k..((ty + 1) * k).min(h) {
+                for x in tx * k..((tx + 1) * k).min(w) {
+                    if let Some(p) = rgb.get((y * w + x) * 3..(y * w + x) * 3 + 3) {
+                        for c in 0..3 {
+                            acc[c] += u32::from(p[c]);
+                        }
+                        n += 1;
+                    }
+                }
+            }
+            let n = n.max(1);
+            px.copy_from_slice(&[(acc[0] / n) as u8, (acc[1] / n) as u8, (acc[2] / n) as u8, 255]);
+        }
+    }
+    Some((tw as u32, th as u32, out))
 }
 
 /// Decodes and develops; a file without colour calibration gets a look fitted to its preview.
