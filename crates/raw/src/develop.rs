@@ -1,9 +1,10 @@
 //! Raw development: linearize, subtract black, scale to white, white
 //! balance, clip highlights, demosaic, camera → XYZ (D50) → linear ProPhoto,
-//! exposure, Dehaze, Shadows / Highlights / Clarity / Texture and the black
+//! exposure, colour noise reduction (`chroma.rs`), Dehaze, Shadows / Highlights / Clarity / Texture and the black
 //! point (`tone.rs`), the profile's tone curve, gamma 1.8 encode to 16 bits,
 //! orientation.
 
+use crate::chroma::{ColorNoise, NoiseFrame, reduce_color_noise};
 use crate::color::{self, Mat3};
 use crate::demosaic::{Demosaic, PAD, Padded, Pattern, demosaic, demosaic_cfa};
 use crate::error::{RawError, Result};
@@ -36,6 +37,10 @@ pub struct DevelopOptions {
     /// Camera Raw's Shadows, Highlights, Clarity, Texture and Dehaze, applied in linear light
     /// before the tone curve.
     pub tone: Tone,
+    /// Camera Raw's Color noise reduction (Color, Detail, Smoothness), applied to the linear
+    /// ProPhoto data right after demosaicing, before the exposure gain (`chroma.rs`). Off by
+    /// default.
+    pub color_noise: ColorNoise,
     pub limits: Limits,
     /// A colour rendering fitted to the camera's own JPEG ([`crate::fit_look`]). When set it
     /// replaces the file's colour calibration (or the neutral fallback) and adds its tone curve.
@@ -50,6 +55,7 @@ impl Default for DevelopOptions {
             exposure: 0.0,
             orient: true,
             tone: Tone::default(),
+            color_noise: ColorNoise::default(),
             limits: Limits::default(),
             camera_look: None,
         }
@@ -192,6 +198,22 @@ pub(crate) fn resolve_neutral(s: &Sensor, opts: &DevelopOptions, sc: &Scale, war
     })
 }
 
+/// The white-balance multipliers [`develop_sensor`] applies to the camera channels for `opts`
+/// (smallest 1) and the matrix from the white-balanced camera values to linear ProPhoto RGB
+/// (before exposure), with the same look or calibration: what a preview needs to redo a
+/// white-balance change on developed pixels.
+pub fn white_balance_of(s: &Sensor, opts: &DevelopOptions) -> Result<([f64; 3], Mat3)> {
+    let sc = Scale::new(s);
+    let neutral = resolve_neutral(s, opts, &sc, &mut Vec::new())?;
+    let look = opts.camera_look.as_ref().filter(|l| l.is_usable());
+    let to_xyz = match (look, s.color.balanced_to_xyz_d50(neutral)) {
+        (Some(l), _) => l.to_xyz,
+        (None, Some(m)) => m,
+        (None, None) => color::srgb_to_xyz_d50(),
+    };
+    Ok((neutral.map(|v| 1.0 / v), color::mul(&color::xyz_d50_to_prophoto(), &to_xyz)))
+}
+
 /// Develops sensor data.
 pub fn develop_sensor(s: &Sensor, opts: &DevelopOptions) -> Result<Developed> {
     let c = s.crop;
@@ -204,7 +226,9 @@ pub fn develop_sensor(s: &Sensor, opts: &DevelopOptions) -> Result<Developed> {
     // Working buffers: one f32 plane plus f32 RGB plus u16 RGB per pixel, and
     // a green plane for non-Bayer patterns.
     let bayer = s.cfa.as_ref().is_none_or(|cfa| cfa.is_bayer());
-    opts.limits.check(c.width as u64, c.height as u64, if bayer { 4 + 12 + 6 } else { 4 + 4 + 12 + 6 })?;
+    // Colour noise reduction adds its planes and pyramid (about 48 bytes a pixel).
+    let nr = if opts.color_noise.is_off() { 0 } else { 48 };
+    opts.limits.check(c.width as u64, c.height as u64, if bayer { 4 + 12 + 6 } else { 4 + 4 + 12 + 6 } + nr)?;
     let mut warnings = s.warnings.clone();
     let sc = Scale::new(s);
 
@@ -341,6 +365,23 @@ pub fn develop_sensor(s: &Sensor, opts: &DevelopOptions) -> Result<Developed> {
     // point, the look's (or the profile's) tone curve, gamma 1.8, 16 bits.
     let y_row = color::rgb_to_xyz(color::ROMM, color::D50_XY)[1].map(|v| v as f32);
     let lum = |v: &[f32; 3]| y_row[0] * v[0] + y_row[1] * v[1] + y_row[2] * v[2];
+    // Colour noise reduction works on linear ProPhoto (luminance kept) relative to the sensor's
+    // white, before the exposure gain: its strength follows the sensor's noise, so exposure
+    // changes nothing. The data is taken there first and the matrix below becomes the gain.
+    // A monochrome file has no colour to clean.
+    let out_m = if opts.color_noise.is_off() || mono {
+        out_m
+    } else {
+        let g = gain as f32;
+        let m = out_m.map(|r| r.map(|v| v / g));
+        par::chunks_mut(&mut rgb, band * w * 3, |_, chunk| {
+            for p in chunk.as_chunks_mut::<3>().0 {
+                *p = [0, 1, 2].map(|k| m[k][0] * p[0] + m[k][1] * p[1] + m[k][2] * p[2]);
+            }
+        });
+        reduce_color_noise(&mut rgb, 3, w, h, &opts.color_noise, &NoiseFrame { weights: y_row, pixel_scale: 1.0, noise: None });
+        [[g, 0.0, 0.0], [0.0, g, 0.0], [0.0, 0.0, g]]
+    };
     // Monochrome: the one sample, grey; no colour matrix.
     let pro = |p: &[f32]| if mono { [grey_gain * p[0]; 3] } else { [0, 1, 2].map(|k| out_m[k][0] * p[0] + out_m[k][1] * p[1] + out_m[k][2] * p[2]) };
     let haze = Haze::new(w, h, |i| pro(&rgb[i * 3..i * 3 + 3]), opts.tone.dehaze);
@@ -490,7 +531,8 @@ pub(crate) fn tone(curve: &[[f32; 2]], v: f32) -> f32 {
     }
     let i = curve.partition_point(|p| p[0] <= v).clamp(1, curve.len() - 1);
     let ([x0, y0], [x1, y1]) = (curve[i - 1], curve[i]);
-    let f = (v.log2() - x0.log2()) / (x1.log2() - x0.log2());
+    // Logarithmic between knots; linear from a knot at black, where log₂ has no value.
+    let f = if x0 > 0.0 { (v.log2() - x0.log2()) / (x1.log2() - x0.log2()) } else { (v - x0) / (x1 - x0) };
     y0 + (y1 - y0) * f
 }
 
