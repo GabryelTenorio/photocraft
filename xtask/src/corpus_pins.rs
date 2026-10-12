@@ -40,6 +40,8 @@ pub const ASSET_STORE_TEMPLATE_COMMIT: &str = "f671981ee89d15526285b3cc87b4393d3
 pub const AFFINITY_SAMPLES_COMMIT: &str = "96aca6bd86bbe7a677f1cf0630bd832d23943be8";
 /// PngSuite (public domain), a fixed release archive.
 pub const PNGSUITE_URL: &str = "http://www.schaik.com/pngsuite/PngSuite-2017jul19.tgz";
+/// SHA-256 of the 2017-07-19 release archive, checked before invoking tar.
+pub const PNGSUITE_SHA256: &str = "0294b244c95a8342c01b00010cf34abdcabc7c6a34fd0fe1bd963917537bfdc8";
 
 /// `corpus/photoshop`: 258 PSDs authored with Photoshop by the photocraft-corpus generator.
 pub const PHOTOSHOP: PinnedCorpus = PinnedCorpus {

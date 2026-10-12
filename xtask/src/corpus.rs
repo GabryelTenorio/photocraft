@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::corpus_pins::{self, AG_PSD_COMMIT, HEIC_RS_COMMIT, OPENEXR_COMMIT, PHOTOCRAFT_CORPUS_COMMIT, PILLOW_HEIF_COMMIT, PNGSUITE_URL, PSD_TOOLS_COMMIT};
-use crate::pinned::{PinnedCorpus, USER_AGENT};
+use crate::pinned::PinnedCorpus;
 use crate::{cargo, root, run};
 
 /// Crates with corpus tests (behind their `corpus` feature).
@@ -37,7 +37,7 @@ pub fn cmd(args: &[&str]) -> Result<(), String> {
         return fetch_all(args.contains(&"--local"), update);
     }
     if args.contains(&"--pngsuite") || args.contains(&"--download") {
-        fetch_pngsuite()?;
+        crate::pngsuite::fetch()?;
         did = true;
     }
     if args.contains(&"--psd") {
@@ -93,7 +93,7 @@ fn local_clone() -> Result<PathBuf, String> {
 /// `corpus/photoshop` is copied from the authoring clone of photocraft-corpus instead. With
 /// `update`, every pinned corpus is refetched and its manifest rewritten (`--update-manifest`).
 pub fn fetch_all(local: bool, update: bool) -> Result<(), String> {
-    fetch_pngsuite()?;
+    crate::pngsuite::fetch()?;
     fetch_pinned(local, update, fetch_one)?;
     println!("all corpora present and verified under {}", root().join("corpus").display());
     Ok(())
@@ -118,8 +118,7 @@ fn status(present: bool) -> &'static str {
 
 fn list() {
     let corpus = root().join("corpus");
-    let png = corpus.join("pngsuite");
-    let png_ok = pngsuite_count(&png) > 0;
+    let png_ok = crate::pngsuite::is_current();
     println!(
         "Test corpora live under {} (gitignored, never committed). The corpus tests are opt-in
 (cargo feature `corpus`) and fail, not skip, when a corpus is missing. CI always runs them.
@@ -141,7 +140,8 @@ fn list() {
                      manifest xtask/exr-corpus.sha256. Fetch: --exr
   corpus/affinity/   [{}] public Affinity documents and #1606 samples (CC0, MIT), with PNG references;
                      manifest xtask/affinity-corpus.sha256. Fetch: --affinity
-  corpus/pngsuite/   [{}] PngSuite (public domain), {PNGSUITE_URL}. Fetch: --pngsuite
+  corpus/pngsuite/   [{}] PngSuite (public domain), {PNGSUITE_URL}.
+                     archive and files sha256-verified, manifest xtask/pngsuite.sha256. Fetch: --pngsuite
   corpus/pixls/      [opt-in] real camera raws from raw.pixls.us (public domain), one per decode
                      path plus the known-unsupported packed ORF. Fetch: --pixls (opt-in)
 
@@ -160,33 +160,6 @@ Pins: xtask/src/corpus_pins.rs. Moving one: change it, then --<name> --update-ma
         status(corpus_pins::AFFINITY.is_current()),
         status(png_ok),
     );
-}
-
-fn pngsuite_count(dir: &std::path::Path) -> usize {
-    std::fs::read_dir(dir).map(|d| d.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "png")).count()).unwrap_or(0)
-}
-
-/// PngSuite: 175 PNGs from a fixed release archive (skipped when already present).
-fn fetch_pngsuite() -> Result<(), String> {
-    let corpus = root().join("corpus");
-    let dest = corpus.join("pngsuite");
-    let have = pngsuite_count(&dest);
-    if have >= 175 {
-        println!("pngsuite: {have} PNG files in {} already", dest.display());
-        return Ok(());
-    }
-    std::fs::create_dir_all(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
-    let tgz = corpus.join("PngSuite-2017jul19.tgz");
-    let mut curl = Command::new("curl");
-    curl.args(["-fsSL", "--retry", "3", "-A", USER_AGENT, "-o"]).arg(&tgz).arg(PNGSUITE_URL);
-    run(curl, &format!("curl {PNGSUITE_URL}"))?;
-    let mut tar = Command::new("tar");
-    tar.arg("-xzf").arg(&tgz).arg("-C").arg(&dest);
-    run(tar, "tar -xzf PngSuite-2017jul19.tgz")?;
-    let _ = std::fs::remove_file(&tgz);
-    let n = pngsuite_count(&dest);
-    println!("pngsuite: {n} PNG files in {}", dest.display());
-    if n == 0 { Err("no PNG files extracted".into()) } else { Ok(()) }
 }
 
 /// Files changed relative to `origin/main` (committed, staged or not).

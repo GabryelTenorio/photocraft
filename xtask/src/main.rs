@@ -10,6 +10,7 @@ mod ico;
 mod layers;
 mod perf;
 mod pinned;
+mod pngsuite;
 mod scorecard;
 mod sha256;
 mod stats;
