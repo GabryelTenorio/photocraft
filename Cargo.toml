@@ -116,6 +116,13 @@ opt-level = "z"
 [profile.wasm-release.package.photocraft-psd]
 opt-level = "z"
 
+# Document data and history bookkeeping favor download size in the browser. Keep native
+# profiles and the dedicated pixel-processing overrides below unchanged.
+[profile.wasm-release.package.photocraft-doc]
+opt-level = "z"
+[profile.wasm-release.package.photocraft-ops]
+opt-level = "z"
+
 [profile.wasm-release.package.photocraft-raster]
 opt-level = 3
 [profile.wasm-release.package.photocraft-color]
