@@ -1950,6 +1950,7 @@
 	Show only crosshair while painting	Beim Malen nur Fadenkreuz zeigen
 	Show slice numbers	Slice-Nummern anzeigen
 	Show tooltips	Tooltips anzeigen
+	Enable animations	Animationen aktivieren
 	Show highlight on rollover	Hervorhebung bei Rollover anzeigen
 	Show bounding box when dragging layer	Begrenzungsrahmen beim Ziehen einer Ebene anzeigen
 	System title bar	System-Titelleiste
@@ -2620,6 +2621,13 @@ cameraData	Lens	Objektiv
 	Amount:	Stärke:
 	Protect:	Schützen:
 	Protect skin tones	Hauttöne schützen
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Kanalfarbe
+	Color Indicates:	Farbe kennzeichnet:
+	Solidity:	Solidität:
+	Masked Areas	Maskierte Bereiche
+	Selected Areas	Ausgewählte Bereiche
+	Ink Characteristics	Farbeigenschaften
 # Select and Mask view modes (#1754)
 	Onion Skin	Zwiebelschicht
 	Marching Ants	Laufende Ameisen
@@ -2650,9 +2658,6 @@ cameraData	Lens	Objektiv
 	Fill with {mode}-neutral color (black)	Mit neutraler Farbe für {mode} füllen (Schwarz)
 	Fill with {mode}-neutral color (50% gray)	Mit neutraler Farbe für {mode} füllen (50 % Grau)
 	(No neutral color exists for {mode} mode.)	(Für den Modus {mode} gibt es keine neutrale Farbe.)
-	Channel Color	Kanalfarbe
-	Color Indicates:	Farbe kennzeichnet:
-	Solidity:	Solidität:
-	Masked Areas	Maskierte Bereiche
-	Selected Areas	Ausgewählte Bereiche
-	Ink Characteristics	Farbeigenschaften
+	Apply mask to layer before removing?	Maske vor dem Entfernen auf die Ebene anwenden?
+	The layer or its mask changed. Drag the mask onto the Trash again.	Die Ebene oder ihre Maske hat sich geändert. Ziehen Sie die Maske erneut in den Papierkorb.
+	Delete the vector mask?	Vektormaske löschen?

@@ -1972,6 +1972,7 @@
 	Show only crosshair while painting	绘画时仅显示十字线
 	Show slice numbers	显示切片编号
 	Show tooltips	显示工具提示
+	Enable animations	启用动画
 	Show highlight on rollover	鼠标悬停时显示高亮
 	Show bounding box when dragging layer	拖动图层时显示边界框
 	System title bar	系统标题栏
@@ -2594,6 +2595,14 @@ cameraData	Lens	镜头
 	Amount:	数量：
 	Protect:	保护：
 	Protect skin tones	保护肤色
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	通道颜色
+	Color Indicates:	色彩指示：
+	Solidity:	密度：
+	Masked Areas	被蒙版区域
+	Selected Areas	所选区域
+	Spot Color	专色
+	Ink Characteristics	油墨特性
 # Select and Mask view modes (#1754)
 	Onion Skin	洋葱皮
 	Marching Ants	蚂蚁线
@@ -2630,10 +2639,6 @@ cameraData	Lens	镜头
 	Fill with {mode}-neutral color (black)	使用{mode}中性色填充（黑色）
 	Fill with {mode}-neutral color (50% gray)	使用{mode}中性色填充（50% 灰色）
 	(No neutral color exists for {mode} mode.)	（{mode}模式不存在中性色。）
-	Channel Color	通道颜色
-	Color Indicates:	色彩指示：
-	Solidity:	密度：
-	Masked Areas	被蒙版区域
-	Selected Areas	所选区域
-	Spot Color	专色
-	Ink Characteristics	油墨特性
+	Apply mask to layer before removing?	移去之前将蒙版应用到图层吗？
+	The layer or its mask changed. Drag the mask onto the Trash again.	图层或其蒙版已更改。请再次将蒙版拖到垃圾桶。
+	Delete the vector mask?	要删除矢量蒙版吗？
