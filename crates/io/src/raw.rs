@@ -328,13 +328,14 @@ pub fn fit_preview_look(raw: &[u8], sensor: &Sensor, opts: &DevelopOptions) -> R
         .or_else(|| previews.iter().max_by_key(|p| long(p)))
         .ok_or("no embedded JPEG preview")?;
     let img = upright_preview(raw, pick.jpeg).map_err(|e| format!("the embedded preview does not decode: {e}"))?;
-    let rgb = srgb8(&img)?;
+    let rgb = srgb8(raw, &img)?;
     let (w, h) = img.dimensions();
     photocraft_raw::fit_look(sensor, opts, &Reference { width: w, height: h, rgb: &rgb }).map_err(|e| e.to_string())
 }
 
-/// An 8-bit RGB preview's pixels in sRGB: converted when it carries another ICC profile.
-fn srgb8(img: &Image) -> Result<Cow<'_, [u8]>, String> {
+/// An 8-bit RGB preview of the raw file `raw` as sRGB pixels: converted when it is in another
+/// colour space ([`preview_profile`]: its own ICC profile, or Adobe RGB as the raw's EXIF says).
+fn srgb8<'a>(raw: &[u8], img: &'a Image) -> Result<Cow<'a, [u8]>, String> {
     if img.layout() != ChannelLayout::Rgb || img.sample_type() != SampleType::U8 {
         return Err("the embedded preview is not 8-bit RGB".into());
     }
@@ -358,7 +359,7 @@ pub fn preview_thumbnail(bytes: &[u8], max_edge: u32) -> Option<(u32, u32, Vec<u
     let long = |p: &photocraft_raw::Preview| p.width.max(p.height);
     let pick = previews.iter().filter(|p| long(p) >= max_edge).min_by_key(|p| long(p)).or_else(|| previews.iter().max_by_key(|p| long(p)))?;
     let img = upright_preview(bytes, pick.jpeg).ok()?;
-    let rgb = srgb8(&img).ok()?;
+    let rgb = srgb8(bytes, &img).ok()?;
     let (w, h) = img.dimensions();
     let (w, h) = (w as usize, h as usize);
     if w == 0 || h == 0 || rgb.len() < w.checked_mul(h)?.checked_mul(3)? {
