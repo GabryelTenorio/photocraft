@@ -53,6 +53,6 @@ layers (30 crates), wasm and Gradle configuration passed. The safe-GPU snapshot 
 visually checked. UI units: 2301 passed, 11 ignored, 1 failed in the unchanged upstream
 `file_dialog::tests::export_as_with_several_artboards_selected_writes_one_file_each`:
 Windows builds `/out\boards-2-Capsule.jpg`, whereas the assertion requires `/out/boards-2-`.
-A complete corpus run is in progress. The APK remains the previously tested 0.7.0 build.
+Complete corpus regression passed: 3153 tests passed, 25 ignored, across 143 test binaries. The local regression build used CARGO_PROFILE_RELEASE_LTO=false and CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; source/build defaults and the released APK are unchanged. The APK remains the previously tested 0.7.0 build.
 The new Folder picker variant explicitly reports Android folder workflows unsupported.
 Flick inertia and press-stroke state are suppressed during touch navigation.
