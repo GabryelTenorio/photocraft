@@ -1296,8 +1296,8 @@ mod tests {
         let dng = spec.build();
         for finish in ["commit", "cancel"] {
             let services = crate::Services {
-                import: Some(Box::new(|name, bytes, depth| {
-                    photocraft_io::import_with_svg_group_depth(name, bytes, depth).map(|r| (r.document, r.warnings)).map_err(|e| e.to_string())
+                import: Some(Box::new(|name, bytes, opts| {
+                    photocraft_io::import_with_options(name, bytes, opts).map(|r| (r.document, r.warnings)).map_err(|e| e.to_string())
                 })),
                 ..Default::default()
             };
@@ -1307,20 +1307,10 @@ mod tests {
             app.open_bytes("control.dng", &dng).unwrap();
             ctx.run_ui(Default::default(), |ui| crate::camera_raw_ui::show(&mut app, ui.ctx())).textures_delta.clear();
             assert!(app.camera_raw.is_some());
-            // The raw develops in ProPhoto, so opening it also asks about the working-space
-            // mismatch. Answer that prompt through the same control path before editing.
-            assert_eq!(app.ui.dialogs.len(), 1);
-            let mismatch = app.ui.dialogs.first().unwrap();
-            assert_eq!(mismatch.fields["__prefsui"], "mismatch");
-            assert_eq!(mismatch.fields["action"], "preserve");
-            assert_eq!(mismatch.fields["applied"], "preserve");
-            let mismatch_id = mismatch.id;
-            let update = json!({"id":"filter.cameraRaw","params":{"ui":{"set":{"exposure":0.5}}}});
-            assert_eq!(call(&mut app, &ctx, "ui.menu.invoke", update.clone())["ok"], false);
-            let confirmed = call(&mut app, &ctx, "ui.dialog.confirm", json!({"dialog":mismatch_id}));
-            assert_eq!(confirmed["ok"], true, "{confirmed}");
-            assert_eq!(confirmed["result"]["action"], "preserve");
+            // A raw developed from its sensor data is Camera Raw's ProPhoto output, so opening it
+            // does not ask about the working-space mismatch (Photoshop does not either).
             assert!(app.ui.dialogs.is_empty());
+            let update = json!({"id":"filter.cameraRaw","params":{"ui":{"set":{"exposure":0.5}}}});
             let original = app.session.active().unwrap().doc.clone();
             let changed = call(&mut app, &ctx, "ui.menu.invoke", update);
             assert_eq!(changed["ok"], true, "{changed}");
@@ -2178,7 +2168,7 @@ mod tests {
         let written: Rc<RefCell<Vec<String>>> = Rc::default();
         let w = written.clone();
         let services = crate::Services {
-            import: Some(Box::new(|name: &str, _b: &[u8], _depth: usize| {
+            import: Some(Box::new(|name: &str, _b: &[u8], _opts: &photocraft_io::ImportOptions| {
                 Ok((Document::new(name, Size::new(4, 4), ColorMode::Rgb, SampleType::U8), vec!["Adjustment layer flattened".to_string()]))
             })),
             export: Some(Box::new(|_d: &Document, _p: &str, _s: &crate::ExportSettings| Ok((b"out".to_vec(), vec!["Layers were flattened".to_string()])))),
@@ -2242,7 +2232,7 @@ mod tests {
                     Err(format!("corrupt bundle: {path}"))
                 }
             })),
-            import: Some(Box::new(|name: &str, _b: &[u8], _depth: usize| {
+            import: Some(Box::new(|name: &str, _b: &[u8], _opts: &photocraft_io::ImportOptions| {
                 Ok((Document::new(name, photocraft_doc::Size::new(4, 4), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8), Vec::new()))
             })),
             automation_read: Some(Box::new(|path: &str| {
