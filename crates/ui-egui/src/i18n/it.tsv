@@ -4168,3 +4168,32 @@ navigator	Zoom	Zoom
 	{index} of {total}	{index} di {total}
 	{shortcut} assigned.	{shortcut} assegnata.
 	{shortcut} is already in use by {commands} and will be removed from it when you click OK.	{shortcut} è già usata da {commands} e verrà rimossa quando fai clic su OK.
+# Edit › Camera Raw Filter: the new filter.cameraRaw parameters in the generic filter dialog
+	As Shot	Come scattata
+	Calibration Blue Hue	Calibrazione tonalità blu
+	Calibration Blue Sat	Calibrazione saturazione blu
+	Calibration Green Hue	Calibrazione tonalità verde
+	Calibration Green Sat	Calibrazione saturazione verde
+	Calibration Red Hue	Calibrazione tonalità rosso
+	Calibration Red Sat	Calibrazione saturazione rosso
+	Calibration Shadows Tint	Calibrazione tinta ombre
+	Curve Refine Saturation	Curva: affina saturazione
+	Defringe Green Amount	Elimina frange: quantità verde
+	Defringe Purple Amount	Elimina frange: quantità viola
+	Full	Completa
+	Guided	Guidata
+	Lens Distortion	Distorsione obiettivo
+	Lens Vignette	Vignettatura obiettivo
+	Lens Vignette Midpoint	Punto medio vignettatura obiettivo
+	Noise Color Smoothness	Disturbo: uniformità colore
+	Noise Luminance Contrast	Disturbo: contrasto luminanza
+	Process Version	Versione processo
+	Transform Aspect	Trasforma: proporzioni
+	Transform Horizontal	Trasforma: orizzontale
+	Transform Offset X	Trasforma: spostamento X
+	Transform Offset Y	Trasforma: spostamento Y
+	Transform Rotate	Trasforma: ruota
+	Transform Scale	Trasforma: scala
+	Transform Vertical	Trasforma: verticale
+	Upright	Raddrizzamento
+	White Balance	Bilanciamento bianco
