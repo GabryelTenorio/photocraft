@@ -657,3 +657,33 @@ fn folders_moved_into_other_folders_persist() {
     assert_eq!(folder(&t, "Pack Chalk"), "Pack:Dry");
     assert_eq!(folder(&t, "Kit Nib"), "Kit:Inks/Fine");
 }
+
+#[test]
+fn a_group_file_that_failed_to_load_is_not_overwritten() {
+    // e.g. written by a newer PhotoCraft: skipped on load, so a save must not replace it.
+    let mem = MemBackend::default();
+    let file = group_file_name("");
+    let newer = br#"{"format":"photocraft-brush-group","version":2,"group":"","presets":[]}"#.to_vec();
+    mem.files.lock().unwrap().insert(file.clone(), newer.clone());
+    let mut s = Session::new();
+    s.attach_preset_store(open(Box::new(mem.clone())));
+    s.tools.brush.tip = TipShape::Sampled(tip8(4, 4, 0));
+    s.execute("brush.presets.save", json!({"name": "New"})).unwrap();
+    assert_eq!(mem.files.lock().unwrap().get(&file), Some(&newer), "a file the store could not read was overwritten");
+    assert!(!s.preset_store.as_mut().unwrap().take_warnings().is_empty());
+}
+
+#[test]
+fn an_actions_file_that_failed_to_load_is_not_overwritten() {
+    // e.g. written by a newer PhotoCraft: skipped on load, so recording an action must not replace it.
+    let mem = MemBackend::default();
+    let newer = br#"{"version":2,"actions":[{"name":"Keep","steps":[]}]}"#.to_vec();
+    mem.files.lock().unwrap().insert(ACTIONS_FILE.into(), newer.clone());
+    let mut s = Session::new();
+    s.attach_preset_store(open(Box::new(mem.clone())));
+    s.execute("actions.record", json!({"name": "New"})).unwrap();
+    s.execute("actions.stop", json!({})).unwrap();
+    s.sync_preset_store();
+    assert_eq!(mem.files.lock().unwrap().get(ACTIONS_FILE), Some(&newer), "an actions file the store could not read was overwritten");
+    assert!(!s.preset_store.as_mut().unwrap().take_warnings().is_empty());
+}
