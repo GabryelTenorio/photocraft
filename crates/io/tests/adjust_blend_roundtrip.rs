@@ -103,7 +103,9 @@ fn adjustments() -> Vec<(Adjustment, bool)> {
         // A block this version cannot read (a truncated Selective Color) is kept verbatim.
         (Adjustment::Unsupported { psd_key: "selc".into(), raw: vec![0, 1, 0, 0] }, true),
     ];
-    // Compile-time guard: a new Adjustment kind must be added to the list above.
+    // Compile-time guard: a new Adjustment kind must be added to the list above (or, when the PSD
+    // encoding is empty by design, covered by its own test as Clarity/Dehaze is: PSD has no key
+    // for it yet, so `write` returns no block and `check_adjustment` would see a missing block).
     for (a, _) in &all {
         match a {
             Adjustment::BrightnessContrast { .. }
@@ -122,6 +124,7 @@ fn adjustments() -> Vec<(Adjustment, bool)> {
             | Adjustment::Threshold { .. }
             | Adjustment::GradientMap { .. }
             | Adjustment::SelectiveColor { .. }
+            | Adjustment::ClarityDehaze { .. }
             | Adjustment::Unsupported { .. } => {}
         }
     }
@@ -221,6 +224,25 @@ fn color_lookup_tetrahedral_warns_on_psd_save() {
         };
         assert!(!t, "PSD reopens as trilinear");
     }
+}
+
+/// Clarity/Dehaze has no confirmed PSD key yet (#3470): the export must warn rather than drop
+/// the layer silently, and must not write a bogus adjustment block.
+#[test]
+fn clarity_dehaze_warns_and_writes_no_block() {
+    let mut d = Document::new("cd", photocraft_geom::Size::new(16, 12), ColorMode::Rgb, SampleType::U8);
+    let fmt = d.pixel_format();
+    d.layers.push(raster("Background", fmt, d.bounds(), 1, false));
+    d.layers.push(Layer::new("Clarity", LayerContent::Adjustment(Adjustment::ClarityDehaze { clarity: 35.0, dehaze: -20.0 })));
+    let (_, warnings, file) = export_import(&d);
+    assert!(
+        warnings.iter().any(|w| w.contains("\"Clarity\"") && w.contains("Clarity and Dehaze") && w.contains("not yet written")),
+        "expected a not-yet-written warning, got {warnings:?}"
+    );
+    assert!(
+        !file.layers().iter().any(|l| l.blocks.iter().any(|b| ADJUSTMENT_KEYS.contains(&&b.key))),
+        "no adjustment block should be written for Clarity/Dehaze"
+    );
 }
 
 /// One document per blend mode: the mode on a pixel layer (with fill opacity and a mask), on a

@@ -31,7 +31,7 @@ that blocks the workflow, would make PhotoCraft pre-alpha.
 
 | Core workflow | Works end to end? | Evidence | Hours to pass |
 |---|---|---|---:|
-| Photo retouch: open JPEG/raw, heal/clone/remove, adjustment layers, export JPEG, save and reopen | yes | Spot Healing, Healing, Clone, Patch, Remove tools; 16 adjustment layers; raw for DNG/CR2/NEF/ARW/RAF; JPEG export; MCP workflow tests (`automation/tests/agent_tasks.rs`). Quality complaints (#1092, #2104) and no CR3 don't stop the workflow | 0 |
+| Photo retouch: open JPEG/raw, heal/clone/remove, adjustment layers, export JPEG, save and reopen | yes | Spot Healing, Healing, Clone, Patch, Remove tools; 17 adjustment layers; raw for DNG/CR2/NEF/ARW/RAF; JPEG export; MCP workflow tests (`automation/tests/agent_tasks.rs`). Quality complaints (#1092, #2104) and no CR3 don't stop the workflow | 0 |
 | Composite: layers, masks, selections, blend modes, smart objects; save as PSD and `.pcraft` and reopen | yes | PSD round trip ≥ 169/170, 308/309, 258/256 corpus files; `.pcraft` atomic save and crash recovery. Multi-layer Smart Object conversion (#2604) and mask targeting (#2458) are partial but have workarounds | 0 |
 | Cut-out: select a subject, refine the edge, mask, export PNG with transparency | partial (not blocking) | Object/Quick Selection, Select Subject (classical), Refine Edge dialog, layer masks, PNG export. Select and Mask is a dialog, not the workspace; no Refine Hair (#2671) | 0 (depth: 80–140 h, G7) |
 | Design: type, shapes, layer styles, artboards; export PNG/JPEG; save and reopen | partial (not blocking) | Point/paragraph type, shapes with stroke controls, all 10 layer effects, artboards, Export As. One macOS report of a 60 s freeze on choosing the Type tool (#2518, not reproduced); no type on a path | 0 (fix #2518: 2–6 h) |
@@ -53,7 +53,7 @@ real work is ~45%, inside the alpha band (~40–75%), but close to its floor.
 | M4 Native format + engine | ✅ | ~700 commands, `.pcraft` (incremental, autosave, crash recovery), CLI, persistent preferences |
 | M5 GPU compositor | 🟡 | wgpu compositor drives the canvas, layer effects, vector masks, artboards, pattern fills and every clip case included (≤1/255 vs CPU); Multichannel documents fall back to the CPU |
 | M6 Paint + select | 🟡 | brush engine, all selection tools, multi-layer selection, snapping + smart guides, free transform + warp; stylus pressure on Windows (WM_POINTER via winit), the web (Pointer Events, with tilt/twist), macOS (AppKit event monitor: pressure, tilt, rotation, eraser end) and Linux X11 (XInput2 raw valuators); on Linux Wayland a pen opens the window through Xwayland (native tablet-v2 still open, #79) |
-| M7 Adjust + filters | 🟡 | 16 adjustment layers + destructive-only adjustments, 70+ filters incl. Blur Gallery, Actions record/replay, Fade |
+| M7 Adjust + filters | 🟡 | 17 adjustment layers + destructive-only adjustments, 70+ filters incl. Blur Gallery, Actions record/replay, Fade |
 | M8 PSD v2 | 🟡 | adjustments (incl. Selective Color, Color Lookup), fills, effects, patterns, text, shapes, smart objects, alpha channels; oracle floors 146/170 (io), 236/309 (psd-tools), 133/256 (Photoshop-authored) |
 | M9 Text, vector, styles | 🟡 | type engine + Warp Text, shapes / pen / paths, all 10 effects on CPU and GPU (parity ≤1/255, 30/31 corpus effect files on the GPU) |
 | M10 Smart features | 🟡 | classical Select Subject / Object, content-aware fill and scale, healing, auto-align / auto-blend; ML backend not started |
@@ -102,7 +102,7 @@ Each milestone has a **definition of done (DoD)** and must leave `main` green on
 | **M4** | Native format + engine | `.pcraft` bundle, command registry with schemas, jobs/cancellation, snapshots via arc-swap, CLI (`convert`, `run`, `inspect`) | CLI parity tests: every GUI command also runs headless |
 | **M5** | GPU compositor | wgpu planner backend, tile residency, parity tests vs CPU (all blend modes), viewport on GPU, mips | GPU vs CPU ≤1/255; pan/zoom 60 fps on a 100 MP / 20-layer document |
 | **M6** | Paint + select | platform input (pen: macOS/Windows/Linux/web), brush engine v1, eraser, marquee/lasso/wand, move, free transform, crop | Brush latency <1 frame; selection-restricted paint tests |
-| **M7** | Adjust + filters | 16 adjustment layers, first 30 filters, schema-generated dialogs + live preview, actions record/replay | Golden tests at 8/16/32f; action replay determinism |
+| **M7** | Adjust + filters | 17 adjustment layers, first 30 filters, schema-generated dialogs + live preview, actions record/replay | Golden tests at 8/16/32f; action replay determinism |
 | **M8** | PSD v2 | adjustment layers, fill layers, lfx2 effects (descriptor parser), text (EngineData) preserve+render, smart objects, vector masks | Composite-oracle pass rate ≥90% on corpus |
 | **M9** | Text, vector, styles | parley text layers, shapes/pen/paths, all 10 layer effects on GPU | Visual goldens; PSD text round-trip |
 | **M10** | Smart features | `ml` (ort native / ort-web on the web), Select Subject/Object/Sky, Remove BG, Remove tool, content-aware fill, healing, AI denoise, RAW develop | Quality benchmarks on a public dataset; timing budgets |

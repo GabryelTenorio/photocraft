@@ -60,6 +60,14 @@ pub fn adjust_surface(s: &mut Surface, adj: &Adjustment, selection: Option<&Surf
     if r.is_empty() {
         return;
     }
+    // A spatial adjustment (Clarity/Dehaze) reads its neighbours, so a tile-parallel pass would
+    // seam at tile boundaries: apply it to the whole content region in one buffer instead.
+    if adj.is_spatial() {
+        let out = adjusted(s, r, adj, selection, mode);
+        s.write_region(r, &out);
+        s.prune();
+        return;
+    }
     let fmt = s.format();
     let done: Vec<_> = s
         .take_tiles(r)

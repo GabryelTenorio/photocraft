@@ -24,12 +24,13 @@ use crate::tone::{self, HistSource, Histograms};
 use crate::widgets;
 
 /// Kinds edited here (Selective Color and Color Lookup have their own editors; Invert has none).
-pub const KINDS: [&str; 13] = [
+pub const KINDS: [&str; 14] = [
     "brightnessContrast",
     "levels",
     "curves",
     "exposure",
     "vibrance",
+    "clarityDehaze",
     "hueSaturation",
     "colorBalance",
     "blackWhite",
@@ -121,6 +122,7 @@ pub fn editor(ui: &mut egui::Ui, kind: &str, v: &mut Value, cx: &EditorCx) -> Ed
             ],
         ),
         "vibrance" => sliders(ui, v, &[("vibrance", "Vibrance", -100.0, 100.0, 0.0, "%"), ("saturation", "Saturation", -100.0, 100.0, 0.0, "%")]),
+        "clarityDehaze" => sliders(ui, v, &[("clarity", tl!("Clarity"), -100.0, 100.0, 0.0, ""), ("dehaze", tl!("Dehaze"), -100.0, 100.0, 0.0, "")]),
         "hueSaturation" => hue_saturation(ui, v, cx),
         "colorBalance" => color_balance(ui, v, cx),
         "blackWhite" => black_white(ui, v, cx),

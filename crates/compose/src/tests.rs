@@ -893,6 +893,39 @@ fn parallel_tiles_match_single_pass() {
 }
 
 #[test]
+fn spatial_adjustments_render_identically_in_tiles_and_bands() {
+    // Clarity/Dehaze reads its neighbours, so the compositor evaluates it once over the whole
+    // canvas before tiling (`prepare_spatial_adjustments`); a per-tile pass would seam. Tiles,
+    // bands and a single full-canvas pass must therefore agree bit for bit.
+    let mut d = doc_white(80, 64);
+    let mut img = solid_layer("img", Rect::new(0, 0, 80, 64), [0.6, 0.55, 0.5, 1.0]);
+    // A dark blob and a bright patch give Clarity edges and Dehaze a dark channel to work on.
+    img.surface_mut().unwrap().fill_rect(Rect::new(16, 12, 40, 40), &[0.15, 0.2, 0.3, 1.0]);
+    img.surface_mut().unwrap().fill_rect(Rect::new(52, 40, 72, 58), &[0.95, 0.9, 0.85, 1.0]);
+    d.layers.push(img);
+    d.layers.push(Layer::new("cd", LayerContent::Adjustment(Adjustment::ClarityDehaze { clarity: 70.0, dehaze: 40.0 })));
+    let whole = render_tiled(&d, d.bounds(), 10_000);
+    for tile in [7, 16, 33] {
+        assert_eq!(render_tiled(&d, d.bounds(), tile), whole, "tile {tile}");
+    }
+    // Bands (what export and thumbnails stream) must agree too.
+    let mut banded = Vec::new();
+    render_bands(&d, d.bounds(), 16, |b| -> Result<(), ()> {
+        banded.extend_from_slice(&b.px);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(banded, whole.px, "banded render differs");
+    // A sub-rectangle (an edit's damage) agrees with the whole composite.
+    let part = render(&d, Rect::new(12, 8, 60, 52));
+    for y in 8..52 {
+        for x in 12..60 {
+            assert_eq!(part.get(x, y), whole.get(x, y), "part differs at ({x},{y})");
+        }
+    }
+}
+
+#[test]
 fn vector_mask_combines_with_pixel_mask() {
     use photocraft_doc::{Path, Subpath, VectorMask};
     let mut d = doc_white(8, 8);

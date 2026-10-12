@@ -1064,6 +1064,7 @@ fn build() -> Vec<CommandSpec> {
         ),
         ("exposure", "Exposure…", r##"{"exposure":-20..20=0,"offset":-0.5..0.5=0,"gamma":0.01..9.99=1}"##),
         ("vibrance", "Vibrance…", r##"{"vibrance":-100..100=0,"saturation":-100..100=0}"##),
+        ("clarityDehaze", "Clarity and Dehaze…", r##"{"clarity":-100..100=0,"dehaze":-100..100=0}"##),
         (
             "hueSaturation",
             "Hue/Saturation…",
@@ -1300,6 +1301,7 @@ pub fn adjustment_kind(a: &Adjustment) -> &'static str {
         Adjustment::Curves { .. } => "curves",
         Adjustment::Exposure { .. } => "exposure",
         Adjustment::Vibrance { .. } => "vibrance",
+        Adjustment::ClarityDehaze { .. } => "clarityDehaze",
         Adjustment::HueSaturation { .. } => "hueSaturation",
         Adjustment::ColorBalance { .. } => "colorBalance",
         Adjustment::BlackWhite { .. } => "blackWhite",

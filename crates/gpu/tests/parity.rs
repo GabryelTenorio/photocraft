@@ -676,6 +676,23 @@ fn hard_stop_gradients_match_cpu_or_fall_back() {
     }
 }
 
+/// Clarity/Dehaze is spatial (it reads its neighbours), which the per-pixel GPU kernel cannot
+/// express: the plan must reject it, so the canvas falls back to the CPU compositor.
+#[test]
+fn clarity_dehaze_requests_the_cpu_fallback() {
+    let mut d = Document::new("cd", Size::new(16, 12), ColorMode::Rgb, SampleType::U8);
+    let fmt = d.pixel_format();
+    d.layers.push(Layer::raster("bg", fmt));
+    d.layers.push(Layer::new("cd", LayerContent::Adjustment(Adjustment::ClarityDehaze { clarity: 40.0, dehaze: 20.0 })));
+    assert!(photocraft_gpu::plan(&d).is_err(), "a spatial adjustment must not plan on the GPU");
+    // Both sliders at 0 is still the same kind: the planner rejects it either way.
+    d.layers[1].content = LayerContent::Adjustment(Adjustment::clarity_dehaze());
+    assert!(photocraft_gpu::plan(&d).is_err(), "a neutral spatial adjustment is still rejected");
+    // Removing it leaves the document GPU-plannable.
+    d.layers.pop();
+    assert!(photocraft_gpu::plan(&d).is_ok(), "an ordinary document still plans");
+}
+
 #[test]
 fn hard_stop_fill_fallback_respects_caches_and_visibility() {
     use photocraft_doc::FillCache;

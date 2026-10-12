@@ -86,6 +86,7 @@ fn keeps_gray(adj: &Adjustment) -> bool {
         | Adjustment::Threshold { .. }
         | Adjustment::Invert => true,
         Adjustment::HueSaturation { colorize, .. } => !colorize,
+        Adjustment::ClarityDehaze { .. } => true,
         _ => false,
     }
 }

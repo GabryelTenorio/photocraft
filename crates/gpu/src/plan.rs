@@ -935,7 +935,8 @@ impl<'a> Planner<'a> {
     /// adjust::apply_with on a slot (consumes it).
     fn adjust(&mut self, adj: &Adjustment, src: Slot) -> Result<Slot, Unsupported> {
         if !adjustment_on_gpu(adj) {
-            return Err(Unsupported(format!("{} on CMYK/Lab channels (evaluated on the CPU)", adj.label())));
+            let why = if adj.is_spatial() { "is spatial (evaluated on the CPU)" } else { "on CMYK/Lab channels (evaluated on the CPU)" };
+            return Err(Unsupported(format!("{} {why}", adj.label())));
         }
         if let Adjustment::GradientMap { stops, .. } = adj {
             check_gradient_stops(stops)?;
@@ -1513,9 +1514,15 @@ fn to_row(t: &[f32]) -> [f32; 4096] {
 }
 
 /// Whether the adjustment kernel can evaluate `adj`: Levels and Curves on CMYK ink or Lab
-/// channels convert through ICC profiles per pixel, which only the CPU does.
+/// channels convert through ICC profiles per pixel, which only the CPU does, and Clarity/Dehaze
+/// is a spatial (neighbourhood) filter the per-pixel kernel cannot express.
 pub fn adjustment_on_gpu(adj: &Adjustment) -> bool {
-    !matches!(adj, Adjustment::Levels { space: ToneSpace::Cmyk | ToneSpace::Lab, .. } | Adjustment::Curves { space: ToneSpace::Cmyk | ToneSpace::Lab, .. })
+    !matches!(
+        adj,
+        Adjustment::Levels { space: ToneSpace::Cmyk | ToneSpace::Lab, .. }
+            | Adjustment::Curves { space: ToneSpace::Cmyk | ToneSpace::Lab, .. }
+            | Adjustment::ClarityDehaze { .. }
+    )
 }
 
 /// A tone transfer as the shader's `t_decode`/`t_encode` exponent (0: the sRGB curve).
@@ -1655,8 +1662,9 @@ pub fn adjustment_program(adj: &Adjustment, transfer: Transfer, depth: photocraf
             p[0] = [n as f32, if *tetrahedral { 1.0 } else { 0.0 }, if *dither { 1.0 } else { 0.0 }, 0.0];
             (16, p, Some(rows))
         }
-        // Identity on the CPU too (not evaluated there).
-        Adjustment::ColorLookup { .. } | Adjustment::Unsupported { .. } => (0, p, None),
+        // Identity on the CPU too (not evaluated there). Clarity/Dehaze never reaches the GPU
+        // planner (`adjustment_on_gpu`), so it is identity here as well.
+        Adjustment::ColorLookup { .. } | Adjustment::Unsupported { .. } | Adjustment::ClarityDehaze { .. } => (0, p, None),
     }
 }
 

@@ -11,12 +11,13 @@ use serde_json::json;
 
 use crate::PhotocraftApp;
 
-const ALL_KINDS: [&str; 16] = [
+const ALL_KINDS: [&str; 17] = [
     "brightnessContrast",
     "levels",
     "curves",
     "exposure",
     "vibrance",
+    "clarityDehaze",
     "hueSaturation",
     "colorBalance",
     "blackWhite",
@@ -111,6 +112,7 @@ fn every_adjustment_layer_edits_through_properties() {
                 "brightnessContrast" => Some("Brightness"),
                 "exposure" => Some("Exposure"),
                 "vibrance" => Some("Vibrance"),
+                "clarityDehaze" => Some("Clarity"),
                 "hueSaturation" => Some("Hue"),
                 "colorBalance" => Some("Cyan  ·  Red"),
                 "blackWhite" => Some("Reds"),

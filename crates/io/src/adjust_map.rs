@@ -554,7 +554,8 @@ fn levels_write(v: &mut Vec<u8>, c: &LevelsChannel) {
 
 /// Serializes an adjustment into its PSD blocks: `(key, data)` pairs
 /// (Brightness/Contrast also writes a `CgEd` descriptor). Every evaluated kind has an
-/// encoding; the result is empty only for an [`Adjustment::Unsupported`] with a malformed key.
+/// encoding except [`Adjustment::ClarityDehaze`], which has no known PSD key; the result is
+/// also empty for an [`Adjustment::Unsupported`] with a malformed key.
 pub fn write(adj: &Adjustment) -> Vec<([u8; 4], Vec<u8>)> {
     let mut v = Vec::new();
     match adj {
@@ -751,6 +752,11 @@ pub fn write(adj: &Adjustment) -> Vec<([u8; 4], Vec<u8>)> {
             }
             return vec![(*b"mixr", v)];
         }
+        // Photoshop 2026's single "Clarity and Dehaze" adjustment layer has no documented PSD
+        // block key yet, so it is not written: `psd_export` keeps the layer and warns that the
+        // adjustment is dropped. A PSD read back keeps an unrecognized block verbatim as
+        // [`Adjustment::Unsupported`] (see `parse`), so this only affects layers authored here.
+        Adjustment::ClarityDehaze { .. } => {}
         Adjustment::Unsupported { psd_key, raw } => {
             let k = psd_key.as_bytes();
             if k.len() == 4 {

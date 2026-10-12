@@ -3164,12 +3164,13 @@ fn adjustments_grid(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     ui.label(RichText::new(tl!("Add an adjustment")).color(t.text_dim));
     ui.add_space(4.0);
-    let items: [(&str, &str, &str); 16] = [
+    let items: [(&str, &str, &str); 17] = [
         ("brightnessContrast", "sun", tl!("Brightness/Contrast")),
         ("levels", "gauge", tl!("Levels")),
         ("curves", "pen-tool", tl!("Curves")),
         ("exposure", "scan", tl!("Exposure")),
         ("vibrance", "sparkles", tl!("Vibrance")),
+        ("clarityDehaze", "wand-sparkles", tl!("Clarity and Dehaze")),
         ("hueSaturation", "droplet", tl!("Hue/Saturation")),
         ("colorBalance", "blend", tl!("Color Balance")),
         ("blackWhite", "contrast", tl!("Black & White")),

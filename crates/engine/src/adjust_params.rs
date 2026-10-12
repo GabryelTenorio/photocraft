@@ -117,6 +117,13 @@ pub fn from_params(kind: &str, p: &Value, base: Option<&Adjustment>, mode: Color
             };
             Adjustment::Vibrance { vibrance: r.num("vibrance", v, -100.0, 100.0)?, saturation: r.num("saturation", s, -100.0, 100.0)? }
         }
+        "clarityDehaze" => {
+            let (c0, d0) = match base {
+                Some(Adjustment::ClarityDehaze { clarity, dehaze }) => (*clarity, *dehaze),
+                _ => (0.0, 0.0),
+            };
+            Adjustment::ClarityDehaze { clarity: r.num("clarity", c0, -100.0, 100.0)?, dehaze: r.num("dehaze", d0, -100.0, 100.0)? }
+        }
         "hueSaturation" => hue_saturation(&r, base)?,
         "levels" => levels(&r, base, mode)?,
         "curves" => curves(&r, base, mode)?,
@@ -286,6 +293,7 @@ pub fn to_params(adj: &Adjustment) -> Value {
         Adjustment::ColorLookup { tetrahedral, dither, .. } => {
             json!({"interpolation": if *tetrahedral { "tetrahedral" } else { "trilinear" }, "dither": dither})
         }
+        Adjustment::ClarityDehaze { clarity, dehaze } => json!({"clarity": clarity, "dehaze": dehaze}),
     }
 }
 
@@ -1082,13 +1090,14 @@ pub fn user_keys(p: &Value) -> Map<String, Value> {
 mod tests {
     use super::*;
 
-    const KINDS: [&str; 15] = [
+    const KINDS: [&str; 16] = [
         "invert",
         "brightnessContrast",
         "threshold",
         "posterize",
         "exposure",
         "vibrance",
+        "clarityDehaze",
         "hueSaturation",
         "levels",
         "curves",
@@ -1108,6 +1117,7 @@ mod tests {
             "posterize" => json!({"levels": 7}),
             "exposure" => json!({"exposure": 1.5, "offset": 0.1, "gamma": 1.4}),
             "vibrance" => json!({"vibrance": 30, "saturation": -20}),
+            "clarityDehaze" => json!({"clarity": 35, "dehaze": -20}),
             "hueSaturation" => {
                 json!({"hue": 25, "saturation": -20, "lightness": 10, "reds": {"hue": 10, "saturation": -30, "lightness": 5, "range": [300, 340, 20, 50]}})
             }
@@ -1197,6 +1207,8 @@ mod tests {
             ("selectiveColor", json!({"method": 5})),
             ("selectiveColor", json!({"reds": "not-an-array"})),
             ("selectiveColor", json!({"colors": "reds", "cyan": "50"})),
+            ("clarityDehaze", json!({"clarity": "x"})),
+            ("clarityDehaze", json!({"dehaze": [1]})),
             ("colorLookup", json!({"lut": 42})),
             ("colorLookup", json!({"interpolation": 5})),
             ("colorLookup", json!({"dither": "yes"})),
