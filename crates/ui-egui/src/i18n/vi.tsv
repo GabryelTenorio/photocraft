@@ -3691,3 +3691,6 @@ cameraRaw	Warm	Ấm
 cameraRaw	White balance	Cân bằng trắng
 cameraRaw	Yellows	Vàng
 cameraRaw	Zoom and Pan	Thu phóng và kéo
+	Remove after each stroke	Xóa sau mỗi nét vẽ
+	Apply the removal ({key})	Áp dụng việc xóa ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Nét vẽ cần xóa: {n} (Enter áp dụng, Esc hủy)

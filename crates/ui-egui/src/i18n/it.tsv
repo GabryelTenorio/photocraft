@@ -4197,3 +4197,6 @@ navigator	Zoom	Zoom
 	Transform Vertical	Trasforma: verticale
 	Upright	Raddrizzamento
 	White Balance	Bilanciamento bianco
+	Remove after each stroke	Rimuovi dopo ogni tratto
+	Apply the removal ({key})	Applica la rimozione ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Tratti da rimuovere: {n} (Invio applica, Esc annulla)
