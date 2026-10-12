@@ -459,6 +459,8 @@ fn wraps(id: &str) -> bool {
             | "type.pasteLoremIpsum"
             | "image.applyImage"
             | "image.calculations"
+            | "select.saveSelection"
+            | "select.loadSelection"
     )
 }
 
@@ -1147,8 +1149,16 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
                 "add",
                 "subtract",
             ];
+            // The active layer's transparency, and its mask only when it has one.
+            let layer = st.active_layer.and_then(|l| d.layer(l));
             let mut load = chans.clone();
-            load.extend(["transparency", "mask", "selection"].map(String::from));
+            if layer.is_some() {
+                load.push("transparency".into());
+            }
+            if layer.is_some_and(|l| l.mask.is_some()) {
+                load.push("mask".into());
+            }
+            load.push("selection".into());
             match id {
                 "select.saveSelection" => dialog(
                     app,
@@ -1207,9 +1217,11 @@ fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
         let (bytes, warnings) = export(&doc, &path, &settings)?;
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
         write(&path, &bytes)?;
-        app.ui.status = format!("Saved a copy as {path}");
+        let template = "Saved a copy as {path}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
-        crate::notices::io_warnings(app, &format!("Saved a copy as {}", crate::file_open::display_name(&path)), &warnings);
+        let what = crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))]);
+        crate::notices::io_warnings(app, &what, &warnings);
         Ok(json!({"path": path, "warnings": warnings}))
     })
 }
@@ -1223,7 +1235,8 @@ fn export_contents(app: &mut PhotocraftApp) -> Result<Value, String> {
     app.pick_save(&name.clone(), move |app, path| {
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
         write(&path, &bytes)?;
-        app.ui.status = format!("Exported contents to {path}");
+        let template = "Exported contents to {path}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
         Ok(json!({"path": path, "fileName": name, "bytes": bytes.len()}))
     })
