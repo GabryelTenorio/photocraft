@@ -475,7 +475,7 @@ fn gradient_map_handle_drag_previews_and_commits_once_after_crossing_stops() {
         h.run_steps(1);
         h.drag_at(start);
         h.run_steps(1);
-        for location in [0.4, 0.6, 0.75] {
+        for location in [0.4, 0.5, 0.6, 0.75] {
             let to = map_handle(&h, location);
             h.hover_at(to);
             h.run_steps(1);
@@ -516,14 +516,14 @@ fn gradient_map_strip_adds_selects_and_removes_stops_without_deleting_the_last_p
     assert_eq!(h.ctx.data(|d| d.get_temp::<usize>(crate::adjust_editors::layer_mem(id).with("gm-stop-selection"))), Some(0));
     assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "selection is view state");
     click(&mut h, middle);
-    h.key_press(egui::Key::Delete);
-    h.run_steps(3);
+    let remove = h.get_by_label("Remove stop").rect().center();
+    click(&mut h, remove);
     assert_eq!(layer(&h).1, original);
     assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 2);
     let first = map_handle(&h, 0.0);
     click(&mut h, first);
-    h.key_press(egui::Key::Delete);
-    h.run_steps(3);
+    let remove = h.get_by_label("Remove stop").rect().center();
+    click(&mut h, remove);
     assert_eq!(layer(&h).1, original, "keep two stops");
 }
 

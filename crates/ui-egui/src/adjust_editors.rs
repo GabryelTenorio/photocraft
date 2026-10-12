@@ -1318,11 +1318,6 @@ fn gradient_map_strip(ui: &mut egui::Ui, stops: &mut Vec<Stop>, cx: &EditorCx, s
             edit.add(Edit::discrete(true));
         }
     }
-    if resp.has_focus() && stops.len() > 2 && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) {
-        stops.remove((*selected).min(stops.len() - 1));
-        *selected = (*selected).min(stops.len() - 1);
-        edit.add(Edit::discrete(true));
-    }
     if resp.hovered() && ui.input(|i| i.pointer.hover_pos()).is_some_and(|pos| hit(pos, stops).is_some()) || resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
     }
