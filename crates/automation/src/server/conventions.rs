@@ -15,6 +15,7 @@ fn annotated(mut tool: Tool) -> Tool {
     let read = matches!(
         tool.name.as_ref(),
         "command_list" | "doc_inspect" | "session_list" | "render_preview" | "doc_render_preview" | "ui_inspect" | "ui_screenshot"
+            | "health" | "jobs_list"
     );
     let additive = matches!(tool.name.as_ref(), "doc_new" | "doc_open");
     tool.title = Some(title.clone());
