@@ -913,7 +913,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                 match kind_p {
                     P::Angle => {
                         let mut v = disp.get(key).and_then(Value::as_f64).unwrap_or(0.0) as f32;
-                        if angle_row(ui, label, &mut v).changed() {
+                        if widgets::angle_dial_row(ui, label, &mut v, -180.0..=180.0).changed() {
                             let value = json!(v);
                             disp[key] = value.clone();
                             set_param(f, &selected, key, value);
@@ -1298,50 +1298,6 @@ fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
         }
     }
     changed
-}
-
-/// Light direction uses document angles: counter-clockwise from three o'clock.
-pub(crate) fn angle_row(ui: &mut egui::Ui, label: &str, angle: &mut f32) -> egui::Response {
-    let t = Tokens::get(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(tl!(label)).color(t.text_dim));
-        let (rect, mut dial) = ui.allocate_exact_size(vec2(42.0, 42.0), Sense::click_and_drag());
-        dial.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Slider, ui.is_enabled(), tl!(label)));
-        if (dial.clicked() || dial.dragged())
-            && let Some(pos) = dial.interact_pointer_pos()
-        {
-            let delta = pos - rect.center();
-            if delta.length_sq() > 1.0 {
-                *angle = (-delta.y).atan2(delta.x).to_degrees().round();
-                dial.mark_changed();
-            }
-        }
-        let painter = ui.painter();
-        let radius = rect.width() / 2.0 - 2.0;
-        painter.circle(rect.center(), radius, t.field, Stroke::new(1.0, t.field_border));
-        let radians = angle.to_radians();
-        let tip = rect.center() + vec2(radians.cos(), -radians.sin()) * (radius - 4.0);
-        painter.line_segment([rect.center(), tip], Stroke::new(2.0, t.accent));
-        painter.circle_filled(rect.center(), 2.0, t.text_dim);
-        if dial.has_focus() {
-            painter.circle_stroke(rect.center(), radius + 2.0, Stroke::new(1.0, t.accent));
-            let step = ui.input(|i| {
-                i.num_presses(egui::Key::ArrowRight) as f32 + i.num_presses(egui::Key::ArrowUp) as f32
-                    - i.num_presses(egui::Key::ArrowLeft) as f32
-                    - i.num_presses(egui::Key::ArrowDown) as f32
-            });
-            if step != 0.0 {
-                *angle = (*angle + step + 180.0).rem_euclid(360.0) - 180.0;
-                dial.mark_changed();
-            }
-        }
-        let field = ui.add(egui::DragValue::new(angle).custom_parser(crate::widgets::parse_num).range(-180.0..=180.0).speed(1.0).suffix("°"));
-        if field.changed() {
-            dial.mark_changed();
-        }
-        dial | field
-    })
-    .inner
 }
 
 fn parse_hex(s: &str) -> Color32 {
@@ -1737,17 +1693,19 @@ mod tests {
         apply(&f, |cmd, p| s.execute(cmd, p).map_err(|e| e.to_string())).unwrap();
         assert_eq!(shadow(&s), photocraft_engine::layer_style::builtin_contour("Cone").unwrap());
 
-        // The Contour Editor: drag the peak to 40 % / 80 %, make the first point a corner.
+        // The Contour Editor: drag the second point to 10 % / 30 % (between its neighbours on
+        // the measured Cone), make the first point a corner.
         contour::open_editor(&mut f, "fx1", "contour");
-        assert!(contour::set_point(&mut f, 1, 40.0, 80.0));
+        assert!(contour::set_point(&mut f, 1, 10.0, 30.0));
         assert!(contour::set_corner(&mut f, 0, true));
-        assert!(!contour::set_point(&mut f, 9, 10.0, 10.0), "no such point");
+        assert!(!contour::set_point(&mut f, 99, 10.0, 10.0), "no such point");
         contour::close_editor(&mut f, true);
         apply(&f, |cmd, p| s.execute(cmd, p).map_err(|e| e.to_string())).unwrap();
         let photocraft_doc::Contour::Custom { name, points, corners } = shadow(&s) else { panic!() };
         assert_eq!(name, "Custom", "an edited preset is no longer called Cone");
-        assert!((points[1].input - 102.0 / 255.0).abs() < 1e-6 && (points[1].output - 204.0 / 255.0).abs() < 1e-6, "{points:?}");
-        assert_eq!(corners, vec![true, true, false]);
+        assert!((points[1].input - 0.1).abs() < 3e-3 && (points[1].output - 0.3).abs() < 3e-3, "{points:?}");
+        assert_eq!(corners.len(), points.len());
+        assert!(corners[0] && corners[1] && !corners[corners.len() - 1], "{corners:?}");
 
         // Cancel restores the curve the editor opened with.
         let before = f.clone();
@@ -1915,7 +1873,7 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = egui_kittest::Harness::builder().with_size(vec2(300.0, 100.0)).build_ui_state(
             |ui, angle| {
-                angle_row(ui, "Angle", angle);
+                widgets::angle_dial_row(ui, "Angle", angle, -180.0..=180.0);
             },
             120.0_f32,
         );
