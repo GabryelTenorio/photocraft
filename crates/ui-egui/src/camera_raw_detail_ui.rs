@@ -1,12 +1,15 @@
 //! Full-resolution refinement of Camera Raw's interactive proxy. Native work is off the
 //! UI thread; only one revision runs at a time, and obsolete results never replace new edits.
+//! At 1:1 and above the worker keeps the whole area's raw and tonal stages between edits and
+//! develops the colour stages only for the part on screen (see [`develop_region`]); a newer edit
+//! or a pan past that part makes it give up at its next stage.
 use egui::{Color32, ColorImage, Context, Pos2, Rect, TextureHandle, TextureOptions, pos2, vec2};
 use photocraft_algo::camera_raw::CameraRaw;
 use photocraft_geom::Rect as PixelRect;
 use photocraft_raster::Surface;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc::{Receiver, TryRecvError},
 };
 
@@ -17,7 +20,8 @@ pub(crate) enum Coverage {
     None,
 }
 
-type DetailResult = Result<(u64, Surface), String>;
+/// A develop of the settings' revision over a part of the area, or `None` when it gave up.
+type DetailResult = Result<Option<(u64, PixelRect, Surface)>, String>;
 
 /// What a screen-size develop is for: the settings' revision (0 for the original), the size and
 /// whether it is the original (Before, or every setting at its default).
@@ -83,6 +87,18 @@ pub(crate) struct TonalCache {
 /// Pixels (straight RGBA, row-major) shared between the dialog and its worker.
 type Pixels = Arc<Vec<[f32; 4]>>;
 
+/// The full-size worker's work kept between edits (see [`develop_region`]): the area's pixels,
+/// the raw stage's result as Open writes it into the document and its slider-independent part,
+/// and the tonal stages' result.
+#[derive(Default)]
+pub(crate) struct FullCache {
+    source: Option<Pixels>,
+    raw: Option<(RawStage, Pixels)>,
+    retone: Option<photocraft_io::raw::RetoneCache>,
+    tonal: Option<((Option<RawStage>, CameraRaw), Pixels)>,
+    develop: photocraft_algo::camera_raw::DevelopCache,
+}
+
 /// The worker's caches for screen-size develops: the frame reduced to the screen's size, and
 /// its tonal stages.
 #[derive(Default)]
@@ -99,9 +115,13 @@ pub(crate) struct DetailPreview {
     pub(crate) raw: Option<Arc<photocraft_io::raw::RawPreview>>,
     area: PixelRect,
     coverage: Coverage,
-    result: Option<(u64, Surface)>,
-    pending: Option<(u64, Receiver<DetailResult>)>,
+    /// The develop of a revision over a part of the area (the rest of the surface is the source).
+    result: Option<(u64, PixelRect, Surface)>,
+    pending: Option<(u64, PixelRect, Receiver<DetailResult>)>,
     cancel: Arc<AtomicBool>,
+    /// The job the full-size worker is for; bumped to make it give up.
+    job: Arc<AtomicU64>,
+    full_cache: Arc<std::sync::Mutex<FullCache>>,
     pub(crate) error: Option<String>,
     failed_revision: Option<u64>,
     crop: Option<(u64, bool, PixelRect, u64)>,
@@ -134,6 +154,8 @@ impl DetailPreview {
             result: None,
             pending: None,
             cancel: Arc::new(AtomicBool::new(false)),
+            job: Arc::default(),
+            full_cache: Arc::default(),
             error: None,
             failed_revision: None,
             crop: None,
@@ -164,6 +186,15 @@ impl DetailPreview {
         let mut params = params.clone();
         params.pixel_scale = 1.0;
         develop(&self.source, self.raw.as_deref(), self.area, &params, &self.coverage)
+    }
+
+    /// Bench only: what the full-size worker develops for `params` over `part`, now (through its
+    /// caches).
+    #[cfg(test)]
+    pub(crate) fn develop_region_now(&self, params: &CameraRaw, part: PixelRect) -> Option<Surface> {
+        let mut params = params.clone();
+        params.pixel_scale = 1.0;
+        develop_region(&self.source, self.raw.as_deref(), self.area, part, &params, &self.coverage, &self.full_cache, &|| false)
     }
 
     /// The developed pixels and the rectangle of them the dialog works on.
@@ -282,7 +313,7 @@ impl DetailPreview {
     }
 
     fn poll(&mut self, revision: u64) {
-        let Some((requested_revision, rx)) = &self.pending else { return };
+        let Some((requested_revision, _, rx)) = &self.pending else { return };
         let requested_revision = *requested_revision;
         let result = match rx.try_recv() {
             Ok(result) => result,
@@ -291,8 +322,8 @@ impl DetailPreview {
         };
         self.pending = None;
         match result {
-            Ok((r, surface)) if r == revision => {
-                self.result = Some((r, surface));
+            Ok(Some((r, part, surface))) if r == revision => {
+                self.result = Some((r, part, surface));
                 self.crop = None;
                 self.error = None;
             }
@@ -306,11 +337,20 @@ impl DetailPreview {
         }
     }
 
-    fn request(&mut self, ctx: &Context, revision: u64, params: &CameraRaw) {
-        if self.pending.is_some() || self.result.as_ref().is_some_and(|(r, _)| *r == revision) || self.failed_revision == Some(revision) {
+    /// Develops `params` over the visible `crop` (grown, so a pan stays inside it) in the
+    /// background. While a develop runs, a request it doesn't cover makes it give up at its next
+    /// stage; the next frame then asks again.
+    fn request(&mut self, ctx: &Context, revision: u64, params: &CameraRaw, crop: PixelRect) {
+        let covers = |r: u64, part: &PixelRect| r == revision && part.contains_rect(&crop);
+        if self.result.as_ref().is_some_and(|(r, part, _)| covers(*r, part)) || self.failed_revision == Some(revision) {
             return;
         }
-        self.result = None;
+        if let Some((r, part, _)) = &self.pending {
+            if !covers(*r, part) {
+                self.job.fetch_add(1, Ordering::Relaxed);
+            }
+            return;
+        }
         self.crop = None;
         self.error = None;
         // The engine's full-image pipeline needs multiple temporary float buffers. Never start
@@ -320,22 +360,30 @@ impl DetailPreview {
             self.failed_revision = Some(revision);
             return;
         }
+        // A quarter of the view more on every side, so a short pan stays inside.
+        let part = crop.inflate((crop.width().max(crop.height()) / 4) as i32).intersect(&self.area);
         let source = self.source.clone();
         let raw = self.raw.clone();
         let area = self.area;
         let coverage = self.coverage.clone();
         let mut params = params.clone();
         params.pixel_scale = 1.0;
-        let cancel = self.cancel.clone();
+        let (cancel, jobs, cache) = (self.cancel.clone(), self.job.clone(), self.full_cache.clone());
+        let job = self.job.fetch_add(1, Ordering::Relaxed) + 1;
         let ctx = ctx.clone();
         let (tx, rx) = std::sync::mpsc::channel::<DetailResult>();
         let work = move || {
-            if cancel.load(Ordering::Relaxed) {
+            let given_up = || cancel.load(Ordering::Relaxed) || jobs.load(Ordering::Relaxed) != job;
+            if given_up() {
+                let _ = tx.send(Ok(None));
+                ctx.request_repaint();
                 return;
             }
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| develop(&source, raw.as_deref(), area, &params, &coverage)))
-                .map(|surface| (revision, surface))
-                .map_err(|_| "Camera Raw detail preview failed; the proxy remains available".into());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                develop_region(&source, raw.as_deref(), area, part, &params, &coverage, &cache, &given_up)
+            }))
+            .map(|surface| surface.map(|s| (revision, part, s)))
+            .map_err(|_| "Camera Raw detail preview failed; the proxy remains available".into());
             if !cancel.load(Ordering::Relaxed) {
                 let _ = tx.send(result);
                 ctx.request_repaint();
@@ -350,7 +398,7 @@ impl DetailPreview {
                 let _guard = WORKER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 work();
             }) {
-                Ok(_) => self.pending = Some((revision, rx)),
+                Ok(_) => self.pending = Some((revision, part, rx)),
                 Err(e) => {
                     self.error = Some(format!("Cannot start Camera Raw preview: {e}"));
                     self.failed_revision = Some(revision);
@@ -363,6 +411,7 @@ impl DetailPreview {
             // instead of blocking its UI with the full-image engine pipeline.
             drop(work);
             drop(rx);
+            let _ = part;
             self.error = Some("Full-resolution filtered preview requires a native Camera Raw worker; the web preview keeps the proxy".into());
             self.failed_revision = Some(revision);
         }
@@ -396,13 +445,14 @@ impl DetailPreview {
         let Some(crop) = visible_pixels(image, ui.clip_rect(), self.area, ui.input(|i| i.max_texture_side)) else { return false };
         let original = before || params.is_identity();
         if !original {
-            self.request(ui.ctx(), revision, params);
+            self.request(ui.ctx(), revision, params, crop);
             self.poll(revision);
         }
         let surface = if original {
             &self.source
-        } else if let Some((r, surface)) = &self.result
+        } else if let Some((r, part, surface)) = &self.result
             && *r == revision
+            && part.contains_rect(&crop)
         {
             surface
         } else {
@@ -433,17 +483,18 @@ impl DetailPreview {
         if !self.ready || !p.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)) {
             return None;
         }
+        let x = self.area.x0 + ((p[0] * self.area.width() as f32) as i32).min((self.area.width() - 1) as i32);
+        let y = self.area.y0 + ((p[1] * self.area.height() as f32) as i32).min((self.area.height() - 1) as i32);
         let source = if before || params.is_identity() {
             &self.source
-        } else if let Some((r, source)) = &self.result
+        } else if let Some((r, part, source)) = &self.result
             && *r == revision
+            && part.contains(x, y)
         {
             source
         } else {
             return None;
         };
-        let x = self.area.x0 + ((p[0] * self.area.width() as f32) as i32).min((self.area.width() - 1) as i32);
-        let y = self.area.y0 + ((p[1] * self.area.height() as f32) as i32).min((self.area.height() - 1) as i32);
         Some(source.rgba(x, y))
     }
 
@@ -458,8 +509,9 @@ impl DetailPreview {
         if self.overlay_key != Some(key) {
             let surface = if original {
                 &self.source
-            } else if let Some((r, surface)) = &self.result
+            } else if let Some((r, part, surface)) = &self.result
                 && *r == revision
+                && part.contains_rect(&crop)
             {
                 surface
             } else {
@@ -644,47 +696,95 @@ fn reduce(source: &Surface, area: PixelRect, tw: usize, th: usize) -> Vec<[f32; 
 /// The full-size result of `params` over `area`. With a raw file's tone `curve`, the raw-stage
 /// sliders are applied first to the whole area, from the whole frame's maps as Open computes them
 /// ([`photocraft_io::raw::retone`]), then the rest of the pipeline: at 1:1 the preview shows what
-/// Open will make.
+/// Open will make. The worker develops through [`develop_region`]; this is what it must match.
+#[cfg(test)]
 pub(crate) fn develop(source: &Surface, raw: Option<&photocraft_io::raw::RawPreview>, area: PixelRect, params: &CameraRaw, coverage: &Coverage) -> Surface {
     let (rest, stage) = raw_stage_split(params, raw);
-    let (retoned, params) = match (raw, stage) {
-        (Some(raw), Some((tone, pre, color))) if !tone.is_neutral() || pre.is_some() || !color.is_off() => {
+    let (retoned, params) = match (raw, stage.filter(stage_active)) {
+        (Some(raw), Some((tone, pre, color))) => {
             let (w, h) = (area.width() as usize, area.height() as usize);
             let mut px = vec![[0.0f32; 4]; w * h];
             source.read_rgba_into(area, &mut px);
             let noise = Some(photocraft_io::raw::StageNoise { color, pixel_scale: 1.0, noise: raw.noise, level: noise_level(raw, params) });
             photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, noise, &mut None);
-            let fmt = source.format();
-            let n = fmt.channels();
-            let mut data = source.read_region(area);
-            for (out, q) in data.chunks_exact_mut(n).zip(&px) {
-                let alpha = if fmt.alpha { out.get(n - 1).copied() } else { None };
-                photocraft_raster::from_rgba_into(&fmt, *q, out);
-                if let (Some(a), Some(o)) = (alpha, out.get_mut(n - 1)) {
-                    *o = a;
-                }
-            }
-            let mut out = source.clone();
-            out.write_region(area, &data);
-            (Some(out), rest)
+            (Some(store(source, area, &px)), rest)
         }
         _ => (None, rest),
     };
     let base = retoned.as_ref().unwrap_or(source);
     let mut result = photocraft_engine::lens_cmds::camera_raw_surface(base, area, &params);
-    if matches!(coverage, Coverage::None) {
-        return result;
+    mix_by_coverage(source, &mut result, area, coverage);
+    result
+}
+
+/// Whether the raw stage changes anything.
+fn stage_active(stage: &RawStage) -> bool {
+    !stage.0.is_neutral() || stage.1.is_some() || !stage.2.is_off()
+}
+
+/// `source` with `area` replaced by `px`, in its samples (as Open writes the raw stage into the
+/// document); alpha is kept.
+fn store(source: &Surface, area: PixelRect, px: &[[f32; 4]]) -> Surface {
+    let fmt = source.format();
+    let n = fmt.channels();
+    let mut data = source.read_region(area);
+    for (out, q) in data.chunks_exact_mut(n).zip(px) {
+        let alpha = if fmt.alpha { out.get(n - 1).copied() } else { None };
+        photocraft_raster::from_rgba_into(&fmt, *q, out);
+        if let (Some(a), Some(o)) = (alpha, out.get_mut(n - 1)) {
+            *o = a;
+        }
     }
-    let width = area.width() as usize;
+    let mut out = source.clone();
+    out.write_region(area, &data);
+    out
+}
+
+/// `px` as [`store`] would leave it after reading it back: quantised to the document's samples
+/// in place, without a surface (RGB documents; `false` for the other modes, which convert).
+fn quantise(format: photocraft_color::PixelFormat, px: &mut [[f32; 4]]) -> bool {
+    use photocraft_color::{ColorMode, SampleType};
+    if format.mode != ColorMode::Rgb {
+        return false;
+    }
+    // The surface's own conversions (`Surface::write_region`, `read_sample`).
+    let q: fn(f32) -> f32 = match format.sample {
+        SampleType::U8 => |v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8 as f32 / 255.0,
+        SampleType::U16 => |v| (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16 as f32 / 65535.0,
+        SampleType::F32 => return true,
+    };
+    let each = |row: &mut [[f32; 4]]| {
+        for p in row {
+            for v in &mut p[..3] {
+                *v = q(*v);
+            }
+        }
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use rayon::prelude::*;
+        px.par_chunks_mut(4096).for_each(each);
+    }
+    #[cfg(target_arch = "wasm32")]
+    px.chunks_mut(4096).for_each(each);
+    true
+}
+
+/// Mixes `result` back toward `source` over `part` by the selection's or mask's coverage.
+fn mix_by_coverage(source: &Surface, result: &mut Surface, part: PixelRect, coverage: &Coverage) {
+    if matches!(coverage, Coverage::None) {
+        return;
+    }
+    let width = part.width() as usize;
     let channels = source.channels();
     let mut original = Vec::new();
     let mut row = Vec::new();
-    for y in area.y0..area.y1 {
-        let rect = PixelRect::new(area.x0, y, area.x1, y + 1);
+    for y in part.y0..part.y1 {
+        let rect = PixelRect::new(part.x0, y, part.x1, y + 1);
         source.read_region_into(rect, &mut original);
         result.read_region_into(rect, &mut row);
         for (x, (out, original)) in row.chunks_exact_mut(channels).zip(original.chunks_exact(channels)).take(width).enumerate() {
-            let x = area.x0 + x as i32;
+            let x = part.x0 + x as i32;
             let alpha = match coverage {
                 Coverage::Selection(mask) => mask.sample_channel(x, y, 0),
                 Coverage::Mask(mask) => mask.value(x, y),
@@ -697,7 +797,102 @@ pub(crate) fn develop(source: &Surface, raw: Option<&photocraft_io::raw::RawPrev
         }
         result.write_region(rect, &row);
     }
-    result
+}
+
+/// What [`develop`] makes of `part` of `area`, through `cache`: the raw stage and the tonal stages
+/// run on the whole area as Open runs them, and are kept for the settings they were made with;
+/// the colour stages run only on `part` grown by their reach. The rest of the surface is
+/// `source`. `None` when `given_up` says so (asked between stages).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn develop_region(
+    source: &Surface,
+    raw: Option<&photocraft_io::raw::RawPreview>,
+    area: PixelRect,
+    part: PixelRect,
+    params: &CameraRaw,
+    coverage: &Coverage,
+    cache: &std::sync::Mutex<FullCache>,
+    given_up: &dyn Fn() -> bool,
+) -> Option<Surface> {
+    use photocraft_algo::camera_raw::{Frame, colour_reach, develop_colour_in, develop_tonal_with, tonal_part};
+    let part = part.intersect(&area);
+    let (w, h) = (area.width() as usize, area.height() as usize);
+    if part.is_empty() || w == 0 || h == 0 {
+        return Some(source.clone());
+    }
+    let mut guard = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let cache = &mut *guard;
+    let original = cache
+        .source
+        .get_or_insert_with(|| {
+            let mut px = vec![[0.0f32; 4]; w * h];
+            source.read_rgba_into(area, &mut px);
+            Arc::new(px)
+        })
+        .clone();
+    let (rest, stage) = raw_stage_split(params, raw);
+    // 1. The raw stage, in the document's samples as Open writes it.
+    let stage = stage.filter(stage_active);
+    let base = match (raw, stage) {
+        (Some(raw), Some(stage)) => match &cache.raw {
+            Some((s, px)) if *s == stage => px.clone(),
+            _ => {
+                let mut px = original.to_vec();
+                let (tone, pre, color) = stage;
+                let noise = Some(photocraft_io::raw::StageNoise { color, pixel_scale: 1.0, noise: raw.noise, level: noise_level(raw, params) });
+                photocraft_io::raw::retone_with(&mut px, w, h, &raw.curve, tone, pre, noise, &mut cache.retone);
+                if !quantise(source.format(), &mut px) {
+                    store(source, area, &px).read_rgba_into(area, &mut px);
+                }
+                let px = Arc::new(px);
+                cache.raw = Some((stage, px.clone()));
+                px
+            }
+        },
+        _ => original,
+    };
+    if given_up() {
+        return None;
+    }
+    // 2. The tonal stages over the whole area.
+    let key = (stage, tonal_part(&rest));
+    let tonal = match &cache.tonal {
+        Some((k, px)) if *k == key => px.clone(),
+        _ if key.1.is_identity() => base,
+        _ => {
+            let mut px = base.to_vec();
+            develop_tonal_with(&mut px, w, h, &key.1, &mut cache.develop);
+            let px = Arc::new(px);
+            cache.tonal = Some((key, px.clone()));
+            px
+        }
+    };
+    drop(guard);
+    if given_up() {
+        return None;
+    }
+    // 3. The colour stages over `part` grown by their reach, placed in the area.
+    let reach = i32::try_from(colour_reach(&rest)).unwrap_or(i32::MAX);
+    let grown = part.inflate(reach).intersect(&area);
+    let (gw, gh) = (grown.width() as usize, grown.height() as usize);
+    let (gx, gy) = ((grown.x0 - area.x0) as usize, (grown.y0 - area.y0) as usize);
+    let mut px = Vec::with_capacity(gw * gh);
+    for row in tonal.chunks_exact(w).skip(gy).take(gh) {
+        px.extend_from_slice(row.get(gx..gx + gw)?);
+    }
+    let float = source.format().sample == photocraft_color::SampleType::F32;
+    develop_colour_in(&mut px, gw, gh, &rest, float, Frame { x: gx, y: gy, width: w, height: h });
+    // 4. Into the document's samples (alpha kept, as the engine writes Camera Raw), then mixed
+    // by the coverage, as `develop` does.
+    let (pw, ph) = (part.width() as usize, part.height() as usize);
+    let (ox, oy) = ((part.x0 - grown.x0) as usize, (part.y0 - grown.y0) as usize);
+    let mut inner = Vec::with_capacity(pw * ph);
+    for row in px.chunks_exact(gw).skip(oy).take(ph) {
+        inner.extend_from_slice(row.get(ox..ox + pw)?);
+    }
+    let mut result = store(source, part, &inner);
+    mix_by_coverage(source, &mut result, part, coverage);
+    Some(result)
 }
 
 fn visible_pixels(image: Rect, viewport: Rect, area: PixelRect, max_side: usize) -> Option<PixelRect> {
@@ -796,24 +991,136 @@ mod tests {
     #[test]
     fn stale_refinements_and_failed_old_revisions_do_not_replace_new_settings() {
         let source = Surface::with_default(PixelFormat::RGBA8, &[0.2, 0.4, 0.6, 1.0]);
-        let mut preview = DetailPreview::new(source.clone(), PixelRect::new(0, 0, 16, 16), Coverage::None);
+        let area = PixelRect::new(0, 0, 16, 16);
+        let mut preview = DetailPreview::new(source.clone(), area, Coverage::None);
         let (tx, rx) = std::sync::mpsc::channel();
-        preview.pending = Some((1, rx));
-        tx.send(Ok((1, source.clone()))).unwrap();
+        preview.pending = Some((1, area, rx));
+        tx.send(Ok(Some((1, area, source.clone())))).unwrap();
         preview.poll(2);
         assert!(preview.result.is_none());
         assert!(!preview.pending());
         let (tx, rx) = std::sync::mpsc::channel();
-        preview.pending = Some((1, rx));
+        preview.pending = Some((1, area, rx));
         tx.send(Err("old failure".into())).unwrap();
         preview.poll(2);
         assert_eq!(preview.failed_revision, Some(1), "a failure must not suppress the new revision");
         let (tx, rx) = std::sync::mpsc::channel();
-        preview.pending = Some((2, rx));
-        tx.send(Ok((2, source))).unwrap();
+        preview.pending = Some((2, area, rx));
+        tx.send(Ok(None)).unwrap();
         preview.poll(2);
-        assert_eq!(preview.result.as_ref().map(|(r, _)| *r), Some(2));
+        assert!(preview.result.is_none() && !preview.pending(), "a develop that gave up leaves nothing");
+        let (tx, rx) = std::sync::mpsc::channel();
+        preview.pending = Some((2, area, rx));
+        tx.send(Ok(Some((2, area, source)))).unwrap();
+        preview.poll(2);
+        assert_eq!(preview.result.as_ref().map(|(r, _, _)| *r), Some(2));
         assert!(preview.error.is_none());
+    }
+
+    /// A develop of part of the area, through the kept stages, is what the whole develop makes
+    /// there: on a raw being opened (raw-stage sliders), with a selection, and with Detail and
+    /// the positional effects that need the whole frame's geometry.
+    #[test]
+    fn a_part_develops_as_the_whole_area_does() {
+        let area = PixelRect::new(3, -2, 163, 118);
+        let mut source = Surface::new(PixelFormat::RGBA16);
+        let (w, h) = (area.width() as usize, area.height() as usize);
+        let mut values = vec![0.0; w * h * 4];
+        for (i, p) in values.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let (x, y) = ((i % w) as f32, (i / w) as f32);
+            let v = 0.08 + 0.8 * (0.5 + 0.5 * (x * 0.21).sin() * (y * 0.13).cos());
+            p.copy_from_slice(&[v, v * 0.85 + 0.05 * (x % 7.0) / 7.0, v * 0.7, 1.0]);
+        }
+        source.write_region(area, &values);
+        let curve = [[0.0, 0.0], [0.05, 0.12], [0.3, 0.6], [1.0, 1.0]];
+        let raw = photocraft_io::raw::RawPreview::with_curve(curve.to_vec());
+        let mut selection = Surface::new(PixelFormat::GRAY8);
+        let ramp: Vec<f32> = (0..w * h).map(|i| (i % w) as f32 / w as f32).collect();
+        selection.write_region(area, &ramp);
+        let part = PixelRect::new(40, 30, 110, 80);
+        let settings = [
+            CameraRaw { shadows: 60.0, clarity: 20.0, exposure: 0.3, vibrance: 25.0, sharpen_amount: 50.0, noise_color: 40.0, ..Default::default() },
+            CameraRaw { highlights: -50.0, texture: 30.0, whites: 20.0, contrast: 15.0, vignette_amount: -40.0, grain_amount: 30.0, ..Default::default() },
+            CameraRaw { saturation: -30.0, noise_luminance: 30.0, vignette_amount: 25.0, ..Default::default() },
+        ];
+        for raw in [Some(&raw), None] {
+            for coverage in [Coverage::None, Coverage::Selection(selection.clone())] {
+                let cache = std::sync::Mutex::new(FullCache::default());
+                for p in &settings {
+                    let whole = develop(&source, raw, area, p, &coverage);
+                    let got = develop_region(&source, raw, area, part, p, &coverage, &cache, &|| false).unwrap();
+                    let mut worst = 0.0f32;
+                    for y in part.y0..part.y1 {
+                        for x in part.x0..part.x1 {
+                            let (a, b) = (whole.rgba(x, y), got.rgba(x, y));
+                            worst = a.iter().zip(&b).map(|(a, b)| (a - b).abs()).fold(worst, f32::max);
+                        }
+                    }
+                    // At most one 16-bit level, where the colour stages' running sums start elsewhere.
+                    assert!(worst <= 1.0 / 65535.0 + 1e-7, "{p:?} raw {} coverage {}: {worst}", raw.is_some(), !matches!(coverage, Coverage::None));
+                }
+            }
+        }
+    }
+
+    /// Quantising in place leaves what writing into the document and reading back would.
+    #[test]
+    fn quantising_in_place_matches_the_surface() {
+        use photocraft_color::{ColorMode, PixelFormat, SampleType};
+        let values: Vec<[f32; 4]> = (0..4096)
+            .map(|i| {
+                let v = i as f32 / 3000.0 - 0.1;
+                [v, 1.0 - v, (v * 7.3).fract(), 0.25 + (i % 3) as f32 / 4.0]
+            })
+            .chain([[f32::NAN, f32::INFINITY, -0.0, 1.0], [0.5 / 65535.0, 1.5 / 65535.0, 0.5 / 255.0, 0.5]])
+            .collect();
+        let area = PixelRect::new(-3, 5, 61, 69);
+        for sample in [SampleType::U8, SampleType::U16, SampleType::F32] {
+            for alpha in [true, false] {
+                let format = PixelFormat { mode: ColorMode::Rgb, sample, alpha };
+                let mut source = Surface::new(format);
+                let mut px = vec![[0.0f32; 4]; 64 * 64];
+                source.read_rgba_into(area, &mut px);
+                let mut expected = px.clone();
+                for (p, v) in px.iter_mut().zip(&values) {
+                    p[..3].copy_from_slice(&v[..3]);
+                }
+                store(&source, area, &px).read_rgba_into(area, &mut expected);
+                assert!(quantise(format, &mut px));
+                for (a, b) in px.iter().zip(&expected) {
+                    assert!(a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan())), "{format:?}: {a:?} vs {b:?}");
+                }
+                source = Surface::new(PixelFormat { mode: ColorMode::Grayscale, sample, alpha });
+                assert!(!quantise(source.format(), &mut px), "other modes convert through the surface");
+            }
+        }
+    }
+
+    /// Edits at 1:1 reuse the stages they leave alone; a develop asked to give up stops.
+    #[test]
+    fn a_part_reuses_the_kept_stages_and_gives_up_when_asked() {
+        let area = PixelRect::new(0, 0, 64, 48);
+        let source = Surface::with_default(PixelFormat::RGBA16, &[0.3, 0.4, 0.5, 1.0]);
+        let raw = photocraft_io::raw::RawPreview::with_curve(vec![[0.0, 0.0], [0.3, 0.6], [1.0, 1.0]]);
+        let cache = std::sync::Mutex::new(FullCache::default());
+        let part = PixelRect::new(10, 10, 30, 30);
+        let p = CameraRaw { shadows: 40.0, contrast: 10.0, ..Default::default() };
+        develop_region(&source, Some(&raw), area, part, &p, &Coverage::None, &cache, &|| false).unwrap();
+        let kept = |c: &std::sync::Mutex<FullCache>| {
+            let c = c.lock().unwrap();
+            (c.raw.as_ref().map(|(_, px)| px.clone()), c.tonal.as_ref().map(|(_, px)| px.clone()))
+        };
+        let (raw_stage, tonal) = kept(&cache);
+        // A colour edit keeps both stages.
+        develop_region(&source, Some(&raw), area, part, &CameraRaw { vibrance: 30.0, ..p.clone() }, &Coverage::None, &cache, &|| false).unwrap();
+        let (r2, t2) = kept(&cache);
+        assert!(Arc::ptr_eq(raw_stage.as_ref().unwrap(), r2.as_ref().unwrap()) && Arc::ptr_eq(tonal.as_ref().unwrap(), t2.as_ref().unwrap()));
+        // A tonal edit keeps the raw stage only.
+        develop_region(&source, Some(&raw), area, part, &CameraRaw { contrast: 30.0, ..p.clone() }, &Coverage::None, &cache, &|| false).unwrap();
+        let (r3, t3) = kept(&cache);
+        assert!(Arc::ptr_eq(raw_stage.as_ref().unwrap(), r3.as_ref().unwrap()) && !Arc::ptr_eq(tonal.as_ref().unwrap(), t3.as_ref().unwrap()));
+        assert!(cache.lock().unwrap().retone.is_some(), "the raw stage's slider-independent part is kept");
+        assert!(develop_region(&source, Some(&raw), area, part, &CameraRaw { shadows: 70.0, ..p }, &Coverage::None, &cache, &|| true).is_none());
     }
 
     #[test]
@@ -836,7 +1143,7 @@ mod tests {
                 let expected = photocraft_engine::lens_cmds::camera_raw_surface(&source, area, &params);
                 assert_eq!(full, expected);
                 let mut preview = DetailPreview::new(source, area, Coverage::None);
-                preview.result = Some((1, full));
+                preview.result = Some((1, area, full));
                 preview.ready = true;
                 let dark = preview.sample([0.0, 0.0], 1, false, &params).unwrap();
                 let light = preview.sample([1.0 / 40.0, 0.0], 1, false, &params).unwrap();
@@ -871,7 +1178,7 @@ mod tests {
     fn huge_sparse_images_keep_the_proxy_without_starting_an_unbounded_worker() {
         let source = Surface::new(PixelFormat::RGBA8);
         let mut preview = DetailPreview::new(source, PixelRect::new(0, 0, 8001, 8000), Coverage::None);
-        preview.request(&Context::default(), 1, &CameraRaw { exposure: 1.0, ..Default::default() });
+        preview.request(&Context::default(), 1, &CameraRaw { exposure: 1.0, ..Default::default() }, PixelRect::new(0, 0, 800, 600));
         assert!(!preview.pending());
         assert!(preview.error.as_deref().unwrap().contains("64 megapixels"));
         assert_eq!(preview.failed_revision, Some(1));

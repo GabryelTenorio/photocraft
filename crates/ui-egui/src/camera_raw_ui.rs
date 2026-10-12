@@ -2057,9 +2057,16 @@ mod tests {
             let t = Instant::now();
             let _ = d.detail.develop_screen_now(&d.params, size, d.preview_revision);
             let screen = ms(t);
+            // A 1:1 view of 1400 × 900 in the middle, with the worker's quarter-view margin, through
+            // its kept stages (as consecutive edits at 1:1 run).
+            let (cx, cy) = (d.full_w as i32 / 2, d.full_h as i32 / 2);
+            let part = photocraft_geom::Rect::new(cx - 700, cy - 450, cx + 700, cy + 450).inflate(350);
+            let t = Instant::now();
+            let _ = d.detail.develop_region_now(&d.params, part);
+            let view = ms(t);
             let t = Instant::now();
             let _ = d.detail.develop_now(&d.params);
-            eprintln!("{name:26} proxy {proxy:7.1} ms   screen {screen:7.1} ms   full-res {:7.0} ms", ms(t));
+            eprintln!("{name:26} proxy {proxy:7.1} ms   screen {screen:7.1} ms   1:1 view {view:7.0} ms   full-res {:7.0} ms", ms(t));
         }
         // Stage by stage, on the proxy and on the full frame.
         let d = app.camera_raw.as_ref().unwrap();
