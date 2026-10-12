@@ -15,6 +15,8 @@ pub enum Format {
     Ico,
     /// Netpbm family: PBM/PGM/PPM (P1–P6), PAM (P7) and PFM (`PF`/`Pf`).
     Pnm,
+    /// ZSoft Paintbrush: 1/2/4-bit planar palettes, 8-bit indexed and 24-bit RGB.
+    Pcx,
     Qoi,
     OpenExr,
     /// Radiance RGBE.
@@ -59,6 +61,10 @@ pub struct FormatCaps {
 /// The test-suite asserts that every other enabled format is read+write.
 pub const ASYMMETRIC_EXCEPTIONS: &[(Format, &str)] = &[
     (
+        Format::Pcx,
+        "PCX is supported for opening legacy paint and clipart assets. New files should use PNG; writing obsolete indexed and planar variants is intentionally not provided.",
+    ),
+    (
         Format::Avif,
         "AVIF encode uses ravif (pure Rust) but decoding requires dav1d (C); read stays unsupported \
          until a pure-Rust AV1 decoder is viable. Only enabled with the non-default `avif` feature.",
@@ -88,7 +94,7 @@ const ALL_LAYOUTS: &[ChannelLayout] = &[L::Gray, L::GrayA, L::Rgb, L::Rgba, L::C
 
 impl Format {
     /// Every format known to the crate (enabled or not).
-    pub const ALL: [Format; 16] = [
+    pub const ALL: [Format; 17] = [
         Format::Png,
         Format::Jpeg,
         Format::Tiff,
@@ -98,6 +104,7 @@ impl Format {
         Format::Tga,
         Format::Ico,
         Format::Pnm,
+        Format::Pcx,
         Format::Qoi,
         Format::OpenExr,
         Format::Hdr,
@@ -128,6 +135,7 @@ impl Format {
             Format::Tga => "TGA",
             Format::Ico => "ICO",
             Format::Pnm => "Netpbm",
+            Format::Pcx => "PCX",
             Format::Qoi => "QOI",
             Format::OpenExr => "OpenEXR",
             Format::Hdr => "Radiance HDR",
@@ -151,6 +159,7 @@ impl Format {
             Format::Tga => &["tga", "icb", "vda", "vst"],
             Format::Ico => &["ico"],
             Format::Pnm => &["pnm", "pbm", "pgm", "ppm", "pam", "pfm"],
+            Format::Pcx => &["pcx"],
             Format::Qoi => &["qoi"],
             Format::OpenExr => &["exr"],
             Format::Hdr => &["hdr"],
@@ -172,6 +181,7 @@ impl Format {
             Format::Tga => "image/x-tga",
             Format::Ico => "image/x-icon",
             Format::Pnm => "image/x-portable-anymap",
+            Format::Pcx => "image/x-pcx",
             Format::Qoi => "image/qoi",
             Format::OpenExr => "image/x-exr",
             Format::Hdr => "image/vnd.radiance",
@@ -221,6 +231,7 @@ pub fn caps(format: Format) -> FormatCaps {
         Format::Tga => FormatCaps { layouts: RGB_GRAY, ..base },
         Format::Ico => FormatCaps { layouts: &[L::Rgba], ..base },
         Format::Pnm => FormatCaps { depths: &[S::U8, S::U16, S::F32], layouts: ALL_LAYOUTS, ..base },
+        Format::Pcx => FormatCaps { read: true, write: false, layouts: &[L::Rgb], alpha: false, ..base },
         Format::Qoi => base,
         Format::OpenExr => FormatCaps { depths: &[S::F16, S::F32], layouts: RGB_GRAY, ..base },
         Format::Hdr => FormatCaps { depths: &[S::F32], layouts: &[L::Rgb], alpha: false, lossy: true, ..base },
@@ -301,6 +312,9 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     }
     if b.starts_with(b"SIMPLE  =") {
         return Some(Format::Fits);
+    }
+    if crate::codecs::pcx::looks_like_pcx(b) {
+        return Some(Format::Pcx);
     }
     if looks_like_tga(b) {
         return Some(Format::Tga);
