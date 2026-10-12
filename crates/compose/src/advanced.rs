@@ -194,6 +194,50 @@ pub(crate) fn composite_clipped(clipped: &[Layer], base: &mut Buffer, cx: &Ctx) 
     }
 }
 
+/// Whether `layer`'s clipping group is built in the base's *shape* rather than inside its faded
+/// content: Blend Clipped Layers as Group on, the base below 100 % fill, and something clipped
+/// to it. Photoshop fades only the base's own pixels by fill; the clipped layers show at full
+/// strength inside the base's alpha with its masks (a 0 %-fill base still shows them). At 100 %
+/// fill the two models agree, and the cheaper atop path is kept.
+pub fn clips_by_shape(layer: &Layer, clipped: &[Layer]) -> bool {
+    layer.fill_opacity < 1.0
+        && !matches!(layer.content, LayerContent::Adjustment(_))
+        && !clips_individually(layer, clipped)
+        && clipped.iter().any(|c| c.visible)
+}
+
+/// Fade a layer's isolated content by its fill opacity (Normal coverage).
+pub(crate) fn fade(buf: &mut Buffer, fill: f32) {
+    let f = fill.clamp(0.0, 1.0);
+    for p in &mut buf.px {
+        p[3] *= f;
+    }
+}
+
+/// The clipping group of a base below 100 % fill ([`clips_by_shape`]): `group` starts as the
+/// base's content at its fill opacity; each visible clipped layer composites onto it as an
+/// ordinary layer (its own mode, opacity, fill, masks, effects, Dissolve), and its change is
+/// kept only inside `shape` (the base's alpha with masks, unfaded). The caller then blends
+/// `group` in the base's mode at the base's opacity. A clipped layer's knockout stops at the
+/// bottom of the clipping group (the base at fill).
+pub(crate) fn composite_clipped_in_shape(clipped: &[Layer], group: &mut Buffer, shape: &[f32], cx: &Ctx) {
+    if shape.len() != group.px.len() {
+        // Never reached (the shape is read from the same rect); keep the base alone.
+        return;
+    }
+    let floor = clipped.iter().any(|c| c.visible && c.advanced.knockout != Knockout::None).then(|| group.clone());
+    for c in clipped.iter().filter(|c| c.visible) {
+        let before = group.clone();
+        let ko = floor.as_ref().filter(|_| c.advanced.knockout != Knockout::None);
+        composite_layer(c, &[], group, cx, ko, Scope::ISOLATED);
+        for ((p, b), k) in group.px.iter_mut().zip(&before.px).zip(shape) {
+            if *k < 1.0 {
+                *p = mix(*b, *p, k.max(0.0));
+            }
+        }
+    }
+}
+
 /// Whether `layer`'s clipped layers blend one by one (Blend Clipped Layers as Group off).
 /// Adjustment layers keep the grouped path (they have no pixels of their own to clip to).
 pub(crate) fn clips_individually(layer: &Layer, clipped: &[Layer]) -> bool {

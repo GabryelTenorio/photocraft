@@ -389,6 +389,8 @@ pub const F_QUANT: u32 = 32768;
 pub const F_ADD_DIFF: u32 = 16384;
 /// Blend / Atop / FxMerge of a type layer: coverage mixed at `psblend::TEXT_GAMMA`.
 pub const F_TEXT_GAMMA: u32 = 8192;
+/// `Lerp` from A to B by C's alpha (clipped layers kept inside a base's shape).
+pub const F_SHAPE: u32 = 524288;
 
 /// `F_TEXT_GAMMA` for type layers while text gamma blending is on; the gamma goes in `p4.w`.
 fn gamma_flag(layer: &Layer) -> u32 {
@@ -409,6 +411,13 @@ pub const INIT_RELATIVE: i32 = 5;
 pub const INIT_COVER: i32 = 6;
 /// A with its alpha joined with the effect shape (the map).
 pub const INIT_OUTLINE: i32 = 7;
+/// B's colour with A's alpha (a clipping group built in the base's shape, over the base's own
+/// effect shape).
+pub const INIT_GROUP_COLOR: i32 = 8;
+/// The clipping group's own alpha relative to the base's (A the base, B the group), at least
+/// `opacity` (the base's fill): the per-pixel fill of `INIT_INSIDE` / `INIT_RELATIVE` with
+/// `F_SHAPE` (`compose::composite_layer_effects`).
+pub const INIT_GROUP_FILL: i32 = 9;
 
 /// `MapRef::item` of the layer's effect shape (`compose::layer_shape`) instead of an effect map.
 pub const SHAPE_MAP: usize = usize::MAX;
@@ -669,7 +678,8 @@ impl<'a> Planner<'a> {
         }
 
         if has_effects(layer) {
-            return self.effects(layer, &visible_clipped, backdrop, false);
+            let by_shape = photocraft_compose::clips_by_shape(layer, clipped) && !layer.advanced.blend_interior;
+            return self.effects(layer, &visible_clipped, backdrop, false, by_shape);
         }
 
         if let LayerContent::Shape(sh) = &layer.content
@@ -679,14 +689,23 @@ impl<'a> Planner<'a> {
             // The vector stroke goes above the clipped layers: the fill is the clipping base,
             // the stroke is laid over the clipped result, then the masks apply to both
             // (compose::shape_parts).
+            let by_shape = photocraft_compose::clips_by_shape(layer, clipped);
             let mut content = self.shape_part(layer, Role::Content, fill);
-            for c in visible_clipped {
-                content = self.atop(c, content)?;
+            if by_shape {
+                content = self.clip_in_shape(layer, &visible_clipped, content)?;
+            } else {
+                for c in visible_clipped {
+                    content = self.atop(c, content)?;
+                }
             }
             let stroke = self.shape_part(layer, Role::Stroke, stroke);
             let mut p = Pass::new(Kernel::Blend, 0);
             p.a = Some(content);
             p.b = Some(stroke);
+            if by_shape {
+                // The base's fill fades its stroke; the group then blends at layer opacity.
+                p.opacity = layer.fill_opacity.clamp(0.0, 1.0);
+            }
             let mut content = self.emit(p);
             if let Some(m) = self.mask_use(layer) {
                 let mut p = Pass::new(Kernel::Mask, 0);
@@ -699,7 +718,22 @@ impl<'a> Planner<'a> {
             p.b = Some(content);
             p.mode = layer.blend;
             p.opacity = layer.opacity;
-            p.fill = layer.fill_opacity;
+            p.fill = if by_shape { 1.0 } else { layer.fill_opacity };
+            return Ok(self.emit(p));
+        }
+
+        // Below 100 % fill the clipping group is built in the base's shape, not its faded
+        // content (compose::clips_by_shape), and blends at the base's opacity alone.
+        if photocraft_compose::clips_by_shape(layer, clipped) {
+            let content = self.content(layer)?;
+            let group = self.clip_in_shape(layer, &visible_clipped, content)?;
+            let mut p = Pass::new(Kernel::Blend, 0);
+            p.a = Some(backdrop);
+            p.b = Some(group);
+            p.mode = layer.blend;
+            p.opacity = layer.opacity;
+            p.flags = gamma_flag(layer);
+            p.extra[3] = photocraft_compose::text_gamma(layer);
             return Ok(self.emit(p));
         }
 
@@ -742,6 +776,31 @@ impl<'a> Planner<'a> {
             Some(clip) => Ok(self.write_back(backdrop, merged, clip)),
             None => Ok(merged),
         }
+    }
+
+    /// compose::clip_in_shape: the base's `content` at its fill opacity, then each clipped layer
+    /// composited onto it as an ordinary layer and kept only inside the base's unfaded alpha.
+    /// Consumes `content`.
+    fn clip_in_shape(&mut self, layer: &'a Layer, clipped: &[&'a Layer], content: Slot) -> Result<Slot, Unsupported> {
+        let shape = self.retain(content);
+        let empty = self.clear();
+        let mut p = Pass::new(Kernel::Blend, 0);
+        p.a = Some(empty);
+        p.b = Some(content);
+        p.opacity = layer.fill_opacity.clamp(0.0, 1.0);
+        let mut group = self.emit(p);
+        for &c in clipped {
+            let before = self.retain(group);
+            let after = self.layer(c, &[], group)?;
+            let mut p = Pass::new(Kernel::Lerp, 0);
+            p.a = Some(before);
+            p.b = Some(after);
+            p.c = Some(self.retain(shape));
+            p.flags = F_SHAPE;
+            group = self.emit(p);
+        }
+        self.release(shape);
+        Ok(group)
     }
 
     /// The rect a plain layer composites over: its composite bounds when they cover at most half
@@ -919,7 +978,7 @@ impl<'a> Planner<'a> {
             return Ok(self.emit(p));
         }
         if has_effects(layer) {
-            return self.effects(layer, &[], base, true);
+            return self.effects(layer, &[], base, true, false);
         }
         let content = self.content(layer)?;
         let mut p = Pass::new(Kernel::Atop, 0);
@@ -952,7 +1011,9 @@ impl<'a> Planner<'a> {
     /// `composite_with_effects` (atop = false) or the clipped-layer variant of `composite_atop`
     /// (atop = true: effects over the base treated as opaque, keeping the base's alpha).
     /// Consumes `backdrop`.
-    fn effects(&mut self, layer: &'a Layer, clipped: &[&'a Layer], backdrop: Slot, atop: bool) -> Result<Slot, Unsupported> {
+    /// `by_shape`: the clipped layers are built in the base's shape below 100 % fill
+    /// (`compose::clips_by_shape`, Blend Interior Effects as Group off).
+    fn effects(&mut self, layer: &'a Layer, clipped: &[&'a Layer], backdrop: Slot, atop: bool, by_shape: bool) -> Result<Slot, Unsupported> {
         let canvas = self.cx.canvas;
         let region = bounds::effect_region(layer, canvas);
         let sb = photocraft_compose::paint_bounds(layer).unwrap_or_else(|| bounds::layer_bounds(layer, canvas));
@@ -976,8 +1037,30 @@ impl<'a> Planner<'a> {
                 p.clip = Some(clip);
             }
         }
-        for c in clipped {
-            content = self.atop(c, content)?;
+        // Below 100 % fill (`by_shape`) the content keeps the base's alpha as the effect shape and
+        // takes the clipping group's colour; the group's own alpha becomes a per-pixel fill
+        // (compose::composite_layer_effects).
+        let mut fill_map = None;
+        if by_shape {
+            let base = self.retain(content);
+            let group = self.clip_in_shape(layer, clipped, base)?;
+            let g2 = self.retain(group);
+            let c2 = self.retain(content);
+            let mut p = Pass::new(Kernel::FxInit, 0);
+            p.a = Some(c2);
+            p.b = Some(g2);
+            p.adjust_kind = INIT_GROUP_FILL;
+            p.opacity = layer.fill_opacity.clamp(0.0, 1.0);
+            fill_map = Some(self.emit(p));
+            let mut p = Pass::new(Kernel::FxInit, 0);
+            p.a = Some(content);
+            p.b = Some(group);
+            p.adjust_kind = INIT_GROUP_COLOR;
+            content = self.emit(p);
+        } else {
+            for c in clipped {
+                content = self.atop(c, content)?;
+            }
         }
         let fx = self.fx.len();
         self.fx.push(FxLayer { layer, region, bounds: sb });
@@ -1089,12 +1172,20 @@ impl<'a> Planner<'a> {
 
         // The layer: its colour at fill opacity inside its shape; interior effects are painted
         // relative to the shape (coverage within it), then the shape's alpha applies.
-        let mut l = if relative {
-            let c = self.retain(content);
-            init(self, lay_src, Some(c), INIT_RELATIVE, layer.fill_opacity)
-        } else {
-            init(self, lay_src, None, INIT_INSIDE, layer.fill_opacity)
-        };
+        let mut p = Pass::new(Kernel::FxInit, 0);
+        p.a = Some(lay_src);
+        if relative {
+            p.b = Some(self.retain(content));
+        }
+        p.adjust_kind = if relative { INIT_RELATIVE } else { INIT_INSIDE };
+        p.opacity = layer.fill_opacity;
+        p.clip = Some(clip);
+        if let Some(m) = fill_map {
+            // The per-pixel fill of a clipping group built in the base's shape.
+            p.c = Some(m);
+            p.flags = F_SHAPE;
+        }
+        let mut l = self.emit(p);
         for &(_, e) in &rev {
             if let Effect::PatternOverlay { common, name, id, scale, angle, link, phase } = e
                 && let Some(pat) = photocraft_doc::pattern::find(self.cx.patterns, id, name).filter(|p| p.is_paintable())

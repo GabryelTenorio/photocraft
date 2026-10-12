@@ -460,3 +460,111 @@ fn deep_knockout_reveals_a_localized_background() {
         check(&d, 2, 2, [0.0; 4], "an unlocked layer named Background");
     }
 }
+
+/// White Background, a red base over the left half (x < 6), a blue Multiply layer clipped to it.
+fn clip_doc(depth: SampleType) -> Document {
+    let mut d = doc(depth, true);
+    let base = solid(&d, "base", Rect::new(0, 0, 6, 8), RED);
+    let mut clip = solid(&d, "clip", full(&d), BLUE);
+    clip.clipped = true;
+    clip.blend = BlendMode::Multiply;
+    d.layers.push(base);
+    d.layers.push(clip);
+    d
+}
+
+#[test]
+fn clipped_layers_take_the_base_shape_not_its_fill() {
+    for depth in DEPTHS {
+        let mut d = clip_doc(depth);
+        check(&d, 2, 2, [0.0, 0.0, 0.0, 1.0], "fill 100 %: blue × red");
+        check(&d, 9, 2, WHITE, "outside the base");
+        // Fill 0 %: the base's pixels vanish, the clipped Multiply lands on transparency inside
+        // the base's shape and shows its own colour.
+        d.layers[1].fill_opacity = 0.0;
+        check(&d, 2, 2, BLUE, "fill 0 %, as group");
+        check(&d, 9, 2, WHITE, "fill 0 %, outside the base");
+        // Fill 50 %: half red under a full-strength multiply of blue.
+        d.layers[1].fill_opacity = 0.5;
+        check(&d, 2, 2, [0.0, 0.0, 0.5, 1.0], "fill 50 %, as group");
+        // The base's opacity still limits the whole group: (0, 0, .5) at 50 % over white.
+        d.layers[1].opacity = 0.5;
+        check(&d, 2, 2, [0.5, 0.5, 0.75, 1.0], "fill 50 %, opacity 50 %");
+        d.layers[1].opacity = 1.0;
+        // Blend Clipped Layers as Group off: the base alone, then blue multiplied onto the result.
+        d.layers[1].advanced.blend_clipped = false;
+        d.layers[1].fill_opacity = 0.0;
+        check(&d, 2, 2, BLUE, "fill 0 %, individually");
+        d.layers[1].fill_opacity = 0.5;
+        check(&d, 2, 2, [0.0, 0.0, 0.5, 1.0], "fill 50 %, individually");
+    }
+}
+
+#[test]
+fn clipped_layers_follow_the_base_mask_at_zero_fill() {
+    for depth in DEPTHS {
+        let mut d = clip_doc(depth);
+        let mut m = photocraft_raster::Surface::with_default(PixelFormat::GRAY8, &[1.0]);
+        m.fill_rect(Rect::new(0, 0, 3, 8), &[0.0]);
+        d.layers[1].mask = Some(LayerMask { surface: m, enabled: true, linked: true, density: 1.0, feather: 0.0 });
+        d.layers[1].fill_opacity = 0.0;
+        check(&d, 1, 2, WHITE, "masked out");
+        check(&d, 4, 2, BLUE, "inside base and mask");
+    }
+}
+
+#[test]
+fn clipped_layers_of_a_zero_fill_base_with_effects() {
+    for depth in DEPTHS {
+        let mut d = clip_doc(depth);
+        d.layers[1].effects.items = vec![outside_stroke()];
+        d.layers[1].fill_opacity = 0.0;
+        check(&d, 2, 2, BLUE, "inside the base: the clipped layer at full strength");
+        check(&d, 8, 2, RED, "the outside stroke");
+        d.layers[1].fill_opacity = 0.5;
+        check(&d, 2, 2, [0.0, 0.0, 0.5, 1.0], "fill 50 %");
+    }
+}
+
+#[test]
+fn clipped_dissolve_layer_dissolves() {
+    for depth in DEPTHS {
+        let mut d = doc(depth, true);
+        let base = solid(&d, "base", full(&d), RED);
+        let mut clip = solid(&d, "clip", full(&d), BLUE);
+        clip.clipped = true;
+        clip.blend = BlendMode::Dissolve;
+        clip.opacity = 0.5;
+        d.layers.push(base);
+        d.layers.push(clip);
+        for (fill, under) in [(1.0, RED), (0.0, WHITE)] {
+            d.layers[1].fill_opacity = fill;
+            let out = render(&d, d.bounds());
+            let blue = out.px.iter().filter(|p| close(**p, BLUE)).count();
+            let rest = out.px.iter().filter(|p| close(**p, under)).count();
+            assert_eq!(blue + rest, out.px.len(), "{depth:?} base fill {fill}: only blue or the base, never a mix");
+            assert!(blue > 10 && rest > 10, "{depth:?} base fill {fill}: both show ({blue} blue, {rest} other)");
+        }
+    }
+}
+
+#[test]
+fn clipped_dissolve_fill_on_the_background_dissolves() {
+    // #3052: a black Solid Color fill at 50 % in Dissolve, clipped to an opaque white
+    // Background, draws black or white pixels, never grey (the same pixels as unclipped).
+    for depth in DEPTHS {
+        let mut d = doc(depth, true);
+        let mut fill = Layer::new("fill", LayerContent::Fill(photocraft_doc::Fill::Solid(Color::rgb(0.0, 0.0, 0.0))));
+        fill.blend = BlendMode::Dissolve;
+        fill.opacity = 0.5;
+        d.layers.push(fill);
+        let unclipped = render(&d, d.bounds());
+        d.layers[1].clipped = true;
+        let out = render(&d, d.bounds());
+        let black = out.px.iter().filter(|p| close(**p, [0.0, 0.0, 0.0, 1.0])).count();
+        let white = out.px.iter().filter(|p| close(**p, WHITE)).count();
+        assert_eq!(black + white, out.px.len(), "{depth:?}: only black or white, never grey");
+        assert!(black > 10 && white > 10, "{depth:?}: both show ({black} black, {white} white)");
+        assert!(out.px.iter().zip(&unclipped.px).all(|(a, b)| close(*a, *b)), "{depth:?}: clipping to a full opaque base keeps the same pixels");
+    }
+}

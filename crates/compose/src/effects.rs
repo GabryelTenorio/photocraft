@@ -1795,9 +1795,10 @@ fn knock_out_exterior(map: &mut Map, shape: &Map, fill_opacity: f32) {
 /// masked, clipped layers applied) plus its effects into `backdrop`.
 pub fn composite_with_effects(layer: &Layer, content: &Buffer, backdrop: &mut Buffer, maps: &FxMaps, layer_bounds: Rect, patterns: &[Pattern]) {
     let prepared = PreparedPatterns::new(patterns, PREPARED_PATTERN_BYTES);
-    composite_with_effects_prepared(layer, content, backdrop, maps, layer_bounds, &prepared, None);
+    composite_with_effects_prepared(layer, content, backdrop, maps, layer_bounds, &prepared, None, None);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn composite_with_effects_prepared(
     layer: &Layer,
     content: &Buffer,
@@ -1806,6 +1807,7 @@ pub(crate) fn composite_with_effects_prepared(
     layer_bounds: Rect,
     patterns: &PreparedPatterns<'_>,
     vstroke: Option<VectorStroke<'_>>,
+    fill_map: Option<&[f32]>,
 ) {
     let big = content.rect;
     let (w, h) = (big.width() as usize, big.height() as usize);
@@ -1879,13 +1881,16 @@ pub(crate) fn composite_with_effects_prepared(
     let inside = |a: f32| a > INSIDE_EPS;
     // Within an outline (or a split-off vector stroke) the content's own transparency (a fading
     // gradient fill) acts like fill opacity: the effects still cover the whole shape.
+    // A base below 100 % fill with clipped layers: the clipping group's own alpha per pixel
+    // (the base at fill, its clipped layers at full strength inside its shape).
+    let fill_at = |i: usize| fill_map.and_then(|m| m.get(i)).copied().unwrap_or(content_fill);
     let lay_alpha = |i: usize, p: &[f32; 4], a: f32| {
         if !inside(a) {
             0.0
         } else if relative {
-            content_fill * (kmask(i) * p[3] / a).min(1.0)
+            fill_at(i) * (kmask(i) * p[3] / a).min(1.0)
         } else {
-            content_fill
+            fill_at(i)
         }
     };
     let mut lay = Buffer { rect: big, px: content.px.iter().zip(&shape.v).enumerate().map(|(i, (p, a))| [p[0], p[1], p[2], lay_alpha(i, p, *a)]).collect() };

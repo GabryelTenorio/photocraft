@@ -49,6 +49,7 @@ const F_FIRST: u32 = 2048u;      // outside strokes: nothing accumulated yet
 const F_CHANNELS: u32 = 4096u;   // lerp: per-channel weights in p0 (channel restrictions)
 const F_LAB: u32 = 65536u;      // Lab document: Normal mixes in CIELAB
 const F_HDR: u32 = 262144u;     // 32-bit float document: HDR blends and Exposure retain values above 1
+const F_SHAPE: u32 = 524288u;   // lerp: k = C's alpha (clipped layers kept inside a base's shape)
 const F_QUANT: u32 = 32768u;    // lerp: A rounded to p0.x steps (adjustment results, integer docs)
 const F_ADD_DIFF: u32 = 16384u;  // lerp: A + (B - C) premultiplied (clips on pass-through groups)
 const F_TEXT_GAMMA: u32 = 8192u; // blend / atop / fx merge: type layer, mix coverage at gamma p4.w
@@ -829,6 +830,11 @@ fn fs_atop(in: VOut) -> @location(0) vec4<f32> {
     let base = textureLoad(tex_a, p, 0);
     if (base.a <= 0.0) { return base; }
     let s = textureLoad(tex_b, p, 0);
+    if (op.mode == M_DISSOLVE) {
+        // Each pixel fully drawn or not at all (the unclipped layer's noise), inside the base.
+        if (dissolve_noise(doc_px(p)) < s.a * op.opacity) { return vec4(s.rgb, base.a); }
+        return base;
+    }
     let r = composite_g(op.mode, vec4(base.rgb, 1.0), s, op.opacity, (op.flags & F_TEXT_GAMMA) != 0u);
     return vec4(r.rgb, base.a);
 }
@@ -875,7 +881,11 @@ fn fs_lerp(in: VOut) -> @location(0) vec4<f32> {
         if (al <= 0.0) { return vec4(0.0); }
         return vec4(clamp(pm.rgb / al, vec3(0.0), vec3(1.0)), al);
     }
-    let k = op.opacity * mask_value(doc_px(p));
+    var k = op.opacity * mask_value(doc_px(p));
+    if ((op.flags & F_SHAPE) != 0u) {
+        // compose::advanced::composite_clipped_in_shape: keep B only inside C's alpha.
+        k = clamp(textureLoad(tex_c, p, 0).a, 0.0, 1.0);
+    }
     let wa = a.a * (1.0 - k);
     let wb = b.a * k;
     let alpha = wa + wb;
@@ -946,19 +956,27 @@ fn fx_color(d: vec2<i32>) -> vec4<f32> {
     return op.color;
 }
 
+// The layer's fill inside its effect shape: `opacity`, or per pixel from C's alpha with F_SHAPE
+// (a clipping group built in the base's shape below 100 % fill).
+fn fx_fill(p: vec2<i32>) -> f32 {
+    if ((op.flags & F_SHAPE) != 0u) { return textureLoad(tex_c, p, 0).a; }
+    return op.opacity;
+}
+
 // Effect chain steps (`kind`): 0 A at `opacity` × alpha; 1 an opaque copy of A (a clipping base
 // for clipped layers' effects); 2 A's colour with alpha `opacity` inside B's shape (the layer
 // before its interior effects); 3 A with its alpha × B's alpha (the shape's own alpha); 4 the
 // vector stroke C over A, relative to the shape B, at `opacity`; 5 A's colour with alpha
 // `opacity` × A's alpha relative to B's (the layer within a filled shape's outline); 6 the
-// outside-stroke coverage seed (0, A's alpha); 7 A with alpha joined with the effect shape (map).
+// outside-stroke coverage seed (0, A's alpha); 7 A with alpha joined with the effect shape (map);
+// 8 B's colour with A's alpha; 9 B's alpha relative to A's, at least `opacity` (a per-pixel fill).
 @fragment
 fn fs_fxinit(in: VOut) -> @location(0) vec4<f32> {
     let p = local(in.pos);
     let c = textureLoad(tex_a, p, 0);
     switch op.kind {
         case 1: { return vec4(c.rgb, 1.0); }
-        case 2: { return vec4(c.rgb, select(0.0, op.opacity, c.a > INSIDE_EPS)); }
+        case 2: { return vec4(c.rgb, select(0.0, fx_fill(p), c.a > INSIDE_EPS)); }
         case 3: { return vec4(c.rgb, c.a * min(textureLoad(tex_b, p, 0).a, 1.0)); }
         case 4: {
             let a = textureLoad(tex_b, p, 0).a;
@@ -969,10 +987,15 @@ fn fs_fxinit(in: VOut) -> @location(0) vec4<f32> {
         case 5: {
             let a = textureLoad(tex_b, p, 0).a;
             if (a <= INSIDE_EPS) { return vec4(c.rgb, 0.0); }
-            return vec4(c.rgb, op.opacity * min(c.a / a, 1.0));
+            return vec4(c.rgb, fx_fill(p) * min(c.a / a, 1.0));
         }
         case 6: { return vec4(0.0, c.a, 0.0, 0.0); }
         case 7: { return vec4(c.rgb, max(c.a, map_value(doc_px(p), 0.0))); }
+        case 8: { return vec4(textureLoad(tex_b, p, 0).rgb, c.a); }
+        case 9: {
+            if (c.a <= 0.0) { return vec4(0.0, 0.0, 0.0, op.opacity); }
+            return vec4(0.0, 0.0, 0.0, clamp(textureLoad(tex_b, p, 0).a / c.a, op.opacity, 1.0));
+        }
         default: { return vec4(c.rgb, c.a * op.opacity); }
     }
 }

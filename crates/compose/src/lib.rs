@@ -36,7 +36,7 @@ use photocraft_geom::Rect;
 use photocraft_raster::{Rgba8Image, Surface};
 use psblend as blend;
 
-pub use advanced::advanced_active;
+pub use advanced::{advanced_active, clips_by_shape};
 
 /// Straight-alpha RGBA float buffer covering a rectangle.
 #[derive(Clone, Debug, PartialEq)]
@@ -1316,18 +1316,43 @@ fn composite_layer_plain(layer: &Layer, clipped: &[Layer], backdrop: &mut Buffer
         }
         return;
     }
+    // Below 100 % fill the clipped layers are built in the base's shape, not its faded content
+    // (`advanced::clips_by_shape`); the group then blends at the base's opacity alone.
+    let by_shape = advanced::clips_by_shape(layer, clipped);
     if let Some((mut content, stroke, mask)) = shape_parts(layer, clipped, rect, cx) {
-        advanced::composite_clipped(clipped, &mut content, cx);
+        let fill = if by_shape {
+            clip_in_shape(layer, clipped, &mut content, cx);
+            1.0
+        } else {
+            advanced::composite_clipped(clipped, &mut content, cx);
+            layer.fill_opacity
+        };
+        let stroke_fill = if by_shape { layer.fill_opacity.clamp(0.0, 1.0) } else { 1.0 };
         for (i, (p, s)) in content.px.iter_mut().zip(&stroke.px).enumerate() {
-            *p = psblend::composite(BlendMode::Normal, *p, *s, 1.0);
+            *p = psblend::composite(BlendMode::Normal, *p, [s[0], s[1], s[2], s[3] * stroke_fill], 1.0);
             p[3] *= mask_k(&mask, i);
         }
-        blend_into_fill(backdrop, &content, layer.blend, layer.opacity, layer.fill_opacity, 1.0);
+        blend_into_fill(backdrop, &content, layer.blend, layer.opacity, fill, 1.0);
         return;
     }
     let Some(mut content) = render_content(layer, rect, cx) else { return };
+    if by_shape {
+        clip_in_shape(layer, clipped, &mut content, cx);
+        blend_into_g(backdrop, &content, layer.blend, layer.opacity, text_gamma(layer));
+        return;
+    }
     advanced::composite_clipped(clipped, &mut content, cx);
     blend_into_fill(backdrop, &content, layer.blend, layer.opacity, layer.fill_opacity, text_gamma(layer));
+}
+
+/// The clipping group of a base below 100 % fill, in place: `content` (the base's isolated
+/// content) is faded by the base's fill, then the clipped layers composite inside its unfaded
+/// alpha (`advanced::composite_clipped_in_shape`). Photoshop's special-eight fill blending of
+/// the base's own pixels is not applied to the group: the group blends at layer opacity.
+fn clip_in_shape(layer: &Layer, clipped: &[Layer], content: &mut Buffer, cx: &Ctx) {
+    let shape: Vec<f32> = content.px.iter().map(|p| p[3]).collect();
+    advanced::fade(content, layer.fill_opacity);
+    advanced::composite_clipped_in_shape(clipped, content, &shape, cx);
 }
 
 /// A layer with effects (and its clipping group) onto `backdrop`.
@@ -1343,7 +1368,23 @@ fn composite_layer_effects(layer: &Layer, clipped: &[Layer], backdrop: &mut Buff
             (content, None)
         }
     };
-    advanced::composite_clipped(clipped, &mut content, cx);
+    // Below 100 % fill (and Blend Interior Effects as Group off, where fill fades the content
+    // alone) the clipped layers are built in the base's shape: the content keeps the base's
+    // alpha as the effect shape, its colour is the clipping group's, and the group's own alpha
+    // (base at fill, clipped layers at full strength) replaces fill opacity per pixel.
+    let fill_map = if advanced::clips_by_shape(layer, clipped) && !layer.advanced.blend_interior {
+        let mut group = content.clone();
+        clip_in_shape(layer, clipped, &mut group, cx);
+        let fill = layer.fill_opacity.clamp(0.0, 1.0);
+        let map = content.px.iter().zip(&group.px).map(|(c, g)| if c[3] > 0.0 { (g[3] / c[3]).clamp(fill, 1.0) } else { fill }).collect::<Vec<f32>>();
+        for (c, g) in content.px.iter_mut().zip(&group.px) {
+            *c = [g[0], g[1], g[2], c[3]];
+        }
+        Some(map)
+    } else {
+        advanced::composite_clipped(clipped, &mut content, cx);
+        None
+    };
     let vstroke = vstroke.as_ref().map(|(s, m)| effects::VectorStroke { stroke: s, mask: m.as_deref() });
     let maps = effect_maps(layer, rect, cx);
     effects::composite_with_effects_prepared(
@@ -1354,6 +1395,7 @@ fn composite_layer_effects(layer: &Layer, clipped: &[Layer], backdrop: &mut Buff
         paint_bounds(layer).unwrap_or_else(|| layer_bounds(layer, cx.canvas)),
         cx.patterns,
         vstroke,
+        fill_map.as_deref(),
     );
 }
 
@@ -1662,6 +1704,7 @@ fn composite_atop_any(layer: &Layer, base: &mut Buffer, cx: &Ctx) {
             paint_bounds(layer).unwrap_or_else(|| layer_bounds(layer, cx.canvas)),
             cx.patterns,
             vstroke,
+            None,
         );
         if let Some(m) = &hide {
             let plain = Buffer { rect, px: base.px.iter().map(|p| [p[0], p[1], p[2], 1.0]).collect() };
@@ -1677,14 +1720,22 @@ fn composite_atop_any(layer: &Layer, base: &mut Buffer, cx: &Ctx) {
     let Some(content) = render_content(layer, rect, cx) else { return };
     let opacity = layer.opacity * layer.fill_opacity;
     let gamma = text_gamma(layer);
-    for (i, p) in base.px.iter_mut().enumerate() {
+    let w = rect.width().max(1) as usize;
+    for (i, (p, s)) in base.px.iter_mut().zip(&content.px).enumerate() {
         let alpha = p[3];
         if alpha <= 0.0 {
             continue;
         }
-        let s = content.px[i];
         // Blend as if the base were opaque, then keep the base's alpha.
-        let r = blend::composite_gamma(layer.blend, [p[0], p[1], p[2], 1.0], s, opacity, gamma);
+        let r = if layer.blend == BlendMode::Dissolve {
+            // Dissolve draws each pixel fully or not at all (the same document-coordinate noise
+            // as an unclipped layer); clipping only limits where it can draw.
+            let x = rect.x0.saturating_add((i % w) as i32);
+            let y = rect.y0.saturating_add((i / w) as i32);
+            if dissolve_noise(x, y) < s[3] * opacity { [s[0], s[1], s[2], 1.0] } else { continue }
+        } else {
+            blend::composite_gamma(layer.blend, [p[0], p[1], p[2], 1.0], *s, opacity, gamma)
+        };
         *p = [r[0], r[1], r[2], alpha];
     }
 }

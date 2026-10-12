@@ -768,6 +768,52 @@ fn hard_stop_effects_and_gradient_maps_request_cpu() {
 }
 
 #[test]
+fn clipped_layers_take_the_base_shape_below_full_fill() {
+    // compose::clips_by_shape: a base below 100 % fill keeps its clipped layers at full
+    // strength inside its alpha × mask; the group blends at the base's mode and opacity. A
+    // clipped Dissolve layer dissolves (#3052).
+    let Some(mut g) = gpu() else { return };
+    for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+        for (base_blend, opacity, masked) in [(BlendMode::Normal, 1.0, false), (BlendMode::Multiply, 0.7, true), (BlendMode::Screen, 0.9, false)] {
+            for fill in [1.0, 0.5, 0.0] {
+                let mut d = Document::new("t", Size::new(64, 48), ColorMode::Rgb, depth);
+                d.layers.push(noise_layer("bg", d.pixel_format(), d.bounds(), 1, 0.3));
+                let mut base = noise_layer("base", d.pixel_format(), Rect::new(8, 6, 50, 40), 16, 0.0);
+                base.blend = base_blend;
+                base.opacity = opacity;
+                base.fill_opacity = fill;
+                if masked {
+                    base.mask = Some(mask(Rect::new(0, 0, 64, 48), 22, 1.0));
+                }
+                let mut c1 = noise_layer("multiply", d.pixel_format(), Rect::new(0, 0, 40, 48), 17, 0.4);
+                c1.clipped = true;
+                c1.blend = BlendMode::Multiply;
+                c1.opacity = 0.8;
+                let mut c2 = noise_layer("dissolve", d.pixel_format(), Rect::new(20, 0, 64, 48), 18, 0.3);
+                c2.clipped = true;
+                c2.blend = BlendMode::Dissolve;
+                c2.opacity = 0.6;
+                let mut c3 = Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert));
+                c3.clipped = true;
+                c3.opacity = 0.5;
+                d.layers.extend([base, c1, c2, c3]);
+                check(&mut g, &d, &format!("{depth:?} base {base_blend:?} opacity {opacity} fill {fill} masked {masked}"));
+                // With effects: the base's alpha stays the effect shape, the group's own alpha
+                // its per-pixel fill.
+                d.layers[1].effects.items = vec![
+                    Effect::Stroke(stroke(3.0, StrokePosition::Outside, FxPaint::Color(Color::rgb(0.9, 0.8, 0.1)))),
+                    Effect::InnerShadow(shadow(BlendMode::Multiply, 0.6, 120.0, 3.0, 4.0, 0.0)),
+                    Effect::DropShadow(shadow(BlendMode::Multiply, 0.7, 90.0, 4.0, 5.0, 0.0)),
+                ];
+                let st = photocraft_gpu::render_to_vec_stats(&mut g.comp, &g.device, &g.queue, &d, d.bounds());
+                assert!(st.is_ok(), "planned on the GPU");
+                check(&mut g, &d, &format!("{depth:?} fx base {base_blend:?} opacity {opacity} fill {fill} masked {masked}"));
+            }
+        }
+    }
+}
+
+#[test]
 fn fills_and_dissolve() {
     let Some(mut g) = gpu() else { return };
     let mut d = base_doc(64, 48);
@@ -1971,9 +2017,13 @@ fn stroked_shapes_with_clipped_layers() {
             c.clipped = true;
             c.blend = BlendMode::Screen;
             d.layers.extend([l, c]);
-            let st = photocraft_gpu::render_to_vec_stats(&mut g.comp, &g.device, &g.queue, &d, d.bounds());
-            assert!(st.is_ok(), "planned on the GPU");
-            check(&mut g, &d, &format!("{depth:?} stroked shape + clipped {blend:?} masked {masked}"));
+            // Below 100 % fill the clipped layer is kept inside the shape's alpha, unfaded.
+            for fill in [1.0, 0.4, 0.0] {
+                d.layers[1].fill_opacity = fill;
+                let st = photocraft_gpu::render_to_vec_stats(&mut g.comp, &g.device, &g.queue, &d, d.bounds());
+                assert!(st.is_ok(), "planned on the GPU");
+                check(&mut g, &d, &format!("{depth:?} stroked shape + clipped {blend:?} masked {masked} fill {fill}"));
+            }
         }
     }
 }
