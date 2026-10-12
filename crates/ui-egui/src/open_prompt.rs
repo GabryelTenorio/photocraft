@@ -65,21 +65,26 @@ fn advance(app: &mut PhotocraftApp) {
 fn show(app: &mut PhotocraftApp) {
     let Some(front) = app.held_opens.front() else { return };
     let Some(q) = &front.question else { return };
-    let mode = match front.doc.mode {
+    // The mode reads as the catalogs name it (French "RVB"); the file name goes in last, so
+    // nothing in it is taken for a placeholder.
+    let mode = tl!(match front.doc.mode {
         ColorMode::Cmyk => "CMYK",
         ColorMode::Grayscale => "Gray",
         _ => "RGB",
-    };
-    let working = q.get("working").and_then(Value::as_str).unwrap_or("?");
+    });
+    let name = front.name.as_str();
+    let working = crate::i18n::fmt(tl!("Working: {working}"), &[("working", q.get("working").and_then(Value::as_str).unwrap_or("?"))]);
     let missing = q.get("missing").and_then(Value::as_bool) == Some(true);
     let message = if missing {
-        format!("The document “{}” does not have an embedded {mode} profile.\nWorking: {working}", front.name)
+        let what = crate::i18n::fmt(tl!("The document “{name}” does not have an embedded {mode} profile."), &[("mode", mode), ("name", name)]);
+        format!("{what}\n{working}")
     } else {
-        format!(
-            "The document “{}” has an embedded color profile that does not match the current {mode} working space.\nEmbedded: {}\nWorking: {working}",
-            front.name,
-            q.get("embedded").and_then(Value::as_str).unwrap_or("?")
-        )
+        let what = crate::i18n::fmt(
+            tl!("The document “{name}” has an embedded color profile that does not match the current {mode} working space."),
+            &[("mode", mode), ("name", name)],
+        );
+        let embedded = crate::i18n::fmt(tl!("Embedded: {embedded}"), &[("embedded", q.get("embedded").and_then(Value::as_str).unwrap_or("?"))]);
+        format!("{what}\n{embedded}\n{working}")
     };
     let action = q.get("action").and_then(Value::as_str).unwrap_or("preserve").to_string();
     crate::prefs_ui::open_mismatch(app, &message, &action, missing, FIELD);

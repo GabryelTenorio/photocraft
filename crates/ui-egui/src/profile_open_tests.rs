@@ -117,6 +117,57 @@ fn files_opened_together_ask_one_at_a_time_before_each_opens() {
     }
 }
 
+/// The prompt reads in the interface language: its sentence, the Embedded and Working lines and
+/// the mode's name (French "RVB"). The file's name goes in as it is, braces and all.
+#[test]
+fn the_prompt_is_translated_and_still_names_its_file() {
+    let png = adobe_png();
+    for (code, sentence, embedded, working) in [
+        (
+            "en",
+            "The document “shot {mode}.png” has an embedded color profile that does not match the current RGB working space.",
+            "Embedded: Adobe RGB",
+            "Working: sRGB",
+        ),
+        (
+            "de",
+            "Das Dokument „shot {mode}.png“ hat ein eingebettetes Farbprofil, das nicht zum aktuellen RGB-Arbeitsfarbraum passt.",
+            "Eingebettet: Adobe RGB",
+            "Arbeitsfarbraum: sRGB",
+        ),
+        (
+            "fr",
+            "Le document «NBSPshot {mode}.pngNBSP» a un profil colorimétrique incorporé qui ne correspond pas à l'espace de travail RVB actuel.",
+            "IncorporéNBSP: Adobe RGB",
+            "Espace de travailNBSP: sRGB",
+        ),
+        (
+            "ja",
+            "ドキュメント「shot {mode}.png」の埋め込みカラープロファイルは、現在の RGB 作業用スペースと一致しません。",
+            "埋め込み: Adobe RGB",
+            "作業用スペース: sRGB",
+        ),
+    ] {
+        let services = Services {
+            import: Some(Box::new(|name, bytes, depth| {
+                photocraft_io::import_with_svg_group_depth(name, bytes, depth).map(|r| (r.document, r.warnings)).map_err(|e| e.to_string())
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(Session::new(), services);
+        app.run("edit.colorSettings", serde_json::json!({"askOnMismatch": true, "policyRgb": "preserve"})).unwrap();
+        let lang = crate::i18n::Lang::from_code(code).unwrap();
+        crate::i18n::with_language(lang, || app.open_file("/pics/shot {mode}.png", &png)).unwrap();
+        assert!(app.session.documents().is_empty(), "{code}: held until answered");
+        let message = app.ui.dialogs[0].fields.get("message").and_then(Value::as_str).unwrap().to_string();
+        let lines: Vec<&str> = message.lines().collect();
+        assert_eq!(lines.len(), 3, "{code}: {message}");
+        assert_eq!(lines[0], sentence.replace("NBSP", "\u{a0}"), "{code}");
+        assert!(lines[1].starts_with(&embedded.replace("NBSP", "\u{a0}")), "{code}: {}", lines[1]);
+        assert!(lines[2].starts_with(&working.replace("NBSP", "\u{a0}")), "{code}: {}", lines[2]);
+    }
+}
+
 #[test]
 fn each_answer_applies_to_its_own_file() {
     for background in [false, true] {
