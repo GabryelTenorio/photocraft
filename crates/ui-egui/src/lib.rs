@@ -1768,6 +1768,13 @@ fn read_dropped(f: &(dyn egui::DroppedFile + Send + Sync)) -> Result<Vec<u8>, St
 }
 
 /// On the web, dropped-file bytes arrive asynchronously; the web shell handles drops itself.
+/// The active layer is an adjustment layer. It has no pixels, so painting and filling it edit its
+/// mask even when its icon thumbnail, not the mask, is the Layers panel's target, as in
+/// Photoshop (#4298).
+pub(crate) fn adjustment_layer_active(st: &photocraft_engine::DocState) -> bool {
+    st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| matches!(l.content, photocraft_doc::LayerContent::Adjustment(_)))
+}
+
 #[cfg(target_arch = "wasm32")]
 fn read_dropped(_f: &dyn egui::DroppedFile) -> Result<Vec<u8>, String> {
     Err("drag-and-drop on the web is handled by the page; use File → Open".into())
@@ -1791,9 +1798,9 @@ impl PhotocraftApp {
         }
     }
 
-    /// The active layer's mask is what pixel commands edit: the Layers panel targets it, or every
-    /// colour channel is off and that mask is the picture. An alpha channel or Quick Mask wins,
-    /// as the engine routes those itself.
+    /// The active layer's mask is what pixel commands edit: the Layers panel targets it, the layer
+    /// is an adjustment layer (no pixels of its own), or every colour channel is off and that mask
+    /// is the picture. An alpha channel or Quick Mask wins, as the engine routes those itself.
     pub fn layer_mask_targeted(&self) -> bool {
         let Some(st) = self.session.active() else { return false };
         let layer_mask = st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask;
@@ -1802,7 +1809,7 @@ impl PhotocraftApp {
         if !composite || !has_mask {
             return false;
         }
-        if self.ui.mask_target || layer_mask {
+        if self.ui.mask_target || layer_mask || adjustment_layer_active(st) {
             return true;
         }
         let colors_off = st.channel_view.visible_colors(photocraft_engine::channel_cmds::color_count(&st.doc)) == 0;
