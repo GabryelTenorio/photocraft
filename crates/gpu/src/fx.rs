@@ -353,12 +353,12 @@ pub(crate) fn program_with(e: &Effect, light: &GlobalLight, vector_shape: bool, 
         }
         Effect::Satin(s) => {
             // satin_map
-            let (dx, dy) = offset(s.angle, s.distance);
+            let (dx, dy) = offset(s.angle, photocraft_compose::effects::satin_distance(s));
             let a = b.shift(In::Shape, dx, dy, 0.0, false);
             let a = b.conv(a, photocraft_compose::effects::tent_kernel(s.size));
             let c = b.shift(In::Shape, -dx, -dy, 0.0, false);
             let c = b.conv(c, photocraft_compose::effects::tent_kernel(s.size));
-            b.finish(a, Some(c), s.invert, &s.contour, true, 0);
+            b.finish_lut(a, Some(c), s.invert, photocraft_compose::effects::satin_lut(&s.contour), true, 0);
             1
         }
         Effect::BevelEmboss(bv) => {
