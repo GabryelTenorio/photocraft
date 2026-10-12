@@ -222,12 +222,6 @@ fn warn_all(err: &mut dyn Write, ws: &[String]) {
     }
 }
 
-/// The engine knows which type families aren't installed. Warn before an export
-/// uses a fallback face rather than silently changing the appearance of the text.
-fn missing_font_warnings(fonts: Vec<String>) -> Vec<String> {
-    fonts.into_iter().map(|font| format!("font '{font}' is not installed; text may render using a fallback face")).collect()
-}
-
 fn automation_workspace(args: &Args) -> Result<AuthorizedWorkspace, String> {
     AuthorizedWorkspace::new(args.get("--automation-read-root").map(Path::new), args.get("--automation-write-root").map(Path::new))
         .map_err(|error| error.to_string())
@@ -258,11 +252,8 @@ fn info(a: &Args, out: &mut dyn Write) -> R {
     let mut h = Headless::trusted_local();
     let opened = h.open(Path::new(file)).map_err(|e| e.to_string())?;
     let mut doc = h.inspect(None).map_err(|e| e.to_string())?;
-    let mut warnings = opened["warnings"].as_array().cloned().unwrap_or_default();
-    if let Some(st) = h.session.active() {
-        warnings.extend(missing_font_warnings(photocraft_engine::type_extra_cmds::missing_fonts(&st.doc)).into_iter().map(Value::String));
-    }
-    doc["warnings"] = Value::Array(warnings);
+    // `Headless::open` already reports missing fonts.
+    doc["warnings"] = Value::Array(opened["warnings"].as_array().cloned().unwrap_or_default());
     doc["file"] = json!(file);
     // Drop per-session noise.
     if let Value::Object(m) = &mut doc {
@@ -292,11 +283,14 @@ fn command_list(a: &Args) -> Result<Vec<(String, Value)>, String> {
 fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     let opts = export_opts(a)?;
     let mut h = Headless::trusted_local();
+    // Each warning is reported once per run, whichever step (open, a command, save) found it.
+    let mut reported = std::collections::HashSet::<String>::new();
+    let mut unreported = |ws: Vec<String>| -> Vec<String> { ws.into_iter().filter(|w| reported.insert(w.clone())).collect() };
     match (a.positional.as_slice(), a.get("--new")) {
         ([file], None) => {
             let o = h.open(Path::new(file)).map_err(|e| e.to_string())?;
             let ws: Vec<String> = serde_json::from_value(o["warnings"].clone()).unwrap_or_default();
-            warn_all(err, &ws);
+            warn_all(err, &unreported(ws));
         }
         ([], Some(new)) => {
             let p: Value = serde_json::from_str(new).map_err(|e| format!("bad --new JSON: {e}"))?;
@@ -308,20 +302,12 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     if cmds.is_empty() && a.get("--out").is_none() {
         return Err("run needs at least one --cmd (or --out)".into());
     }
-    let mut reported_fonts = std::collections::HashSet::<String>::new();
     for (id, params) in cmds {
         let r = h.command_run(&id, params).map_err(|e| format!("`{id}`: {e}"))?;
         if let Some(e) = photocraft_engine::actions_cmds::nested_failure(&id, &r) {
             return Err(format!("`{id}`: {e}"));
         }
-        let new_warnings: Vec<String> = h
-            .session
-            .active()
-            .map(|st| missing_font_warnings(photocraft_engine::type_extra_cmds::missing_fonts(&st.doc)))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|w| reported_fonts.insert(w.clone()))
-            .collect();
+        let new_warnings = unreported(h.session.active().map(|st| photocraft_engine::type_extra_cmds::missing_font_warnings(&st.doc)).unwrap_or_default());
         warn_all(err, &new_warnings);
         let mut result = json!({"command": id, "result": r});
         if !new_warnings.is_empty() {
@@ -330,19 +316,12 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
         print_json(out, &result, true)?;
     }
     // A `run` with only `--out` still reports missing fonts before exporting.
-    let remaining: Vec<String> = h
-        .session
-        .active()
-        .map(|st| missing_font_warnings(photocraft_engine::type_extra_cmds::missing_fonts(&st.doc)))
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|w| reported_fonts.insert(w.clone()))
-        .collect();
+    let remaining = unreported(h.session.active().map(|st| photocraft_engine::type_extra_cmds::missing_font_warnings(&st.doc)).unwrap_or_default());
     warn_all(err, &remaining);
     if let Some(o) = a.get("--out") {
         let r = h.save(None, Some(Path::new(o)), a.get("--format"), &opts).map_err(|e| e.to_string())?;
         let ws: Vec<String> = serde_json::from_value(r["warnings"].clone()).unwrap_or_default();
-        warn_all(err, &ws);
+        warn_all(err, &unreported(ws));
     }
     Ok(())
 }
@@ -595,7 +574,11 @@ mod missing_font_warning_tests {
         let (code, stdout, stderr) = invoke(&["info", &native_str, "--compact"]);
         assert_eq!(code, 0, "{stderr}");
         let info: Value = serde_json::from_str(&stdout).unwrap();
-        assert!(info["warnings"].as_array().unwrap().iter().any(|w| w.as_str().is_some_and(|s| s.contains(family))));
+        assert_eq!(
+            info["warnings"].as_array().unwrap().iter().filter(|w| w.as_str().is_some_and(|s| s.contains(family))).count(),
+            1,
+            "info reports each missing font once"
+        );
         assert!(stderr.is_empty(), "info puts warnings in JSON, not stderr");
 
         let (code, _, stderr) = invoke(&["convert", &native_str, &png_str]);
