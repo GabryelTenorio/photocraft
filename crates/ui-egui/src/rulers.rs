@@ -70,9 +70,9 @@ fn unit_menu_items(current: Unit) -> Vec<(String, &'static str, bool)> {
     UNITS.iter().map(|&u| (tl!(unit_label(u)).to_string(), u.name(), u == current)).collect()
 }
 
-/// Right-clicking a ruler offers the length units; the chosen one's name is returned (`None` if the
-/// menu is dismissed without a pick).
-fn ruler_unit_menu(ui: &mut egui::Ui, current: Unit) -> Option<&'static str> {
+/// The length units menu that right-clicking a ruler (or Free Transform's W and H fields) opens;
+/// the chosen unit's name is returned (`None` if the menu is dismissed without a pick).
+pub(crate) fn unit_menu(ui: &mut egui::Ui, current: Unit) -> Option<&'static str> {
     crate::widgets::menu_scroll(ui, |ui| {
         ui.set_min_width(150.0);
         let mut chosen = None;
@@ -159,17 +159,6 @@ fn guide_segment(xf: &ViewXform, clip: Rect, vertical: bool, pos: f64) -> [Pos2;
     if vertical { [xf.to_screen(pos, lo), xf.to_screen(pos, hi)] } else { [xf.to_screen(lo, pos), xf.to_screen(hi, pos)] }
 }
 
-pub(crate) fn parse_guide_color(value: &str) -> Option<Color32> {
-    let value = value.strip_prefix('#')?;
-    if value.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(value.get(0..2)?, 16).ok()?;
-    let g = u8::from_str_radix(value.get(2..4)?, 16).ok()?;
-    let b = u8::from_str_radix(value.get(4..6)?, 16).ok()?;
-    Some(Color32::from_rgb(r, g, b))
-}
-
 pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, doc: &Document) {
     let clip = painter.clip_rect();
     let drag = app.guide_drag;
@@ -182,18 +171,23 @@ pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
         let [a, b] = guide_segment(xf, clip, vertical, pos);
         styled_line(painter, a, b, Stroke::new(1.0, color), style);
     };
+    // A guide given a colour in New Guide keeps it; the rest use the preference colour (or, while
+    // New Guide Layout previews, the colour it will set).
+    let own = |vertical: bool, p: f64| guides.color(vertical, p).map_or(guide, |[r, g, b]| Color32::from_rgb(r, g, b));
     if app.ui.extras.guides || preview.is_some() {
         for (vertical, list) in [(true, &guides.vertical), (false, &guides.horizontal)] {
             for (i, p) in list.iter().enumerate() {
                 if drag.is_some_and(|d| d.vertical == vertical && d.index == Some(i)) {
                     continue;
                 }
-                line(vertical, *p, guide);
+                line(vertical, *p, own(vertical, *p));
             }
         }
     }
     if let Some(d) = drag {
-        line(d.vertical, d.pos, guide);
+        // A guide being moved shows its own colour; a new one dragged from a ruler the preference's.
+        let list = if d.vertical { &doc.guides.vertical } else { &doc.guides.horizontal };
+        line(d.vertical, d.pos, d.index.and_then(|i| list.get(i)).map_or(guide, |p| own(d.vertical, *p)));
     }
 }
 
@@ -367,7 +361,7 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
             finish_drag(app, d);
         }
         resp.context_menu(|ui| {
-            if let Some(name) = ruler_unit_menu(ui, unit) {
+            if let Some(name) = unit_menu(ui, unit) {
                 chosen_unit = Some(name);
             }
         });
