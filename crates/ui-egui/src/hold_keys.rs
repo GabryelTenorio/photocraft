@@ -134,10 +134,9 @@ fn held(i: &InputState, sc: &KeyboardShortcut) -> bool {
 }
 
 /// The temporary tool whose key is held now, the most specific binding first (⌘Space before
-/// Space). Never while a text field has the keyboard, or while editing type on the canvas
-/// (Space must insert a space, not grab the Hand tool).
+/// Space). Never while a text field has the keyboard.
 pub fn held_tool(app: &PhotocraftApp, ctx: &egui::Context) -> Option<Temporary> {
-    if ctx.text_edit_focused() || app.ui.text_edit.is_some() {
+    if ctx.text_edit_focused() {
         return None;
     }
     let count = |sc: &KeyboardShortcut| {
@@ -168,9 +167,7 @@ pub fn held_tool(app: &PhotocraftApp, ctx: &egui::Context) -> Option<Temporary> 
 
 /// Is the reposition key (the Hand key, any modifiers) down?
 pub fn reposition_held(app: &PhotocraftApp, ctx: &egui::Context) -> bool {
-    !ctx.text_edit_focused()
-        && app.ui.text_edit.is_none()
-        && binding(app, Temporary::Hand).is_some_and(|sc| ctx.input(|i| i.key_down(sc.logical_key)))
+    !ctx.text_edit_focused() && binding(app, Temporary::Hand).is_some_and(|sc| ctx.input(|i| i.key_down(sc.logical_key)))
 }
 
 /// Tools whose in-progress drag the reposition key moves.
