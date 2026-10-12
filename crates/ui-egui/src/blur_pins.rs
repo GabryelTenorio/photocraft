@@ -169,6 +169,17 @@ impl Tilt {
 /// Turn a freshly opened Blur Gallery dialog into the workspace: one pin in the middle of the
 /// filter's bounds with the remembered settings, selected.
 pub fn init(app: &mut PhotocraftApp, fields: &mut Map<String, Value>) {
+    reset(fields);
+    let bounds = app.session.active().map(|st| (st.doc.id, st.doc.bounds(), st.doc.selection.clone()));
+    if let Some((doc, canvas, selection)) = bounds {
+        let b = selection.map(|s| app.cached_bounds(u64::MAX - doc.0, &s)).filter(|b| !b.is_empty()).unwrap_or(canvas);
+        fields.insert("__bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
+    }
+}
+
+/// One pin in the middle with the dialog's settings, selected. Alt+Cancel (Reset) runs this
+/// alone, so the bounds captured on opening stay.
+pub fn reset(fields: &mut Map<String, Value>) {
     let Some(k) = kind(fields) else { return };
     let num = |key: &str, d: f64| fields.get(key).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(d);
     let amount = num(k.amount_key(), DEFAULT_BLUR).clamp(0.0, k.max());
@@ -193,11 +204,6 @@ pub fn init(app: &mut PhotocraftApp, fields: &mut Map<String, Value>) {
     }
     set_pins(fields, &[pin]);
     select(fields, Some(0));
-    let bounds = app.session.active().map(|st| (st.doc.id, st.doc.bounds(), st.doc.selection.clone()));
-    if let Some((doc, canvas, selection)) = bounds {
-        let b = selection.map(|s| app.cached_bounds(u64::MAX - doc.0, &s)).filter(|b| !b.is_empty()).unwrap_or(canvas);
-        fields.insert("__bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
-    }
 }
 
 /// Where the dialog first opens (offset from the window's top-left): at the right edge, beside the
