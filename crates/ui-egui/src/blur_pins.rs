@@ -169,9 +169,15 @@ impl Tilt {
 /// Turn a freshly opened Blur Gallery dialog into the workspace: one pin in the middle of the
 /// filter's bounds with the remembered settings, selected.
 pub fn init(app: &mut PhotocraftApp, fields: &mut Map<String, Value>) {
+    reset(fields);
+    insert_bounds(app, fields);
+}
+
+/// One pin in the middle with the dialog's settings, or Path Blur's straight path, selected.
+/// Alt+Cancel (Reset) runs this alone, so the bounds captured on opening stay.
+pub fn reset(fields: &mut Map<String, Value>) {
     if crate::blur_paths::owns(fields) {
         crate::blur_paths::init(fields);
-        insert_bounds(app, fields);
         return;
     }
     let Some(k) = kind(fields) else { return };
@@ -198,7 +204,6 @@ pub fn init(app: &mut PhotocraftApp, fields: &mut Map<String, Value>) {
     }
     set_pins(fields, &[pin]);
     select(fields, Some(0));
-    insert_bounds(app, fields);
 }
 
 /// The engine's bounds for the active document: the selection's when there is one, else the
