@@ -28,6 +28,7 @@ pub fn composite_layers(solo: &Document, format: photocraft_color::PixelFormat, 
 
     let channels = format.channels();
     let mut data = Vec::new();
+    let cmyk = photocraft_compose::cmyk_space(solo);
     let _ = photocraft_compose::render_bands(solo, area, 0, |mut band| -> Result<(), ()> {
         if let Some(color) = background {
             for pixel in &mut band.px {
@@ -39,9 +40,12 @@ pub fn composite_layers(solo: &Document, format: photocraft_color::PixelFormat, 
             }
         }
         data.resize(band.px.len() * channels, 0.0);
-        for (pixel, encoded) in band.px.iter().zip(data.chunks_exact_mut(channels)) {
-            photocraft_raster::from_rgba_into(&format, *pixel, encoded);
-        }
+        // Separate CMYK through the profile the layers were read with (#3778).
+        photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
+            for (pixel, encoded) in band.px.iter().zip(data.chunks_exact_mut(channels)) {
+                photocraft_raster::from_rgba_into(&format, *pixel, encoded);
+            }
+        });
         surface.write_region(band.rect, &data);
         Ok(())
     });
@@ -296,9 +300,13 @@ pub fn remap_surface(s: &Surface, map: impl Fn(i32, i32) -> (i32, i32)) -> Surfa
 }
 
 /// Merge `upper` onto `lower` producing a raster layer (Layer → Merge Down).
-pub fn merge_down(doc_bounds: Rect, lower: &Layer, upper: &Layer, format: photocraft_color::PixelFormat) -> Layer {
+/// `doc` is the source document: the two layers are composited in its colour space (its
+/// embedded profile), as they are on screen.
+pub fn merge_down(doc: &Document, lower: &Layer, upper: &Layer) -> Layer {
+    let format = doc.pixel_format();
     let stack = vec![lower.clone(), upper.clone()];
-    let mut tmp = Document::new("merge", doc_bounds.size(), format.mode, format.sample);
+    let mut tmp = Document::new("merge", doc.bounds().size(), format.mode, format.sample);
+    tmp.icc_profile = doc.icc_profile.clone();
     tmp.layers = stack;
     let s = composite_layers(&tmp, format, None);
     let mut merged = Layer::new(lower.name.clone(), LayerContent::Raster(s));

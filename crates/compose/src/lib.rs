@@ -232,10 +232,23 @@ pub fn band_rows_for(width: u32, requested: i32) -> i32 {
 /// The document's composite as a pixel surface in `fmt` (straight RGBA converted to its model
 /// and depth), optionally flattened over an opaque `background`; rendered and written in bands,
 /// so no full-size float composite is held. Tiles equal to the default pixel are pruned.
+///
+/// A CMYK result is separated through the document's own CMYK profile, the one its layers were
+/// read with. A CMYK document whose composite is one plain CMYK pixel layer (Normal, 100 %, no
+/// mask or effects) keeps that layer's inks exactly, as in Photoshop: separating the composite
+/// again would regenerate black and clip inks outside the display gamut (#3778).
 pub fn flatten_to_surface(doc: &Document, fmt: photocraft_color::PixelFormat, background: Option<[f32; 3]>) -> Surface {
     let mut s = Surface::new(fmt);
     let n = fmt.channels();
     let mut data = Vec::new();
+    if let Some((src, need_opaque)) = plain_cmyk_layer(doc, fmt, background) {
+        if copy_inks(src, doc.bounds(), &mut s, need_opaque) {
+            s.prune();
+            return s;
+        }
+        s = Surface::new(fmt);
+    }
+    let cmyk = cmyk_space(doc);
     let _ = render_bands(doc, doc.bounds(), 0, |band| -> Result<(), ()> {
         let band = match background {
             Some(bg) => band.over_background(bg),
@@ -243,14 +256,74 @@ pub fn flatten_to_surface(doc: &Document, fmt: photocraft_color::PixelFormat, ba
         };
         data.clear();
         data.resize(band.px.len() * n, 0.0);
-        for (p, out) in band.px.iter().zip(data.chunks_exact_mut(n)) {
-            photocraft_raster::from_rgba_into(&fmt, *p, out);
-        }
+        photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
+            for (p, out) in band.px.iter().zip(data.chunks_exact_mut(n)) {
+                photocraft_raster::from_rgba_into(&fmt, *p, out);
+            }
+        });
         s.write_region(band.rect, &data);
         Ok(())
     });
     s.prune();
     s
+}
+
+/// The only visible layer of a CMYK document when the composite is exactly its pixels: a CMYK
+/// pixel layer at `fmt`'s depth, Normal at 100 % opacity and fill, without masks, effects,
+/// Blend If, channel exclusion or advanced blending. The flag says whether its pixels must also
+/// be opaque: when it is flattened over a `background`, or `fmt` has no alpha to carry its
+/// transparency.
+fn plain_cmyk_layer(doc: &Document, fmt: photocraft_color::PixelFormat, background: Option<[f32; 3]>) -> Option<(&Surface, bool)> {
+    use photocraft_color::ColorMode;
+    if doc.mode != ColorMode::Cmyk || fmt.mode != ColorMode::Cmyk {
+        return None;
+    }
+    let mut visible = doc.layers.iter().filter(|l| l.visible);
+    let l = visible.next()?;
+    if visible.next().is_some() {
+        return None;
+    }
+    let LayerContent::Raster(src) = &l.content else { return None };
+    let sf = src.format();
+    let plain = l.blend == BlendMode::Normal
+        && l.opacity >= 1.0
+        && l.fill_opacity >= 1.0
+        && l.mask.is_none()
+        && l.vector_mask.is_none()
+        && (!l.effects.enabled || l.effects.items.is_empty())
+        && l.excluded_channels == 0
+        && l.blend_if == photocraft_doc::BlendIf::default()
+        && l.advanced == photocraft_doc::AdvancedBlending::default()
+        && l.video.is_none();
+    let need_opaque = sf.alpha && (background.is_some() || !fmt.alpha);
+    (plain && sf.mode == ColorMode::Cmyk && sf.sample == fmt.sample).then_some((src, need_opaque))
+}
+
+/// Copy `src`'s inks (and alpha, opaque when it has none) over `bounds` into `dst`, in bands.
+/// With `need_opaque`, stops and returns false at the first pixel that is not fully opaque.
+fn copy_inks(src: &Surface, bounds: Rect, dst: &mut Surface, need_opaque: bool) -> bool {
+    let (sn, dn) = (src.channels(), dst.channels());
+    let rows = band_rows_for(bounds.width(), 0);
+    let mut y = bounds.y0;
+    let mut out = Vec::new();
+    while y < bounds.y1 {
+        let r = Rect::new(bounds.x0, y, bounds.x1, y.saturating_add(rows).min(bounds.y1));
+        let px = src.read_region(r);
+        out.clear();
+        for p in px.chunks_exact(sn) {
+            let alpha = p.get(4).copied().unwrap_or(1.0);
+            if need_opaque && alpha < 1.0 {
+                return false;
+            }
+            out.extend(p.iter().take(4));
+            if dn > 4 {
+                out.push(alpha);
+            }
+        }
+        dst.write_region(r, &out);
+        y = r.y1;
+    }
+    true
 }
 
 /// Composite the full canvas.
