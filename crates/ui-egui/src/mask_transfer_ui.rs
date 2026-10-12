@@ -8,12 +8,12 @@ use serde_json::{Value, json};
 use crate::{PhotocraftApp, mask_thumbs_ui, theme::Tokens};
 
 pub(crate) struct Prompt {
+    dialog: u64,
     command: String,
     params: Value,
     document: u64,
     canvas: photocraft_geom::Rect,
     layer: LayerId,
-    name: String,
     previous: LayerMask,
     source: Option<(LayerId, LayerMask)>,
     clipboard: Option<MaskClip>,
@@ -62,23 +62,45 @@ pub(crate) fn intercept(app: &mut PhotocraftApp, id: &str, params: &Value) -> Op
         let mut params = params.as_object().cloned().ok_or("Params must be an object")?;
         params.insert("layer".into(), json!(layer.0));
         params.insert("document".into(), json!(st.doc.id.0));
+        let fields = json!({"__label": "Replace Layer Mask?", "layerName": target.name});
+        let dialog = app.ui.open_dialog(crate::state::DialogKind::Command, fields.as_object().cloned().unwrap_or_default());
         app.mask_transfer = Some(Prompt {
+            dialog,
             command: id.into(),
             params: Value::Object(params),
             document: st.doc.id.0,
             canvas: st.doc.bounds(),
             layer,
-            name: target.name.clone(),
             previous,
             source,
             clipboard: (id == PASTE).then(|| app.session.mask_clipboard.clone()).flatten(),
         });
-        Ok(json!({"pending": true}))
+        Ok(json!({"pending": true, "dialog": dialog}))
     })())
 }
 
-fn confirm(app: &mut PhotocraftApp) -> Result<Value, String> {
+pub(crate) fn owns(app: &PhotocraftApp, dialog: u64) -> bool {
+    app.mask_transfer.as_ref().is_some_and(|p| p.dialog == dialog)
+}
+
+pub(crate) fn cancel(app: &mut PhotocraftApp, dialog: u64) {
+    if owns(app, dialog) {
+        app.mask_transfer = None;
+    }
+}
+
+pub(crate) fn confirm(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let result = confirm_snapshot(app);
+    if let Err(error) = &result {
+        app.ui.status = error.clone();
+        app.ui.status_error = true;
+    }
+    result
+}
+
+fn confirm_snapshot(app: &mut PhotocraftApp) -> Result<Value, String> {
     let mut p = app.mask_transfer.take().ok_or("No mask replacement pending")?;
+    app.ui.close_dialog(p.dialog);
     let st = app.session.active().ok_or("The target document was closed")?;
     if st.doc.id.0 != p.document || st.doc.bounds() != p.canvas || st.doc.layer(p.layer).and_then(|l| l.mask.as_ref()) != Some(&p.previous) {
         return Err("The target document or mask changed; paste again".into());
@@ -96,52 +118,27 @@ fn confirm(app: &mut PhotocraftApp) -> Result<Value, String> {
     app.run(&p.command, p.params)
 }
 
-#[inline(never)]
-pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    let Some(p) = &app.mask_transfer else { return };
-    let (mut replace, mut cancel) = (false, false);
-    let modal = egui::Modal::new(egui::Id::new("replace-layer-mask")).show(ctx, |ui| {
-        ui.set_max_width(380.0);
-        ui.heading(tl!("Replace Layer Mask?"));
-        ui.label(crate::i18n::fmt(tl!("Replace the existing pixel mask on “{layer}”?"), &[("layer", &p.name)]));
-        ui.horizontal(|ui| {
-            replace = crate::widgets::primary_button(ui, tl!("Replace"), 84.0).clicked();
-            cancel = crate::widgets::secondary_button(ui, tl!("Cancel"), 84.0).clicked();
-        });
-    });
-    if cancel || modal.should_close() {
-        app.mask_transfer = None;
-    } else if (replace || ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)))
-        && let Err(e) = confirm(app)
-    {
-        app.ui.status = e;
-        app.ui.status_error = true;
-    }
+pub(crate) fn body(ui: &mut egui::Ui, fields: &serde_json::Map<String, Value>) {
+    let name = fields.get("layerName").and_then(Value::as_str).unwrap_or_default();
+    ui.label(crate::i18n::fmt(tl!("Replace the existing pixel mask on “{layer}”?"), &[("layer", name)]));
 }
 
+type Drag = (u64, LayerId);
 fn drag_key() -> egui::Id {
     egui::Id::new("pixel-mask-drag")
 }
 
-fn current_drag(ctx: &egui::Context) -> Option<(u64, LayerId)> {
-    // Reuse the u64 temp-storage implementation already used by layer drags.
-    ctx.data(|d| Some((d.get_temp::<u64>(drag_key().with("document"))?, LayerId(d.get_temp::<u64>(drag_key())?))))
-}
-
 pub(crate) fn dragging(ctx: &egui::Context) -> bool {
-    current_drag(ctx).is_some()
+    ctx.data(|d| d.get_temp::<Drag>(drag_key()).is_some())
 }
 
 pub(crate) fn clear_drag(ctx: &egui::Context) {
-    ctx.data_mut(|d| {
-        d.remove::<u64>(drag_key());
-        d.remove::<u64>(drag_key().with("document"));
-    });
+    ctx.data_mut(|d| d.remove::<Drag>(drag_key()));
 }
 
 /// Paint once after the rows, including when the source was scrolled out of view.
 pub(crate) fn drag_feedback(ctx: &egui::Context, doc: &Document) {
-    let Some((document, source)) = current_drag(ctx) else { return };
+    let Some((document, source)) = ctx.data(|d| d.get_temp::<Drag>(drag_key())) else { return };
     if document != doc.id.0 || doc.layer(source).is_none_or(|layer| layer.mask.is_none()) {
         clear_drag(ctx);
         return;
@@ -170,12 +167,9 @@ pub(crate) fn drag_row(
         && let Some(origin) = ctx.input(|i| i.pointer.press_origin())
         && masks.thumb(mask_thumbs_ui::MaskKind::Pixel).is_some_and(|r| r.contains(origin))
     {
-        ctx.data_mut(|d| {
-            d.insert_temp(drag_key(), layer.id.0);
-            d.insert_temp(drag_key().with("document"), doc.id.0);
-        });
+        ctx.data_mut(|d| d.insert_temp(drag_key(), (doc.id.0, layer.id)));
     }
-    let Some((document, source)) = current_drag(ctx) else { return };
+    let Some((document, source)) = ctx.data(|d| d.get_temp::<Drag>(drag_key())) else { return };
     if document != doc.id.0 || (source == layer.id && layer.mask.is_none()) {
         clear_drag(ctx);
         return;

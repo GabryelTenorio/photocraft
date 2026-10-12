@@ -159,6 +159,37 @@ fn copy_paste_menus_are_available_and_automation_requires_explicit_replacement()
 }
 
 #[test]
+fn standard_dialog_answers_clear_the_prompt_and_validate_the_snapshot() {
+    let (mut app, a, b) = app();
+    app.run(COPY, json!({"layer": a.0})).unwrap();
+    app.run("layer.layerMask.revealAll", json!({"layer": b.0})).unwrap();
+    let before = mask(&app, b);
+    let steps = app.session.active().unwrap().history.past_len();
+    let pending = app.run(PASTE, json!({"layer": b.0})).unwrap();
+    let dialog = pending["dialog"].as_u64().unwrap();
+    assert_eq!(crate::dialogs::title(app.ui.dialogs.last().unwrap()), "Replace Layer Mask?");
+    crate::dialogs::cancel(&mut app, dialog).unwrap();
+    assert!(app.mask_transfer.is_none() && app.ui.dialogs.is_empty());
+    assert_eq!(mask(&app, b), before);
+    assert_eq!(app.session.active().unwrap().history.past_len(), steps);
+
+    let pending = app.run(PASTE, json!({"layer": b.0})).unwrap();
+    crate::dialogs::confirm(&mut app, pending["dialog"].as_u64().unwrap()).unwrap();
+    assert!(app.mask_transfer.is_none() && app.ui.dialogs.is_empty());
+    assert_eq!(mask(&app, b), mask(&app, a));
+    assert_eq!(app.session.active().unwrap().history.past_len(), steps + 1);
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(mask(&app, b), before);
+
+    let pending = app.run(PASTE, json!({"layer": b.0})).unwrap();
+    app.run("layer.layerMask.enabled", json!({"layer": b.0, "enabled": false})).unwrap();
+    let changed = mask(&app, b);
+    assert!(crate::dialogs::confirm(&mut app, pending["dialog"].as_u64().unwrap()).is_err());
+    assert!(app.mask_transfer.is_none() && app.ui.dialogs.is_empty());
+    assert_eq!(mask(&app, b), changed);
+}
+
+#[test]
 fn context_menu_transfers_to_the_clicked_layer() {
     let (mut h, a, b) = harness();
     let row = |h: &Harness<'_, PhotocraftApp>, id: LayerId| crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == id.0).unwrap().row.center();
