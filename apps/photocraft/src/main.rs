@@ -23,6 +23,7 @@
 mod app_dirs;
 mod app_icon;
 mod appearance;
+mod caption_style;
 #[cfg(target_os = "macos")]
 mod apple_events;
 mod caps_lock;
@@ -31,6 +32,8 @@ mod crash_guard;
 mod cursor;
 mod file_dialog_probe;
 mod gpu_startup;
+#[cfg(target_os = "linux")]
+mod icon_theme;
 #[cfg(target_os = "macos")]
 mod mac_menu;
 #[cfg(target_os = "macos")]
@@ -482,6 +485,10 @@ fn main() -> eframe::Result {
             // The custom title bar's undecorated window must stay borderless, or its caption and
             // border offset the content and the pointer on some Windows systems (#2246).
             app.services.window_frame = window_frame::service(cc, custom_titlebar);
+            // Linux: the desktop's caption buttons (GNOME's, KDE's) on the sides its layout puts them.
+            if custom_titlebar {
+                app.services.caption_style = caption_style::service();
+            }
             // Caps Lock state (X11/Windows/macOS; `None` on native Wayland): the canvas shows the
             // precise crosshair for painting tools while it is toggled on (#1758).
             app.services.caps_lock = caps_lock::service(cc);
