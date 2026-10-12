@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Brush Settings minimum fields follow their Control; checkbox-only rows and non-destructive Smoothing switch; shaped-tip cursor follows the view) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (native colour-channel live painting and cache agreement; Brush Settings minimum fields follow their Control; checkbox-only rows and non-destructive Smoothing switch; shaped-tip cursor follows the view) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -60,6 +60,7 @@ tablets against Photoshop side by side.
 | Latency: dab to screen within a frame | partial | budgets P13/P16/P33 over (scorecard); big-brush lag #2619, #1994; cursor lag #2566, #1343 |
 | No hitch at mouse-up on a long stroke | not measurable | P32 needs a frame harness |
 | Live stroke for Brush and Eraser | done | |
+| Brush/Pencil preview edits only the targeted colour component and remains correct after release | done | 2026-10-12: RGB/CMYK/Lab, 8/16/32-bit, signed/HDR untargeted samples, feathering/symmetry/smoothing, native replay and canvas partial-upload regressions |
 | Live stroke for every brush-based retouch tool | missing | TOOL-213-7 |
 | No OS arrow cursor over the canvas with a pen | partial | TOOL-213-14 |
 
@@ -119,3 +120,4 @@ tablets against Photoshop side by side.
 | 2026-10-12 | minor | Five Brush Settings switch rows toggle without selecting a properties pane; Smoothing has a default-on switch and retains its settings while disabled (#4283). No brush-feel estimate changed. |
 | 2026-10-12 | minor | A shaped tip's cursor outline turns and flips with a rotated or flipped view, and follows pixel aspect correction |
 | 2026-10-13 | minor | Shape Dynamics and Transfer minimum inputs follow their Control and retain their values while disabled (#3825, partial). No brush-feel estimate changed. |
+| 2026-10-12 | minor | Restrict live Brush/Pencil updates to the captured colour component; preview and commit preserve untargeted native samples and agree with the canvas cache |
