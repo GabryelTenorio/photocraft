@@ -260,6 +260,14 @@ pub(crate) fn transform_layer(doc_sel: Option<&Surface>, group: Locks, l: &mut L
                 return Err(EngineError::Other("Distort and Perspective need rasterized type (Type › Rasterize Type Layer)".into()));
             };
             t.transform = a.mul(&t.transform);
+            // Type whose font is missing transforms its pixels; the rest re-renders afterwards
+            // (`refresh_text`).
+            if crate::type_cmds::keeps_pixels(t)
+                && let Some(c) = &mut t.cache
+            {
+                let src = c.content_bounds();
+                *c = warp_surface(c, src, h, interp)?;
+            }
         }
         LayerContent::Shape(sh) => match affine {
             Some(a) => crate::vector_cmds::transform_shape(sh, &a),
@@ -359,7 +367,7 @@ pub fn split_selected(surf: &Surface, sel: &Surface) -> Result<(Surface, Surface
 
 pub(crate) fn refresh_text(doc: &Document, l: &mut Layer) {
     match &mut l.content {
-        LayerContent::Text(t) => crate::type_cmds::refresh(doc, t),
+        LayerContent::Text(t) => crate::type_cmds::refresh_geometry(doc, t),
         LayerContent::Shape(sh) => crate::vector_cmds::refresh_shape(doc, sh),
         LayerContent::Smart(_) => {
             // Unavailable sources keep the warped cache.

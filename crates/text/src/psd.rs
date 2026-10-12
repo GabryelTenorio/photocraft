@@ -1087,6 +1087,18 @@ pub fn set_text_index(tysh: &[u8], index: i32) -> Option<Vec<u8>> {
     Some(write_tysh(&t))
 }
 
+/// Rewrites only a `TySh`'s transform (the six doubles after the version), keeping every other
+/// byte: the text, its EngineData and the text-space bounds. `None` when `tysh` is too short to
+/// hold a transform.
+pub fn set_transform(tysh: &[u8], transform: &Affine) -> Option<Vec<u8>> {
+    let mut out = tysh.to_vec();
+    let slot = out.get_mut(2..50)?;
+    for (dst, v) in slot.as_chunks_mut::<8>().0.iter_mut().zip(transform.m) {
+        dst.copy_from_slice(&v.to_be_bytes());
+    }
+    Some(out)
+}
+
 /// Updates (or creates) an EngineData tree for `layer`.
 pub fn build_engine_data(layer: &TextLayer, template: Option<E>, dpi: f32) -> E {
     let k = 72.0 / if dpi > 0.0 { dpi } else { 72.0 };

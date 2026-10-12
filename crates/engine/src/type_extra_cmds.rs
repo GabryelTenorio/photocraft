@@ -415,21 +415,21 @@ fn update_all(s: &mut Session) -> Result<Value> {
     Ok(json!({"updated": n}))
 }
 
-fn installed_families() -> Vec<String> {
-    photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner()).fonts.families().into_iter().map(|f| f.to_lowercase()).collect()
-}
-
-/// Font families used by type layers that the font database cannot supply.
+/// Font families used by type layers that the font database cannot supply. A run whose family
+/// is not installed under that name but whose stored PostScript name names an installed face is
+/// not missing.
 pub fn missing_fonts(doc: &Document) -> Vec<String> {
-    let have = installed_families();
+    let mut eng = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
+    let have: Vec<String> = eng.fonts.families().into_iter().map(|f| f.to_lowercase()).collect();
     let mut out: Vec<String> = Vec::new();
     for (_, _, l) in doc.walk() {
         if let LayerContent::Text(t) = &l.content {
             for r in t.char_runs() {
-                let f = r.style.font_family;
-                if !f.is_empty() && !have.contains(&f.to_lowercase()) && !out.contains(&f) {
-                    out.push(f);
+                let f = &r.style.font_family;
+                if f.is_empty() || have.contains(&f.to_lowercase()) || out.contains(f) || crate::type_cmds::font_installed(&mut eng.fonts, &r.style) {
+                    continue;
                 }
+                out.push(r.style.font_family);
             }
         }
     }

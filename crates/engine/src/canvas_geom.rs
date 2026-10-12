@@ -66,6 +66,10 @@ fn retag_text(dpi: f32, t: &mut TextLayer) {
     if t.psd_raw.is_none() {
         return;
     }
+    if crate::type_cmds::keeps_pixels(t) {
+        crate::type_cmds::retag_transform(t);
+        return;
+    }
     let mut eng = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
     let layout = eng.layout(t, dpi);
     t.psd_raw = Some(Arc::new(photocraft_text::psd::build_tysh(t, dpi, layout.bounds())));
@@ -187,7 +191,7 @@ pub(crate) fn refresh(doc: &mut Document, what: Refresh) {
             match &mut l.content {
                 LayerContent::Group(g) => rec(snapshot, &mut g.children, what),
                 LayerContent::Shape(sh) => crate::vector_cmds::refresh_shape(snapshot, sh),
-                LayerContent::Text(t) if what == Refresh::All => crate::type_cmds::refresh(snapshot, t),
+                LayerContent::Text(t) if what == Refresh::All => crate::type_cmds::refresh_geometry(snapshot, t),
                 LayerContent::Smart(_) if what == Refresh::All => {
                     let _ = crate::smart_cmds::refresh_layer(snapshot, l);
                 }

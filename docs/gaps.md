@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: Character panel OpenType buttons landed, TYPE-218-5 stays partial; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G8: type with a missing font keeps its pixels through transforms) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -83,7 +83,10 @@ what an agent can't finish alone.
   with PSD round trip (TYPE-218-6, #206), variable-font axes (TYPE-218-4, #2985).
 - **Evidence:** scorecard Type: 3 done, 2 partial, 4 missing. 2026-10-11: 2/3/4/5 clicks select
   word, line, paragraph and all text, with tests (TYPE-218-8, #3493). The Type tool froze the app for
-  60 s on one macOS machine (#2518).
+  60 s on one macOS machine (#2518). 2026-10-12: type whose font is not installed keeps the pixels
+  it was drawn with through Free Transform, Image Size and canvas rotation until its text is edited,
+  as in Photoshop (moves already did, #3218); a stored PostScript name that names an installed face
+  no longer counts as missing.
 - **Estimate:** 120–200 h.
 
 ### G11. Actions and scripting
@@ -225,6 +228,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | G8: type with a missing font keeps its drawn pixels through transforms and canvas changes; PostScript-name match counts as installed |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |

@@ -466,6 +466,50 @@ pub fn refresh(doc: &Document, t: &mut TextLayer) {
     t.psd_raw = Some(Arc::new(photocraft_text::psd::build_tysh(t, dpi, layout.bounds())));
 }
 
+/// Whether the font database can supply `style`'s font: no family (the default face), an
+/// installed family, or a stored PostScript name that names an installed face.
+pub(crate) fn font_installed(fonts: &mut photocraft_text::fonts::FontDb, style: &CharStyle) -> bool {
+    let family = &style.font_family;
+    if family.is_empty() || fonts.has_family(family) {
+        return true;
+    }
+    style.postscript_name.as_deref().filter(|ps| !ps.is_empty()).is_some_and(|ps| fonts.resolve_postscript(ps).exact)
+}
+
+/// Whether any run of `t` uses a font that is not installed.
+pub fn uses_missing_font(t: &TextLayer) -> bool {
+    let runs = t.char_runs();
+    let mut eng = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
+    runs.iter().any(|r| !font_installed(&mut eng.fonts, &r.style))
+}
+
+/// Whether a geometry-only change (move, transform, canvas) keeps this type layer's pixels
+/// instead of re-rendering it: its font is not installed, so a re-render would switch it to the
+/// fallback face. Photoshop keeps such a layer as it was drawn until its text is edited; its
+/// pixels move and transform as pixels.
+pub fn keeps_pixels(t: &TextLayer) -> bool {
+    t.cache.is_some() && uses_missing_font(t)
+}
+
+/// Brings a type layer's PSD `TySh` in line with its current transform without re-laying it
+/// out, so a layer whose font is missing keeps its file's text data as it was.
+pub fn retag_transform(t: &mut TextLayer) {
+    if let Some(d) = t.psd_raw.as_deref().and_then(|d| photocraft_text::psd::set_transform(d, &t.transform)) {
+        t.psd_raw = Some(Arc::new(d));
+    }
+}
+
+/// [`refresh`] after a geometry-only change whose pixels the caller has already mapped. A
+/// layer whose font is missing ([`keeps_pixels`]) keeps those pixels; only its `TySh`
+/// transform follows.
+pub fn refresh_geometry(doc: &Document, t: &mut TextLayer) {
+    if keeps_pixels(t) {
+        retag_transform(t);
+    } else {
+        refresh(doc, t);
+    }
+}
+
 /// Runs `f` on a type layer as one undo step. `f` may set an explicit layer name (`type.edit`'s
 /// `name`), which is applied in the same step; otherwise an auto-named layer follows its text.
 fn with_text_layer<R>(s: &mut Session, p: &Value, label: &str, f: impl FnOnce(&mut TextLayer, &Document, &mut Option<String>) -> Result<R>) -> Result<R> {
