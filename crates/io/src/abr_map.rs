@@ -94,7 +94,14 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
             step(i)?;
             let (tip, size) = m.tip(s);
             let brush = BrushSettings { pressure_size: false, spacing: 0.25, size, tip, ..Default::default() };
-            out.presets.push(BrushPreset { name: format!("Sampled Brush {}", i + 1), brush, builtin: false, group: group.to_string(), folder: Vec::new(), captures: Default::default() });
+            out.presets.push(BrushPreset {
+                name: format!("Sampled Brush {}", i + 1),
+                brush,
+                builtin: false,
+                group: group.to_string(),
+                folder: Vec::new(),
+                captures: Default::default(),
+            });
         }
     } else {
         for (i, d) in f.presets.iter().enumerate() {

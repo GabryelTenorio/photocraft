@@ -1048,7 +1048,14 @@ pub fn specs() -> Vec<CommandSpec> {
             true
         ),
         spec!("brush.presets.list", "List Brush Presets", r##"{"full":bool=false}"##, always, presets_list, false),
-        spec!("brush.presets.save", "Save Brush Preset", r##"{"name":string,"brush":{…BrushSettings}?=current brush,"captureSize":bool=true (false: picking it keeps the tool's size),"toolSettings":bool=true (false: picking it keeps the tool's mode, opacity, flow and pressure buttons),"color":bool=false (picking it sets the foreground to the current foreground)}"##, always, presets_save, true),
+        spec!(
+            "brush.presets.save",
+            "Save Brush Preset",
+            r##"{"name":string,"brush":{…BrushSettings}?=current brush,"captureSize":bool=true (false: picking it keeps the tool's size),"toolSettings":bool=true (false: picking it keeps the tool's mode, opacity, flow and pressure buttons),"color":bool=false (picking it sets the foreground to the current foreground)}"##,
+            always,
+            presets_save,
+            true
+        ),
         spec!(
             "brush.presets.update",
             "Update Brush Preset",

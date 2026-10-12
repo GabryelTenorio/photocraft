@@ -672,7 +672,14 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
                             hashes.push(i.preview.clone());
                         }
                     }
-                    items.push(BrushPreset { name: sp.name, brush, builtin: false, group: g.group.clone(), folder: sanitize_folder(sp.folder), captures: sp.captures });
+                    items.push(BrushPreset {
+                        name: sp.name,
+                        brush,
+                        builtin: false,
+                        group: g.group.clone(),
+                        folder: sanitize_folder(sp.folder),
+                        captures: sp.captures,
+                    });
                 }
                 None => missing += 1,
             }
@@ -1009,7 +1016,13 @@ impl PresetStore {
             }
             let key = |r: &Option<StoredTile>| r.as_ref().map(|t| t.key.clone());
             let tips = TipRefs { tip: key(&refs[0]), dual_tip: key(&refs[1]), texture: key(&refs[2]) };
-            stored.push(StoredPreset { name: p.name.clone(), brush: settings_only(&mut p.brush), tips, folder: p.folder.clone(), captures: p.captures.clone() });
+            stored.push(StoredPreset {
+                name: p.name.clone(),
+                brush: settings_only(&mut p.brush),
+                tips,
+                folder: p.folder.clone(),
+                captures: p.captures.clone(),
+            });
             tiles.push(refs);
         }
         let gf = GroupFile { format: GROUP_FORMAT.into(), version: 1, group: group.to_string(), presets: stored, tips: infos };
