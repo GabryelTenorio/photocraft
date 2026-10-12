@@ -112,11 +112,6 @@
 	Copy	복사
 	Copy Merged	병합하여 복사
 	Paste	붙여넣기
-	Copy Mask	마스크 복사
-	Paste Mask	마스크 붙여넣기
-	Replace Layer Mask?	레이어 마스크를 교체하시겠습니까?
-	Replace the existing pixel mask on “{layer}”?	“{layer}”의 기존 픽셀 마스크를 교체하시겠습니까?
-	Replace	교체
 	Paste Special	선택하여 붙여넣기
 	Paste in Place	같은 위치에 붙여넣기
 	Paste Into	선택 영역 안에 붙여넣기
@@ -3222,3 +3217,8 @@ curves	Smooth	매끄럽게
 	Light Red	연한 빨강
 	Medium Blue	중간 파랑
 	Light Gray	연한 회색
+	Copy Mask	마스크 복사
+	Paste Mask	마스크 붙여넣기
+	Replace Layer Mask?	레이어 마스크를 교체하시겠습니까?
+	Replace the existing pixel mask on “{layer}”?	“{layer}”의 기존 픽셀 마스크를 교체하시겠습니까?
+	Replace	교체

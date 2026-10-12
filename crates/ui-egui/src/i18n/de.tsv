@@ -125,11 +125,6 @@
 	Copy	Kopieren
 	Copy Merged	Zusammengefügt kopieren
 	Paste	Einfügen
-	Copy Mask	Maske kopieren
-	Paste Mask	Maske einfügen
-	Replace Layer Mask?	Ebenenmaske ersetzen?
-	Replace the existing pixel mask on “{layer}”?	Vorhandene Pixelmaske auf „{layer}“ ersetzen?
-	Replace	Ersetzen
 	Paste Special	Speziell einfügen
 	Paste in Place	Am Platz einfügen
 	Paste Into	Einfügen in
@@ -2692,3 +2687,8 @@ curves	Smooth	Glätten
 	Light Red	Hellrot
 	Medium Blue	Mittelblau
 	Light Gray	Hellgrau
+	Copy Mask	Maske kopieren
+	Paste Mask	Maske einfügen
+	Replace Layer Mask?	Ebenenmaske ersetzen?
+	Replace the existing pixel mask on “{layer}”?	Vorhandene Pixelmaske auf „{layer}“ ersetzen?
+	Replace	Ersetzen

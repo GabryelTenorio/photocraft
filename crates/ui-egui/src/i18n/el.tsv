@@ -106,10 +106,6 @@
 	Copy	Αντιγραφή
 	Copy Merged	Αντιγραφή συγχωνευμένων
 	Paste	Επικόλληση
-	Copy Mask	Αντιγραφή μάσκας
-	Paste Mask	Επικόλληση μάσκας
-	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
-	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;
 	Paste Special	Ειδική επικόλληση
 	Paste in Place	Επικόλληση στη θέση του
 	Paste Into	Επικόλληση μέσα στην επιλογή
@@ -3749,3 +3745,7 @@ curves	Smooth	Εξομάλυνση
 	Light Red	Ανοιχτό κόκκινο
 	Medium Blue	Μεσαίο μπλε
 	Light Gray	Ανοιχτό γκρι
+	Copy Mask	Αντιγραφή μάσκας
+	Paste Mask	Επικόλληση μάσκας
+	Replace Layer Mask?	Αντικατάσταση μάσκας επιπέδου;
+	Replace the existing pixel mask on “{layer}”?	Αντικατάσταση της υπάρχουσας μάσκας εικονοστοιχείων στο «{layer}»;

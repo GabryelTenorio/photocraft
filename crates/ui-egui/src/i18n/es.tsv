@@ -122,11 +122,6 @@
 	Copy	Copiar
 	Copy Merged	Copiar combinado
 	Paste	Pegar
-	Copy Mask	Copiar máscara
-	Paste Mask	Pegar máscara
-	Replace Layer Mask?	¿Reemplazar máscara de capa?
-	Replace the existing pixel mask on “{layer}”?	¿Reemplazar la máscara de píxeles existente en «{layer}»?
-	Replace	Reemplazar
 	Paste Special	Pegado especial
 	Paste in Place	Pegar en contexto
 	Paste Into	Pegar dentro
@@ -2733,3 +2728,8 @@ curves	Smooth	Suavizar
 	Light Red	Rojo claro
 	Medium Blue	Azul medio
 	Light Gray	Gris claro
+	Copy Mask	Copiar máscara
+	Paste Mask	Pegar máscara
+	Replace Layer Mask?	¿Reemplazar máscara de capa?
+	Replace the existing pixel mask on “{layer}”?	¿Reemplazar la máscara de píxeles existente en «{layer}»?
+	Replace	Reemplazar

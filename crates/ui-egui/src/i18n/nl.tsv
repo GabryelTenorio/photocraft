@@ -115,10 +115,6 @@
 	Copy	Kopiëren
 	Copy Merged	Samengevoegd kopiëren
 	Paste	Plakken
-	Copy Mask	Masker kopiëren
-	Paste Mask	Masker plakken
-	Replace Layer Mask?	Laagmasker vervangen?
-	Replace the existing pixel mask on “{layer}”?	Het bestaande pixelmasker op “{layer}” vervangen?
 	Paste Special	Speciaal plakken
 	Paste in Place	Op dezelfde plek plakken
 	Paste Into	Plakken in
@@ -3811,3 +3807,7 @@ curves	Smooth	Vloeiend maken
 	Light Red	Lichtrood
 	Medium Blue	Middelblauw
 	Light Gray	Lichtgrijs
+	Copy Mask	Masker kopiëren
+	Paste Mask	Masker plakken
+	Replace Layer Mask?	Laagmasker vervangen?
+	Replace the existing pixel mask on “{layer}”?	Het bestaande pixelmasker op “{layer}” vervangen?

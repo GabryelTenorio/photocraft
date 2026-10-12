@@ -123,11 +123,6 @@
 	Copy	コピー
 	Copy Merged	統合部分をコピー
 	Paste	貼り付け
-	Copy Mask	マスクをコピー
-	Paste Mask	マスクを貼り付け
-	Replace Layer Mask?	レイヤーマスクを置き換えますか？
-	Replace the existing pixel mask on “{layer}”?	「{layer}」の既存のピクセルマスクを置き換えますか？
-	Replace	置き換え
 	Paste Special	特殊貼り付け
 	Paste in Place	同じ位置に貼り付け
 	Paste Into	選択範囲内に貼り付け
@@ -3662,3 +3657,8 @@ curves	Smooth	スムーズ
 	Light Red	ライトレッド
 	Medium Blue	ミディアムブルー
 	Light Gray	ライトグレー
+	Copy Mask	マスクをコピー
+	Paste Mask	マスクを貼り付け
+	Replace Layer Mask?	レイヤーマスクを置き換えますか？
+	Replace the existing pixel mask on “{layer}”?	「{layer}」の既存のピクセルマスクを置き換えますか？
+	Replace	置き換え

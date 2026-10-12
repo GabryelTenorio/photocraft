@@ -122,11 +122,6 @@
 	Copy	Kopiuj
 	Copy Merged	Kopiuj scalone
 	Paste	Wklej
-	Copy Mask	Kopiuj maskę
-	Paste Mask	Wklej maskę
-	Replace Layer Mask?	Zastąpić maskę warstwy?
-	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
-	Replace	Zastąp
 	Paste Special	Wklej specjalnie
 	Paste in Place	Wklej w to samo miejsce
 	Paste Into	Wklej do zaznaczenia
@@ -3649,3 +3644,8 @@ curves	Smooth	Wygładź
 	Light Red	Jasnoczerwony
 	Medium Blue	Średnioniebieski
 	Light Gray	Jasnoszary
+	Copy Mask	Kopiuj maskę
+	Paste Mask	Wklej maskę
+	Replace Layer Mask?	Zastąpić maskę warstwy?
+	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
+	Replace	Zastąp

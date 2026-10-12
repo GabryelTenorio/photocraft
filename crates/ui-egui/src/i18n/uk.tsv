@@ -93,11 +93,6 @@
 	Copy	Копіювати
 	Copy Merged	Копіювати об'єднане
 	Paste	Вставити
-	Copy Mask	Копіювати маску
-	Paste Mask	Вставити маску
-	Replace Layer Mask?	Замінити маску шару?
-	Replace the existing pixel mask on “{layer}”?	Замінити наявну піксельну маску шару «{layer}»?
-	Replace	Замінити
 	Paste Special	Спеціальне вставлення
 	Paste Into	Вставити всередину
 	Paste Outside	Вставити зовні
@@ -3750,3 +3745,8 @@ curves	Smooth	Згладити
 	Light Red	Світло-червоний
 	Medium Blue	Середньо-синій
 	Light Gray	Світло-сірий
+	Copy Mask	Копіювати маску
+	Paste Mask	Вставити маску
+	Replace Layer Mask?	Замінити маску шару?
+	Replace the existing pixel mask on “{layer}”?	Замінити наявну піксельну маску шару «{layer}»?
+	Replace	Замінити

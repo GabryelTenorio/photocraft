@@ -129,11 +129,6 @@
 	Copy	複製
 	Copy Merged	合併拷貝
 	Paste	貼上
-	Copy Mask	複製遮色片
-	Paste Mask	貼上遮色片
-	Replace Layer Mask?	取代圖層遮色片？
-	Replace the existing pixel mask on “{layer}”?	取代「{layer}」上的現有像素遮色片？
-	Replace	取代
 	Paste Special	特殊貼上
 	Paste in Place	原地貼上
 	Paste Into	貼入
@@ -2642,3 +2637,8 @@ curves	Smooth	平滑
 	Light Red	淺紅色
 	Medium Blue	中藍色
 	Light Gray	淺灰色
+	Copy Mask	複製遮色片
+	Paste Mask	貼上遮色片
+	Replace Layer Mask?	取代圖層遮色片？
+	Replace the existing pixel mask on “{layer}”?	取代「{layer}」上的現有像素遮色片？
+	Replace	取代

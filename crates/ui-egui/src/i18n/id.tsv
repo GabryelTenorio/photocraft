@@ -120,11 +120,6 @@
 	Copy	Salin
 	Copy Merged	Salin Gabungan
 	Paste	Tempel
-	Copy Mask	Salin Masker
-	Paste Mask	Tempel Masker
-	Replace Layer Mask?	Ganti Masker Layer?
-	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
-	Replace	Ganti
 	Paste Special	Tempel Khusus
 	Paste in Place	Tempel di Posisi Sama
 	Paste Into	Tempel ke Dalam
@@ -3040,3 +3035,8 @@ curves	Smooth	Haluskan
 	Light Red	Merah Terang
 	Medium Blue	Biru Sedang
 	Light Gray	Abu-abu Muda
+	Copy Mask	Salin Masker
+	Paste Mask	Tempel Masker
+	Replace Layer Mask?	Ganti Masker Layer?
+	Replace the existing pixel mask on “{layer}”?	Ganti masker piksel yang ada pada “{layer}”?
+	Replace	Ganti

@@ -123,10 +123,6 @@
 	Copy	Copiar
 	Copy Merged	Copiar mesclado
 	Paste	Colar
-	Copy Mask	Copiar máscara
-	Paste Mask	Colar máscara
-	Replace Layer Mask?	Substituir máscara de camada?
-	Replace the existing pixel mask on “{layer}”?	Substituir a máscara de pixels existente em “{layer}”?
 	Paste Special	Colar especial
 	Paste in Place	Colar no lugar
 	Paste Into	Colar dentro
@@ -3841,3 +3837,7 @@ layerLabel	No Color	Sem cor
 	Light Red	Vermelho-claro
 	Medium Blue	Azul médio
 	Light Gray	Cinza-claro
+	Copy Mask	Copiar máscara
+	Paste Mask	Colar máscara
+	Replace Layer Mask?	Substituir máscara de camada?
+	Replace the existing pixel mask on “{layer}”?	Substituir a máscara de pixels existente em “{layer}”?

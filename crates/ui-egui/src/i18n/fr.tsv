@@ -127,11 +127,6 @@
 	Copy	Copier
 	Copy Merged	Copier les calques fusionnés
 	Paste	Coller
-	Copy Mask	Copier le masque
-	Paste Mask	Coller le masque
-	Replace Layer Mask?	Remplacer le masque de calque ?
-	Replace the existing pixel mask on “{layer}”?	Remplacer le masque de pixels existant sur « {layer} » ?
-	Replace	Remplacer
 	Paste Special	Collage spécial
 	Paste in Place	Coller sur place
 	Paste Into	Coller dans la sélection
@@ -3053,3 +3048,8 @@ curves	Smooth	Lisser
 	Light Red	Rouge clair
 	Medium Blue	Bleu moyen
 	Light Gray	Gris clair
+	Copy Mask	Copier le masque
+	Paste Mask	Coller le masque
+	Replace Layer Mask?	Remplacer le masque de calque ?
+	Replace the existing pixel mask on “{layer}”?	Remplacer le masque de pixels existant sur « {layer} » ?
+	Replace	Remplacer

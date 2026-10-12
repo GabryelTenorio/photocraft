@@ -121,11 +121,6 @@
 	Copy	复制
 	Copy Merged	合并复制
 	Paste	粘贴
-	Copy Mask	复制蒙版
-	Paste Mask	粘贴蒙版
-	Replace Layer Mask?	替换图层蒙版？
-	Replace the existing pixel mask on “{layer}”?	替换“{layer}”上的现有像素蒙版？
-	Replace	替换
 	Paste Special	特殊粘贴
 	Paste in Place	原位粘贴
 	Paste Into	粘贴入选区
@@ -2657,3 +2652,8 @@ curves	Smooth	平滑
 	Light Red	浅红色
 	Medium Blue	中蓝色
 	Light Gray	浅灰色
+	Copy Mask	复制蒙版
+	Paste Mask	粘贴蒙版
+	Replace Layer Mask?	替换图层蒙版？
+	Replace the existing pixel mask on “{layer}”?	替换“{layer}”上的现有像素蒙版？
+	Replace	替换
