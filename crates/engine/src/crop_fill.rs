@@ -133,7 +133,7 @@ pub(crate) fn fill_uncovered(doc: &mut Document, active: Option<LayerId>, cov: &
 
 /// The Background, else the active pixel layer.
 fn target_layer(doc: &Document, active: Option<LayerId>) -> Result<LayerId> {
-    if let Some(bg) = doc.layers.first().filter(|l| crate::extra_cmds::is_background(l)) {
+    if let Some(bg) = doc.background() {
         return Ok(bg.id);
     }
     active
