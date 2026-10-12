@@ -98,7 +98,8 @@ pub struct ViewOptions {
     pub guide_layout: Value,
 }
 
-fn default_guide_layout() -> Value {
+/// Factory New Guide Layout values (Alt+Reset and a fresh ViewOptions).
+pub(crate) fn default_guide_layout() -> Value {
     json!({"columns": 8, "gutter": 20, "rows": 0, "rowGutter": 0, "margin": 0, "centerColumns": false, "clearExisting": false})
 }
 
@@ -212,6 +213,106 @@ fn snap_slot<'a>(s: &'a mut SnapTo, key: &str) -> Option<&'a mut bool> {
         "documentBounds" => &mut s.document_bounds,
         _ => return None,
     })
+}
+
+/// Every [`show_slot`] key.
+const SHOW_KEYS: [&str; 13] = [
+    "layerEdges",
+    "selectionEdges",
+    "targetPath",
+    "pixelGrid",
+    "smartGuides",
+    "brushPreview",
+    "slices",
+    "notes",
+    "mesh",
+    "editPins",
+    "count",
+    "canvasGuides",
+    "artboardGuides",
+];
+/// Every [`snap_slot`] key.
+const SNAP_KEYS: [&str; 5] = ["guides", "grid", "layers", "slices", "documentBounds"];
+
+/// The flags of `now` that differ from `def`, by key (`None` when none do).
+fn changed_flags<T: Copy>(now: T, def: T, keys: &[&str], slot: impl for<'a> Fn(&'a mut T, &str) -> Option<&'a mut bool>) -> Option<Value> {
+    let (mut now, mut def) = (now, def);
+    let diff: Map<String, Value> = keys
+        .iter()
+        .filter_map(|k| {
+            let v = *slot(&mut now, k)?;
+            (Some(v) != slot(&mut def, k).copied()).then(|| ((*k).to_string(), Value::Bool(v)))
+        })
+        .collect();
+    (!diff.is_empty()).then_some(Value::Object(diff))
+}
+
+/// View › Extras, Show and Snap To as remembered across restarts (`Preferences::view_extras`):
+/// only what differs from the defaults, so a default changed in a later release still reaches
+/// users who never touched that item. `Null` when nothing differs.
+fn remembered(app: &PhotocraftApp) -> Value {
+    let (v, e, def) = (&app.ui.view, &app.ui.extras, crate::state::Extras::default());
+    let mut m = Map::new();
+    if v.extras != ViewOptions::default().extras {
+        m.insert("extras".into(), Value::Bool(v.extras));
+    }
+    // View › Show › Grid and Guides live in `UiState::extras` beside the rulers and snapping.
+    if e.grid != def.grid {
+        m.insert("grid".into(), Value::Bool(e.grid));
+    }
+    if e.guides != def.guides {
+        m.insert("guides".into(), Value::Bool(e.guides));
+    }
+    if let Some(show) = changed_flags(v.show, Show::default(), &SHOW_KEYS, show_slot) {
+        m.insert("show".into(), show);
+    }
+    if let Some(snap) = changed_flags(v.snap_to, SnapTo::default(), &SNAP_KEYS, snap_slot) {
+        m.insert("snapTo".into(), snap);
+    }
+    if m.is_empty() { Value::Null } else { Value::Object(m) }
+}
+
+/// Remember View › Extras, Show and Snap To in the preferences once the user lets go of the
+/// pointer (#3762). Cheap: a small JSON compare per frame. Run every frame, so items set by the
+/// control channel or the Show Extras Options dialog are remembered too.
+pub fn persist(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    if ctx.input(|i| i.pointer.any_down()) {
+        return;
+    }
+    let now = remembered(app);
+    if app.session.prefs().view_extras != now {
+        app.session.prefs.edit(|p| p.view_extras = now);
+    }
+}
+
+/// Restore the remembered View › Extras, Show and Snap To items at launch. A hand-edited file
+/// can't break them: an unknown key or a value that isn't a boolean keeps its default.
+pub fn restore(app: &mut PhotocraftApp) {
+    let saved = app.session.prefs().view_extras.clone();
+    if !saved.is_null() && !saved.is_object() {
+        log::warn!("Preferences: the remembered View › Show items are not an object; using the defaults");
+        return;
+    }
+    let flag = |k: &str| saved.get(k).and_then(Value::as_bool);
+    if let Some(on) = flag("extras") {
+        app.ui.view.extras = on;
+    }
+    if let Some(on) = flag("grid") {
+        app.ui.extras.grid = on;
+    }
+    if let Some(on) = flag("guides") {
+        app.ui.extras.guides = on;
+    }
+    for (k, v) in saved.get("show").and_then(Value::as_object).into_iter().flatten() {
+        if let (Some(slot), Some(on)) = (show_slot(&mut app.ui.view.show, k), v.as_bool()) {
+            *slot = on;
+        }
+    }
+    for (k, v) in saved.get("snapTo").and_then(Value::as_object).into_iter().flatten() {
+        if let (Some(slot), Some(on)) = (snap_slot(&mut app.ui.view.snap_to, k), v.as_bool()) {
+            *slot = on;
+        }
+    }
 }
 
 /// Window › <panel>: (panel, dock tab) for panels that live as tabs of a dock card.
@@ -833,7 +934,20 @@ fn form(app: &mut PhotocraftApp, command: &str, label: &str, fields: Value, choi
     if let Value::Object(m) = fields {
         f.extend(m);
     }
+    // Snapshot user-facing params at open so Alt+Reset can restore them.
+    let orig: Map<String, Value> = f.iter().filter(|(k, _)| !k.starts_with("__")).map(|(k, v)| (k.clone(), v.clone())).collect();
+    f.insert("__formOrig".into(), Value::Object(orig));
     app.ui.open_dialog(DialogKind::Command, f)
+}
+
+/// Alt+Cancel (Reset): restore the `__form` params captured at open.
+pub fn reset_form(f: &mut Map<String, Value>) {
+    if !f.contains_key("__form") {
+        return;
+    }
+    let Some(Value::Object(orig)) = f.get("__formOrig").cloned() else { return };
+    f.retain(|k, _| k.starts_with("__"));
+    f.extend(orig);
 }
 
 fn label_of(key: &str) -> String {
@@ -868,6 +982,25 @@ mod label_tests {
             assert_eq!(label_of("useAntialias"), "Use antialias");
             assert_eq!(label_of("radius"), "Radius");
         });
+    }
+}
+
+#[cfg(test)]
+mod form_reset_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn alt_reset_restores_form_orig() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let id = form(&mut app, "test.form", "Test", json!({"radius": 5.0, "on": true}), json!({}));
+        let f = &mut app.ui.dialog_mut(id).unwrap().fields;
+        f.insert("radius".into(), json!(99.0));
+        f.insert("on".into(), json!(false));
+        reset_form(f);
+        assert_eq!(f["radius"], json!(5.0));
+        assert_eq!(f["on"], json!(true));
+        assert!(f.contains_key("__formOrig"));
     }
 }
 
