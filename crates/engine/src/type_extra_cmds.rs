@@ -276,7 +276,7 @@ fn contours(els: &[PathEl]) -> Vec<Vec<Knot>> {
 /// which reproduces the nonzero fill under Photoshop's per-subpath path operations.
 pub fn text_path(doc: &Document, t: &TextLayer) -> Path {
     let l = layout(doc, t);
-    let warp = photocraft_text::render::layout_warp(&l, t.warp.as_ref());
+    let warp = photocraft_text::render::layer_warp(&l, t);
     let mut subpaths = Vec::new();
     for glyph in photocraft_text::render::outlines(&l, &t.transform, warp.as_ref()) {
         let cs = contours(&glyph);

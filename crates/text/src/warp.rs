@@ -6,8 +6,9 @@
 //! formulas), the identity at `bend = 0` and continuous in `bend`. The mapping is evaluated per
 //! point; the renderer subdivides long segments so straight edges bend.
 
-use photocraft_doc::text::TextWarp;
+use photocraft_doc::text::{TextWarp, TypeDistortion, TypeDistortionKind};
 use photocraft_geom::warp::{StyleWarp, WarpStyle};
+use photocraft_geom::{Affine, Point};
 
 /// Warp styles in Photoshop's menu order: (PSD `warpStyle` value, short id used by commands).
 pub const STYLES: [(&str, &str); 15] = [
@@ -46,28 +47,80 @@ pub fn short_style(psd: &str) -> Option<&'static str> {
 }
 
 /// A warp prepared for one layout: the shared style math of
-/// [`photocraft_geom::warp::StyleWarp`] (also used by Edit › Transform › Warp) over the text box.
-#[derive(Clone, Copy, Debug)]
-pub struct Warp(StyleWarp);
+/// [`photocraft_geom::warp::StyleWarp`] (also used by Edit › Transform › Warp) over the text box,
+/// then the layer's free transforms ([`TypeDistortion`]: custom mesh, Distort, Perspective).
+#[derive(Clone, Debug)]
+pub struct Warp {
+    style: Option<StyleWarp>,
+    ops: Vec<Op>,
+}
+
+/// One free transform, ready to map text-space points.
+#[derive(Clone, Debug)]
+struct Op {
+    frame: Affine,
+    back: Affine,
+    kind: TypeDistortionKind,
+    /// Text-space segment length that stays smooth under the op.
+    segment: f64,
+}
+
+impl Op {
+    fn new(d: &TypeDistortion) -> Option<Op> {
+        if !d.is_valid() {
+            return None;
+        }
+        let back = d.frame.inverse()?;
+        // About 2 document pixels at the frame's scale.
+        let scale = d.frame.determinant().abs().sqrt().max(1e-6);
+        Some(Op { frame: d.frame, back, kind: d.kind.clone(), segment: (2.0 / scale).clamp(0.05, 64.0) })
+    }
+
+    fn apply(&self, x: f64, y: f64) -> (f64, f64) {
+        let p = self.frame.apply(Point::new(x, y));
+        let (qx, qy) = self.kind.apply(p.x, p.y);
+        let q = self.back.apply(Point::new(qx, qy));
+        (q.x, q.y)
+    }
+}
 
 impl Warp {
     /// Prepares `w` for text whose bounds are `[x0, y0, x1, y1]` (text space). `None` for
     /// `warpNone`, unknown styles, an all-zero warp or empty bounds.
     pub fn new(w: &TextWarp, bounds: [f32; 4]) -> Option<Warp> {
-        let style = WarpStyle::parse(&w.style).filter(|s| s.is_preset() && s.psd_name() == w.style)?;
-        StyleWarp::new(style, f64::from(w.value), f64::from(w.horizontal_distortion), f64::from(w.vertical_distortion), !w.horizontal, bounds.map(f64::from))
-            .map(Warp)
+        Some(Warp { style: Some(style_warp(w, bounds)?), ops: Vec::new() })
+    }
+
+    /// The Warp Text style `w` (if any) followed by the free transforms `distortions` (invalid
+    /// ones are skipped). `None` when nothing bends the outlines.
+    pub fn with_distortions(w: Option<&TextWarp>, bounds: Option<[f32; 4]>, distortions: &[TypeDistortion]) -> Option<Warp> {
+        let style = w.zip(bounds).and_then(|(w, b)| style_warp(w, b));
+        let ops: Vec<Op> = distortions.iter().take(photocraft_doc::text::MAX_TYPE_DISTORTIONS).filter_map(Op::new).collect();
+        (style.is_some() || !ops.is_empty()).then_some(Warp { style, ops })
     }
 
     /// Longest segment (text-space px) worth sending through [`Warp::apply`] unsplit.
     pub fn max_segment(&self) -> f64 {
-        self.0.max_segment()
+        let s = self.style.map_or(f64::MAX, |s| s.max_segment());
+        self.ops.iter().fold(s, |m, o| m.min(o.segment)).clamp(0.05, 1e6)
     }
 
     /// Maps a text-space point.
     pub fn apply(&self, x: f64, y: f64) -> (f64, f64) {
-        self.0.apply(x, y)
+        let (mut x, mut y) = match &self.style {
+            Some(s) => s.apply(x, y),
+            None => (x, y),
+        };
+        for o in &self.ops {
+            (x, y) = o.apply(x, y);
+        }
+        (x, y)
     }
+}
+
+fn style_warp(w: &TextWarp, bounds: [f32; 4]) -> Option<StyleWarp> {
+    let style = WarpStyle::parse(&w.style).filter(|s| s.is_preset() && s.psd_name() == w.style)?;
+    StyleWarp::new(style, f64::from(w.value), f64::from(w.horizontal_distortion), f64::from(w.vertical_distortion), !w.horizontal, bounds.map(f64::from))
 }
 
 #[cfg(test)]

@@ -130,6 +130,12 @@ pub fn layout_warp(layout: &TextLayout, warp: Option<&photocraft_doc::text::Text
     Warp::new(warp?, layout.bounds()?)
 }
 
+/// Everything that bends `layer`'s outlines: its Warp Text style, then its free Warp / Distort /
+/// Perspective ([`photocraft_doc::text::TypeDistortion`]). `None` when nothing does.
+pub fn layer_warp(layout: &TextLayout, layer: &photocraft_doc::TextLayer) -> Option<Warp> {
+    Warp::with_distortions(layer.warp.as_ref(), layout.bounds(), &layer.distortions)
+}
+
 /// Colour components in `format`'s model (without alpha).
 fn color_in(format: &PixelFormat, c: &Color) -> Vec<f32> {
     let n = format.mode.color_channels();
