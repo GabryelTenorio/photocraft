@@ -40,7 +40,8 @@ fn rejects_truncation_unsupported_colours_and_unknown_keys() {
     for bytes in [
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c None\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c NotAColor\", \"a\" };"[..],
-        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #aé\", \"a\" };"[..],
+        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #a\xC3\xA9\", \"a\" };"[..],
+        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #+f0000\", \"a\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c black\", \"z\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c black\", \"aa\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 2 1\", \"a c black\", \"a c white\", \"a\" };"[..],
@@ -80,10 +81,7 @@ static char *icon[] = {
 "abcdef"
 };"#;
     let image = decode(bytes).unwrap();
-    assert_eq!(image.data(), &[
-        190, 190, 190, 255, 176, 48, 96, 255, 160, 32, 240, 255,
-        250, 250, 210, 255, 82, 139, 139, 255, 248, 248, 255, 255,
-    ]);
+    assert_eq!(image.data(), &[190, 190, 190, 255, 176, 48, 96, 255, 160, 32, 240, 255, 250, 250, 210, 255, 82, 139, 139, 255, 248, 248, 255, 255,]);
 }
 
 #[test]

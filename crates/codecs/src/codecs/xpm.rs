@@ -98,7 +98,8 @@ fn color(name: &str) -> Option<[u8; 4]> {
     }
     let rgb = if let Some(hex) = name.strip_prefix('#') {
         // UTF-8 byte lengths can match a supported hex width while slicing would panic.
-        if !hex.is_ascii() {
+        // `from_str_radix` would also take a leading `+`: accept hex digits only.
+        if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return None;
         }
         let digits = match hex.len() {
