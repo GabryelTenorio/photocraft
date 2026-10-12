@@ -2203,3 +2203,59 @@ fn outer_glow_does_not_paint_through_a_zero_fill_layer() {
         assert!(opaque[0] > 0.9 && opaque[1] > 0.8, "{technique:?}: opaque fill disappeared: {opaque:?}");
     }
 }
+
+#[test]
+fn dissolve_adjustment_resolves_opacity_to_binary_coverage() {
+    let mut d = doc_white(16, 16);
+    let mut layer = Layer::new("Invert", LayerContent::Adjustment(Adjustment::Invert));
+    layer.blend = BlendMode::Dissolve;
+    layer.opacity = 0.5;
+    d.layers.push(layer);
+    let pixels = render(&d, d.bounds()).px;
+    let black = pixels.iter().filter(|p| p[0] < 0.01).count();
+    let white = pixels.iter().filter(|p| p[0] > 0.99).count();
+    assert!(black > 0 && white > 0, "Dissolve must select both original and adjusted pixels");
+    assert_eq!(black + white, pixels.len(), "no intermediate gray pixels");
+    d.layers.last_mut().unwrap().blend = BlendMode::Normal;
+    let continuous = render(&d, d.bounds()).px;
+    assert!(continuous.iter().all(|p| (p[0] - 0.5).abs() < E), "Normal remains continuously interpolated");
+}
+
+#[test]
+fn clipped_dissolve_fill_matches_opaque_unclipped_coverage() {
+    let mut d = doc_white(16, 16);
+    let mut fill = Layer::new("Black", LayerContent::Fill(Fill::Solid(Color::BLACK)));
+    fill.blend = BlendMode::Dissolve;
+    fill.opacity = 0.5;
+    d.layers.push(fill);
+    let control = render(&d, d.bounds()).px;
+    d.layers.last_mut().unwrap().clipped = true;
+    let clipped = render(&d, d.bounds()).px;
+    assert_eq!(clipped, control, "clipping over a fully opaque base must preserve dissolve pixels");
+    let black = clipped.iter().filter(|p| p[0] < 0.01).count();
+    assert!(black > 0 && black < clipped.len());
+    d.layers.last_mut().unwrap().blend = BlendMode::Normal;
+    let continuous = render(&d, d.bounds()).px;
+    assert!(continuous.iter().all(|p| (p[0] - 0.5).abs() < E));
+}
+
+#[test]
+fn dissolve_color_overlay_preserves_binary_layer_coverage() {
+    let mut d = doc_white(16, 16);
+    let mut layer = Layer::new("Black", LayerContent::Fill(Fill::Solid(Color::BLACK)));
+    layer.blend = BlendMode::Dissolve;
+    layer.opacity = 0.5;
+    d.layers.push(layer);
+    let control = render(&d, d.bounds()).px;
+    d.layers
+        .last_mut()
+        .unwrap()
+        .effects
+        .items
+        .push(photocraft_doc::Effect::ColorOverlay { common: photocraft_doc::FxCommon::new(BlendMode::Normal, 1.0), color: Color::BLACK });
+    let styled = render(&d, d.bounds()).px;
+    assert_eq!(styled, control, "an identity overlay should not turn dissolve pixels gray");
+    d.layers.last_mut().unwrap().blend = BlendMode::Normal;
+    let continuous = render(&d, d.bounds()).px;
+    assert!(continuous.iter().all(|p| (p[0] - 0.5).abs() < E));
+}
