@@ -357,6 +357,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let mut moved = None;
     let mut action_toggled = None;
     let mut set_toggled = None;
+    let mut dialog_toggled = None;
     let recording_row = recording.and_then(|(_, i)| rows.get(i).map(|(_, steps, _, _, _)| (i, steps.len())));
     let reveal = recording_row.filter(|row| app.ui.actions.reveal_recording != Some(*row));
     app.ui.actions.reveal_recording = recording_row;
@@ -519,8 +520,20 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     );
                     check.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, on, format!("{}: {label}", tl!("Include in playback"))));
                     paint_check(ui, check.rect, on, &t);
+                    let dialog_on = app.session.actions.list.get(i).is_some_and(|a| a.step_dialog_on(step));
+                    let dialog = ui.interact(
+                        Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(14.0, 14.0)),
+                        ui.id().with(("action-dialog", i, step)),
+                        Sense::click(),
+                    );
+                    dialog
+                        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, dialog_on, format!("{}: {label}", tl!("Toggle dialog"))));
+                    let box_r = Rect::from_center_size(dialog.rect.center(), vec2(9.0, 9.0));
+                    ui.painter().rect_stroke(box_r, 1.0, Stroke::new(1.0, if dialog_on { t.text } else { t.text_faint }), egui::StrokeKind::Inside);
                     if check.on_hover_text(tl!("Include in playback")).clicked() {
                         toggled = Some((i, step));
+                    } else if dialog.on_hover_text(tl!("Toggle dialog")).clicked() {
+                        dialog_toggled = Some((i, step, !dialog_on));
                     } else if response.clicked() {
                         app.ui.actions.selected = Some(i);
                         app.ui.actions.selected_step = Some(step);
@@ -538,6 +551,9 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     if let Some((set, on)) = set_toggled {
         let _ = app.run("actions.setEnabled", json!({"set": set, "enabled": on}));
+    }
+    if let Some((action, step, on)) = dialog_toggled {
+        let _ = app.run("actions.setDialog", json!({"action": action, "step": step, "dialog": on}));
     }
     if let Some((index, name)) = renamed {
         rename_action(app, index, name);
@@ -571,6 +587,20 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         if ui.add_enabled(!recording_now, egui::Button::new(tl!("New Set")).small()).clicked() {
             let _ = app.run("actions.newSet", json!({}));
         }
+        let playback = app.session.actions.playback_mode();
+        let playback_label = match playback {
+            "step" => tl!("Step by Step"),
+            "pause" => tl!("Pause"),
+            _ => tl!("Accelerated"),
+        };
+        if ui.add_enabled(!recording_now, egui::Button::new(playback_label).small()).on_hover_text(tl!("Playback Options")).clicked() {
+            let mode = match playback {
+                "accelerated" => "step",
+                "step" => "pause",
+                _ => "accelerated",
+            };
+            let _ = app.run("actions.setPlayback", json!({"mode": mode}));
+        }
         let can_delete = app.ui.actions.selected.is_some() && (!recording_now || app.ui.actions.selected_step.is_some());
         ui.add_enabled_ui(can_delete, |ui| {
             let response = crate::icons::button(ui, "trash", 24.0, false, tl!("Delete"));
@@ -581,7 +611,11 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         });
     });
     if let Some(i) = play_idx {
-        match app.run("actions.play", json!({"action": i, "honorEnabled": true})) {
+        let mut params = json!({"action": i, "honorEnabled": true});
+        if app.session.actions.playback_mode() != "accelerated" {
+            params["count"] = json!(1);
+        }
+        match app.run("actions.play", params) {
             Ok(v) => report_play(app, &v),
             Err(e) => {
                 let template = "Action playback failed: {error}";
@@ -602,7 +636,13 @@ mod tests {
         let bottom = |height: f32| {
             let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
             for i in 0..50 {
-                app.session.actions.list.push(Action { name: format!("Action {i}"), steps: vec![], disabled: Default::default(), enabled: true });
+                app.session.actions.list.push(Action {
+                    name: format!("Action {i}"),
+                    steps: vec![],
+                    disabled: Default::default(),
+                    step_dialog: Vec::new(),
+                    enabled: true,
+                });
             }
             let mut h = Harness::builder().with_size(vec2(320.0, height)).build_ui_state(|ui, app| panel(app, ui), app);
             h.run_steps(3);
@@ -623,6 +663,7 @@ mod tests {
             name: "Action 1".into(),
             steps: vec![("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         let layers = app.session.active().unwrap().doc.layers.len();
@@ -662,12 +703,14 @@ mod tests {
             name: "Make Layer".into(),
             steps: vec![("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         app.session.actions.list.push(Action {
             name: "Fit".into(),
             steps: vec![("view.fitOnScreen".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         assert_eq!(playback_selection(&app), Some(0));
@@ -698,9 +741,9 @@ mod tests {
         let mut h = Harness::builder().with_size(vec2(320.0, 300.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(3);
         let checks = h.query_all_by_role(egui::accesskit::Role::CheckBox).count();
-        assert_eq!(checks, 4, "the action checkbox plus one checkbox per step");
-        // Index 0 is the action. Step B is the second step checkbox.
-        h.query_all_by_role(egui::accesskit::Role::CheckBox).nth(2).unwrap().click();
+        assert_eq!(checks, 7, "the action checkbox, plus an include checkbox and a dialog toggle per step");
+        // Order: action, then (include, dialog) for A, B, C. Step B's include checkbox is index 3.
+        h.query_all_by_role(egui::accesskit::Role::CheckBox).nth(3).unwrap().click();
         h.run_steps(3);
         let action = &h.state().session.actions.list[0];
         assert_eq!(action.disabled.iter().copied().collect::<Vec<_>>(), [1]);
@@ -721,6 +764,7 @@ mod tests {
             name: "Bad action".into(),
             steps: vec![("not.a.command".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         let mut h = Harness::builder().with_size(vec2(400.0, 320.0)).build_ui_state(|ui, app| panel(app, ui), app);
@@ -737,7 +781,13 @@ mod tests {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         app.run("file.new", json!({"width":4,"height":4})).unwrap();
         for i in 0..30 {
-            app.session.actions.list.push(Action { name: format!("Existing {i}"), steps: vec![], disabled: Default::default(), enabled: true });
+            app.session.actions.list.push(Action {
+                name: format!("Existing {i}"),
+                steps: vec![],
+                disabled: Default::default(),
+                step_dialog: Vec::new(),
+                enabled: true,
+            });
         }
         let mut h = Harness::builder().with_size(vec2(320.0, 260.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(4);
@@ -762,9 +812,10 @@ mod tests {
             name: "First".into(),
             steps: vec![("view.zoomOut".into(), json!({})), ("view.fitOnScreen".into(), json!({})), ("view.actualPixels".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
-        app.session.actions.list.push(Action { name: "Second".into(), steps: vec![], disabled: Default::default(), enabled: true });
+        app.session.actions.list.push(Action { name: "Second".into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
         app.ui.actions.expanded = vec![true, false];
         let mut h = Harness::builder().with_size(vec2(320.0, 400.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(4);
@@ -804,6 +855,7 @@ mod tests {
             name: "Child".into(),
             steps: vec![("layer.new.layer".into(), json!({})), ("view.fitOnScreen".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         app.run("actions.record", json!({"name":"Parent"})).unwrap();
@@ -897,6 +949,7 @@ mod tests {
             name: "Fit".into(),
             steps: vec![("view.fitOnScreen".into(), json!({})), ("view.actualPixels".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         let result = app.run("actions.play", json!({"action": "Fit"})).unwrap();

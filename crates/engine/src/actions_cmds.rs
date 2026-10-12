@@ -44,11 +44,15 @@ pub struct Action {
     /// `honorEnabled` is set. A direct `actions.play` still runs the action.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Dialog toggle per step, parallel to `steps`. Missing entries are off.
+    /// Playback still uses the recorded parameters; the flag tells the panel to open the dialog.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_dialog: Vec<bool>,
 }
 
 impl Default for Action {
     fn default() -> Self {
-        Self { name: String::new(), steps: Vec::new(), disabled: BTreeSet::new(), enabled: true }
+        Self { name: String::new(), steps: Vec::new(), disabled: BTreeSet::new(), enabled: true, step_dialog: Vec::new() }
     }
 }
 
@@ -59,6 +63,11 @@ impl Action {
 
     pub fn step_enabled(&self, step: usize) -> bool {
         !self.disabled.contains(&step)
+    }
+
+    /// The dialog toggle for `step`. A missing entry is off.
+    pub fn step_dialog_on(&self, step: usize) -> bool {
+        self.step_dialog.get(step).copied().unwrap_or(false)
     }
 
     /// The steps playback runs, with their indices in `steps`.
@@ -109,6 +118,12 @@ pub struct ActionState {
     /// Folder name for each action, parallel to `list`. Empty string means ungrouped.
     #[serde(default)]
     pub folders: Vec<String>,
+    /// Playback Options: `accelerated`, `step`, or `pause`. Empty means accelerated.
+    #[serde(default)]
+    pub playback_mode: String,
+    /// Seconds between steps when `playback_mode` is `pause`.
+    #[serde(default)]
+    pub pause_seconds: f64,
 }
 
 impl ActionState {
@@ -119,6 +134,19 @@ impl ActionState {
     /// Folder of action `index`. A missing entry is ungrouped.
     pub fn folder(&self, index: usize) -> &str {
         self.folders.get(index).map(String::as_str).unwrap_or("")
+    }
+
+    /// `accelerated`, `step`, or `pause`. Anything else, including a missing value, is accelerated.
+    pub fn playback_mode(&self) -> &str {
+        match self.playback_mode.as_str() {
+            "step" | "pause" => self.playback_mode.as_str(),
+            _ => "accelerated",
+        }
+    }
+
+    /// Pause between steps. Zero or a non-finite value is one second, and the cap is 60.
+    pub fn pause_seconds(&self) -> f64 {
+        if self.pause_seconds.is_finite() && self.pause_seconds > 0.0 { self.pause_seconds.min(60.0) } else { 1.0 }
     }
 
     /// Keep `folders` the same length as `list`. New entries are ungrouped.
@@ -281,7 +309,13 @@ fn list(s: &mut Session, _p: &Value) -> Result<Value> {
         .map(|(i, a)| json!({"name": a.name, "steps": a.steps.len(), "enabled": a.enabled, "set": s.actions.folder(i)}))
         .collect();
     let recording = s.actions.recording.and_then(|(_, i)| s.actions.list.get(i).map(|a| a.name.clone()));
-    Ok(json!({"actions": actions, "sets": s.actions.sets, "recording": recording}))
+    Ok(json!({
+        "actions": actions,
+        "sets": s.actions.sets,
+        "recording": recording,
+        "playback": s.actions.playback_mode(),
+        "pauseSeconds": s.actions.pause_seconds(),
+    }))
 }
 
 fn get(s: &mut Session, p: &Value) -> Result<Value> {
@@ -289,7 +323,8 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
     s.actions.align_folders();
     let action = &s.actions.list[idx];
     let steps: Vec<Value> = action.steps.iter().map(|(id, params)| json!([id, params])).collect();
-    Ok(json!({"name": action.name, "steps": steps, "disabled": action.disabled, "enabled": action.enabled, "set": s.actions.folder(idx)}))
+    let dialogs: Vec<usize> = (0..action.steps.len()).filter(|i| action.step_dialog_on(*i)).collect();
+    Ok(json!({"name": action.name, "steps": steps, "disabled": action.disabled, "enabled": action.enabled, "set": s.actions.folder(idx), "dialogs": dialogs}))
 }
 
 fn record(s: &mut Session, p: &Value) -> Result<Value> {
@@ -356,10 +391,17 @@ fn stop(s: &mut Session, _p: &Value) -> Result<Value> {
     Ok(json!({"action": action.name, "steps": action.steps.len()}))
 }
 
-fn run_recorded(s: &mut Session, action: &Action, from: usize) -> (u64, Option<Value>) {
+fn run_recorded(s: &mut Session, action: &Action, from: usize, limit: Option<usize>) -> (u64, Option<Value>, Vec<usize>) {
     let mut ran = 0u64;
     let mut failed = None;
+    let mut dialogs = Vec::new();
     for (i, (id, params)) in action.enabled_steps().skip_while(|(i, _)| *i < from) {
+        if limit.is_some_and(|n| ran >= n as u64) {
+            break;
+        }
+        if action.step_dialog_on(i) {
+            dialogs.push(i);
+        }
         if let Some(auth) = s.authorize
             && let Err(e) = auth(id, params)
         {
@@ -380,7 +422,7 @@ fn run_recorded(s: &mut Session, action: &Action, from: usize) -> (u64, Option<V
             }
         }
     }
-    (ran, failed)
+    (ran, failed, dialogs)
 }
 
 /// Suspend recording while a called action executes. Keep its commands in the journal
@@ -419,19 +461,41 @@ pub fn nested_failure(id: &str, value: &Value) -> Option<String> {
     })
 }
 
+fn play_count(p: &Value) -> Result<Option<usize>> {
+    let Some(v) = p.get("count") else { return Ok(None) };
+    if v.is_null() {
+        return Ok(None);
+    }
+    let Some(n) = v.as_u64().and_then(|n| usize::try_from(n).ok()) else {
+        return Err(bad("actions.play", "\"count\" must be a non-negative integer"));
+    };
+    if n > 10_000 {
+        return Err(bad("actions.play", "\"count\" is too large"));
+    }
+    Ok(Some(n))
+}
+
 fn play(s: &mut Session, p: &Value) -> Result<Value> {
     let (action, from) = playback_plan(s, p)?;
+    let limit = play_count(p)?;
     // A set's Play skips an action whose checkbox is off. A direct play does not.
     if p.get("honorEnabled").and_then(Value::as_bool) == Some(true) && !action.enabled {
         return Ok(json!({"action": action.name, "ran": 0, "skipped": true}));
     }
     let recording = begin_playback(s, &action)?;
-    let (ran, failed) = run_recorded(s, &action, from);
+    let (ran, failed, dialogs) = run_recorded(s, &action, from, limit);
     finish_playback(s, recording, &action, from);
-    Ok(match failed {
+    let mut out = match failed {
         Some(f) => json!({"action": action.name, "ran": ran, "failed": f}),
         None => json!({"action": action.name, "ran": ran}),
-    })
+    };
+    if !dialogs.is_empty() {
+        out["dialogs"] = json!(dialogs);
+    }
+    if s.actions.playback_mode() == "pause" {
+        out["pauseSeconds"] = json!(s.actions.pause_seconds());
+    }
+    Ok(out)
 }
 
 fn not_playing(s: &Session, cmd: &str) -> Result<()> {
@@ -459,6 +523,14 @@ fn move_item(s: &mut Session, p: &Value) -> Result<Value> {
             flush_recording(s)?;
         }
         let action = &mut s.actions.list[idx];
+        let n = action.steps.len();
+        if action.step_dialog.len() < n {
+            action.step_dialog.resize(n, false);
+        } else if action.step_dialog.len() > n {
+            action.step_dialog.truncate(n);
+        }
+        let dialog = action.step_dialog.remove(step);
+        action.step_dialog.insert(to, dialog);
         let moved = action.steps.remove(step);
         action.steps.insert(to, moved);
         action.disabled = action.disabled.iter().map(|&i| moved_index(i, step, to)).collect();
@@ -512,6 +584,9 @@ fn delete(s: &mut Session, p: &Value) -> Result<Value> {
         }
         let action = &mut s.actions.list[idx];
         action.steps.remove(step);
+        if step < action.step_dialog.len() {
+            action.step_dialog.remove(step);
+        }
         action.disabled = action.disabled.iter().filter(|&&i| i != step).map(|&i| if i > step { i - 1 } else { i }).collect();
         let result = json!({"action": action.name, "deletedStep": step, "steps": action.steps.len()});
         s.actions.touch();
@@ -736,6 +811,56 @@ fn set_enabled(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"action": name, "enabled": on}))
 }
 
+fn set_dialog(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "actions.setDialog";
+    not_playing(s, cmd)?;
+    let on = match p.get("dialog").or_else(|| p.get("on")) {
+        Some(Value::Bool(v)) => *v,
+        _ => return Err(bad(cmd, "needs \"dialog\" (true or false)")),
+    };
+    let idx = resolve(&s.actions.list, p, cmd)?;
+    let action = &mut s.actions.list[idx];
+    if action.step_dialog.len() < action.steps.len() {
+        action.step_dialog.resize(action.steps.len(), false);
+    }
+    if let Some(step) = p.get("step") {
+        let step = step.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad(cmd, "step must be a non-negative integer"))?;
+        let Some(flag) = action.step_dialog.get_mut(step) else {
+            return Err(bad(cmd, "step is out of range"));
+        };
+        *flag = on;
+        let name = action.name.clone();
+        s.actions.touch();
+        return Ok(json!({"action": name, "step": step, "dialog": on}));
+    }
+    for flag in &mut action.step_dialog {
+        *flag = on;
+    }
+    let name = action.name.clone();
+    s.actions.touch();
+    Ok(json!({"action": name, "dialog": on}))
+}
+
+fn set_playback(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "actions.setPlayback";
+    let mode = match p.get("mode").and_then(Value::as_str) {
+        Some(mode) if matches!(mode, "accelerated" | "step" | "pause") => mode.to_string(),
+        Some(_) => return Err(bad(cmd, "mode must be accelerated, step, or pause")),
+        None => return Err(bad(cmd, "needs \"mode\"")),
+    };
+    if let Some(seconds) = p.get("seconds") {
+        let n = seconds.as_f64().filter(|n| n.is_finite() && *n > 0.0 && *n <= 60.0);
+        let Some(n) = n else {
+            return Err(bad(cmd, "\"seconds\" must be a number from just above 0 to 60"));
+        };
+        s.actions.pause_seconds = n;
+    } else if s.actions.pause_seconds <= 0.0 || !s.actions.pause_seconds.is_finite() {
+        s.actions.pause_seconds = 1.0;
+    }
+    s.actions.playback_mode = mode;
+    Ok(json!({"playback": s.actions.playback_mode(), "pauseSeconds": s.actions.pause_seconds()}))
+}
+
 fn apply_enabled(action: &mut Action, on: bool) {
     if on {
         action.disabled.clear();
@@ -877,6 +1002,26 @@ pub fn specs() -> Vec<CommandSpec> {
             run: set_enabled,
             journal: false,
         },
+        CommandSpec {
+            id: "actions.setDialog",
+            label: "Set Action Dialog",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"action":name|index, "step":index?, "dialog":bool} → {action, dialog}. The dialog toggle for one step, or every step. Playback still uses the recorded parameters and reports the steps whose dialog is on."##,
+            enabled: always,
+            run: set_dialog,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.setPlayback",
+            label: "Playback Options",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"mode":"accelerated"|"step"|"pause", "seconds":number?} → {playback, pauseSeconds}. Step and pause play one step at a time when the panel passes count 1. Pause names the seconds to wait between steps (default 1, at most 60)."##,
+            enabled: always,
+            run: set_playback,
+            journal: false,
+        },
     ]
 }
 
@@ -939,12 +1084,14 @@ mod tests {
             name: "Action 1".into(),
             steps: vec![("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         s.actions.list.push(Action {
             name: "Caller".into(),
             steps: vec![("actions.play".into(), json!({"action": "Action 1"}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         s.edit_prefs(|p| p.shortcuts.insert(format!("{PLAY_SHORTCUT_PREFIX}Action 1"), "F2".into()));
@@ -1216,6 +1363,7 @@ mod tests {
             name: "Loop".into(),
             steps: vec![("actions.play".into(), json!({"action": "Loop"}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "Loop"})).unwrap();
@@ -1236,6 +1384,7 @@ mod tests {
             name: "Open".into(),
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "Open"})).unwrap();
@@ -1314,6 +1463,7 @@ mod tests {
             name: "Child".into(),
             steps: vec![("layer.new.layer".into(), json!({"name": "Child layer"}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         s.execute("actions.record", json!({"name": "Parent"})).unwrap();
@@ -1344,12 +1494,14 @@ mod tests {
             name: "A".into(),
             steps: vec![("actions.play".into(), json!({"action": "B"})), ("file.new".into(), json!({"width": 2,"height": 2}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         s.actions.list.push(Action {
             name: "B".into(),
             steps: vec![("actions.play".into(), json!({"action": "A"}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
             enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "A"})).unwrap();
@@ -1367,6 +1519,7 @@ mod tests {
                 name: format!("N{i}"),
                 steps: if i < 16 { vec![("actions.play".into(), json!({"action":format!("N{}", i + 1)}))] } else { vec![] },
                 disabled: Default::default(),
+                step_dialog: Vec::new(),
                 enabled: true,
             });
         }
@@ -1412,7 +1565,7 @@ mod tests {
     #[test]
     fn new_names_do_not_collide_with_named_calls() {
         let mut s = Session::new();
-        s.actions.list.push(Action { name: "Action 2".into(), steps: vec![], disabled: Default::default(), enabled: true });
+        s.actions.list.push(Action { name: "Action 2".into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
         assert_eq!(s.execute("actions.record", json!({})).unwrap()["action"], "Action 3");
         s.execute("actions.stop", json!({})).unwrap();
         assert!(s.execute("actions.record", json!({"name":"Action 2"})).is_err());
@@ -1424,7 +1577,7 @@ mod tests {
         let mut s = Session::new();
         s.execute("file.new", json!({"width":4,"height":4})).unwrap();
         for name in ["A", "B", "C"] {
-            s.actions.list.push(Action { name: name.into(), steps: vec![], disabled: Default::default(), enabled: true });
+            s.actions.list.push(Action { name: name.into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
         }
         s.execute("actions.record", json!({"action":"B"})).unwrap();
         s.execute("layer.new.layer", json!({"name":"before"})).unwrap();
@@ -1625,5 +1778,41 @@ mod tests {
         s.execute("actions.setEnabled", json!({"set": "Shop", "enabled": true})).unwrap();
         assert!(s.actions.list[0].enabled && s.actions.list[0].disabled.is_empty());
         assert!(s.actions.list[1].enabled);
+    }
+
+    #[test]
+    fn dialog_toggles_follow_move_and_delete_and_playback_can_run_one_step() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let step = |name: &str| ("layer.new.layer".to_string(), json!({"name": name}));
+        s.actions.list.push(Action::new("Three", vec![step("A"), step("B"), step("C")]));
+        s.execute("actions.setDialog", json!({"action": "Three", "step": 1, "dialog": true})).unwrap();
+        assert!(s.execute("actions.setDialog", json!({"action": "Three"})).is_err());
+        assert!(s.execute("actions.setDialog", json!({"action": "Three", "step": 9, "dialog": true})).is_err());
+        assert!(s.execute("actions.setDialog", json!({"action": "Three", "dialog": "yes"})).is_err());
+        s.execute("actions.move", json!({"action": 0, "step": 1, "to": 0})).unwrap();
+        assert!(s.actions.list[0].step_dialog_on(0), "the dialog flag moves with the step");
+        assert!(!s.actions.list[0].step_dialog_on(1));
+        s.execute("actions.delete", json!({"action": 0, "step": 0})).unwrap();
+        assert!(!s.actions.list[0].step_dialog_on(0));
+        assert_eq!(s.execute("actions.get", json!({"action": 0})).unwrap()["dialogs"], json!([]));
+
+        s.execute("actions.setDialog", json!({"action": 0, "dialog": true})).unwrap();
+        assert!(s.actions.list[0].step_dialog.iter().all(|on| *on));
+        let before = s.active().unwrap().doc.layers.len();
+        s.execute("actions.setPlayback", json!({"mode": "step"})).unwrap();
+        assert!(s.execute("actions.setPlayback", json!({"mode": "fast"})).is_err());
+        assert!(s.execute("actions.setPlayback", json!({})).is_err());
+        assert!(s.execute("actions.setPlayback", json!({"mode": "pause", "seconds": 0})).is_err());
+        s.execute("actions.setPlayback", json!({"mode": "pause", "seconds": 2})).unwrap();
+        let one = s.execute("actions.play", json!({"action": 0, "count": 1})).unwrap();
+        assert_eq!(one["ran"], 1);
+        assert_eq!(one["pauseSeconds"], 2.0);
+        assert_eq!(one["dialogs"], json!([0]));
+        assert_eq!(s.active().unwrap().doc.layers.len(), before + 1);
+        assert!(s.execute("actions.play", json!({"action": 0, "count": -1})).is_err());
+        let listed = s.execute("actions.list", json!({})).unwrap();
+        assert_eq!(listed["playback"], "pause");
+        assert_eq!(listed["pauseSeconds"], 2.0);
     }
 }

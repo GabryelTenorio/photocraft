@@ -344,12 +344,14 @@ fn a_failed_step_inside_a_called_action_fails_scripts_and_batch() {
         name: "Rotate".into(),
         steps: vec![("image.imageRotation.90cw".into(), json!({}))],
         disabled: Default::default(),
+        step_dialog: Vec::new(),
         enabled: true,
     });
     s.actions.list.push(Action {
         name: "Bad".into(),
         steps: vec![("layer.delete".into(), json!({"layer": 999_999}))],
         disabled: Default::default(),
+        step_dialog: Vec::new(),
         enabled: true,
     });
     // A script stops at the failed call and reports it.
@@ -368,6 +370,12 @@ fn a_failed_step_inside_a_called_action_fails_scripts_and_batch() {
     assert!(r["errors"][0]["error"].as_str().unwrap().contains("no such layer"), "{r}");
     // An action that batches itself stops as a recursive call instead of overflowing the stack.
     let inner = json!({"steps": [["actions.play", {"action": "Loop"}]], "input": dir.clone(), "output": format!("{dir}/inner"), "format": "png"});
-    s.actions.list.push(Action { name: "Loop".into(), steps: vec![("file.automate.batch".into(), inner)], disabled: Default::default(), enabled: true });
+    s.actions.list.push(Action {
+        name: "Loop".into(),
+        steps: vec![("file.automate.batch".into(), inner)],
+        disabled: Default::default(),
+        step_dialog: Vec::new(),
+        enabled: true,
+    });
     batch(&mut s, "Loop");
 }
