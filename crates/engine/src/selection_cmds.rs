@@ -145,7 +145,14 @@ fn parse_color(p: &Value) -> [f32; 3] {
 
 /// Eyedropper samples from `key` (`[[x, y], …]` in document pixels): the colour under each point
 /// and where it was picked (area-local, for Localized Color Clusters).
-fn eyedropper_samples(p: &Value, key: &str, area: Rect, px: &[[f32; 4]], allowed: &impl Fn(i32, i32) -> bool, bad: &impl Fn(String) -> EngineError) -> Result<Vec<sel::RangeSample>> {
+fn eyedropper_samples(
+    p: &Value,
+    key: &str,
+    area: Rect,
+    px: &[[f32; 4]],
+    allowed: &impl Fn(i32, i32) -> bool,
+    bad: &impl Fn(String) -> EngineError,
+) -> Result<Vec<sel::RangeSample>> {
     let Some(pts) = p.get(key) else { return Ok(Vec::new()) };
     let pts = pts.as_array().ok_or_else(|| bad(format!("`{key}` must be [[x, y], …]")))?;
     let w = area.width() as usize;
@@ -687,10 +694,7 @@ mod tests {
 
     #[test]
     fn color_range_replace_is_bounded_by_existing_selection() {
-        for params in [
-            json!({"color": "#ff0000", "fuzziness": 0}),
-            json!({"select": "reds"}),
-        ] {
+        for params in [json!({"color": "#ff0000", "fuzziness": 0}), json!({"select": "reds"})] {
             let mut s = session();
             // Both red squares match, but only the left is inside the original selection.
             s.execute("select.rect", json!({"x": 5, "y": 5, "width": 10, "height": 10})).unwrap();

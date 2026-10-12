@@ -816,18 +816,12 @@ mod tests {
         let mut app = app_with_doc();
         app.session.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
         let doc = app.session.active().unwrap().doc.clone();
-        for params in [
-            json!({"select": "sampledColors", "color": "#ff0000", "fuzziness": 0}),
-            json!({"select": "reds"}),
-        ] {
+        for params in [json!({"select": "sampledColors", "color": "#ff0000", "fuzziness": 0}), json!({"select": "reds"})] {
             let mask = proxy_mask(&app, &doc, 1, &params).unwrap();
             assert_eq!(mask[5 * 40 + 5], 1.0, "red inside the selection stays visible");
             assert_eq!(mask[5 * 40 + 25], 0.0, "the blue outside the selection stays excluded");
         }
-        for params in [
-            json!({"select": "sampledColors", "color": "#ffffff", "invert": true}),
-            json!({"select": "outOfGamut", "invert": true}),
-        ] {
+        for params in [json!({"select": "sampledColors", "color": "#ffffff", "invert": true}), json!({"select": "outOfGamut", "invert": true})] {
             let mask = proxy_mask(&app, &doc, 1, &params).unwrap();
             assert_eq!(mask[5 * 40 + 25], 0.0, "even inverted previews stay within the selection");
         }
@@ -973,7 +967,8 @@ mod tests {
     #[test]
     fn ok_applies_one_undo_step() {
         let mut h = harness(app_with_doc());
-        h.state_mut().run("select.rect", json!({"x": 0, "y": 20, "width": 5, "height": 5})).unwrap();
+        // The prior selection covers the left red square: Color Range is scoped to it (#3313).
+        h.state_mut().run("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 30})).unwrap();
         let past = h.state().session.active().unwrap().history.past_len();
         open(h.state_mut());
         h.run_steps(4);
@@ -987,7 +982,7 @@ mod tests {
         assert_eq!(app.session.active().unwrap().history.undo_label(), Some("Color Range"));
         h.state_mut().run("edit.undo", json!({})).unwrap();
         let app = h.state();
-        assert_eq!((coverage(app, 5, 5), coverage(app, 2, 22)), (0.0, 1.0), "undo restores the previous selection");
+        assert_eq!((coverage(app, 5, 5), coverage(app, 2, 22), coverage(app, 30, 5)), (1.0, 1.0, 0.0), "undo restores the previous selection");
     }
 
     #[test]
