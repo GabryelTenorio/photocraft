@@ -1614,6 +1614,10 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
         if !keep_imported_resource(doc, *id, data) {
             continue;
         }
+        // A fresh 1053 was written with the extra channels. A preserved copy would be a second one.
+        if *id == crate::channel_map::ALPHA_IDENTIFIERS && !extra.is_empty() {
+            continue;
+        }
         let mut r = ImageResource::new(*id, data.to_vec());
         r.name = legacy_name(name);
         resources.push(r);
