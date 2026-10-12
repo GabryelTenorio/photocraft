@@ -4,24 +4,27 @@
 use std::io::{BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::Instant;
 
 use photocraft_automation::budgets::write_reply;
 use photocraft_automation::security::{
     ConnectionLimiter, LineRead, MAX_CONNECTIONS, MAX_REQUEST_BYTES, authentication_reply, configure_stream, read_bounded_line,
 };
-use photocraft_ui_egui::ControlRequest;
-use photocraft_ui_egui::control::{REPLY_DEADLINE, timeout_error};
+use photocraft_ui_egui::{ControlRequest, ControlResponse};
+use photocraft_ui_egui::control::{
+    ControlWatch, REPLY_DEADLINE, STALL_CHECK, Stalled, not_drawing_frames_error, stalled_action, timeout_error,
+};
 use serde_json::{Value, json};
 
-pub fn start(port: u16, token: String, ctx: egui::Context) -> Receiver<ControlRequest> {
+pub fn start(port: u16, token: String, ctx: egui::Context) -> (Receiver<ControlRequest>, Arc<ControlWatch>) {
     let (tx, rx) = channel::<ControlRequest>();
+    let watch = Arc::new(ControlWatch::new());
     let listener = match TcpListener::bind(("127.0.0.1", port)) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("photocraft: control server failed to bind 127.0.0.1:{port}: {e}");
-            return rx;
+            return (rx, watch);
         }
     };
     eprintln!("photocraft: control server listening on 127.0.0.1:{port}");
@@ -37,16 +40,17 @@ pub fn start(port: u16, token: String, ctx: egui::Context) -> Receiver<ControlRe
             let tx = tx.clone();
             let ctx = ctx.clone();
             let token = Arc::clone(&token);
+            let watch = Arc::clone(&watch);
             std::thread::spawn(move || {
                 let _permit = permit;
-                serve(stream, &token, tx, ctx);
+                serve(stream, &token, tx, ctx, &watch);
             });
         }
     });
-    rx
+    (rx, watch)
 }
 
-fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::Context) {
+fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::Context, watch: &ControlWatch) {
     if configure_stream(&stream).is_err() {
         return;
     }
@@ -84,15 +88,23 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
                 let id = msg.get("id").cloned().unwrap_or(Value::Null);
                 let method = msg.get("method").and_then(Value::as_str).unwrap_or("").to_string();
                 let params = msg.get("params").cloned().unwrap_or(json!({}));
-                let deadline = Instant::now() + REPLY_DEADLINE;
-                let (mut req, rrx) = ControlRequest::new(method, params);
-                req.deadline = Some(deadline);
-                if tx.send(req).is_err() {
-                    break;
-                }
-                ctx.request_repaint();
-                let mut r =
-                    rrx.recv_timeout(deadline.saturating_duration_since(Instant::now())).unwrap_or_else(|_| json!({"ok": false, "error": timeout_error()}));
+                // `health` is answered from the watch alone, before the queue: it must not
+                // need a frame (#3667), which is the state it exists to report on.
+                let mut r = if method == "health" {
+                    json!({"ok": true, "result": watch.health()})
+                } else {
+                    let deadline = Instant::now() + REPLY_DEADLINE;
+                    let (mut req, rrx) = ControlRequest::new(method.clone(), params.clone());
+                    req.deadline = Some(deadline);
+                    // Read before the send: a later read could see a logic pass the request
+                    // itself woke, and wrongly serve a snapshot for a live loop.
+                    let logic_before = watch.logic_count();
+                    if tx.send(req).is_err() {
+                        break;
+                    }
+                    ctx.request_repaint();
+                    wait_reply(&rrx, watch, &method, &params, logic_before, deadline)
+                };
                 if let Some(o) = r.as_object_mut() {
                     o.insert("id".into(), id);
                 }
@@ -109,6 +121,48 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
     }
 }
 
+/// Wait for the frame thread's reply, falling back when the frame loop is wedged (#2493):
+/// after [`STALL_CHECK`] without a reply, a live loop keeps waiting while a wedged one serves
+/// the getter's last snapshot or fails fast. A dropped reply sender (the request's receiver
+/// gone) can never be answered; it gets the same deadline error as before.
+fn wait_reply(
+    rrx: &Receiver<ControlResponse>,
+    watch: &ControlWatch,
+    method: &str,
+    params: &Value,
+    logic_before: u64,
+    deadline: Instant,
+) -> Value {
+    let stall_at = std::cmp::min(deadline, Instant::now() + STALL_CHECK);
+    match rrx.recv_timeout(stall_at) {
+        Ok(r) => return r,
+        Err(RecvTimeoutError::Disconnected) => return json!({"ok": false, "error": timeout_error()}),
+        Err(RecvTimeoutError::Timeout) => {}
+    }
+    if Instant::now() >= deadline {
+        return json!({"ok": false, "error": timeout_error()});
+    }
+    match stalled_action(watch, method, params, logic_before) {
+        Stalled::KeepWaiting => match rrx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(r) => r,
+            Err(_) => json!({"ok": false, "error": timeout_error()}),
+        },
+        Stalled::Snapshot { age_ms, mut value } => {
+            // Stamp into `result` when it is an object; a non-object result still gets the
+            // flags, into the reply itself.
+            if let Some(obj) = value.get_mut("result").and_then(Value::as_object_mut) {
+                obj.insert("frameStalled".into(), json!(true));
+                obj.insert("snapshotAgeMs".into(), json!(age_ms));
+            } else if let Some(obj) = value.as_object_mut() {
+                obj.insert("frameStalled".into(), json!(true));
+                obj.insert("snapshotAgeMs".into(), json!(age_ms));
+            }
+            value
+        }
+        Stalled::NotDrawingFrames => json!({"ok": false, "error": not_drawing_frames_error()}),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,9 +176,10 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let (tx, rx) = channel::<ControlRequest>();
+        let watch = ControlWatch::new();
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            serve(stream, TOKEN, tx, egui::Context::default());
+            serve(stream, TOKEN, tx, egui::Context::default(), &watch);
         });
         let handler = std::thread::spawn(move || {
             let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();

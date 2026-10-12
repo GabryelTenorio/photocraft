@@ -31,7 +31,11 @@
 //! - `jobs.list` / `jobs.cancel {job?}`: background jobs (#210) with progress; cancel one (or all).
 //!   `engine.execute`, `ui.menu.invoke` and `ui.dialog.confirm` wait for a command that runs as a
 //!   job unless `wait: false` (then the reply is `{job, pending: true}`)
+//! - `health`: liveness counters and ages, answered by the transport without the frame loop (#3667)
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::sync::mpsc::Sender;
 
 use base64::Engine as _;
@@ -68,6 +72,125 @@ impl ControlRequest {
     pub fn new(method: impl Into<String>, params: Value) -> (Self, std::sync::mpsc::Receiver<ControlResponse>) {
         let (tx, rx) = std::sync::mpsc::channel();
         (Self { method: method.into(), params, reply: tx, deadline: None }, rx)
+    }
+}
+
+/// How long the transport waits after requesting a repaint before deciding the frame loop
+/// did not service it: a wedged compositor sends no frame callbacks at all (#2493).
+pub const STALL_CHECK: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The error a read-only getter fails fast with when the frame loop is wedged and no
+/// snapshot of its reply exists yet. Built from [`STALL_CHECK`], so the text cannot drift.
+pub fn not_drawing_frames_error() -> String {
+    format!(
+        "not drawing frames: no frame update ran within {}s of the request (display asleep, window fully occluded, or a blocked frame loop); call `health` for liveness and retry when frames resume",
+        STALL_CHECK.as_secs()
+    )
+}
+
+/// The read-only getters whose last reply is kept for serving while the frame loop is
+/// wedged: the methods an agent probes state with (#2493).
+pub fn snapshot_key(method: &str, params: &Value) -> Option<&'static str> {
+    match method {
+        "ui.inspect" => Some("ui.inspect"),
+        "engine.commands" => Some("engine.commands"),
+        "jobs.list" => Some("jobs.list"),
+        "engine.execute" => match params.get("command").and_then(Value::as_str) {
+            Some("document.inspect") => Some("engine.execute:document.inspect"),
+            Some("session.inspect") => Some("engine.execute:session.inspect"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Liveness counters and the last snapshot-getter replies, shared between the UI thread
+/// (which updates them) and the transport threads (which read them while the frame loop
+/// is wedged; #2493, #3667). `health` is answered from these alone, so it works even when
+/// no frame ever runs.
+#[derive(Default)]
+pub struct ControlWatch {
+    logic_count: AtomicU64,
+    last_logic_ms: AtomicU64,
+    drawn_count: AtomicU64,
+    last_drawn_ms: AtomicU64,
+    snapshots: Mutex<HashMap<String, (u64, Value)>>,
+}
+
+impl ControlWatch {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Stamp a `logic` pass (runs even for hidden windows when a repaint was requested).
+    pub fn note_logic(&self) {
+        self.note(&self.logic_count, &self.last_logic_ms);
+    }
+
+    /// Stamp a rendered frame; stalls while the window is hidden or occluded.
+    pub fn note_drawn(&self) {
+        self.note(&self.drawn_count, &self.last_drawn_ms);
+    }
+
+    fn note(&self, count: &AtomicU64, at: &AtomicU64) {
+        count.fetch_add(1, Ordering::Relaxed);
+        at.store((crate::gpu_canvas::now_ms().max(0.0) as u64), Ordering::Relaxed);
+    }
+
+    pub fn logic_count(&self) -> u64 {
+        self.logic_count.load(Ordering::Relaxed)
+    }
+
+    /// Remember a snapshot getter's reply, so a wedged frame loop can still serve it.
+    pub fn note_snapshot(&self, key: &str, reply: &Value) {
+        let mut map = self.snapshots.lock().unwrap_or_else(|e| e.into_inner());
+        map.insert(key.to_string(), ((crate::gpu_canvas::now_ms().max(0.0)) as u64, reply.clone()));
+    }
+
+    /// The last snapshot-getter reply and its age in milliseconds.
+    pub fn snapshot_with_age(&self, key: &str) -> Option<(u64, Value)> {
+        let map = self.snapshots.lock().unwrap_or_else(|e| e.into_inner());
+        let (built, value) = map.get(key)?;
+        let now = (crate::gpu_canvas::now_ms().max(0.0)) as u64;
+        Some((now.saturating_sub(*built), value.clone()))
+    }
+
+    /// The `health` result: factual counters and ages only, answerable from a transport
+    /// thread (#3667). An idle-but-healthy app legitimately shows stale ages.
+    pub fn health(&self) -> Value {
+        let now = (crate::gpu_canvas::now_ms().max(0.0)) as u64;
+        json!({
+            "lastLogicAgoMs": now.saturating_sub(self.last_logic_ms.load(Ordering::Relaxed)),
+            "lastDrawnAgoMs": now.saturating_sub(self.last_drawn_ms.load(Ordering::Relaxed)),
+            "logicCount": self.logic_count.load(Ordering::Relaxed),
+            "drawnCount": self.drawn_count.load(Ordering::Relaxed),
+        })
+    }
+}
+
+/// What a transport thread does for a request whose [`STALL_CHECK`] elapsed without a
+/// reply: the frame loop either serviced the repaint (alive, maybe slow) or never ran
+/// (wedged: serve the getter's snapshot, or fail fast).
+pub enum Stalled {
+    /// The frame loop ran after the request; wait for its reply as before.
+    KeepWaiting,
+    /// Serve the getter's last reply, stamped with its age; the frame thread's eventual
+    /// reply lands on a dropped receiver.
+    Snapshot { age_ms: u64, value: Value },
+    /// The frame loop is wedged and no snapshot of this getter exists yet.
+    NotDrawingFrames,
+}
+
+pub fn stalled_action(watch: &ControlWatch, method: &str, params: &Value, logic_before: u64) -> Stalled {
+    if watch.logic_count() != logic_before {
+        return Stalled::KeepWaiting;
+    }
+    match snapshot_key(method, params) {
+        Some(key) => match watch.snapshot_with_age(key) {
+            Some((age_ms, value)) => Stalled::Snapshot { age_ms, value },
+            None => Stalled::NotDrawingFrames,
+        },
+        None => Stalled::KeepWaiting,
     }
 }
 
@@ -2788,5 +2911,143 @@ mod tests {
         assert_eq!(plain, egui::Modifiers::default(), "{plain:?}");
         let shift_alt = key_modifiers(&mut app, &ctx, json!({"key":"N","shift":true,"alt":true}));
         assert!(shift_alt.shift && shift_alt.alt && !shift_alt.command && !shift_alt.ctrl, "{shift_alt:?}");
+    }
+
+    #[test]
+    fn snapshot_key_covers_only_the_read_only_getters_agents_probe_with() {
+        assert_eq!(snapshot_key("ui.inspect", &json!({})), Some("ui.inspect"));
+        assert_eq!(snapshot_key("engine.commands", &json!({})), Some("engine.commands"));
+        assert_eq!(snapshot_key("jobs.list", &json!({})), Some("jobs.list"));
+        assert_eq!(
+            snapshot_key("engine.execute", &json!({"command": "document.inspect"})),
+            Some("engine.execute:document.inspect")
+        );
+        assert_eq!(
+            snapshot_key("engine.execute", &json!({"command": "session.inspect"})),
+            Some("engine.execute:session.inspect")
+        );
+        // Only those two engine commands read state; everything else changes it.
+        assert_eq!(snapshot_key("engine.execute", &json!({"command": "layer.new.layer"})), None);
+        assert_eq!(snapshot_key("engine.execute", &json!({})), None, "a missing command");
+        assert_eq!(snapshot_key("engine.execute", &json!({"command": 7})), None, "a non-string command");
+        assert_eq!(snapshot_key("ui.set", &json!({"tool": "Brush"})), None);
+        assert_eq!(snapshot_key("ui.pointer", &json!({})), None);
+        assert_eq!(snapshot_key("app.quit", &json!({})), None);
+    }
+
+    #[test]
+    fn control_watch_counts_logic_and_drawn_passes_and_reports_them_as_health() {
+        let watch = ControlWatch::new();
+        assert_eq!(watch.logic_count(), 0);
+        watch.note_logic();
+        watch.note_logic();
+        watch.note_drawn();
+        assert_eq!(watch.logic_count(), 2, "only logic passes feed the stall check");
+        let health = watch.health();
+        for key in ["lastLogicAgoMs", "lastDrawnAgoMs", "logicCount", "drawnCount"] {
+            assert!(health.get(key).and_then(Value::as_u64).is_some(), "health reports {key}: {health}");
+        }
+        assert_eq!(health["logicCount"], json!(2));
+        assert_eq!(health["drawnCount"], json!(1));
+    }
+
+    #[test]
+    fn control_watch_serves_the_last_snapshot_young_and_returns_none_for_unknown_keys() {
+        let watch = ControlWatch::new();
+        assert!(watch.snapshot_with_age("ui.inspect").is_none(), "nothing was stored yet");
+        watch.note_snapshot("ui.inspect", &json!({"ok": true, "tool": "Brush"}));
+        let (age_ms, value) = watch.snapshot_with_age("ui.inspect").expect("the stored snapshot");
+        assert_eq!(value, json!({"ok": true, "tool": "Brush"}));
+        assert!(age_ms < 10_000, "a snapshot stored now is young: {age_ms}ms");
+        watch.note_snapshot("ui.inspect", &json!({"ok": true, "tool": "Eraser"}));
+        assert_eq!(
+            watch.snapshot_with_age("ui.inspect").expect("the latest reply wins").1["tool"],
+            json!("Eraser"),
+            "a newer snapshot replaces the older one"
+        );
+        assert!(watch.snapshot_with_age("engine.commands").is_none(), "only requested getters are stored");
+    }
+
+    #[test]
+    fn stalled_action_waits_while_logic_runs_serves_a_snapshot_or_fails_fast() {
+        // The frame loop ran after the request: wait for its reply, snapshot or not.
+        let watch = ControlWatch::new();
+        watch.note_snapshot("ui.inspect", &json!({"ok": true}));
+        let before = watch.logic_count();
+        watch.note_logic();
+        assert!(matches!(stalled_action(&watch, "ui.inspect", &json!({}), before), Stalled::KeepWaiting));
+
+        // Wedged, but this getter's last reply exists: serve it, stamped with its age.
+        let watch = ControlWatch::new();
+        watch.note_snapshot("ui.inspect", &json!({"ok": true}));
+        let before = watch.logic_count();
+        let Stalled::Snapshot { age_ms, value } = stalled_action(&watch, "ui.inspect", &json!({}), before) else {
+            panic!("a stored snapshot must be served");
+        };
+        assert_eq!(value, json!({"ok": true}));
+        assert!(age_ms < 10_000, "a snapshot stored now is young: {age_ms}ms");
+
+        // Wedged and no snapshot of this getter yet: fail fast, naming the machine state.
+        let watch = ControlWatch::new();
+        let before = watch.logic_count();
+        assert!(matches!(stalled_action(&watch, "ui.inspect", &json!({}), before), Stalled::NotDrawingFrames));
+
+        // Not a read-only getter: there is nothing to serve, so keep waiting either way.
+        let watch = ControlWatch::new();
+        let before = watch.logic_count();
+        assert!(matches!(stalled_action(&watch, "ui.set", &json!({"tool": "Brush"}), before), Stalled::KeepWaiting));
+    }
+
+    #[test]
+    fn drain_control_snapshots_getter_replies_but_not_mutating_ones() {
+        use std::sync::Arc;
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let layers = app.session.active().unwrap().doc.layers.len();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let watch = Arc::new(ControlWatch::new());
+        let mut app = app.with_control(rx).with_watch(Arc::clone(&watch));
+        let (inspect, reply) = ControlRequest::new("ui.inspect", json!({}));
+        tx.send(inspect).unwrap();
+        let (edit, edit_reply) = ControlRequest::new("engine.execute", json!({"command": "layer.new.layer"}));
+        tx.send(edit).unwrap();
+        app.drain_control(&egui::Context::default());
+        let inspected = reply.try_recv().unwrap();
+        assert_eq!(inspected["ok"], true, "{inspected}");
+        let (age_ms, snapshot) = watch.snapshot_with_age("ui.inspect").expect("the getter's reply was kept");
+        assert_eq!(snapshot, inspected, "the snapshot is the reply the frame loop sent");
+        assert!(age_ms < 10_000, "a snapshot taken now is young: {age_ms}ms");
+        let edited = edit_reply.try_recv().unwrap();
+        assert_eq!(edited["ok"], true, "{edited}");
+        assert_eq!(app.session.active().unwrap().doc.layers.len(), layers + 1, "the edit still ran");
+        for key in ["engine.commands", "jobs.list", "engine.execute:document.inspect", "engine.execute:session.inspect"] {
+            assert!(watch.snapshot_with_age(key).is_none(), "a mutating request stores no snapshot");
+        }
+    }
+
+    #[test]
+    fn not_drawing_frames_error_names_the_stall_and_the_liveness_probe() {
+        // #2493: the fast-fail must tell "wedged" from "slow", point at `health`, and its
+        // number must come from the stall check it reports.
+        let error = not_drawing_frames_error();
+        assert!(error.contains("not drawing frames"), "machines match on the phrase: {error}");
+        assert!(error.contains(&format!("{}s", STALL_CHECK.as_secs())), "the text matches the stall check: {error}");
+        assert!(error.contains("health"), "the probe to call: {error}");
+        assert!(error.contains("display asleep"), "the check-the-display cause: {error}");
+    }
+
+    #[test]
+    fn fresh_watch_never_panics_and_fails_fast_on_a_wedged_getter() {
+        let watch = ControlWatch::default();
+        let health = watch.health();
+        for key in ["lastLogicAgoMs", "lastDrawnAgoMs", "logicCount", "drawnCount"] {
+            assert!(health.get(key).and_then(Value::as_u64).is_some(), "health reports {key} before any activity: {health}");
+        }
+        assert_eq!(health["logicCount"], json!(0), "no logic pass ran yet");
+        assert!(watch.snapshot_with_age("ui.inspect").is_none(), "the empty map answers None, not an error");
+        assert!(
+            matches!(stalled_action(&watch, "ui.inspect", &json!({}), 0), Stalled::NotDrawingFrames),
+            "no logic pass, no snapshot: fail fast"
+        );
     }
 }
