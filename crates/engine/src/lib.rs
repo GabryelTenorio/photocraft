@@ -8,12 +8,14 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod actions_cmds;
+pub mod actions_edit_cmds;
 pub mod adjust_cmds;
 pub mod adjust_params;
 pub mod align_cmds;
 mod allocation;
 pub mod analysis_cmds;
 pub mod artboard_cmds;
+pub mod atn_cmds;
 pub mod automate_cmds;
 pub mod background_cmds;
 pub mod brush_cmds;
@@ -644,11 +646,12 @@ impl Session {
             st.color_samplers.retain(|p| bounds.contains(p[0].floor() as i32, p[1].floor() as i32));
             samplers_removed = n - st.color_samplers.len();
         }
-        // An edit that changes no pixels (a selection, guides, a layer's name) leaves the canvas
-        // as it is; anything else recomposites the whole document unless the command reports
-        // its own damage after this. A new lasso selection on a large document used to cost a
-        // full recomposite (seconds on the CPU path, #1773).
-        let unchanged = layer_multi_cmds::same_pixels(&before, &st.doc);
+        // The pixels the edit can have changed, as its undo would report them: nothing for a
+        // selection, guides or a layer's name (a new lasso selection used to recomposite a large
+        // document, seconds on the CPU path, #1773), a new or deleted layer's bounds (a
+        // duplicate or a paste), and everything when that can't be bounded. A command may still
+        // report its own, tighter damage after this.
+        let damage = layer_multi_cmds::step_damage(&before, &st.doc);
         let key = self.coalesce_request.clone();
         let st = self.active_mut().ok_or(EngineError::NoDocument)?;
         let layers = st.layer_target();
@@ -661,9 +664,9 @@ impl Session {
         }
         st.coalesce = key;
         st.revision += 1;
-        st.last_damage = unchanged.then_some(photocraft_geom::Rect::EMPTY);
+        st.last_damage = damage;
         self.samplers_removed += samplers_removed;
-        if !unchanged {
+        if damage.is_none_or(|d| !d.is_empty()) {
             // Free the mask early; a stale entry would only miss (it is keyed by pixels).
             self.subject_cache = Default::default();
         }

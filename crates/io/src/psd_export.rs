@@ -35,11 +35,17 @@ pub struct PsdExportOptions {
     pub merged_matte: bool,
     /// Compression of the merged image (32-bit float documents are always written raw).
     pub merged_compression: Compression,
+    /// Write the real merged image (Preferences › File Handling › Maximize PSD and PSB File
+    /// Compatibility). `false` writes Photoshop's white placeholder instead and records
+    /// `has_real_merged_data = false` in resource 1057: a smaller file and a faster save, but
+    /// readers that only show the merged image see white. A document without layer records always
+    /// gets the real image, since its pixels live nowhere else.
+    pub maximize_compatibility: bool,
 }
 
 impl Default for PsdExportOptions {
     fn default() -> Self {
-        PsdExportOptions { force_psb: false, merged_matte: true, merged_compression: Compression::Rle }
+        PsdExportOptions { force_psb: false, merged_matte: true, merged_compression: Compression::Rle, maximize_compatibility: true }
     }
 }
 
@@ -1227,6 +1233,28 @@ fn merged_planes(doc: &Document, fmt: &PixelFormat, cmyk: bool, matte: bool, ctl
     (planes, has_alpha, translucent)
 }
 
+/// The merged image of a file saved without Maximize Compatibility: Photoshop's white placeholder
+/// in the document's colour channels, with no alpha. Encoded like [`merged_planes`], so CMYK white
+/// is no ink and Lab white is L 100 with neutral a*/b*.
+fn placeholder_planes(doc: &Document, fmt: &PixelFormat) -> Vec<u8> {
+    let cc = fmt.mode.color_channels();
+    let cmyk = cmyk_of(fmt);
+    let lab16 = fmt.mode == ColorMode::Lab && fmt.sample == SampleType::U16;
+    let space = photocraft_compose::cmyk_space(doc);
+    let white = photocraft_color::convert::with_cmyk_space(space.as_ref(), || photocraft_raster::from_rgba(fmt, [1.0, 1.0, 1.0, 1.0]));
+    let n = doc.size.area() as usize;
+    let mut planes = Vec::with_capacity(n * fmt.sample.bytes() * cc);
+    for c in 0..cc {
+        let v = white.get(c).copied().unwrap_or(1.0);
+        let x = if cmyk { 1.0 - v } else { v };
+        let x = if lab16 && (c == 1 || c == 2) { x * (crate::pixels::LAB16_CHROMA_MAX / 65535.0) } else { x };
+        let mut sample = Vec::with_capacity(4);
+        encode_be(x, fmt.sample, &mut sample);
+        planes.extend(sample.iter().copied().cycle().take(n * sample.len()));
+    }
+    planes
+}
+
 /// Converts a document to a PSD file model (see [`document_to_psd_with`]).
 pub fn document_to_psd(doc: &Document) -> PsdFile {
     document_to_psd_with(doc, &PsdExportOptions::default()).0
@@ -1356,6 +1384,13 @@ pub(crate) fn estimate_psd_size(doc: &Document) -> Option<u64> {
     estimate_encoded_size(raw_bytes, rows, structural_bytes)
 }
 
+/// The signature a kept tagged block is written with. `8B64` exists only in PSB files: a PSD
+/// with an `8B64` block (kept from a PSB source, e.g. its global `FMsk` or `cinf`) is refused by
+/// Photoshop as "not compatible with this version" (measured in Photoshop 27.11).
+fn block_signature(sig: [u8; 4], version: Version) -> [u8; 4] {
+    if version == Version::Psd && sig == *b"8B64" { *b"8BIM" } else { sig }
+}
+
 pub(crate) fn psd_version(doc: &Document, force_psb: bool, size_exceeds_limit: bool) -> Version {
     let exceeds_dimensions = doc.size.width > 30_000 || doc.size.height > 30_000;
     if force_psb || exceeds_dimensions || size_exceeds_limit { Version::Psb } else { Version::Psd }
@@ -1463,15 +1498,24 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
     let space = photocraft_compose::cmyk_space(doc);
     photocraft_color::convert::with_cmyk_space(space.as_ref(), || ex.emit(&doc.layers, &mut tick));
 
-    // Merged composite, rendered and encoded in bands (no full-size float composite). Matting
-    // against white only changes pixels with alpha < 1; if some are slightly translucent but all
-    // round to opaque (so no alpha channel is written), encode once more without the matte.
-    let merged_end = layers_share + (1.0 - layers_share) * MERGED_RENDERED;
-    let (mut planes, has_alpha, translucent) =
-        crate::with_span(ctl, layers_share, merged_end, |ctl| merged_planes(doc, &fmt, cmyk_of(&fmt), opts.merged_matte, ctl));
-    if !has_alpha && translucent && opts.merged_matte {
-        planes = merged_planes(doc, &fmt, cmyk_of(&fmt), false, &Interrupt::cancel_only(&|| ctl.cancelled())).0;
-    }
+    // Without Maximize Compatibility the merged image is a white placeholder and the composite
+    // isn't rendered at all. A document without layer records keeps the real image: its pixels
+    // live nowhere else.
+    let real_merged = opts.maximize_compatibility || ex.records.is_empty();
+    let (mut planes, has_alpha) = if real_merged {
+        // Merged composite, rendered and encoded in bands (no full-size float composite). Matting
+        // against white only changes pixels with alpha < 1; if some are slightly translucent but
+        // all round to opaque (so no alpha channel is written), encode once more without the matte.
+        let merged_end = layers_share + (1.0 - layers_share) * MERGED_RENDERED;
+        let (mut planes, has_alpha, translucent) =
+            crate::with_span(ctl, layers_share, merged_end, |ctl| merged_planes(doc, &fmt, cmyk_of(&fmt), opts.merged_matte, ctl));
+        if !has_alpha && translucent && opts.merged_matte {
+            planes = merged_planes(doc, &fmt, cmyk_of(&fmt), false, &Interrupt::cancel_only(&|| ctl.cancelled())).0;
+        }
+        (planes, has_alpha)
+    } else {
+        (placeholder_planes(doc, &fmt), false)
+    };
     let n = doc.size.area() as usize;
     if !has_alpha {
         planes.truncate(cc * n * sample.bytes());
@@ -1578,7 +1622,7 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
         if !ex.records.is_empty() && matches!(&key, b"Lr16" | b"Lr32" | b"Layr") {
             continue;
         }
-        global_blocks.push(global_block(sig, key, &data));
+        global_blocks.push(global_block(block_signature(sig, version), key, &data));
     }
     if let Some(txt2) = txt2 {
         let mut tb = TaggedBlock::new(*b"Txt2", txt2.clone());
@@ -1616,7 +1660,7 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
     if let Some(Some(data)) = slices_resource {
         resources.push(ImageResource::new(crate::slices_map::SLICES, data));
     }
-    resources.push(version_info_resource(true));
+    resources.push(version_info_resource(real_merged));
 
     let has_layers = !ex.records.is_empty();
     let placement = match (has_layers, sample) {
@@ -1728,6 +1772,36 @@ mod tests {
     }
 
     #[test]
+    fn photo_filter_version_3_is_kept_until_edited() {
+        // The #3777 block (Photoshop CS2, XYZ colour): saved back byte-exact while unchanged.
+        let v3 = vec![0, 3, 0, 0, 0x5e, 0x7f, 0, 0, 0x61, 0xaa, 0, 0, 0x0e, 0xf3, 0, 0, 0, 0x3f, 1, 0];
+        let adjustment = crate::adjust_map::parse(b"phfl", &v3, None, crate::adjust_map::Channels::Rgb);
+        let photocraft_doc::Adjustment::PhotoFilter { color, .. } = adjustment else { panic!("{adjustment:?}") };
+        let mut doc =
+            Document::with_background("Photo Filter v3", photocraft_geom::Size::new(8, 8), ColorMode::Rgb, SampleType::U8, photocraft_doc::Color::WHITE);
+        let mut layer = Layer::new("Photo Filter 1", LayerContent::Adjustment(adjustment.clone()));
+        layer.psd_blocks = vec![(*b"phfl", std::sync::Arc::new(v3.clone()))];
+        doc.layers.push(layer);
+        let phfl = |doc: &Document| {
+            let file = PsdFile::from_bytes(&document_to_psd(doc).to_bytes().unwrap()).unwrap();
+            let records = &file.layer_info.as_ref().unwrap().layers;
+            records.iter().flat_map(|r| r.blocks.iter()).find(|b| b.key == *b"phfl").map(|b| b.data.clone()).expect("Photo Filter adjustment data")
+        };
+        assert_eq!(phfl(&doc), v3);
+        // Once edited it is written as version 2 (RGB), and the colour survives.
+        let edited = photocraft_doc::Adjustment::PhotoFilter { color, density: 0.5, preserve_luminosity: true };
+        if let Some(l) = doc.layers.last_mut() {
+            l.content = LayerContent::Adjustment(edited.clone());
+        }
+        let saved = phfl(&doc);
+        assert_eq!(&saved[..2], &[0, 2]);
+        let reread = crate::adjust_map::parse(b"phfl", &saved, None, crate::adjust_map::Channels::Rgb);
+        let photocraft_doc::Adjustment::PhotoFilter { color: back, density, .. } = reread else { panic!("{reread:?}") };
+        assert!(back.iter().zip(color).all(|(b, c)| (b - c).abs() <= 1.0 / 65535.0), "{back:?} vs {color:?}");
+        assert_eq!(density, 0.5);
+    }
+
+    #[test]
     fn size_limit_boundary_keeps_limit_and_switches_above_it() {
         assert!(!exceeds_psd_size_limit(Some(PSD_MAX_FILE_SIZE)));
         assert!(exceeds_psd_size_limit(Some(PSD_MAX_FILE_SIZE + 1)));
@@ -1753,6 +1827,24 @@ mod tests {
         let small_size_exceeds_limit = psd_size_exceeds_limit(&small);
         assert_eq!(psd_version(&small, false, small_size_exceeds_limit), Version::Psd);
         assert_eq!(psd_version(&small, true, small_size_exceeds_limit), Version::Psb);
+    }
+    #[test]
+    fn kept_psb_blocks_are_written_as_8bim_in_a_psd() {
+        // Photoshop 27.11 refuses a PSD holding `8B64` blocks ("not compatible with this
+        // version"); they came from re-saving a PSB as PSD with its global FMsk and cinf kept.
+        let mut doc = document(4, 4);
+        doc.metadata.psd_global_blocks = vec![
+            (*b"8B64", *b"FMsk", std::sync::Arc::new(vec![0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50])),
+            (*b"8BIM", *b"Patt", std::sync::Arc::new(Vec::new())),
+        ];
+        let signatures = |force_psb| {
+            let opts = PsdExportOptions { force_psb, ..PsdExportOptions::default() };
+            let bytes = document_to_psd_with(&doc, &opts).0.to_bytes().unwrap();
+            let file = PsdFile::from_bytes(&bytes).unwrap();
+            file.global_blocks.iter().map(|b| (b.signature, b.key)).collect::<Vec<_>>()
+        };
+        assert_eq!(signatures(false), vec![(*b"8BIM", *b"FMsk"), (*b"8BIM", *b"Patt")]);
+        assert_eq!(signatures(true), vec![(*b"8B64", *b"FMsk"), (*b"8BIM", *b"Patt")], "a PSB keeps 8B64");
     }
 
     /// A layered document with transparency in the merged image and an alpha channel: the name
