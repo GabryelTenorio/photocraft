@@ -1,0 +1,44 @@
+name: Repair Android branch Cargo.lock
+
+on:
+  push:
+    branches: [android-native]
+    paths:
+      - '.github/workflows/android-lockfile.yml'
+      - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - 'apps/**/Cargo.toml'
+      - 'xtask/Cargo.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-lockfile
+  cancel-in-progress: false
+
+jobs:
+  update-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-native
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Regenerate workspace lockfile
+        run: cargo generate-lockfile
+      - name: Verify locked resolution
+        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
+      - name: Commit Cargo.lock only if changed
+        run: |
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "fix(ci): regenerate Cargo.lock for Android workspace"
+          git push origin HEAD:android-native
