@@ -14,8 +14,8 @@ use crate::warp::Warp;
 
 /// Faux-italic slant in degrees (Photoshop-like).
 pub const FAUX_ITALIC_DEG: f32 = 12.0;
-/// Faux-bold dilation radius as a fraction of the font size.
-pub const FAUX_BOLD_RADIUS: f32 = 0.018;
+/// Faux-bold ring radius as a fraction of the font size (tuned so stem weight stays close to the old summed-coverage look).
+pub const FAUX_BOLD_RADIUS: f32 = 0.036;
 /// Largest raster we produce (pixels), as a guard against absurd sizes.
 const MAX_PIXELS: u64 = 256 * 1024 * 1024;
 

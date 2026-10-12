@@ -389,7 +389,7 @@ fn faux_bold_keeps_antialiased_edges_at_small_sizes() {
     let mut e = TextEngine::new();
     let base = CharStyle { size_pt: 12.0, ..Default::default() };
     let stats = |e: &mut TextEngine, s: CharStyle| {
-        let (_, r) = e.render(&TextLayer { transform: Affine::translate(5.0, 20.0), ..styled("Ill", s) }, 72.0, PixelFormat::RGBA8);
+        let (_, r) = e.render(&TextLayer { transform: Affine::translate(5.0, 20.0), ..styled("Bold Test", s) }, 72.0, PixelFormat::RGBA8);
         let (w, h) = (r.rect.width() as usize, r.rect.height() as usize);
         let mut partial = 0usize;
         for y in 0..h {
@@ -408,7 +408,11 @@ fn faux_bold_keeps_antialiased_edges_at_small_sizes() {
     let (plain_ink, plain_partial) = stats(&mut e, base.clone());
     let (bold_ink, bold_partial) = stats(&mut e, CharStyle { faux_bold: true, ..base });
     assert!(bold_ink > plain_ink, "bold must add ink");
-    assert!(bold_ink < plain_ink * 1.6, "ink grows by the dilation only: {plain_ink} -> {bold_ink}");
+    // Weight: the old summed-coverage faux bold (before #4130) measured 282.7 total ink for this
+    // text at 12 px (plain 138.0). The antialiased version must stay close to that weight.
+    const MAIN_BOLD_INK: f64 = 282.7;
+    assert!(bold_ink >= MAIN_BOLD_INK * 0.85, "stems too thin: {bold_ink} vs old {MAIN_BOLD_INK}");
+    assert!(bold_ink <= MAIN_BOLD_INK * 1.15, "stems too heavy: {bold_ink} vs old {MAIN_BOLD_INK}");
     assert!(bold_partial * 10 >= plain_partial * 8, "edges stay antialiased: {plain_partial} -> {bold_partial}");
 }
 
