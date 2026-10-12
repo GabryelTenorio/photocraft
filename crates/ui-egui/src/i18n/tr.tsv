@@ -285,7 +285,7 @@ cameraRaw	Size	Boyut
 	32 Bits/Channel	32 Bit/Kanal
 	8 bit	8 Bit
 	16 bit	16 Bit
-	32 bit (float)	32 Bit (kayan nokta)
+	32 bit (float)	32 Bit (float)
 	Integer	Tam sayı
 	Floating point	Kayan nokta
 	Amount	Miktar
