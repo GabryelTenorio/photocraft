@@ -477,7 +477,7 @@ mod tests {
             let out = place_source(&src, r, &t, Some(&warp)).unwrap();
             let b = out.content_bounds();
             let o = out.read_region(b);
-            let opaque: Vec<f32> = o.chunks_exact(4).filter(|p| p[3] >= 0.999).map(|p| p[0]).collect();
+            let opaque: Vec<f32> = o.as_chunks::<4>().0.iter().filter(|p| p[3] >= 0.999).map(|p| p[0]).collect();
             assert!(opaque.len() > 2000, "{s:?}: {} opaque pixels", opaque.len());
             let worst = opaque.iter().map(|v| (v - 0.5625).abs()).fold(0.0f32, f32::max);
             // An area average over the ~5 px footprint still covers one or two lines per axis
