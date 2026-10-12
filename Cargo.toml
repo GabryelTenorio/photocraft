@@ -4,7 +4,7 @@ members = ["crates/*", "apps/*", "xtask"]
 default-members = ["crates/*", "apps/photocraft", "apps/photocraft-cli", "xtask"]
 
 [workspace.package]
-version = "0.8.1"
+version = "0.8.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -101,14 +101,30 @@ opt-level = "s"
 # Decoding and rasterizing keep their speed.
 [profile.wasm-release.package.photocraft-codecs]
 opt-level = "s"
-[profile.wasm-release.package.photocraft-psd]
-opt-level = "s"
 [profile.wasm-release.package.photocraft-raw]
 opt-level = "s"
 [profile.wasm-release.package.photocraft-heif]
 opt-level = "s"
 [profile.wasm-release.package.photocraft-vector]
 opt-level = "s"
+
+# Large crates off the per-frame and per-pixel paths: the document model, file parsers run once
+# per open/save, JSON (settings, presets, control channel), SVG parsing, and shader translation
+# (runs when a pipeline is created). "z" keeps the wasm well under the size gate.
+[profile.wasm-release.package.photocraft-doc]
+opt-level = "z"
+[profile.wasm-release.package.photocraft-psd]
+opt-level = "z"
+[profile.wasm-release.package.photocraft-format]
+opt-level = "z"
+[profile.wasm-release.package.photocraft-affinity]
+opt-level = "z"
+[profile.wasm-release.package.serde_json]
+opt-level = "z"
+[profile.wasm-release.package.usvg]
+opt-level = "z"
+[profile.wasm-release.package.naga]
+opt-level = "z"
 
 # Pixel processing keeps its speed-oriented optimization level.
 [profile.wasm-release.package.photocraft-raster]
