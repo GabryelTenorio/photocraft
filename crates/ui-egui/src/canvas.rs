@@ -2637,6 +2637,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             Vec::new()
         };
         let drop_shadow = drop_shadow && !beyond && !app.ui.view.pattern_preview;
+        let t = crate::theme::Tokens::get(&ctx);
+        let shadow_alpha = crate::theme::canvas_shadow_alpha(&t, drop_shadow);
         // Live adjustment previews on big documents use a downsampled proxy (see proxy.rs), unless
         // Preferences › Performance › Low Resolution Previews is off.
         let mut on_gpu = false;
@@ -2660,10 +2662,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                     view.center[1] / k as f32 + (preview_size[1] as f32 - original_size[1] as f32) / 2.0,
                 ],
                 rotation: if view.rotation.is_finite() { view.rotation.to_radians() } else { 0.0 },
-                shadow: {
-                    let t = crate::theme::Tokens::get(&ctx);
-                    !t.bevel && !t.pro && drop_shadow
-                },
+                shadow_alpha,
                 pixel_grid: false,
                 view_key: egui::Id::new(("pc-canvas-proxy", ctx.viewport_id(), idx)).value(),
                 display: sync_display_lut(app, &doc, key, output),
@@ -2682,10 +2681,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 zoom: point_zoom,
                 center: view.center,
                 rotation: if view.rotation.is_finite() { view.rotation.to_radians() } else { 0.0 },
-                shadow: {
-                    let t = crate::theme::Tokens::get(&ctx);
-                    !t.bevel && !t.pro && drop_shadow
-                },
+                shadow_alpha,
                 pixel_grid,
                 view_key: egui::Id::new(("pc-canvas", ctx.viewport_id(), idx)).value(),
                 display: sync_display_lut(app, &doc, doc.id.0, output),
@@ -2695,8 +2691,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             };
             paint_gpu_view(&painter, rect, params, &pattern);
         } else {
-            if !crate::theme::Tokens::get(&ctx).bevel && drop_shadow {
-                painter.add(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(150) }.as_shape(img_rect, 0));
+            if shadow_alpha > 0.0 {
+                let color = Color32::from_black_alpha((shadow_alpha * 255.0).round() as u8);
+                painter.add(egui::Shadow { offset: [0, 4], blur: 28, spread: 0, color }.as_shape(img_rect, 0));
             }
             let rotated = view.rotation.abs() > 0.05;
             let checkerboard = app.session.prefs().transparency_and_gamut.square().map(|square| (checker(app, &ctx), square));
@@ -3698,7 +3695,7 @@ fn paint_gpu_view(painter: &egui::Painter, rect: Rect, params: crate::gpu_canvas
     for (k, &c) in copies.iter().enumerate() {
         let copy = crate::gpu_canvas::ViewParams {
             offset: crate::pattern_preview::offset(c, params.doc_size),
-            shadow: false,
+            shadow_alpha: 0.0,
             // Keyed by slot, not by tile index, so panning reuses the same few uniform buffers.
             view_key: egui::Id::new((params.view_key, "pattern", k)).value(),
             ..params
