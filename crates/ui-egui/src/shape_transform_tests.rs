@@ -734,7 +734,7 @@ fn extra_document_window_sees_shape_outside_main_preview_region() {
     let old_region = shape_proxy(&app, 0).unwrap().region;
     let mut extra_view = app.ui.views[0].clone();
     extra_view.center = [4020.0, 24.0];
-    app.ui.windows.push(crate::state::DocWindow { id: 99, document: 0, view: extra_view, open: true });
+    app.ui.windows.push(crate::state::DocWindow { id: 99, document: 0, view: extra_view, open: true, position: None });
     app.ui.transform.as_mut().unwrap().quad = app.ui.transform.as_ref().unwrap().quad.map(|p| [p[0] + 4000.0, p[1]]);
     follow_edits(&mut app);
     assert!(shape_proxy(&app, 0).is_none(), "independently panned windows require complete staged shape pixels");
