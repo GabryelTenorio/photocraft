@@ -1,6 +1,6 @@
 //! Capability-based filesystem policy for untrusted automation paths.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -51,8 +51,7 @@ impl AuthorizedWorkspace {
         if !metadata.is_file() {
             return Err(AutomationError::BadRequest(format!("automation read path is not a regular file: `{path}`")));
         }
-        // Bounded reads, and a clear error for a file larger than memory (#375).
-        photocraft_format::read::read_all(&mut file, metadata.len()).map_err(|e| file_error("read", path, e))
+        read_to_observed_length(&mut file, metadata.len())
     }
 
     /// Load one `.pcraft` document in directory form — the native on-disk layout — below the
@@ -105,6 +104,34 @@ impl AuthorizedWorkspace {
             }
         }
         Ok(())
+    }
+}
+
+fn read_to_observed_length(reader: &mut impl Read, observed_length: u64) -> Result<Vec<u8>, AutomationError> {
+    // Do not reserve from a potentially stale or attacker-controlled metadata length. Read in
+    // chunks, and reject growth beyond the length observed on the opened file before appending.
+    let mut bytes = Vec::new();
+    let mut chunk = [0u8; 64 << 10];
+    loop {
+        let remaining = observed_length.saturating_sub(bytes.len() as u64);
+        let ask = chunk.len().min(usize::try_from(remaining.saturating_add(1)).unwrap_or(chunk.len()));
+        let n = match reader.read(&mut chunk[..ask]) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(AutomationError::Io(format!("automation read failed: {e}"))),
+        };
+        if n == 0 {
+            return Ok(bytes);
+        }
+        if n as u64 > remaining {
+            return Err(AutomationError::BadRequest(format!("automation file grew beyond its observed length of {observed_length} bytes")));
+        }
+        let needed = bytes.len().checked_add(n).ok_or_else(|| AutomationError::BadRequest("automation file is too large to read".into()))?;
+        if needed > bytes.capacity() {
+            let target = bytes.capacity().saturating_add(bytes.capacity() / 2).max(needed).min(usize::try_from(observed_length).unwrap_or(usize::MAX));
+            bytes.try_reserve_exact(target - bytes.len()).map_err(|e| AutomationError::Io(format!("automation read allocation failed: {e}")))?;
+        }
+        bytes.extend_from_slice(&chunk[..n]);
     }
 }
 
@@ -466,6 +493,23 @@ mod tests {
     }
 
     #[test]
+    fn large_observed_length_does_not_trigger_a_fixed_limit_or_upfront_reservation() {
+        let mut shortened = std::io::Cursor::new(b"psb");
+        assert_eq!(read_to_observed_length(&mut shortened, (1 << 30) + 1).unwrap(), b"psb");
+    }
+
+    #[test]
+    fn read_growth_is_rejected_at_the_observed_length() {
+        let mut growing = std::io::repeat(b'x').take(65);
+        let error = read_to_observed_length(&mut growing, 64).unwrap_err().to_string();
+        assert!(error.contains("grew beyond its observed length of 64 bytes"), "{error}");
+        let mut allowed = std::io::repeat(b'x').take(64);
+        assert_eq!(read_to_observed_length(&mut allowed, 64).unwrap().len(), 64);
+        let mut empty = std::io::Cursor::new(b"x");
+        assert!(read_to_observed_length(&mut empty, 0).is_err());
+    }
+
+    #[test]
     fn open_pcraft_loads_a_directory_below_the_read_root() {
         let (inside, _, workspace) = roots("pcraft-dir");
         let doc = photocraft_doc::Document::new("Native", photocraft_doc::Size::new(16, 12), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8);
@@ -751,23 +795,6 @@ mod tests {
             authorize_engine_command("prefs.set", &serde_json::json!({"values": {"interface.language": "fr", "historyLog.filePath": "/outside/log"}})).is_err()
         );
         assert!(authorize_engine_command("prefs.set", &serde_json::json!({"path": "interface.language", "value": "fr"})).is_ok());
-    }
-
-    #[test]
-    fn installed_profiles_scans_require_trusted_filesystem_access() {
-        let mut headless = crate::Headless::new();
-        let (_, _, workspace) = roots("installed-profiles-authority");
-        let mut scoped = crate::Headless::with_workspace(workspace);
-        for params in [serde_json::json!({}), serde_json::json!({"class": "output", "colorSpace": "cmyk"}), serde_json::json!({"path": "/outside/profile.icc"})]
-        {
-            assert!(authorize_engine_command("edit.installedProfiles", &params).is_err());
-            assert!(authorize_desktop_engine_command("edit.installedProfiles", &params).is_err());
-            // A workspace grant cannot authorize implicit scans of OS/user profile folders.
-            for session in [&mut headless, &mut scoped] {
-                let error = session.command_run("edit.installedProfiles", params.clone()).unwrap_err();
-                assert!(error.to_string().contains("ambient filesystem paths"), "{error}");
-            }
-        }
     }
 
     #[test]

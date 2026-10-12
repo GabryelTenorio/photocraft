@@ -119,14 +119,14 @@
 	Toggle Last State	Alterna ultimo stato
 	Fade…	Dissolvi…
 	Cut	Taglia
+	Copy	Copia
+	Copy Merged	Copia unito
+	Paste	Incolla
 	Copy Mask	Copia maschera
 	Paste Mask	Incolla maschera
 	Replace Layer Mask?	Sostituire la maschera di livello?
 	Replace the existing pixel mask on “{layer}”?	Sostituire la maschera pixel esistente su “{layer}”?
 	Replace	Sostituisci
-	Copy	Copia
-	Copy Merged	Copia unito
-	Paste	Incolla
 	Paste Special	Incolla speciale
 	Paste in Place	Incolla in posizione
 	Paste Into	Incolla dentro
@@ -778,21 +778,6 @@
 	Split Warp Vertically	Dividi altera verticalmente
 	Statistics…	Statistiche…
 	Refine Strokes	Tratti di perfezionamento
-# Count-aware status and dialog text
-@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Esportato {n} campione in {file}|Esportati {n} campioni in {file}
-@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Importato {n} pennello da {group}|Importati {n} pennelli da {group}
-@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Importato {n} campione da {file}|Importati {n} campioni da {file}
-@plural	Played {n} step|Played {n} steps	Riprodotto {n} passaggio|Riprodotti {n} passaggi
-@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Aggiornato {n} oggetto avanzato collegato modificato su disco|Aggiornati {n} oggetti avanzati collegati modificati su disco
-@plural	Saved for Web: {n} file|Saved for Web: {n} files	Salvato per Web: {n} file|Salvato per Web: {n} file
-@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	È stato eliminato {n} livello registrato in questa composizione. Aggiornate la composizione o cancellate l’avviso.|Sono stati eliminati {n} livelli registrati in questa composizione. Aggiornate la composizione o cancellate l’avviso.
-@plural	{n} plane|{n} planes	{n} piano|{n} piani
-@plural	{n} preset|{n} presets	{n} predefinito|{n} predefiniti
-@plural	{n} sample point removed|{n} sample points removed	Rimosso {n} punto campione|Rimossi {n} punti campione
-@plural	{n} slice|{n} slices	{n} sezione|{n} sezioni
-@plural	{n} step|{n} steps	{n} passaggio|{n} passaggi
-@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} altro avviso sui pennelli predefiniti)|{warning} (+{n} altri avvisi sui pennelli predefiniti)
-@plural	{what} with {n} warning|{what} with {n} warnings	{what} con {n} avviso|{what} con {n} avvisi
 @plural	{n} item|{n} items	{n} elemento|{n} elementi
 	Auto	Automatico
 
@@ -2170,6 +2155,7 @@
 	Opening {name}	Apertura {name}
 	Saved {name}	Salvato: {name}
 	Saving {name}	Salvataggio {name}
+	Saving {percent}	Salvataggio {percent}
 	A save to {name} is still running; try again when it finishes	Un salvataggio in {name} è ancora in corso; riprova quando termina
 	{label} is writing the file and can no longer be cancelled	{label} sta scrivendo il file e non può più essere annullato
 	Opening {name}…	Apertura {name}…
@@ -2673,6 +2659,18 @@ cameraData	Lens	Obiettivo
 	Amount:	Quantità:
 	Protect:	Proteggi:
 	Protect skin tones	Proteggi toni pelle
+	Edit points to modify the curve	Modifica i punti per cambiare la curva
+	Draw to modify the curve	Disegna per modificare la curva
+curves	Smooth	Leviga
+	Smooth the curve values	Leviga i valori della curva
+	Drag to draw the curve · {key}-click draws a straight line	Trascina per disegnare la curva · {key}-clic traccia una linea retta
+	Edit Plane	Modifica piano
+	Create Plane	Crea piano
+	Grid Size:	Dimensione griglia:
+	Vanishing Point: click four corners to create a plane	Punto di fuga: fai clic su quattro angoli per creare un piano
+	Vanishing Point is not active	Punto di fuga non è attivo
+	Apply Vanishing Point ({key})	Applica punto di fuga ({key})
+	Fix the red plane first: its corners must form a convex quad	Correggi prima il piano rosso: i suoi angoli devono formare un quadrilatero convesso
 # Select and Mask view modes (#1754)
 	Onion Skin	Velina
 	Marching Ants	Formiche in marcia
@@ -2706,3 +2704,23 @@ cameraData	Lens	Obiettivo
 	Apply mask to layer before removing?	Applicare la maschera al livello prima di rimuoverla?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Il livello o la sua maschera è cambiato. Trascina di nuovo la maschera nel cestino.
 	Delete the vector mask?	Eliminare la maschera vettoriale?
+# Counted status messages and labels (#3454; adapted from PR #3821)
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	{n} campione esportato in {file}|{n} campioni esportati in {file}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{n} pennello importato da {group}|{n} pennelli importati da {group}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{n} campione importato da {file}|{n} campioni importati da {file}
+@plural	Played {n} step|Played {n} steps	{n} passaggio riprodotto|{n} passaggi riprodotti
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	{n} oggetto avanzato collegato modificato su disco aggiornato|{n} oggetti avanzati collegati modificati su disco aggiornati
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Salvato per il Web: {n} file|Salvato per il Web: {n} file
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	{n} livello registrato da questa composizione è stato eliminato. Aggiorna la composizione o cancella l'avviso.|{n} livelli registrati da questa composizione sono stati eliminati. Aggiorna la composizione o cancella l'avviso.
+@plural	{n} plane|{n} planes	{n} piano|{n} piani
+@plural	{n} preset|{n} presets	{n} predefinito|{n} predefiniti
+@plural	{n} sample point removed|{n} sample points removed	{n} punto di campionamento rimosso|{n} punti di campionamento rimossi
+@plural	{n} slice|{n} slices	{n} sezione|{n} sezioni
+@plural	{n} step|{n} steps	{n} passaggio|{n} passaggi
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} altro avviso sui predefiniti pennello)|{warning} (+{n} altri avvisi sui predefiniti pennello)
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} con {n} avviso|{what} con {n} avvisi
+# View › Guides › New Guide… › Color
+	Light Blue	Blu chiaro
+	Light Red	Rosso chiaro
+	Medium Blue	Blu medio
+	Light Gray	Grigio chiaro

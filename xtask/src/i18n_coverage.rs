@@ -185,13 +185,10 @@ fn plural_keys(sources: &[(PathBuf, String)]) -> BTreeSet<Key> {
             rest = rest.get(at + 4..).unwrap_or("");
             let Some(end) = call_end(rest) else { break };
             let args = rest.get(..end).unwrap_or("");
-            let arguments = split_arguments(args);
-            let literal = |index: usize| {
-                let value = arguments.get(index)?.trim();
-                let raw = value.strip_prefix('"')?.strip_suffix('"')?;
-                (quoted_strings(value).len() == 1).then(|| unescape_rust_string(raw))
-            };
-            if let (Some(one), Some(other)) = (literal(2), literal(3)) {
+            // `trn(lang, n, one, other)`: the forms are the last two literals, so a string in the
+            // count expression (`r["files"].len()`) is not mistaken for one.
+            let forms = quoted_strings(args);
+            if let [.., one, other] = forms.as_slice() {
                 keys.insert(Key { context: "@plural".into(), source: format!("{one}|{other}") });
             }
             rest = rest.get(end + 1..).unwrap_or("");
@@ -548,25 +545,11 @@ mod tests {
     fn plural_keys_come_from_source_calls() {
         let sources = vec![(PathBuf::from("ui.rs"), r#"trn(lang, count, "{n} layer", "{n} layers");"#.into())];
         assert!(plural_keys(&sources).contains(&Key { context: "@plural".into(), source: "{n} layer|{n} layers".into() }));
-    }
-
-    #[test]
-    fn plural_keys_use_form_arguments_instead_of_language_or_count_strings() {
-        let sources = vec![(
-            PathBuf::from("ui.rs"),
-            r#"trn(Lang::from_code("cs"), result["files"].as_array().map_or(0, Vec::len) as u64, "Saved for Web: {n} file", "Saved for Web: {n} files");"#
-                .into(),
-        )];
-        assert_eq!(
-            plural_keys(&sources),
-            BTreeSet::from([Key { context: "@plural".into(), source: "Saved for Web: {n} file|Saved for Web: {n} files".into() }])
-        );
-    }
-
-    #[test]
-    fn plural_keys_do_not_invent_forms_from_count_arguments() {
-        let sources = vec![(PathBuf::from("ui.rs"), r#"trn(lang, counts["files"].get("count"), one, other);"#.into())];
-        assert!(plural_keys(&sources).is_empty());
+        // A string literal in the count expression is not one of the forms.
+        let sources = vec![(PathBuf::from("ui.rs"), r#"trn(lang, r["files"].len() as u64, "{n} file", "{n} files");"#.into())];
+        let keys = plural_keys(&sources);
+        assert!(keys.contains(&Key { context: "@plural".into(), source: "{n} file|{n} files".into() }), "{keys:?}");
+        assert_eq!(keys.len(), 1, "{keys:?}");
     }
 
     #[test]

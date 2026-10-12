@@ -119,14 +119,14 @@
 	Toggle Last State	Przełącz ostatni stan
 	Fade…	Zanikanie…
 	Cut	Wytnij
+	Copy	Kopiuj
+	Copy Merged	Kopiuj scalone
+	Paste	Wklej
 	Copy Mask	Kopiuj maskę
 	Paste Mask	Wklej maskę
 	Replace Layer Mask?	Zastąpić maskę warstwy?
 	Replace the existing pixel mask on “{layer}”?	Zastąpić istniejącą maskę pikselową warstwy „{layer}“?
 	Replace	Zastąp
-	Copy	Kopiuj
-	Copy Merged	Kopiuj scalone
-	Paste	Wklej
 	Paste Special	Wklej specjalnie
 	Paste in Place	Wklej w to samo miejsce
 	Paste Into	Wklej do zaznaczenia
@@ -779,21 +779,6 @@
 	Split Warp Vertically	Podziel wypaczenie w pionie
 	Statistics…	Statystyki…
 	Refine Strokes	Pociągnięcia udoskonalania
-# Count-aware status and dialog text
-@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	Wyeksportowano {n} próbkę do {file}|Wyeksportowano {n} próbki do {file}|Wyeksportowano {n} próbek do {file}
-@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	Zaimportowano {n} pędzel z {group}|Zaimportowano {n} pędzle z {group}|Zaimportowano {n} pędzli z {group}
-@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	Zaimportowano {n} próbkę z {file}|Zaimportowano {n} próbki z {file}|Zaimportowano {n} próbek z {file}
-@plural	Played {n} step|Played {n} steps	Odtworzono {n} krok|Odtworzono {n} kroki|Odtworzono {n} kroków
-@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Zaktualizowano {n} połączony obiekt inteligentny zmieniony na dysku|Zaktualizowano {n} połączone obiekty inteligentne zmienione na dysku|Zaktualizowano {n} połączonych obiektów inteligentnych zmienionych na dysku
-@plural	Saved for Web: {n} file|Saved for Web: {n} files	Zapisano dla Internetu: {n} plik|Zapisano dla Internetu: {n} pliki|Zapisano dla Internetu: {n} plików
-@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Usunięto {n} warstwę zapisaną w tej kompozycji. Zaktualizuj kompozycję lub usuń ostrzeżenie.|Usunięto {n} warstwy zapisane w tej kompozycji. Zaktualizuj kompozycję lub usuń ostrzeżenie.|Usunięto {n} warstw zapisanych w tej kompozycji. Zaktualizuj kompozycję lub usuń ostrzeżenie.
-@plural	{n} plane|{n} planes	{n} płaszczyzna|{n} płaszczyzny|{n} płaszczyzn
-@plural	{n} preset|{n} presets	{n} ustawienie wstępne|{n} ustawienia wstępne|{n} ustawień wstępnych
-@plural	{n} sample point removed|{n} sample points removed	Usunięto {n} punkt próbki|Usunięto {n} punkty próbki|Usunięto {n} punktów próbki
-@plural	{n} slice|{n} slices	{n} plasterek|{n} plasterki|{n} plasterków
-@plural	{n} step|{n} steps	{n} krok|{n} kroki|{n} kroków
-@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} ostrzeżenie o ustawieniu pędzla)|{warning} (+{n} ostrzeżenia o ustawieniach pędzla)|{warning} (+{n} ostrzeżeń o ustawieniach pędzla)
-@plural	{what} with {n} warning|{what} with {n} warnings	{what}: {n} ostrzeżenie|{what}: {n} ostrzeżenia|{what}: {n} ostrzeżeń
 @plural	{n} item|{n} items	{n} element|{n} elementy|{n} elementów
 	Auto	Automatycznie
 
@@ -2158,6 +2143,7 @@
 	Opening {name}	Otwieranie {name}
 	Saved {name}	Zapisano: {name}
 	Saving {name}	Zapisywanie {name}
+	Saving {percent}	Zapisywanie {percent}
 	A save to {name} is still running; try again when it finishes	Zapisywanie do {name} wciąż trwa; spróbuj ponownie, gdy się zakończy
 	{label} is writing the file and can no longer be cancelled	{label} zapisuje plik i nie można już tego anulować
 	Opening {name}…	Otwieranie {name}…
@@ -3615,6 +3601,16 @@ cameraData	Lens	Obiektyw
 	Amount:	Wartość:
 	Protect:	Chroń:
 	Protect skin tones	Chroń odcienie skóry
+	Edit points to modify the curve	Edytuj punkty, aby zmienić krzywą
+	Draw to modify the curve	Rysuj, aby zmienić krzywą
+curves	Smooth	Wygładź
+	Smooth the curve values	Wygładź wartości krzywej
+	Drag to draw the curve · {key}-click draws a straight line	Przeciągnij, aby narysować krzywą · {key}-klik rysuje linię prostą
+	Grid Size:	Rozmiar siatki:
+	Vanishing Point: click four corners to create a plane	Punkt zbieżności: kliknij cztery narożniki, aby utworzyć płaszczyznę
+	Vanishing Point is not active	Punkt zbieżności nie jest aktywny
+	Apply Vanishing Point ({key})	Zastosuj punkt zbieżności ({key})
+	Fix the red plane first: its corners must form a convex quad	Najpierw popraw czerwoną płaszczyznę: jej narożniki muszą tworzyć czworokąt wypukły
 # Select and Mask view modes (#1754)
 	Onion Skin	Skórka cebuli
 	Marching Ants	Maszerujące mrówki
@@ -3648,3 +3644,8 @@ cameraData	Lens	Obiektyw
 	Apply mask to layer before removing?	Zastosować maskę do warstwy przed usunięciem?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Warstwa lub jej maska uległa zmianie. Przeciągnij maskę ponownie do kosza.
 	Delete the vector mask?	Usunąć maskę wektorową?
+# View › Guides › New Guide… › Color
+	Light Blue	Jasnoniebieski
+	Light Red	Jasnoczerwony
+	Medium Blue	Średnioniebieski
+	Light Gray	Jasnoszary
