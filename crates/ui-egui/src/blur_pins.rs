@@ -35,17 +35,23 @@ pub fn owns(fields: &Map<String, Value>) -> bool {
 /// Turn a freshly opened Field Blur dialog into the workspace: one pin in the middle of the
 /// filter's bounds with the remembered blur, selected.
 pub fn init(app: &mut PhotocraftApp, fields: &mut Map<String, Value>) {
+    reset(fields);
+    let bounds = app.session.active().map(|st| (st.doc.id, st.doc.bounds(), st.doc.selection.clone()));
+    if let Some((doc, canvas, selection)) = bounds {
+        let b = selection.map(|s| app.cached_bounds(u64::MAX - doc.0, &s)).filter(|b| !b.is_empty()).unwrap_or(canvas);
+        fields.insert("__bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
+    }
+}
+
+/// One pin in the middle with the dialog's blur, selected. Alt+Cancel (Reset) runs this alone, so
+/// the bounds captured on opening stay.
+pub fn reset(fields: &mut Map<String, Value>) {
     let blur = fields.get("blur").and_then(Value::as_f64).filter(|b| b.is_finite()).unwrap_or(DEFAULT_BLUR).clamp(0.0, MAX_BLUR);
     fields.remove("centerX");
     fields.remove("centerY");
     fields.insert("blur".into(), json!(blur));
     fields.insert("pins".into(), json!([{"x": 0.5, "y": 0.5, "blur": blur}]));
     fields.insert("__selected".into(), json!(0));
-    let bounds = app.session.active().map(|st| (st.doc.id, st.doc.bounds(), st.doc.selection.clone()));
-    if let Some((doc, canvas, selection)) = bounds {
-        let b = selection.map(|s| app.cached_bounds(u64::MAX - doc.0, &s)).filter(|b| !b.is_empty()).unwrap_or(canvas);
-        fields.insert("__bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
-    }
 }
 
 /// Where the dialog first opens (offset from the window's top-left): at the right edge, beside the

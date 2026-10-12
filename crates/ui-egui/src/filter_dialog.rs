@@ -389,6 +389,10 @@ pub fn reset_fields(app: &PhotocraftApp, fields: &mut Map<String, Value>) {
         }
     }
     apply_command_defaults(app, &command, fields);
+    // The schema has no default for the Blur Gallery's pins: start again from the opening one.
+    if command == crate::blur_pins::COMMAND {
+        crate::blur_pins::reset(fields);
+    }
 }
 
 pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {

@@ -172,3 +172,22 @@ fn proxy_previews_scale_the_pins_blur() {
     crate::blur_pins::scale_for_proxy(&mut p, 1);
     assert_eq!(p["pins"][0]["blur"], json!(10.0));
 }
+
+/// Alt+Cancel → Reset (#3871) starts the workspace again from one pin in the middle, as when it
+/// opened, instead of leaving it with no pins; the bounds captured on opening stay.
+#[test]
+fn alt_reset_starts_again_from_one_pin() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let id = crate::filter_dialog::open(&mut app, COMMAND).unwrap();
+    let mut fields = app.ui.dialog_mut(id).unwrap().fields.clone();
+    let bounds = fields["__bounds"].clone();
+    fields.insert("pins".into(), json!([{"x": 0.1, "y": 0.2, "blur": 40.0}, {"x": 0.8, "y": 0.7, "blur": 90.0}]));
+    fields.insert("__selected".into(), json!(1));
+    assert!(crate::dialog_alt_reset::supported(&fields));
+    crate::dialog_alt_reset::apply(&mut app, &egui::Context::default(), &mut fields);
+    assert_eq!(pins(&fields), [Pin { x: 0.5, y: 0.5, blur: 15.0 }]);
+    assert_eq!(selected(&fields), Some(0));
+    assert_eq!(fields["__bounds"], bounds);
+    assert!(!fields.contains_key("centerX") && !fields.contains_key("centerY"), "{fields:?}");
+}
