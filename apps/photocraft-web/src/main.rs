@@ -53,3 +53,14 @@ mod tests {
         assert!(!html.contains("<script"), "trunk injects the generated loader; the page has no script of its own");
     }
 }
+
+#[cfg(test)]
+mod recovery_architecture_tests {
+    #[test]
+    fn recovery_has_no_handwritten_script_or_dom_stylesheet() {
+        let page = include_str!("../index.html");
+        assert!(!page.contains("session.js") && !page.contains("session.css"));
+        assert!(!include_str!("craft_bridge.rs").contains("inline_js"));
+        assert!(!std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("package.json").exists());
+    }
+}

@@ -391,8 +391,8 @@ pub struct Services {
     pub clipboard_get_image: Option<ClipboardGetFn>,
     /// Asynchronous web read. Completion must return to the originating document through
     /// `finish_clipboard_paste`; errors must not paste a stale cached image.
-    pub clipboard_paste: Option<Box<dyn FnMut(&str, Value, Option<u64>) -> Result<(), String>>>,
-    pub clipboard_text: Option<Box<dyn FnMut(Option<u64>, crate::state::TextEdit) -> Result<(), String>>>,
+    pub clipboard_paste: Option<ClipboardPasteFn>,
+    pub clipboard_text: Option<ClipboardTextFn>,
     /// Preferences persistence: the platform config directory on native, browser storage on
     /// the web (see `prefs_ui`).
     pub load_prefs: Option<LoadTextFn>,
@@ -892,11 +892,12 @@ impl PhotocraftApp {
             self.session.edit_prefs(|prefs| prefs.script_events.enabled = false);
         }
         let t0 = gpu_canvas::now_ms();
-        if !clip_read && matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "file.newFromClipboard") {
-            if let Some(request) = self.services.clipboard_paste.as_mut() {
-                request(id, params.clone(), self.session.active().map(|d| d.doc.id.0))?;
-                return Ok(serde_json::json!({"pending": true}));
-            }
+        if !clip_read
+            && matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "file.newFromClipboard")
+            && let Some(request) = self.services.clipboard_paste.as_mut()
+        {
+            request(id, params.clone(), self.session.active().map(|d| d.doc.id.0))?;
+            return Ok(serde_json::json!({"pending": true}));
         }
         // The OS clipboard is read only on an explicit paste, never in the background (privacy, CPU).
         if matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "file.newFromClipboard") {
@@ -2575,3 +2576,6 @@ impl PhotocraftApp {
         Ok(())
     }
 }
+
+pub type ClipboardPasteFn = Box<dyn FnMut(&str, Value, Option<u64>) -> Result<(), String>>;
+pub type ClipboardTextFn = Box<dyn FnMut(Option<u64>, crate::state::TextEdit) -> Result<(), String>>;

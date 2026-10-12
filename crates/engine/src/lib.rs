@@ -809,3 +809,5 @@ mod fx_mode_tests;
 
 mod craft_codec;
 mod craft_session;
+
+mod recovery_cmds;

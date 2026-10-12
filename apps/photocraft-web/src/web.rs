@@ -289,7 +289,7 @@ impl WebShell {
 
 impl eframe::App for WebShell {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        if !craft_bridge::restore(|bytes| self.app.craft_restore(bytes)) {
+        if !craft_bridge::restore(self.app.session.documents().is_empty(), |bytes| self.app.craft_restore(bytes)) {
             return;
         }
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
@@ -345,10 +345,11 @@ impl eframe::App for WebShell {
                 }
             });
         }
-        if !craft_bridge::restore(|bytes| self.app.craft_restore(bytes)) {
+        if !craft_bridge::restore(self.app.session.documents().is_empty(), |bytes| self.app.craft_restore(bytes)) {
             return;
         }
         self.app.ui(ui, frame);
+        craft_bridge::ui(self.app.session.documents().is_empty(), ui.ctx());
         craft_bridge::save(self.app.craft_signature(), || self.app.craft_capture(), ui.ctx());
         self.save_presets(ui.ctx());
     }
@@ -539,3 +540,10 @@ fn screen_color_service() -> Option<photocraft_ui_egui::screen_picker::Service> 
 
 #[path = "craft_bridge.rs"]
 mod craft_bridge;
+
+#[path = "browser_store.rs"]
+mod browser_store;
+
+#[cfg(feature = "browser-storage-tests")]
+#[path = "browser_storage_checks.rs"]
+mod browser_storage_tests;
