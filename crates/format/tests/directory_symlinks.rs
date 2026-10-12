@@ -108,7 +108,6 @@ fn directory_cleanup_preserves_unrelated_zst_files() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-
 #[cfg(unix)]
 #[test]
 fn cleanup_unlinks_stale_symlink_without_touching_external_target() {

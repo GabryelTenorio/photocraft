@@ -621,7 +621,7 @@ impl PcraftWriter {
         }
         check_bundle_paths(&canonical_dir)?;
         if self.verified_directory.as_ref().is_none_or(|cache| cache.directory != canonical_dir) {
-            self.verified_directory = Some(DirectoryVerificationCache { directory: canonical_dir, ..Default::default() });
+            self.verified_directory = Some(DirectoryVerificationCache { directory: canonical_dir.clone(), ..Default::default() });
         }
         let existing = list_objects(&canonical_dir)?;
         let generation = match &mut self.verified_directory {
@@ -857,4 +857,33 @@ fn list_objects(dir: &Path) -> Result<HashSet<String>> {
 pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     crate::atomic::atomic_write(path, data)?;
     Ok(())
+}
+
+
+#[cfg(all(test, unix))]
+#[test]
+fn gc_unlinks_from_pinned_directory_after_subdirectory_swap() {
+    use std::os::unix::fs::symlink;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = std::env::temp_dir().join(format!("pcraft-gc-race-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let bundle = root.join("project.pcraft");
+    let outside = root.join("outside");
+    for sub in ["tiles", "blobs", "composite"] {
+        std::fs::create_dir_all(bundle.join(sub)).unwrap();
+    }
+    std::fs::create_dir(&outside).unwrap();
+    let file = format!("{}.zst", "c".repeat(64));
+    std::fs::write(bundle.join("tiles").join(&file), b"stale object").unwrap();
+    std::fs::write(outside.join(&file), b"external content").unwrap();
+
+    let gc = BundleGc::new(&bundle).unwrap();
+    std::fs::rename(bundle.join("tiles"), bundle.join("old-tiles")).unwrap();
+    symlink(&outside, bundle.join("tiles")).unwrap();
+    gc.remove(&format!("tiles/{file}")).unwrap();
+
+    assert!(!bundle.join("old-tiles").join(&file).exists());
+    assert_eq!(std::fs::read(outside.join(&file)).unwrap(), b"external content");
+    std::fs::remove_dir_all(root).unwrap();
 }
