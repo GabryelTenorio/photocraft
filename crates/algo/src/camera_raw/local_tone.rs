@@ -344,7 +344,7 @@ pub(crate) fn apply_with(px: &mut [[f32; 4]], w: usize, h: usize, shadows: f32, 
 /// A cheap check that the pixels (and their encoding) are the ones [`Kept`] was filled from.
 fn fingerprint(px: &[[f32; 4]], w: usize, enc: Encoding) -> u64 {
     let step = (px.len() / 251).max(1);
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ (px.len() as u64) ^ ((w as u64) << 32) ^ u64::from(enc.0.to_bits());
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ (px.len() as u64) ^ ((w as u64) << 32) ^ u64::from(enc.gamma().to_bits());
     for p in px.iter().step_by(step) {
         for v in &p[..3] {
             h = (h ^ u64::from(v.to_bits())).wrapping_mul(0x0100_0000_01b3);
@@ -405,7 +405,7 @@ fn guided_upsample(small: &Plane, d: &[f32], full: &Plane) -> Vec<f32> {
 mod tests {
     use super::*;
 
-    const SRGB: Encoding = Encoding(0.0);
+    const SRGB: Encoding = Encoding::SRGB;
 
     fn grey(w: usize, h: usize, f: impl Fn(usize, usize) -> f32) -> Vec<[f32; 4]> {
         (0..w * h).map(|i| f(i % w, i / w)).map(|v| [v, v, v, 1.0]).collect()

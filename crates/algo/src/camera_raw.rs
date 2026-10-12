@@ -56,6 +56,10 @@
 //! 9. **Effects**: post-crop vignette (amount, midpoint, roundness, feather, highlights,
 //!    style) and grain (amount, size, roughness; position-hashed, deterministic).
 //!
+//! The per-pixel stages decode and encode through tables (`transfer`: within 1.5·10⁻⁶ of the
+//! exact curves, a tenth of a 16-bit level) rather than `powf`, and the clamp to 0…1 rides on
+//! the last per-pixel pass.
+//!
 //! Stored and round-tripped but not rendered yet: the automatic Upright modes, the White Balance menu (Temperature and Tint hold the balance) and the
 //! process version. [`CameraRaw::is_identity`] ignores them, since they change no pixels.
 
@@ -87,35 +91,80 @@ pub fn validate_curve(points: &[[f32; 2]]) -> Result<(), String> {
 }
 
 use crate::lens;
-use crate::photo_util::{hash01, linear_to_srgb, par_rows, srgb_to_linear};
+use crate::photo_util::{hash01, linear_to_srgb, par_rows};
 use photocraft_geom::Rect;
 
 mod local_tone;
+mod transfer;
 mod whites_blacks;
 
 /// How the pixels encode light: the sRGB curve (gamma 0) or a pure power law (ProPhoto's 1.8,
 /// Adobe RGB's 2.2). The tone controls work on light, so the document's own curve decodes it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Encoding(f32);
+/// Both directions go through [`transfer`]'s tables (within 1.5·10⁻⁶ of the exact curve).
+#[derive(Clone, Copy)]
+pub(crate) struct Encoding {
+    gamma: f32,
+    power: Option<&'static transfer::Curves>,
+}
 
 impl Encoding {
+    /// The sRGB curve ([`Encoding::of`] of 0).
+    #[cfg(test)]
+    pub(crate) const SRGB: Encoding = Encoding { gamma: 0.0, power: None };
+
     pub(crate) fn of(gamma: f32) -> Self {
-        Encoding(if gamma.is_finite() && gamma > 0.0 { gamma.clamp(0.5, 4.0) } else { 0.0 })
+        let gamma = if gamma.is_finite() && gamma > 0.0 { gamma.clamp(0.5, 4.0) } else { 0.0 };
+        Encoding { gamma, power: if gamma > 0.0 { transfer::power(gamma) } else { None } }
     }
+    pub(crate) fn gamma(self) -> f32 {
+        self.gamma
+    }
+    #[inline]
     pub(crate) fn decode(self, v: f32) -> f32 {
-        if self.0 > 0.0 { v.max(0.0).powf(self.0) } else { srgb_to_linear(v) }
+        if self.gamma > 0.0 {
+            let exact = |v: f32| v.max(0.0).powf(self.gamma);
+            match self.power {
+                Some(c) => c.decode.get(v, exact),
+                None => exact(v),
+            }
+        } else {
+            transfer::srgb_decode(v)
+        }
     }
+    #[inline]
     pub(crate) fn encode(self, v: f32) -> f32 {
-        if self.0 > 0.0 { v.max(0.0).powf(1.0 / self.0) } else { linear_to_srgb(v) }
+        if self.gamma > 0.0 {
+            let exact = |v: f32| v.max(0.0).powf(1.0 / self.gamma);
+            match self.power {
+                Some(c) => c.encode.get(v, exact),
+                None => exact(v),
+            }
+        } else {
+            transfer::srgb_encode(v)
+        }
     }
 }
 
-fn srgb_encode(v: f32) -> f32 {
-    linear_to_srgb(v)
+impl PartialEq for Encoding {
+    fn eq(&self, other: &Self) -> bool {
+        self.gamma == other.gamma
+    }
 }
 
+impl std::fmt::Debug for Encoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Encoding").field(&self.gamma).finish()
+    }
+}
+
+#[inline]
+fn srgb_encode(v: f32) -> f32 {
+    transfer::srgb_encode(v)
+}
+
+#[inline]
 fn srgb_decode(v: f32) -> f32 {
-    srgb_to_linear(v)
+    transfer::srgb_decode(v)
 }
 
 fn luma_linear(c: [f32; 3]) -> f32 {
@@ -598,7 +647,7 @@ fn rgb_to_hsv(c: [f32; 3]) -> [f32; 3] {
     let h = if d <= 1e-9 {
         0.0
     } else if mx == c[0] {
-        60.0 * (((c[1] - c[2]) / d).rem_euclid(6.0))
+        60.0 * rem_euclid_by((c[1] - c[2]) / d, 6.0)
     } else if mx == c[1] {
         60.0 * ((c[2] - c[0]) / d + 2.0)
     } else {
@@ -608,9 +657,9 @@ fn rgb_to_hsv(c: [f32; 3]) -> [f32; 3] {
 }
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
-    let h = h.rem_euclid(360.0) / 60.0;
+    let h = rem_euclid_by(h, 360.0) / 60.0;
     let c = v * s;
-    let x = c * (1.0 - ((h % 2.0) - 1.0).abs());
+    let x = c * (1.0 - (rem_by(h, 2.0) - 1.0).abs());
     let (r, g, b) = match h as u32 {
         0 => (c, x, 0.0),
         1 => (x, c, 0.0),
@@ -626,13 +675,47 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
 /// Weights of the eight HSL bands at hue `h` (hat functions between neighbouring centres).
 pub fn band_weights(h: f32) -> [f32; 8] {
     let mut w = [0.0f32; 8];
-    for k in 0..8 {
-        let (c, prev, next) = (HSL_BANDS[k], HSL_BANDS[(k + 7) % 8], HSL_BANDS[(k + 1) % 8]);
-        let diff = ((h - c + 540.0) % 360.0) - 180.0;
-        let span = if diff >= 0.0 { (next - c).rem_euclid(360.0) } else { (c - prev).rem_euclid(360.0) };
-        w[k] = (1.0 - diff.abs() / span.max(1e-3)).max(0.0);
+    let h = rem_euclid_by(h, 360.0);
+    if h.is_nan() {
+        return w;
     }
+    // Only the centres on either side of `h` overlap it: the last at or below it and the next
+    // (red again at 360).
+    let k = HSL_BANDS.iter().rposition(|c| *c <= h).unwrap_or(0);
+    let next = (k + 1) % 8;
+    let (c0, c1) = (HSL_BANDS[k], if next == 0 { 360.0 } else { HSL_BANDS[next] });
+    let span = c1 - c0;
+    w[k] = (1.0 - (h - c0) / span).max(0.0);
+    w[next] = (1.0 - (c1 - h) / span).max(0.0);
     w
+}
+
+/// `x % m` for `m > 0`, without the `fmod` call where one or two subtractions of `m` give the
+/// same value: they are exact there (Sterbenz), as `fmod` is. The hue maths runs per pixel.
+#[inline]
+fn rem_by(x: f32, m: f32) -> f32 {
+    if (0.0..m).contains(&x) {
+        x
+    } else if (m..2.0 * m).contains(&x) {
+        x - m
+    } else if (2.0 * m..3.0 * m).contains(&x) {
+        x - 2.0 * m
+    } else {
+        x % m
+    }
+}
+
+/// `x.rem_euclid(m)` for `m > 0` through [`rem_by`]; `rem_euclid` adds `m` to a negative
+/// remainder, as here.
+#[inline]
+fn rem_euclid_by(x: f32, m: f32) -> f32 {
+    if (-m..0.0).contains(&x) {
+        x + m
+    } else if x < 0.0 {
+        x.rem_euclid(m)
+    } else {
+        rem_by(x, m)
+    }
 }
 
 /// Upright modes ([`CameraRaw::upright`]).
@@ -945,7 +1028,7 @@ pub fn develop_tonal_with(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw
         par_rows(px, w, 1, |_, row| {
             for q in row.iter_mut() {
                 for c in 0..3 {
-                    q[c] = linear_to_srgb((srgb_to_linear(q[c]) * g[c]).max(0.0));
+                    q[c] = srgb_encode((srgb_decode(q[c]) * g[c]).max(0.0));
                 }
             }
         });
@@ -963,12 +1046,26 @@ pub fn develop_tonal_with(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw
         local_tone::apply_with(px, w, h, p.shadows, p.highlights, Encoding::of(p.encoding_gamma), &mut cache.local_tone);
     }
     if !p.local_tone_neutral() && [p.contrast, p.texture, p.clarity].iter().any(|v| *v != 0.0) {
-        let l: Vec<f32> = px.iter().map(|q| luma([q[0], q[1], q[2]]).max(0.0)).collect();
-        let lc: Vec<f32> = l.iter().map(|v| v.min(1.0)).collect();
+        let mut l = vec![0.0f32; w * h];
+        par_rows(&mut l, w, 1, |y, row| {
+            for (o, q) in row.iter_mut().zip(&px[y * w..(y + 1) * w]) {
+                *o = luma([q[0], q[1], q[2]]).max(0.0);
+            }
+        });
+        let mut lc = l.clone();
+        par_rows(&mut lc, w, 1, |_, row| {
+            for v in row.iter_mut() {
+                *v = v.min(1.0);
+            }
+        });
         let clar = (p.clarity != 0.0).then(|| guided_fast(&lc, &lc, w, h, ((long * 0.02) as usize).max(3), 0.005));
         let tex = (p.texture != 0.0).then(|| gauss(&lc, w, h, (long * 0.002).max(1.5 * ps)));
         let k_con = p.contrast / 100.0 * 0.6;
-        let tau = std::f32::consts::TAU;
+        // Contrast's S-curve, −k·sin(τx)/τ, tabulated (within 3·10⁻⁸ of the exact curve).
+        let con = (k_con != 0.0).then(|| {
+            let tau = std::f64::consts::TAU;
+            (0..=4096).map(|i| (-f64::from(k_con) * (tau * f64::from(i) / 4096.0).sin() / tau) as f32).collect::<Vec<f32>>()
+        });
         par_rows(px, w, 1, |y, row| {
             for (x, q) in row.iter_mut().enumerate() {
                 let i = y * w + x;
@@ -981,9 +1078,8 @@ pub fn develop_tonal_with(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw
                 if let Some(t) = &tex {
                     lv += p.texture / 100.0 * 0.9 * (lc[i] - t[i]).clamp(-0.1, 0.1);
                 }
-                if k_con != 0.0 {
-                    let xx = lv.clamp(0.0, 1.0);
-                    lv += -k_con * (tau * xx).sin() / tau;
+                if let Some(con) = &con {
+                    lv += lut_eval(con, lv.clamp(0.0, 1.0));
                 }
                 let lv = lv.max(0.0) + (l0 - lc[i]);
                 let ratio = if l0 > 1e-5 { lv / l0 } else { 1.0 };
@@ -1018,6 +1114,13 @@ pub fn develop_colour(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, fl
     // 4–7: per-pixel colour stages. In monochrome the Color Mixer is the B&W Mix (stage 1b).
     let hsl = !p.monochrome && !p.hsl_neutral();
     let need_color = p.vibrance != 0.0 || p.saturation != 0.0 || !p.curves_neutral() || hsl || !p.grade_neutral();
+    let detail_on = p.noise_luminance > 0.0 || p.noise_color > 0.0 || p.sharpen_amount > 0.0;
+    let (vignette_on, grain_on) = (p.vignette_amount != 0.0, p.grain_amount > 0.0);
+    // The final clamp to 0…1 rides on the last per-pixel pass rather than a pass of its own.
+    let clamp_in_grain = !float && grain_on;
+    let clamp_in_vignette = !float && vignette_on && !grain_on;
+    let clamp_in_colour = !float && need_color && !detail_on && !vignette_on && !grain_on;
+    let clamp_alone = !float && !(clamp_in_grain || clamp_in_vignette || clamp_in_colour);
     if need_color {
         let par = (!(p.curve_highlights == 0.0 && p.curve_lights == 0.0 && p.curve_darks == 0.0 && p.curve_shadows == 0.0)).then(|| parametric_lut(p, 1024));
         let pts = |c: &Vec<[f32; 2]>| (!is_linear(c)).then(|| curve_lut(c, 1024));
@@ -1102,18 +1205,21 @@ pub fn develop_colour(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, fl
                 q[0] = c[0];
                 q[1] = c[1];
                 q[2] = c[2];
+                if clamp_in_colour {
+                    clamp_rgb(q);
+                }
             }
         });
     }
     // 8. Detail.
-    if p.noise_luminance > 0.0 || p.noise_color > 0.0 || p.sharpen_amount > 0.0 {
+    if detail_on {
         detail(px, w, h, p, ps);
     }
     // 9. Effects.
-    if p.vignette_amount != 0.0 {
-        vignette(px, w, h, p);
+    if vignette_on {
+        vignette(px, w, h, p, clamp_in_vignette);
     }
-    if p.grain_amount > 0.0 {
+    if grain_on {
         let cell = 1.0 + p.grain_size / 25.0;
         let rough = p.grain_roughness / 100.0;
         let amt = p.grain_amount / 100.0 * 0.12;
@@ -1129,15 +1235,21 @@ pub fn develop_colour(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, fl
                 for c in 0..3 {
                     q[c] += g;
                 }
+                if clamp_in_grain {
+                    clamp_rgb(q);
+                }
             }
         });
     }
-    if !float {
-        for q in px.iter_mut() {
-            for c in 0..3 {
-                q[c] = q[c].clamp(0.0, 1.0);
-            }
-        }
+    if clamp_alone {
+        par_rows(px, w, 1, |_, row| row.iter_mut().for_each(clamp_rgb));
+    }
+}
+
+#[inline]
+fn clamp_rgb(q: &mut [f32; 4]) {
+    for c in 0..3 {
+        q[c] = q[c].clamp(0.0, 1.0);
     }
 }
 
@@ -1147,17 +1259,22 @@ pub fn develop_colour(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, fl
 fn luminance_points(px: &[[f32; 4]], w: usize, h: usize, enc: Encoding) -> (f32, f32) {
     let f = w.max(h).div_ceil(256).max(1);
     let (sw, sh) = (w.div_ceil(f), h.div_ceil(f));
-    let mut sum = vec![[0.0f64; 4]; sw * sh];
-    for y in 0..h {
-        for x in 0..w {
-            let q = px[y * w + x];
-            let s = &mut sum[(y / f) * sw + x / f];
-            for c in 0..3 {
-                s[c] += f64::from(enc.decode(q[c]).clamp(0.0, 1.0));
+    // Each band of `f` rows fills its own row of cells, adding in the same order as one pass
+    // over the image would.
+    let sum = crate::photo_util::par_map(sh, |cy| {
+        let mut cells = vec![[0.0f64; 4]; sw];
+        for y in cy * f..((cy + 1) * f).min(h) {
+            for (x, q) in px[y * w..(y + 1) * w].iter().enumerate() {
+                let s = &mut cells[x / f];
+                for c in 0..3 {
+                    s[c] += f64::from(enc.decode(q[c]).clamp(0.0, 1.0));
+                }
+                s[3] += 1.0;
             }
-            s[3] += 1.0;
         }
-    }
+        cells
+    })
+    .concat();
     let cells: Vec<[f32; 3]> = sum.iter().filter(|s| s[3] > 0.0).map(|s| [0, 1, 2].map(|c| (s[c] / s[3]) as f32)).collect();
     if cells.is_empty() {
         return (0.0, 1.0);
@@ -1601,7 +1718,8 @@ fn detail(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, ps: f32) {
     }
 }
 
-fn vignette(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw) {
+/// Post-crop vignetting; `clamp` also clamps every pixel to 0…1 (the develop's last pass).
+fn vignette(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, clamp: bool) {
     let amt = p.vignette_amount / 100.0;
     let mid = p.vignette_midpoint.clamp(0.0, 100.0) / 100.0;
     let feather = p.vignette_feather.clamp(0.0, 100.0) / 100.0;
@@ -1623,9 +1741,12 @@ fn vignette(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw) {
     par_rows(px, w, 1, |y, row| {
         for (x, q) in row.iter_mut().enumerate() {
             let (dx, dy) = (((x as f32 + 0.5 - cx) / ax).abs(), ((y as f32 + 0.5 - cy) / ay).abs());
-            let r = (dx.powf(pw) + dy.powf(pw)).powf(1.0 / pw);
+            let r = if pw == 2.0 { (dx * dx + dy * dy).sqrt() } else { (dx.powf(pw) + dy.powf(pw)).powf(1.0 / pw) };
             let m = smoothstep(edge0, edge1, r);
             if m <= 0.0 {
+                if clamp {
+                    clamp_rgb(q);
+                }
                 continue;
             }
             let l = luma([q[0], q[1], q[2]]).clamp(0.0, 1.0);
@@ -1656,6 +1777,9 @@ fn vignette(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw) {
                     }
                 }
             }
+            if clamp {
+                clamp_rgb(q);
+            }
         }
     });
 }
@@ -1663,6 +1787,7 @@ fn vignette(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::photo_util::srgb_to_linear;
 
     #[test]
     fn new_curves_are_validated_but_saved_curves_still_load_and_render() {
