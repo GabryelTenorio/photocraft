@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # Fonts embedded in release builds (crates/text/build.rs). Keep this commit equal to
-    # CRAFT_FONTS_REF in .github/workflows/release.yml and the craft-fonts ref in ci.yml (the
+    # craft-fonts-ref in .github/workflows/release.yml and the craft-fonts ref in ci.yml (the
     # craft-fonts-pin check fails otherwise), then run `nix flake update craft-fonts`.
     craft-fonts = {
       url = "github:storytold/craft-fonts/abb83316d96aa59c1cf64784289e378fe9fa5695";

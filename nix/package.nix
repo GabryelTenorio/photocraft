@@ -68,6 +68,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       ../crates
       ../xtask
       ../assets
+      ../contributors
       ../packaging
       ../README.md
       ../LICENSE-MIT
@@ -75,7 +76,11 @@ rustPlatform.buildRustPackage (finalAttrs: {
     ];
   };
 
-  cargoLock.lockFile = ../Cargo.lock;
+  cargoLock = {
+    lockFile = ../Cargo.lock;
+    # Git dependencies need a hash; update it with the rev in the workspace Cargo.toml.
+    outputHashes."craft-ui-0.1.0" = "sha256-VhLeT7VLdZAIz6gR9PdFI34IJxHsGF8NE0uzFCN2vIU=";
+  };
 
   inherit buildType;
 
@@ -98,6 +103,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     "--package=photocraft-cli"
   ];
   cargoTestFlags = finalAttrs.cargoBuildFlags;
+  # HEIC/HEIF import: not a default feature, but every packaging script builds with it.
+  buildFeatures = [ "heif" ];
 
   # The whole workspace's tests run in CI; here, the two shipped packages. The debug variant
   # is a debugging aid built from the same source, so it skips them.
