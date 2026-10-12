@@ -2004,11 +2004,11 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 // ----------------------------------------------------------------------------- layers
 
-/// The simple themes' single lock button. On the Background it converts the layer to a normal
-/// one, as clicking the Background's lock does in Photoshop. Elsewhere it clears every lock when
-/// any is set, and locks all otherwise. Toggling only "lock all" would leave the Background's
-/// transparency lock (still showing as locked), and a second click would lock its pixels,
-/// shutting out the Eraser and every other paint tool (#76).
+/// A compact theme's lock-all button. On the Background it converts the layer to a normal one,
+/// as clicking the Background's lock does in Photoshop. Elsewhere it clears every lock when any
+/// is set, and locks all otherwise. Toggling only "lock all" would leave the Background's
+/// transparency lock (still showing as locked), and a second click would lock its pixels, shutting
+/// out the Eraser and every other paint tool (#76).
 fn simple_lock_toggle(background: bool, l: &Layer) -> (String, Value) {
     if background {
         return ("layer.new.layerFromBackground".into(), json!({}));
@@ -2149,31 +2149,38 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
             // their tooltips) rather than let the Fill label run over the lock icons.
             let gap = ui.spacing().item_spacing.x;
-            let icons_w = if t.pro { 5.0 * 20.0 + gap } else { 22.0 + gap };
+            let full_locks = t.pro || !bg;
+            let icons_w = if full_locks { 5.0 * 20.0 + gap } else { 22.0 + gap };
             let fits = body_text_width(ui, lock_label) + icons_w + body_text_width(ui, fill_label) + LAYER_PCT_W + 2.0 * gap <= ui.available_width();
             if fits {
                 label(ui, lock_label);
             }
-            if t.pro {
-                // The lock icons touch, but only they: the Fill label keeps the same gap before its
-                // field as Opacity's, so both stack in one right-aligned column (#2085).
+            if full_locks {
+                // Keep the individual lock controls in the Studio layout too. The compact
+                // Background control below retains its special conversion behavior. The lock
+                // icons touch, but only they: Fill keeps the same gap as Opacity (#2085).
                 ui.scope(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     let lk = l.locks;
+                    let any_locked = lk.transparency || lk.pixels || lk.position || lk.artboard || lk.all;
                     for (key, icon, tip, on) in [
                         ("transparency", "grid-3x3", tl!("Lock transparent pixels"), lk.transparency),
                         ("pixels", "brush", tl!("Lock image pixels"), lk.pixels),
                         ("position", "move", tl!("Lock position"), lk.position),
                         ("artboard", "scan", tl!("Prevent auto-nesting in and out of Artboards and Frames"), lk.artboard),
-                        ("all", "lock", tl!("Lock all"), lk.all),
+                        ("all", "lock", tl!("Lock all"), if t.pro { lk.all } else { any_locked }),
                     ] {
                         if icons::button(ui, icon, 20.0, on, tip).clicked() {
-                            actions.push(("layer.setProps".into(), json!({"layer": l.id.0, "locks": { key: !on }})));
+                            if !t.pro && key == "all" {
+                                actions.push(simple_lock_toggle(false, l));
+                            } else {
+                                actions.push(("layer.setProps".into(), json!({"layer": l.id.0, "locks": { key: !on }})));
+                            }
                         }
                     }
                 });
             }
-            if !t.pro {
+            if !full_locks {
                 let locked = l.locks.transparency || l.locks.position || l.locks.all;
                 if icons::button(ui, if locked { "lock" } else { "lock-open" }, 22.0, locked, tl!("Lock layer")).clicked() {
                     actions.push(simple_lock_toggle(bg, l));

@@ -20,6 +20,28 @@ fn harness() -> Harness<'static, PhotocraftApp> {
     h
 }
 
+fn harness_with_theme(theme: crate::theme::ThemeKind) -> Harness<'static, PhotocraftApp> {
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 200, "height": 120})).unwrap();
+    s.execute("layer.new.layer", json!({"name": "Paint"})).unwrap();
+    let mut app = PhotocraftApp::new(s, crate::Services::default());
+    app.ui.theme = theme;
+    let mut h = Harness::builder().with_size(vec2(1440.0, 1000.0)).with_max_steps(64).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            if !ui.ctx().fonts(|fonts| fonts.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                return;
+            }
+            crate::panels::right_dock(app, ui);
+            egui::CentralPanel::default().show(ui, |_| {});
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, theme);
+    h.state_mut().ui.theme = theme;
+    h.run_steps(8);
+    h
+}
+
 fn layer(h: &Harness<'_, PhotocraftApp>) -> photocraft_doc::Layer {
     let st = h.state().session.active().unwrap();
     st.doc.layer(st.active_layer.unwrap()).unwrap().clone()
@@ -134,6 +156,40 @@ fn the_background_layer_has_no_pop_up_slider() {
     let arrow = by_role(&h, "Opacity", Role::Button).unwrap();
     click(&mut h, arrow.center());
     assert!(by_role(&h, "Opacity", Role::Slider).is_none(), "Photoshop greys Opacity for the Background");
+}
+
+#[test]
+fn studio_theme_exposes_individual_layer_locks_and_keeps_lock_all_toggle() {
+    let mut h = harness_with_theme(crate::theme::ThemeKind::Studio);
+    assert!(!crate::theme::Tokens::get(&h.ctx).pro, "the test is using the Studio layout");
+
+    for name in [
+        "Lock transparent pixels",
+        "Lock image pixels",
+        "Lock position",
+        "Prevent auto-nesting in and out of Artboards and Frames",
+        "Lock all",
+    ] {
+        assert!(by_role(&h, name, Role::Button).is_some(), "Studio is missing {name}");
+    }
+
+    let pixels = by_role(&h, "Lock image pixels", Role::Button).unwrap();
+    click(&mut h, pixels.center());
+    assert!(layer(&h).locks.pixels, "the image-pixels lock toggles independently");
+    assert!(!layer(&h).locks.all, "an individual lock does not lock all");
+
+    let lock_all = by_role(&h, "Lock all", Role::Button).unwrap();
+    click(&mut h, lock_all.center());
+    assert!(
+        !layer(&h).locks.pixels,
+        "Studio's Lock all control clears existing locks: {:?}",
+        layer(&h).locks
+    );
+    assert!(!layer(&h).locks.all, "clearing all locks leaves Lock all off");
+
+    let lock_all = by_role(&h, "Lock all", Role::Button).unwrap();
+    click(&mut h, lock_all.center());
+    assert!(layer(&h).locks.all, "Lock all sets the all-lock state when no locks are set");
 }
 
 #[test]
