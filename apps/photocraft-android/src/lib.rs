@@ -91,6 +91,7 @@ fn android_main(android_app: AndroidApp) {
             touch_recovery: Default::default(),
             java_pen_start: None,
             java_native_seen: false,
+            diag_pending_input: false,
         }))
     }));
 
@@ -110,6 +111,7 @@ struct AndroidShell {
     touch_recovery: photocraft_ui_egui::stylus::AndroidTouchRecovery,
     java_pen_start: Option<spen::PenTouch>,
     java_native_seen: bool,
+    diag_pending_input: bool,
 }
 
 impl eframe::App for AndroidShell {
@@ -194,6 +196,12 @@ impl eframe::App for AndroidShell {
         // An Android touch cancellation only emits PointerGone in egui-winit.
         // Synthesize the *missing release*, not a second normal touch stream.
         self.touch_recovery.repair(raw);
+        let touches = raw.events.iter().filter(|e| matches!(e, egui::Event::Touch { .. })).count();
+        let buttons = raw.events.iter().filter(|e| matches!(e, egui::Event::PointerButton { .. })).count();
+        if touches > 0 || buttons > 0 {
+            self.diag_pending_input = true;
+            log::info!("SPEN_DIAG raw_input final touches={touches} buttons={buttons} total={} ppp={:.3}", raw.events.len(), ctx.pixels_per_point());
+        }
     }
 
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -201,6 +209,14 @@ impl eframe::App for AndroidShell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        if self.diag_pending_input {
+            let (pos, down, released, clicked, events) = ui.ctx().input(|i| {
+                (i.pointer.interact_pos(), i.pointer.primary_down(),
+                 i.pointer.any_released(), i.pointer.any_click(), i.events.len())
+            });
+            log::info!("SPEN_DIAG egui_frame pos={pos:?} down={down} released={released} clicked={clicked} events={events}");
+            self.diag_pending_input = false;
+        }
         self.app.ui(ui, frame);
 
         if self.picker.is_none() {
