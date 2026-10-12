@@ -180,6 +180,10 @@ fn was_maximized_id() -> egui::Id {
 /// hiding it; on the way out the window stays maximized at the monitor's full size, over the
 /// taskbar (#3550, #4018, #4230). [OBSERVED 2026-10-12, Windows 11, eframe 0.36.2, winit 0.30.13,
 /// a minimal eframe window; un-maximizing first gave a clean full screen and a work-area maximize.]
+///
+/// WORKAROUND(winit#4756): remove `keep_apart` once the winit in Cargo.lock (0.30.13 today) has
+/// the fix; check first with https://gist.github.com/aweussom/3f80ffb82df7f0102341858afbbffd9b
+/// (`--max`, no `--fix`: full screen must have no WS_MAXIMIZE and hide the taskbar).
 fn screen_mode_commands(keep_apart: bool, full_screen: bool, maximized: bool, was_maximized: bool, next: &str) -> (Vec<egui::ViewportCommand>, bool) {
     let want = next != "standard";
     let mut commands = Vec::new();
