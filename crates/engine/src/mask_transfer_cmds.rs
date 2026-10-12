@@ -18,7 +18,9 @@ pub struct MaskClip {
     pub canvas: Rect,
 }
 
-fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
+#[cold]
+#[inline(never)]
+fn bad(cmd: &str, msg: &str) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
 }
 
@@ -37,14 +39,14 @@ fn check_document(s: &Session, p: &Value, cmd: &str) -> Result<()> {
 
 fn layer_id(s: &Session, p: &Value, field: &str, cmd: &str) -> Result<LayerId> {
     match p.get(field) {
-        Some(id) => id.as_u64().map(LayerId).ok_or_else(|| bad(cmd, format!("`{field}` must be an unsigned layer id"))),
+        Some(id) => id.as_u64().map(LayerId).ok_or_else(|| bad(cmd, &format!("`{field}` must be an unsigned layer id"))),
         None if field == "layer" => s.active().and_then(|st| st.active_layer).ok_or_else(|| bad(cmd, "no active layer")),
-        None => Err(bad(cmd, format!("`{field}` is required"))),
+        None => Err(bad(cmd, &format!("`{field}` is required"))),
     }
 }
 
 fn flag(p: &Value, field: &str, default: bool, cmd: &str) -> Result<bool> {
-    p.get(field).map_or(Ok(default), |v| v.as_bool().ok_or_else(|| bad(cmd, format!("`{field}` must be a boolean"))))
+    p.get(field).map_or(Ok(default), |v| v.as_bool().ok_or_else(|| bad(cmd, &format!("`{field}` must be a boolean"))))
 }
 
 fn snapshot(s: &Session, id: LayerId) -> Result<MaskClip> {

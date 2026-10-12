@@ -96,6 +96,7 @@ fn confirm(app: &mut PhotocraftApp) -> Result<Value, String> {
     app.run(&p.command, p.params)
 }
 
+#[inline(never)]
 pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(p) = &app.mask_transfer else { return };
     let (mut replace, mut cancel) = (false, false);
@@ -118,22 +119,29 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
 }
 
-type Drag = (u64, LayerId);
 fn drag_key() -> egui::Id {
     egui::Id::new("pixel-mask-drag")
 }
 
+fn current_drag(ctx: &egui::Context) -> Option<(u64, LayerId)> {
+    // Reuse the u64 temp-storage implementation already used by layer drags.
+    ctx.data(|d| Some((d.get_temp::<u64>(drag_key().with("document"))?, LayerId(d.get_temp::<u64>(drag_key())?))))
+}
+
 pub(crate) fn dragging(ctx: &egui::Context) -> bool {
-    ctx.data(|d| d.get_temp::<Drag>(drag_key()).is_some())
+    current_drag(ctx).is_some()
 }
 
 pub(crate) fn clear_drag(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.remove::<Drag>(drag_key()));
+    ctx.data_mut(|d| {
+        d.remove::<u64>(drag_key());
+        d.remove::<u64>(drag_key().with("document"));
+    });
 }
 
 /// Paint once after the rows, including when the source was scrolled out of view.
 pub(crate) fn drag_feedback(ctx: &egui::Context, doc: &Document) {
-    let Some((document, source)) = ctx.data(|d| d.get_temp::<Drag>(drag_key())) else { return };
+    let Some((document, source)) = current_drag(ctx) else { return };
     if document != doc.id.0 || doc.layer(source).is_none_or(|layer| layer.mask.is_none()) {
         clear_drag(ctx);
         return;
@@ -162,9 +170,12 @@ pub(crate) fn drag_row(
         && let Some(origin) = ctx.input(|i| i.pointer.press_origin())
         && masks.thumb(mask_thumbs_ui::MaskKind::Pixel).is_some_and(|r| r.contains(origin))
     {
-        ctx.data_mut(|d| d.insert_temp(drag_key(), (doc.id.0, layer.id)));
+        ctx.data_mut(|d| {
+            d.insert_temp(drag_key(), layer.id.0);
+            d.insert_temp(drag_key().with("document"), doc.id.0);
+        });
     }
-    let Some((document, source)) = ctx.data(|d| d.get_temp::<Drag>(drag_key())) else { return };
+    let Some((document, source)) = current_drag(ctx) else { return };
     if document != doc.id.0 || (source == layer.id && layer.mask.is_none()) {
         clear_drag(ctx);
         return;
