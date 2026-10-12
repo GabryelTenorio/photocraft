@@ -107,7 +107,8 @@ smallest preview at least 512 pixels long, fits and develops in one go.
 Camera Raw's tuned import fits at the default exposure and as-shot white balance first,
 then applies the user's Exposure, Temperature and Tint to that same rendering.
 The D5100's measured image area is 4928 × 3264 at (8, 8) in a 4992 × 3280
-sensor plane; it removes the border without changing levels, WB or calibration.
+sensor plane; the D90's is 4288 × 2848 at (10, 10) in a 4352 × 2868 plane; each
+removes the border without changing levels, WB or calibration.
 Measured image areas preserve an explicit file crop.
 
 Without a usable fit (no preview, an unrelated, monochrome or differently shaped one, or a fit that
