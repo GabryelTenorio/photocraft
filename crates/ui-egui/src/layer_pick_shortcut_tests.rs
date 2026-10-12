@@ -145,9 +145,9 @@ fn layer_pick_shortcut_is_unique_discoverable_and_keeps_inline_typing() {
     assert_eq!(row.1, "Select Layer Under Cursor");
     assert_eq!(row.2, ["Layer"]);
     assert_eq!(row.3, None, "the command has no factory binding");
-    let original = crate::prefs_ui::shortcut_items(h.state()).into_iter().find(|r| r.0 == "layer.pickAt").unwrap();
-    assert_eq!(original.1, "Auto-Select Layer");
-    assert_eq!(original.3, None);
+    let original = photocraft_engine::command_specs().into_iter().find(|c| c.id == "layer.pickAt").unwrap();
+    assert_eq!(original.label, "Auto-Select Layer");
+    assert_eq!(original.shortcut, None);
     let active = h.state().session.active().unwrap().active_layer.unwrap().0;
     let ctx = h.ctx.clone();
     crate::layer_row_ui::start_rename(&ctx, active, "Empty");
