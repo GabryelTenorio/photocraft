@@ -47,6 +47,7 @@ let out = encode(&img, Format::Tiff, &EncodeOptions::default())?;
 | FITS | yes | yes | U8, U16, F32 | Gray, RGB | no | no | no | no | no | yes (header cards) | no | built in |
 | AVIF | **no** | only with feature `avif` | U8 | RGB, RGBA | yes | no | no | no | no | no | yes | `image` + `ravif` |
 | HEIF/HEIC | with feature `heif` | **no** | U8, U16 (10/12-bit decodes to U16) | RGB, RGBA | yes (auxiliary alpha) | yes (`colr` prof) | yes | yes | no | no | n/a | `heic-rs` |
+| JPEG XL (.jxl) | **no** (see #2868) | yes | U8, U16 | Gray, RGB, RGBA (GrayA expands to RGBA) | yes | no (bare codestream) | no | no | no | no | no | `zune-jpegxl` |
 
 "Native" means the data is stored and read back without conversion. Anything else is converted by
 the encode plan, and `fidelity_warnings` reports the conversion when it loses information:
@@ -62,6 +63,15 @@ the encode plan, and `fidelity_warnings` reports the conversion when it loses in
 the same.
 
 ## Documented asymmetries and limitations
+
+* **JPEG XL export.** Writes lossless 8/16-bit bare codestreams with `zune-jpegxl`.
+  Native layouts are Gray, RGB and RGBA. GrayA is expanded to RGBA at the
+  original depth because native GrayA16 did not preserve alpha in an independent
+  decoder test. The expansion preserves sample values but is not a native
+  GrayA layout. No ICC, EXIF, XMP or DPI container boxes are written; the
+  document pipeline converts tagged images to sRGB and reports metadata loss.
+  Reading remains in the separate #2868 PR. The `ASYMMETRIC_EXCEPTIONS`
+  entry stays until import is merged.
 
 * **FITS.** The image in the primary HDU, or the first `IMAGE` extension, is read; `NAXIS3 = 3`
   opens as RGB and any other plane count opens the first plane with `DecodeWarning::MorePages`.

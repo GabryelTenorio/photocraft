@@ -31,6 +31,8 @@ image-webp = "0.2"
 zune-jpeg = "0.5"
 zune-core = "0.5"
 jpeg-encoder = "0.6"
+# Pure-Rust modular JPEG XL lossless encoder (already pinned in Cargo.lock).
+zune-jpegxl = { version = "=0.5.2", default-features = false, features = ["std"] }
 photocraft-heif = { path = "../heif", optional = true }
 
 # Orientation is applied a band of rows per task on native; wasm stays single-threaded.
@@ -41,6 +43,10 @@ rayon.workspace = true
 proptest.workspace = true
 # Oracle decoders for cross-checking in tests only.
 image = { workspace = true, features = ["png", "jpeg", "tiff"] }
+
+# Independent decoder oracle for lossless output; not linked into the application.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+jxl-oxide = { version = "=0.12.6", default-features = false, features = ["rayon"] }
 
 [lints]
 workspace = true
