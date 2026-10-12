@@ -593,7 +593,16 @@ mod tests {
         for label in ["Blending Options…", "Copy Layer Style", "Quick Export As PNG", "Export As…"] {
             assert!(h.get_by_label(label).accesskit_node().is_disabled(), "{label} works on one layer only");
         }
-        for label in ["Add Layer Mask", "Duplicate Layers…", "Delete Layers", "Group from Layers…", "Convert to Smart Object", "Rasterize Layers", "Link Layers", "Merge Layers"] {
+        for label in [
+            "Add Layer Mask",
+            "Duplicate Layers…",
+            "Delete Layers",
+            "Group from Layers…",
+            "Convert to Smart Object",
+            "Rasterize Layers",
+            "Link Layers",
+            "Merge Layers",
+        ] {
             assert!(!h.get_by_label(label).accesskit_node().is_disabled(), "{label} acts on the selection");
         }
         // Greyed here only for lack of something to act on: no style on the clipboard, no style to clear.

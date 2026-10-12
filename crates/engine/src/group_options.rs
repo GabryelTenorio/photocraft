@@ -36,7 +36,11 @@ impl GroupOptions {
         };
         let blend = match get("mode") {
             None => None,
-            Some(v) => Some(v.as_str().and_then(crate::commands::blend_from_str).ok_or_else(|| bad("`mode` must be a blend mode such as \"passThrough\" or \"multiply\""))?),
+            Some(v) => Some(
+                v.as_str()
+                    .and_then(crate::commands::blend_from_str)
+                    .ok_or_else(|| bad("`mode` must be a blend mode such as \"passThrough\" or \"multiply\""))?,
+            ),
         };
         let opacity = match get("opacity") {
             None => None,
