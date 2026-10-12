@@ -22,11 +22,14 @@
 
 mod app_dirs;
 mod app_icon;
+mod appearance;
 #[cfg(target_os = "macos")]
 mod apple_events;
+mod caps_lock;
 mod control_server;
 mod crash_guard;
 mod cursor;
+mod file_dialog_probe;
 mod gpu_startup;
 #[cfg(target_os = "macos")]
 mod mac_menu;
@@ -37,11 +40,14 @@ mod mac_window;
 mod linux_libs;
 mod logging;
 mod monitor_profile;
+mod photoshop_settings;
+mod screen_color;
 mod services;
 // Windows gets pen pressure from winit (WM_POINTER); the web runner has its own listener.
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
 mod tablet;
 mod ui_state;
+mod window_frame;
 
 use photocraft_engine::Session;
 use photocraft_ui_egui::PhotocraftApp;
@@ -84,8 +90,23 @@ fn native_options(custom_titlebar: bool) -> eframe::NativeOptions {
         // eframe saves native window geometry and egui panel/window sizes on exit.
         // Keep that state beside preferences, including config overrides and portable mode.
         persistence_path: services::config_dir().map(|dir| dir.join("ui.ron")),
+        window_builder: Some(Box::new(at_least_min_size)),
         ..Default::default()
     }
+}
+
+/// Grow a restored window that is smaller than the minimum size, keeping its centre. On
+/// Windows, eframe saves a minimized window's size (160 pt wide, 64 pt tall once eframe has
+/// clamped it), and the minimum size isn't applied to a restored one: PhotoCraft then reopened
+/// as a 160 × 64 strip on every launch.
+fn at_least_min_size(mut builder: egui::ViewportBuilder) -> egui::ViewportBuilder {
+    let (Some(size), Some(min)) = (builder.inner_size, builder.min_inner_size) else { return builder };
+    let grown = size.max(min);
+    if grown != size {
+        builder.position = builder.position.map(|pos| pos - (grown - size) / 2.0);
+        builder.inner_size = Some(grown);
+    }
+    builder
 }
 
 /// Parse a `--control` / `PHOTOCRAFT_CONTROL_PORT` value. An unparseable port is an error that
@@ -134,6 +155,8 @@ fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
     crash_guard::install_hook();
+    // The system font scan can take seconds (minutes on some Macs): run it off the UI thread.
+    photocraft_ui_egui::type_tool::warm_fonts();
     let mut control_port: Option<u16> = None;
     let mut control_arg_errors: Vec<String> = Vec::new();
     if let Some(value) = std::env::var("PHOTOCRAFT_CONTROL_PORT").ok().filter(|v| !v.trim().is_empty()) {
@@ -208,6 +231,20 @@ fn main() -> eframe::Result {
     // app no pen input (#639).
     #[cfg(target_os = "linux")]
     let session = tablet::display_session();
+    // Preferences › Performance › Linux display server = X11: Xwayland on a Wayland session too,
+    // where native file drops work (winit 0.30 has none on Wayland, #386). Only when Xwayland can
+    // run the window ($DISPLAY set, X11 libraries installed); otherwise the session's own.
+    #[cfg(target_os = "linux")]
+    let session = if session == linux_libs::DisplaySession::Wayland
+        && gpu_startup::read_display_server(services::prefs_file().as_deref()) == photocraft_engine::prefs::LinuxDisplayServer::X11
+        && std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty())
+        && linux_libs::available(linux_libs::DisplaySession::X11)
+    {
+        eprintln!("photocraft: opening the window through Xwayland (Preferences › Performance › Linux display server)");
+        linux_libs::DisplaySession::X11
+    } else {
+        session
+    };
 
     // winit and wgpu dlopen the windowing and GPU libraries, and some of those crates panic when
     // one is missing (issue #201). Name the package to install and exit instead.
@@ -223,7 +260,7 @@ fn main() -> eframe::Result {
             Ok(token) => token,
             Err(e) => {
                 eprintln!("photocraft: cannot configure control authentication: {e}");
-                return Ok(());
+                std::process::exit(2);
             }
         };
         if let Some(path) = token_file {
@@ -237,7 +274,7 @@ fn main() -> eframe::Result {
             Ok(workspace) => workspace,
             Err(error) => {
                 eprintln!("photocraft: cannot configure automation workspace: {error}");
-                return Ok(());
+                std::process::exit(2);
             }
         };
         Some((port, token, workspace))
@@ -323,6 +360,7 @@ fn main() -> eframe::Result {
             #[cfg(target_os = "linux")]
             {
                 services.is_wayland = display == Some(tablet::DisplayKind::Wayland);
+                file_dialog_probe::start();
                 if services.is_wayland {
                     let var = |name| std::env::var(name).ok();
                     services.xwayland_command =
@@ -418,6 +456,8 @@ fn main() -> eframe::Result {
             #[cfg(target_os = "macos")]
             {
                 app.services.os_events = Some(apple_events.connect(&cc.egui_ctx));
+                // Quit through AppKit, not by closing the window (Touch Bar Macs, #1575, #1458).
+                app.services.quit = Some(Box::new(mac_window::terminate_later));
                 // The macOS menu bar, installed now so winit's default menu doesn't stay up.
                 if !in_window_menus {
                     app.services.native_menu = mac_menu::install(&cc.egui_ctx, &app);
@@ -427,6 +467,13 @@ fn main() -> eframe::Result {
             let _ = in_window_menus;
             // Where file drags and drops are (winit 0.30 doesn't say).
             app.services.cursor_pos = cursor::service(cc);
+            // The custom title bar's undecorated window must stay borderless, or its caption and
+            // border offset the content and the pointer on some Windows systems (#2246).
+            app.services.window_frame = window_frame::service(cc, custom_titlebar);
+            // Caps Lock state (X11/Windows/macOS; `None` on native Wayland): the canvas shows the
+            // precise crosshair for painting tools while it is toggled on (#1758).
+            app.services.caps_lock = caps_lock::service(cc);
+            app.services.screen_pick = screen_color::service(cc, app.services.is_wayland);
             // Tablet pressure/tilt/eraser (winit drops them): the macOS monitor and the X11 reader
             // write into the stylus feed. The monitor goes in here, not before the event loop:
             // AppKit's shared application only exists once winit created it (#759).
@@ -541,6 +588,28 @@ mod tests {
         assert_eq!(o.viewport.inner_size, Some(egui::vec2(1440.0, 900.0)));
         // eframe shrinks the start size to the monitor, so the centred position is on-screen.
         assert_ne!(o.viewport.clamp_size_to_monitor_size, Some(false));
+    }
+
+    #[test]
+    fn a_window_saved_while_minimized_reopens_at_the_minimum_size() {
+        let hook = super::native_options(super::CUSTOM_TITLEBAR).window_builder.expect("a window builder hook");
+        // Saved minimized on Windows, then centred on a 1920 × 1080 monitor by eframe.
+        let saved = super::native_options(super::CUSTOM_TITLEBAR).viewport.with_inner_size([160.0, 64.0]).with_position([880.0, 508.0]);
+        let opened = hook(saved);
+        assert_eq!(opened.inner_size, Some(egui::vec2(760.0, 480.0)));
+        assert_eq!(opened.position, Some(egui::pos2(580.0, 300.0)), "still centred");
+        // Too narrow only: only the width grows.
+        let opened = super::at_least_min_size(super::native_options(false).viewport.with_inner_size([500.0, 900.0]));
+        assert_eq!(opened.inner_size, Some(egui::vec2(760.0, 900.0)));
+        // A window at or above the minimum, or with no size, is left alone.
+        for size in [[760.0, 480.0], [1100.0, 760.0]] {
+            let builder = super::native_options(false).viewport.with_inner_size(size).with_position([10.0, 20.0]);
+            let opened = super::at_least_min_size(builder);
+            assert_eq!((opened.inner_size, opened.position), (Some(egui::Vec2::from(size)), Some(egui::pos2(10.0, 20.0))));
+        }
+        let mut builder = super::native_options(false).viewport;
+        builder.inner_size = None;
+        assert_eq!(super::at_least_min_size(builder).inner_size, None);
     }
 
     #[test]

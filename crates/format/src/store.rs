@@ -54,7 +54,7 @@ fn png(img: &Rgba8Image) -> Result<Vec<u8>> {
 // Sources
 // ---------------------------------------------------------------------------
 
-pub(crate) trait Source {
+pub trait ByteSource {
     fn get(&self, path: &str, max: usize) -> Result<Vec<u8>>;
 }
 
@@ -68,7 +68,7 @@ impl<'a> ZipSource<'a> {
     }
 }
 
-impl Source for ZipSource<'_> {
+impl ByteSource for ZipSource<'_> {
     fn get(&self, path: &str, max: usize) -> Result<Vec<u8>> {
         self.zip.read_by_name(path, max)
     }
@@ -78,15 +78,29 @@ pub(crate) struct DirSource {
     pub root: PathBuf,
 }
 
-impl Source for DirSource {
+impl ByteSource for DirSource {
     fn get(&self, path: &str, max: usize) -> Result<Vec<u8>> {
         let p = self.root.join(path);
-        let len = std::fs::metadata(&p).map_err(|_| FormatError::corrupt(format!("missing `{path}`")))?.len();
-        if len > max as u64 {
-            return Err(FormatError::LimitExceeded(format!("`{path}` is {len} bytes (max {max})")));
+        let metadata = std::fs::metadata(&p).map_err(|_| FormatError::corrupt(format!("missing `{path}`")))?;
+        if !metadata.is_file() {
+            return Err(FormatError::corrupt(format!("`{path}` is not a regular file")));
         }
-        Ok(std::fs::read(p)?)
+        let mut file = std::fs::File::open(&p).map_err(|_| FormatError::corrupt(format!("missing `{path}`")))?;
+        read_entry(&mut file, metadata.len(), max, path)
     }
+}
+
+/// Read one opened bundle entry under its `max` budget. The stat `len` is a buffer hint only
+/// (files can change while open, and a FIFO reports 0), so the bound is enforced on the read
+/// itself, never on the hint.
+pub fn read_entry(file: &mut impl std::io::Read, len: u64, max: usize, path: &str) -> Result<Vec<u8>> {
+    let mut limited = file.take((max as u64).saturating_add(1));
+    let hint = len.min((max as u64).saturating_add(1));
+    let bytes = crate::read::read_all(&mut limited, hint)?;
+    if bytes.len() > max {
+        return Err(FormatError::LimitExceeded(format!("`{path}` exceeds {max} bytes")));
+    }
+    Ok(bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +141,7 @@ fn check_manifest_depth(json: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn read_manifest(src: &dyn Source, opts: &LoadOptions) -> Result<Manifest> {
+pub(crate) fn read_manifest(src: &dyn ByteSource, opts: &LoadOptions) -> Result<Manifest> {
     let raw = src.get(MANIFEST, opts.max_manifest_bytes)?;
     // serde_json stops at 128 levels (about 40 nested groups); the bounded check replaces that limit.
     check_manifest_depth(&raw)?;
@@ -172,7 +186,7 @@ fn take_array(v: &mut serde_json::Value, pointer: &str) -> Vec<serde_json::Value
 }
 
 struct LoadFetch<'a> {
-    src: &'a dyn Source,
+    src: &'a dyn ByteSource,
     opts: LoadOptions,
     total: u64,
     blobs: HashMap<String, Arc<Vec<u8>>>,
@@ -230,17 +244,34 @@ impl Fetch for LoadFetch<'_> {
     }
 }
 
-pub(crate) fn load(src: &dyn Source, opts: &LoadOptions) -> Result<Document> {
-    let m = read_manifest(src, opts)?;
-    let mut fetch = LoadFetch { src, opts: *opts, total: 0, blobs: HashMap::new() };
-    let mut loader = Loader { fetch: &mut fetch, preserve_ids: opts.preserve_ids, max_id: 0, id_map: HashMap::new() };
-    let doc = loader.document(&m.document)?;
-    if opts.preserve_ids && !convert::reserve_ids_through(loader.max_id) {
-        // Ids far beyond our counter: remap instead of risking collisions.
-        let fresh = LoadOptions { preserve_ids: false, ..*opts };
-        return load(src, &fresh);
+/// Refuses a declared canvas outside `opts`' budget before anything is decoded for it (#2935).
+fn admit_canvas(size: photocraft_geom::Size, opts: &LoadOptions) -> Result<()> {
+    let (w, h) = (size.width, size.height);
+    if w == 0 || h == 0 {
+        return Err(FormatError::corrupt(format!("canvas size {w}x{h} is empty")));
     }
-    Ok(doc)
+    if w > opts.max_canvas_side || h > opts.max_canvas_side {
+        return Err(FormatError::LimitExceeded(format!("canvas {w}x{h} exceeds {} pixels per side", opts.max_canvas_side)));
+    }
+    if size.area() > opts.max_canvas_pixels {
+        return Err(FormatError::LimitExceeded(format!("canvas {w}x{h} exceeds {} pixels", opts.max_canvas_pixels)));
+    }
+    Ok(())
+}
+
+pub(crate) fn load(src: &dyn ByteSource, opts: &LoadOptions) -> Result<Document> {
+    let m = read_manifest(src, opts)?;
+    admit_canvas(m.document.size, opts)?;
+    let mut fetch = LoadFetch { src, opts: *opts, total: 0, blobs: HashMap::new() };
+    let mut loader = Loader {
+        fetch: &mut fetch,
+        preserve_ids: opts.preserve_ids,
+        id_map: HashMap::new(),
+        contents_id_map: HashMap::new(),
+        legacy_linked_contents: HashMap::new(),
+        tiles: HashMap::new(),
+    };
+    loader.document(&m.document)
 }
 
 // ---------------------------------------------------------------------------
@@ -580,18 +611,19 @@ impl PcraftWriter {
     pub fn save_dir(&mut self, doc: &Document, dir: &Path, opts: &SaveOptions) -> Result<SaveStats> {
         let p = self.prepare(doc, opts)?;
         let mut stats = p.stats;
-        // A directory bundle owns only paths beneath its root. Reject symlinked
-        // subdirectories and object/output files before writing or cleaning up.
-        check_bundle_symlinks(dir)?;
-        for sub in ["tiles", "blobs", "composite"] {
-            std::fs::create_dir_all(dir.join(sub))?;
-        }
-        check_bundle_symlinks(dir)?;
+        // A project root may itself be a symlink (for example into a synced
+        // folder). Resolve it once; reject only links at managed child paths.
+        std::fs::create_dir_all(dir)?;
         let canonical_dir = std::fs::canonicalize(dir)?;
+        check_bundle_paths(&canonical_dir)?;
+        for sub in ["tiles", "blobs", "composite"] {
+            std::fs::create_dir_all(canonical_dir.join(sub))?;
+        }
+        check_bundle_paths(&canonical_dir)?;
         if self.verified_directory.as_ref().is_none_or(|cache| cache.directory != canonical_dir) {
             self.verified_directory = Some(DirectoryVerificationCache { directory: canonical_dir, ..Default::default() });
         }
-        let existing = list_objects(dir)?;
+        let existing = list_objects(&canonical_dir)?;
         let generation = match &mut self.verified_directory {
             Some(cache) => {
                 cache.generation = cache.generation.saturating_add(1);
@@ -601,7 +633,10 @@ impl PcraftWriter {
         };
         let recheck = self.rolling_recheck(&p.objects);
         for (path, obj) in &p.objects {
-            let object_path = dir.join(path);
+            let object_path = canonical_dir.join(path);
+            // Checked per referenced object, not by a second full directory
+            // scan on every autosave. This also protects cached objects.
+            reject_bundle_symlink(&object_path)?;
             let signature = path_signature(&object_path)?;
             let already_verified = !recheck.contains(path)
                 && signature.is_some_and(|signature| {
@@ -645,17 +680,22 @@ impl PcraftWriter {
             }
         }
         for (name, data) in &p.previews {
-            write_bundle_file(&dir.join(name), data)?;
+            write_bundle_file(&canonical_dir.join(name), data)?;
         }
+        // Open the directories for deletion only after their final check.
+        // On Unix, unlinkat uses pinned directory handles: swapping a path
+        // during GC cannot redirect the unlink to a symlink target.
+        check_bundle_paths(&canonical_dir)?;
+        let gc = BundleGc::new(&canonical_dir)?;
         for stale in [THUMB, COMPOSITE] {
             if !p.previews.iter().any(|(n, _)| *n == stale) {
-                let _ = std::fs::remove_file(dir.join(stale));
+                gc.remove(stale)?;
             }
         }
-        write_bundle_file(&dir.join(MANIFEST), &p.manifest)?;
+        write_bundle_file(&canonical_dir.join(MANIFEST), &p.manifest)?;
         for path in existing {
             if !p.objects.contains_key(&path) {
-                std::fs::remove_file(dir.join(&path))?;
+                gc.remove(&path)?;
                 stats.objects_removed += 1;
                 if let Some(cache) = &mut self.verified_directory {
                     cache.objects.remove(&path);
@@ -702,8 +742,8 @@ impl PcraftWriter {
     }
 }
 
-/// Refuse links at any bundle-managed destination. Symlinks must never let a
-/// save inspect or replace files outside the chosen directory bundle.
+/// Check only the fixed bundle-owned child paths. Enumerating and lstat-ing
+/// every existing tile twice made autosave O(all objects) beyond its own work.
 fn reject_bundle_symlink(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => Err(FormatError::Unsupported(format!("directory bundle contains a symbolic link at {}", path.display()))),
@@ -713,23 +753,9 @@ fn reject_bundle_symlink(path: &Path) -> Result<()> {
     }
 }
 
-/// Check every directory and file that a bundle save may write or remove.
-/// In particular, tiles/ and blobs/ must be actual directories, not links.
-fn check_bundle_symlinks(dir: &Path) -> Result<()> {
-    reject_bundle_symlink(dir)?;
+fn check_bundle_paths(dir: &Path) -> Result<()> {
     for sub in ["tiles", "blobs", "composite"] {
-        let subdir = dir.join(sub);
-        reject_bundle_symlink(&subdir)?;
-        if sub != "composite" && subdir.is_dir() {
-            for entry in std::fs::read_dir(&subdir)? {
-                let entry = entry?;
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if name.strip_suffix(".zst").is_some_and(is_valid_hash) {
-                    reject_bundle_symlink(&entry.path())?;
-                }
-            }
-        }
+        reject_bundle_symlink(&dir.join(sub))?;
     }
     for name in [MANIFEST, THUMB, COMPOSITE] {
         reject_bundle_symlink(&dir.join(name))?;
@@ -737,11 +763,79 @@ fn check_bundle_symlinks(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Directory bundles never follow the final path's symlink when replacing files,
-/// even if one appears after the initial path checks.
+/// Re-check only destinations actually written. The atomic rename never
+/// follows the destination leaf symlink.
 fn write_bundle_file(path: &Path, data: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        reject_bundle_symlink(parent)?;
+    }
+    reject_bundle_symlink(path)?;
     crate::atomic::atomic_write_no_follow(path, data)?;
     Ok(())
+}
+
+/// On Unix, descriptor-relative deletion keeps GC inside the directory that
+/// was opened even if another process swaps its pathname while saving.
+#[cfg(unix)]
+struct BundleGc {
+    root: rustix::fd::OwnedFd,
+    tiles: rustix::fd::OwnedFd,
+    blobs: rustix::fd::OwnedFd,
+    composite: rustix::fd::OwnedFd,
+}
+
+#[cfg(unix)]
+impl BundleGc {
+    fn new(root: &Path) -> Result<Self> {
+        use rustix::fs::{Mode, OFlags, open, openat};
+
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let root = open(root, flags, Mode::empty()).map_err(std::io::Error::from)?;
+        let tiles = openat(&root, "tiles", flags, Mode::empty()).map_err(std::io::Error::from)?;
+        let blobs = openat(&root, "blobs", flags, Mode::empty()).map_err(std::io::Error::from)?;
+        let composite = openat(&root, "composite", flags, Mode::empty()).map_err(std::io::Error::from)?;
+        Ok(Self { root, tiles, blobs, composite })
+    }
+
+    fn remove(&self, path: &str) -> Result<()> {
+        let target = match path {
+            THUMB => (&self.root, "thumb.png"),
+            COMPOSITE => (&self.composite, "preview.png"),
+            _ => match path.split_once('/') {
+                Some(("tiles", name)) if name.strip_suffix(".zst").is_some_and(is_valid_hash) => (&self.tiles, name),
+                Some(("blobs", name)) if name.strip_suffix(".zst").is_some_and(is_valid_hash) => (&self.blobs, name),
+                _ => return Err(FormatError::Unsupported(format!("invalid bundle cleanup target: {path}"))),
+            },
+        };
+        match rustix::fs::unlinkat(target.0, target.1, rustix::fs::AtFlags::empty()) {
+            Ok(()) | Err(rustix::io::Errno::NOENT) => Ok(()),
+            Err(e) => Err(std::io::Error::from(e).into()),
+        }
+    }
+}
+
+/// Non-Unix platforms re-check each directory and leaf before deleting it.
+/// Windows rename and remove operations do not follow the final file link.
+#[cfg(not(unix))]
+struct BundleGc {
+    root: PathBuf,
+}
+
+#[cfg(not(unix))]
+impl BundleGc {
+    fn new(root: &Path) -> Result<Self> {
+        Ok(Self { root: root.to_path_buf() })
+    }
+
+    fn remove(&self, path: &str) -> Result<()> {
+        check_bundle_paths(&self.root)?;
+        reject_bundle_symlink(&self.root.join(path))?;
+        match std::fs::remove_file(self.root.join(path)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 fn list_objects(dir: &Path) -> Result<HashSet<String>> {

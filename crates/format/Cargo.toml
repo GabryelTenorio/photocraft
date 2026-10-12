@@ -22,5 +22,10 @@ flate2 = { workspace = true }
 blake3 = { version = "1.8", default-features = false, features = ["pure"] }
 ruzstd = "0.9"
 
+# Unix: descriptor-relative GC prevents a swapped bundle subdirectory from
+# redirecting removals outside the project. Also used for macOS plain-fsync fallback.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
+
 [dev-dependencies]
 proptest = { workspace = true }
