@@ -176,8 +176,38 @@ fn select_in_rect(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({ "layers": hits.iter().map(|id| id.0).collect::<Vec<_>>() }))
 }
 
+/// An explicitly bound cursor pick replaces the selection, unlike an Auto-Select drag.
+fn select_under_cursor(s: &mut Session, p: &Value) -> Result<Value> {
+    let coordinate = |key: &str| {
+        p.get(key)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| EngineError::BadParams { cmd: "layer.selectUnderCursor".into(), msg: format!("missing or invalid `{key}`") })
+    };
+    let (x, y) = (coordinate("x")?, coordinate("y")?);
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    if x < 0.0 || y < 0.0 || x >= f64::from(st.doc.size.width) || y >= f64::from(st.doc.size.height) {
+        return Ok(json!({"layer": null}));
+    }
+    let picked = pick(s, &json!({"x": x, "y": y, "target": "layer", "select": false}))?;
+    if let Some(layer) = picked.get("layer").and_then(Value::as_u64) {
+        s.execute("layer.select", json!({"layer": layer, "mode": "replace"}))?;
+    }
+    Ok(picked)
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+        CommandSpec {
+            id: "layer.selectUnderCursor",
+            label: "Select Layer Under Cursor",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"x":px,"y":px} -> {layer} (canvas supplies cursor coordinates for keyboard invocation)"##,
+            enabled: has_doc,
+            journal: false,
+            run: select_under_cursor,
+        },
         CommandSpec {
             id: "layer.selectInRect",
             label: "Select Layers in Marquee",
@@ -204,6 +234,23 @@ pub fn specs() -> Vec<CommandSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cursor_pick_rejects_invalid_coordinates_without_changing_the_document() {
+        let mut s = Session::new();
+        assert!(s.execute("layer.selectUnderCursor", json!({"x": 1, "y": 1})).is_err());
+        s.execute("file.new", json!({"width": 40, "height": 40})).unwrap();
+        let doc = s.active().unwrap().doc.clone();
+        let active = s.active().unwrap().active_layer;
+        for params in [json!({}), json!({"x": "bad", "y": 1}), json!({"x": 1, "y": []})] {
+            assert!(s.execute("layer.selectUnderCursor", params).is_err());
+        }
+        for (x, y) in [(-1, 1), (40, 1), (1, 40)] {
+            assert!(s.execute("layer.selectUnderCursor", json!({"x": x, "y": y})).unwrap()["layer"].is_null());
+        }
+        assert_eq!(s.active().unwrap().doc.layers, doc.layers);
+        assert_eq!(s.active().unwrap().active_layer, active);
+    }
 
     #[test]
     fn picks_topmost_layer_with_pixels() {
