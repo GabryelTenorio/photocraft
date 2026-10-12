@@ -1096,7 +1096,7 @@ fn first_regional_drop_from_legacy_custom_dock_accounts_for_the_icon_rail() {
 }
 
 fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
-    assert_drag_opacity(h, 0.7);
+    assert_drag_opacity(h, 0.5);
     let feedback = drop_preview(h).expect("tab-strip feedback");
     assert!(feedback.preview.is_none(), "same-group reorder must not highlight the group");
     let marker = feedback.insertion.expect("insertion marker even at unchanged slots");
@@ -1118,7 +1118,7 @@ fn assert_drag_opacity(h: &Harness<'static, PhotocraftApp>, opacity: f32) {
     let card = crate::theme::Tokens::get(&h.ctx).card;
     assert!(h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(opacity))), "moving UI opacity {opacity}");
     if opacity == 1.0 {
-        assert!(!h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(0.7))));
+        assert!(!h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(0.5))));
     }
 }
 
@@ -1145,7 +1145,7 @@ fn drag_opacity_tracks_same_and_cross_group_strips_and_restores_outside() {
         let target = tab_rect(&h, "properties").center();
         h.event(Event::PointerMoved(target));
         h.run_steps(2);
-        assert_drag_opacity(&h, 0.7);
+        assert_drag_opacity(&h, 0.5);
         let feedback = drop_preview(&h).unwrap();
         assert!(feedback.insertion.is_some() && feedback.preview.is_some());
         assert_eq!(h.state().ui.docking, before);

@@ -1406,7 +1406,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 && craft_ui::docking::resolve_drop(request.panel, request.pointer, std::slice::from_ref(target))
                     .is_some_and(|proposal| proposal.insertion.is_some())
         });
-        if strip { 0.7 } else { 1.0 }
+        if strip { 0.5 } else { 1.0 }
     }
     fn floating_size(&self, panel: &String) -> Option<egui::Vec2> {
         let rect = floating_rect(self.app, panel, &json!({})).ok()?;
