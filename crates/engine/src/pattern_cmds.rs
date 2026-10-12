@@ -327,16 +327,21 @@ fn new_fill_layer(s: &mut Session, p: &Value) -> Result<Value> {
 fn brush_texture(s: &mut Session, p: &Value) -> Result<Value> {
     let pat = resolve_param(s, "brush.texturePattern", p)?;
     // Brush textures are grey: luminance of the composite over white.
-    let mut px = vec![[0.0f32; 4]; (pat.width * pat.height) as usize];
+    // RGBA scratch plus the quantized tile must fit the preset-import memory budget.
+    let len = u64::from(pat.width) * u64::from(pat.height);
+    if pat.width == 0 || pat.height == 0 || pat.width > i32::MAX as u32 || pat.height > i32::MAX as u32 || len > (512 << 20) / 18 {
+        return Err(bad("brush.texturePattern", "the pattern is too large or empty for a brush texture"));
+    }
+    let len = usize::try_from(len).map_err(|_| bad("brush.texturePattern", "the pattern is too large for a brush texture"))?;
+    let mut px = crate::allocation::filled(len, [0.0f32; 4], "building a brush texture")?;
     pat.surface.read_rgba_into(pat.rect(), &mut px);
-    let lum: Vec<f32> = px
-        .iter()
-        .map(|q| {
-            let l = 0.299 * q[0] + 0.587 * q[1] + 0.114 * q[2];
-            l * q[3] + (1.0 - q[3])
-        })
-        .collect();
-    let tile = photocraft_paint::GrayTile::from_f32(pat.width, pat.height, &lum);
+    let mut data = crate::allocation::capacity(len, "building a brush texture")?;
+    for q in &px {
+        let l = 0.299 * q[0] + 0.587 * q[1] + 0.114 * q[2];
+        let v = l * q[3] + (1.0 - q[3]);
+        data.push((v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16);
+    }
+    let tile = photocraft_paint::GrayTile { width: pat.width, height: pat.height, data };
     let t = &mut s.tools.brush.texture;
     t.pattern = photocraft_paint::Pattern::Tile(tile);
     t.enabled = p.get("enabled").and_then(Value::as_bool).unwrap_or(true);
@@ -454,6 +459,31 @@ mod tests {
     fn pixel(s: &Session, x: i32, y: i32) -> [f32; 4] {
         let b = photocraft_compose::render(&s.active().unwrap().doc, Rect::new(x, y, x + 1, y + 1));
         b.px[0]
+    }
+
+    #[test]
+    fn oversized_texture_patterns_fail_without_changing_the_brush() {
+        let mut s = Session::new();
+        let before = s.tools.brush.clone();
+        for (width, height) in [(65536, 65536), (300_000, 300_000), (0, 1)] {
+            s.patterns.items.push(Pattern { id: "oversized".into(), name: "oversized".into(), width, height, surface: Surface::new(PixelFormat::RGBA8) });
+            let result = brush_texture(&mut s, &json!({"pattern": "oversized"}));
+            assert!(result.is_err());
+            assert!(s.execute("brush.texturePattern", json!({"pattern": "oversized"})).is_err());
+            assert_eq!(s.tools.brush, before);
+            s.patterns.items.pop();
+        }
+    }
+
+    #[test]
+    fn texture_allocation_failure_keeps_the_brush() {
+        let mut s = Session::new();
+        let before = s.tools.brush.clone();
+        crate::allocation::fail_next_for_test();
+        let result = brush_texture(&mut s, &json!({"pattern": "Checkerboard"}));
+        let _ = crate::allocation::capacity::<u8>(0, "reset failpoint");
+        assert!(result.is_err());
+        assert_eq!(s.tools.brush, before);
     }
 
     #[test]
