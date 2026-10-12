@@ -3661,3 +3661,4 @@ curves	Smooth	スムーズ
 	Remove after each stroke	ストロークごとに削除
 	Apply the removal ({key})	削除を適用 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	削除するストローク: {n}（Enter で適用、Esc で取り消し）
+	Show home recent files	ホーム画面に最近使ったファイルを表示
