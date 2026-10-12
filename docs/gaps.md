@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** minor (JPEG Options landed, G10; G6 recounted against the code: 1 tool missing; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done, Missing list matched to the scorecard; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -24,7 +24,7 @@ what an agent can't finish alone.
 | G3 | User-reported bug backlog | stability, UI | blocks beta | 250–400 h | [target-app-parity](target-app-parity.md) |
 | G4 | Brush feel | UI / painting | high | 100–180 h | [brush-parity](brush-parity.md) |
 | G5 | Transform, handles and modifiers | UI | high | 60–110 h | [ui-parity](ui-parity.md) |
-| G6 | Missing tools (12) | features | high | 60–100 h | [ui-parity](ui-parity.md#tools) |
+| G6 | Missing tools (1) | features | low | 2–9 h | [ui-parity](ui-parity.md#tools) |
 | G7 | Workspaces shown as parameter dialogs | features | high | 80–140 h | [target-app-parity](target-app-parity.md#feature-areas) |
 | G8 | Type depth | features | high | 120–200 h | [target-app-parity](target-app-parity.md#feature-areas) |
 | G9 | Panels, preferences and workspace | UI | medium-high | 150–250 h | [ui-parity](ui-parity.md#panels-and-workspace) |
@@ -54,15 +54,16 @@ what an agent can't finish alone.
   scripted check there) is the only real oracle.
 
 ### G6. Missing tools
-- **Missing (4 of 68):** Color Replacement (engine command exists), Art
-  History Brush, Add Anchor Point, Delete Anchor Point. Convert Point landed (#3204). Freeform
+- **Missing (1 of 68):** Art History Brush. Recounted 2026-10-11 against the `Tool` enum and
+  its handlers: Color Replacement (`color_replacement_tests.rs`), Add and Delete Anchor Point
+  (`anchor_tools.rs`) are toolbar tools with tests. Convert Point landed (#3204). Freeform
   Pen and Curvature Pen landed (#1054); Color Sampler landed (#1046, `view.colorSamplers.*`); Horizontal and Vertical Type Mask landed (#1055,
   `type.createSelection`); Perspective Crop landed (#1043, `image.perspectiveCrop`); Frame landed
   (#2914).
 - **Evidence:** `Tool` enum (`crates/ui-egui/src/state.rs`) against the 67 `<tool>` entries of
   Photoshop's `Default Keyboard Shortcuts.kys` plus Remove, Triangle and Curvature Pen.
 - **Impact:** users look for them by name and shortcut; several are daily tools for designers.
-- **Estimate:** 60–100 h (2–9 h each, per the calibration).
+- **Estimate:** 2–9 h (one tool, per the calibration).
 
 ### G7. Workspaces shown as parameter dialogs
 - **Missing:** Select and Mask workspace layout
@@ -76,11 +77,11 @@ what an agent can't finish alone.
 
 ### G8. Type depth
 - **Missing:** type on a path (TYPE-218-1), paragraph direction UI (TYPE-218-2), complex-script
-  fallback fonts and golden tests (TYPE-218-3), OpenType panel UI (TYPE-218-5), live Warp Text
-  preview (TYPE-218-7, #2689), "rasterize and continue" for distort/perspective on type
-  (TYPE-218-9), text free transform (#2630). Done since the re-measure: manual and optical kerning
-  with PSD round trip (TYPE-218-6, #206), variable-font axes (TYPE-218-4, #2985).
-- **Evidence:** scorecard Type: 3 done, 2 partial, 4 missing. 2026-10-11: 2/3/4/5 clicks select
+  fallback fonts and golden tests (TYPE-218-3), OpenType panel UI (TYPE-218-5), text free
+  transform (#2630). Done: variable-font axes (TYPE-218-4, #2985), manual and optical kerning with
+  PSD round trip (TYPE-218-6, #206), live Warp Text preview (TYPE-218-7), 2/3/4/5-click selection
+  (TYPE-218-8, #3493), Warp on live type (TYPE-218-9).
+- **Evidence:** scorecard Type: 5 done, 2 partial, 2 missing. 2026-10-11: 2/3/4/5 clicks select
   word, line, paragraph and all text, with tests (TYPE-218-8, #3493). The Type tool froze the app for
   60 s on one macOS machine (#2518).
 - **Estimate:** 120–200 h.
@@ -179,7 +180,7 @@ what an agent can't finish alone.
 ## File-format gaps
 
 ### G10. Missing and partial file formats
-- **Missing:** JPEG Options dialog (FILE-215-19), Photoshop PDF read and write and multi-page PDF
+- **Missing:** Photoshop PDF read and write and multi-page PDF
   (FILE-215-10, #2541), AVIF read (#463) and default-build AVIF write, JPEG XL, JPEG 2000 (#1047),
   DPX/Cineon (#1049), DICOM, EPS/DCS, PCX, Pixar, IFF, WBMP, MPO/JPS, PICT, Scitex CT, Photoshop
   Raw; layered TIFF extra alpha channels (FILE-215-7); spot plates (FILE-215-17); .atn, .asl,
@@ -227,6 +228,7 @@ what an agent can't finish alone.
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
+| 2026-10-11 | minor | G10: JPEG Options dialog landed (FILE-215-19). G6 recounted against the code: only Art History Brush is missing. G8: Missing list matched to the scorecard (TYPE-218-4, -6, -7, -9 are done) |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |

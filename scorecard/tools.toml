@@ -197,9 +197,9 @@ note = "select.convertToShape with tolerance (vector_cmds.rs:1256); radius as a 
 [[item]]
 id = "TOOL-214-13"
 target = "Mask Properties: Density and Feather controls"
-status = "partial"
+status = "done"
 issue = 214
-note = "Vector-mask density/feather in the engine (vector_cmds.rs:948); no UI controls"
+note = "Properties shows Density and Feather sliders for the pixel and the vector mask, one undoable edit per drag (mask_props_ui.rs, layer_mask_props_cmds.rs; mask_props_ui_tests.rs)"
 
 [[item]]
 id = "TOOL-214-14"
