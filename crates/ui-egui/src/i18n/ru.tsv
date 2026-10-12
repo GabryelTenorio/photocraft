@@ -1897,6 +1897,7 @@
 	Lock Layers…	Заблокировать слои…
 	Mean	Среднее
 	Merge Down	Выполнить сведение
+	Merge Group	Объединить группу
 	Merge Layers	Объединить слои
 	Merge Shape Components	Объединить компоненты фигуры
 	Merge Visible	Свести видимые
@@ -3157,3 +3158,6 @@ cameraRaw	Type	Тип
 # Camera Raw › Profile: the camera's own rendering of a raw file
 cameraRaw	Camera Standard	Камера: стандартный
 	The raw file is still being developed	RAW-файл ещё проявляется
+	Remove after each stroke	Удалять после каждого штриха
+	Apply the removal ({key})	Применить удаление ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)

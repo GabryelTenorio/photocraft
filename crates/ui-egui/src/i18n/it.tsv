@@ -390,6 +390,7 @@
 	Select Linked Layers	Seleziona livelli collegati
 	Merge Layers	Unisci livelli
 	Merge Down	Unisci sotto
+	Merge Group	Unisci gruppo
 	Merge Visible	Unisci visibili
 	Stamp Visible	Unisci visibili in nuovo
 	Select Layer Above	Seleziona livello sopra
@@ -4200,3 +4201,6 @@ navigator	Zoom	Zoom
 # Camera Raw › Profile: the camera's own rendering of a raw file
 cameraRaw	Camera Standard	Fotocamera standard
 	The raw file is still being developed	Il file raw è ancora in fase di sviluppo
+	Remove after each stroke	Rimuovi dopo ogni tratto
+	Apply the removal ({key})	Applica la rimozione ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Tratti da rimuovere: {n} (Invio applica, Esc annulla)

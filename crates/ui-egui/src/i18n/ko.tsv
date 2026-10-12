@@ -375,6 +375,7 @@
 	Select Linked Layers	연결된 레이어 선택
 	Merge Layers	레이어 병합
 	Merge Down	아래 레이어와 병합
+	Merge Group	그룹 병합
 	Merge Visible	보이는 레이어 병합
 	Stamp Visible	보이는 레이어의 병합 사본 만들기
 	Select Layer Above	위 레이어 선택
@@ -3398,3 +3399,6 @@ cameraRaw	Type	유형
 # Camera Raw › Profile: the camera's own rendering of a raw file
 cameraRaw	Camera Standard	카메라 표준
 	The raw file is still being developed	RAW 파일을 아직 현상하는 중입니다
+	Remove after each stroke	획마다 제거
+	Apply the removal ({key})	제거 적용 ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	제거할 획: {n} (Enter 적용, Esc 취소)
