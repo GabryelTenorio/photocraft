@@ -15,7 +15,7 @@ Open a file with **File › Open…** and keep your layers with **File › Save 
 
 You can also reopen a recent file from **File › Open Recent**. On Linux under Wayland, dropping a file on the window does not work yet; see [Install PhotoCraft](../getting-started/install.md).
 
-PhotoCraft opens PSD and PSB (including 16-bit, 32-bit, CMYK and Lab files), layered TIFF, Paint.NET (`.pdn`), OpenRaster (`.ora`), SVG, and the flat formats PNG, JPEG, TIFF, WebP, GIF, BMP, TGA, ICO, QOI, PNM, OpenEXR, Radiance HDR and FITS. It can also open Affinity files (`.af`, `.afphoto`, `.afdesign`, `.afpub`), but anything it cannot match exactly, such as layer effects and adjustments, is approximated or left out and PhotoCraft shows a warning.
+PhotoCraft opens PSD and PSB (including 16-bit, 32-bit, CMYK and Lab files), layered TIFF, Paint.NET (`.pdn`), OpenRaster (`.ora`), SVG, and the flat formats PNG, JPEG, TIFF, WebP, GIF, BMP, TGA, ICO, QOI, PNM, OpenEXR and Radiance HDR. HEIC and HEIF photos from iPhone and Mac open too, read only, and so do camera raw files such as DNG, CR2, CR3, NEF and ARW. It can also open Affinity files (`.af`, `.afphoto`, `.afdesign`, `.afpub`), read only; PhotoCraft cannot save Affinity files. Anything it cannot match exactly, such as layer effects and adjustments, is approximated or left out and PhotoCraft shows a warning.
 
 ## Save with layers
 
@@ -25,7 +25,7 @@ PhotoCraft opens PSD and PSB (including 16-bit, 32-bit, CMYK and Lab files), lay
 
 After that, **File › Save** saves into the same file. **File › Save a Copy…** saves a copy under a new name.
 
-The **Save As…** dialog also lists OpenRaster, PNG, JPEG, WebP, TIFF, Targa, OpenEXR and FITS. Check the file extension in the name box: PhotoCraft writes the format that the extension names. If you want a flat PNG or JPEG with a size and quality preview, use [Export an image](export-an-image.md) instead.
+The **Save As…** dialog also lists OpenRaster, PNG, JPEG, WebP, TIFF, Targa and OpenEXR. Check the file extension in the name box: PhotoCraft writes the format that the extension names. If you want a flat PNG or JPEG with a size and quality preview, use [Export an image](export-an-image.md) instead.
 
 ## Good to know
 

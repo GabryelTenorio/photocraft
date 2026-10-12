@@ -18,6 +18,8 @@ This is a known bug in PhotoCraft 0.7.0 on Windows 11. A related fix is already 
 1. Check your version with **Help › System Info…**, which starts with "PhotoCraft" and the version. If it is 0.7.0, the related fix is not in your build.
 2. Download a newer release from the [releases page](https://github.com/storytold/photocraft/releases) once one is published after 0.7.0, or update with [ArtCraft Launcher](https://getartcraft.com/docs/craft-launcher).
 
+One user reported that maximizing, closing and reopening PhotoCraft keeps the taskbar normal until the window is resized again ([issue 3144](https://github.com/storytold/photocraft/issues/3144)).
+
 ## Try the system title bar
 
 PhotoCraft normally draws its own title bar. With **System title bar** switched on, Windows draws it instead. This is only a workaround to try. Nobody has confirmed that it fixes the black taskbar.

@@ -21,7 +21,7 @@ This is a known bug in PhotoCraft 0.7.0 and there is no released fix yet. If you
 
 ## Why this happens
 
-Clicking a PSD text layer with the Type tool starts editing it, and PhotoCraft then redraws the text with its own layout instead of the pixels Photoshop saved. A maintainer found two causes in how PhotoCraft reads the file: it does not read the alignment and styles of each run of text the way Photoshop wrote them, and it does not use the text position Photoshop stores. A proposed fix is open as [pull request 3819](https://github.com/storytold/photocraft/pull/3819) and is not merged yet.
+Clicking a PSD text layer with the Type tool starts editing it, and PhotoCraft then redraws the text with its own layout instead of the pixels Photoshop saved. A contributor found two causes in how PhotoCraft reads the file: it does not read the alignment and styles of each run of text the way Photoshop wrote them, and it does not use the text position Photoshop stores. A proposed fix is open as [pull request 3819](https://github.com/storytold/photocraft/pull/3819) and is not merged yet.
 
 ## Still stuck?
 

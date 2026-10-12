@@ -35,6 +35,6 @@ To start with the whole layer visible or hidden and paint the mask yourself, use
 
 - **Layer › Layer Mask › Delete** removes the mask.
 - **Layer › Layer Mask › Apply** applies the mask to the layer's pixels.
-- **Layer › Layer Mask › Enable Layer Mask** switches the mask on and off.
+- **Layer › Layer Mask › Disable Layer Mask** (or **Enable Layer Mask**) switches the mask off and on.
 
 To limit a color adjustment to the selection, see [Adjust colors without changing your pixels](adjust-colors-with-adjustment-layers.md).

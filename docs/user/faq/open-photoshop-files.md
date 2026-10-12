@@ -11,4 +11,6 @@ When it saves the file again, the picture renders the same for 307 of the 309 fi
 
 Some PSD text layers move when you start editing them in version 0.7.0; see [Text moves when I start editing a PSD text layer](../troubleshooting/text-moves-when-editing.md).
 
-PhotoCraft also opens layered TIFF, Paint.NET, OpenRaster, SVG and Affinity files, and many flat formats. The full list is in [Open and save files](../guides/open-and-save-files.md).
+Results vary from file to file. If a PSD does not open or looks wrong, search the issue tracker or report it with the file.
+
+PhotoCraft also opens layered TIFF, Paint.NET, OpenRaster, SVG and Affinity files (read only; PhotoCraft cannot save Affinity files), and many flat formats. The full list is in [Open and save files](../guides/open-and-save-files.md).

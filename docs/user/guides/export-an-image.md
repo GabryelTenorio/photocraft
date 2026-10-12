@@ -14,7 +14,6 @@ Choose **File › Export › Export As…**, set the format, and click **Export*
 3. Set the options for that format:
    - **JPG** and lossy **WebP** have a **Quality** slider from 1 to 100.
    - **WebP** also has a **Lossless** checkbox.
-   - **TGA** has a **Resolution** menu: **Auto**, **24 bits/pixel** or **32 bits/pixel**.
    - **Transparency** keeps transparent areas. JPG has no transparency, so the image is flattened for JPG.
    - **Metadata** is **None** or **All**.
 4. Under **Image Size**, set **Scale** in percent. The size in pixels shows below it.

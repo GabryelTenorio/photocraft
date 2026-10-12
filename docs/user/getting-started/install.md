@@ -19,7 +19,6 @@ To run without installing, download `photocraft-<version>-windows-x64-portable.z
 |------------------------------------|------------------------------------------|---------------------------------------------------|
 | 64-bit Intel or AMD                | `photocraft-<version>-windows-x64.msi`   | `photocraft-<version>-windows-x64-portable.zip`   |
 | Arm (Snapdragon and other Arm PCs) | `photocraft-<version>-windows-arm64.msi` | `photocraft-<version>-windows-arm64-portable.zip` |
-| 32-bit                             | `photocraft-<version>-windows-x86.msi`   | `photocraft-<version>-windows-x86-portable.zip`   |
 
 The installers and executables are code-signed.
 
