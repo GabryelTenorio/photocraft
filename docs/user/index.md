@@ -14,7 +14,7 @@ It is a native app written in Rust that draws the canvas on your graphics card, 
 - [Your first edit](getting-started/index.md)
 - [Guides: open, adjust, select, type, export](guides/index.md)
 - [Troubleshooting](troubleshooting/index.md)
-- [Frequently asked questions](faq/index.md)
+- [FAQ](faq/index.md)
 
 ## Part of the Craft App Suite
 
