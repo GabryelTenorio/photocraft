@@ -306,7 +306,20 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
 /// object): the adjustment applied to a copy of `surf`. `None` for kinds or params it can't run.
 pub(crate) fn adjust_as_filter(kind: &str, p: &Value, surf: &Surface) -> Option<Surface> {
     let mut out = surf.clone();
-    if kind == "shadowsHighlights" {
+    if kind == "replaceColor" {
+        let (c, fuzz, h, sat, l) = replace_color_params(p, [0.0, 0.0, 0.0, 1.0]);
+        process_surface(&mut out, None, &mut |px, _| {
+            tone::replace_color(px, [c[0], c[1], c[2]], fuzz, h, sat, l);
+        });
+    } else if kind == "desaturate" {
+        let mode = surf.format().mode;
+        crate::pixels::adjust_surface(&mut out, &crate::commands::desaturate_adjustment(), None, mode);
+    } else if kind == "equalize" {
+        process_surface(&mut out, None, &mut |px, _| {
+            let cover = vec![1.0; px.len()];
+            crate::extra_cmds::equalize_pixels(px, &cover);
+        });
+    } else if kind == "shadowsHighlights" {
         let sh = shadows_highlights_params(p);
         process_surface(&mut out, None, &mut |px, r| tone::shadows_highlights(px, r.width() as usize, r.height() as usize, &sh));
     } else {
@@ -342,10 +355,27 @@ fn shadows_highlights_params(p: &Value) -> ShadowsHighlights {
     }
 }
 
-fn replace_color(s: &mut Session, p: &Value) -> Result<Value> {
-    let c = crate::commands::color_param(p, "color", s.tools.foreground);
+fn replace_color_params(p: &Value, default_color: [f32; 4]) -> ([f32; 4], f32, f32, f32, f32) {
+    let c = crate::commands::color_param(p, "color", default_color);
     let fuzz = num(p, "fuzziness", 40.0).clamp(0.0, 200.0);
     let (h, sat, l) = (num(p, "hue", 0.0).clamp(-180.0, 180.0), num(p, "saturation", 0.0).clamp(-100.0, 100.0), num(p, "lightness", 0.0).clamp(-100.0, 100.0));
+    (c, fuzz, h, sat, l)
+}
+
+fn replace_color(s: &mut Session, p: &Value) -> Result<Value> {
+    // A smart object records the foreground colour it was sampled with, so the filter does not
+    // change when the foreground does.
+    let mut q = p.clone();
+    if p.get("color").is_none()
+        && let Value::Object(m) = &mut q
+    {
+        let f = s.tools.foreground;
+        m.insert("color".into(), json!([f[0], f[1], f[2], f[3]]));
+    }
+    if adjust_as_smart_filter(s, "replaceColor", "Replace Color", &q)? {
+        return Ok(Value::Null);
+    }
+    let (c, fuzz, h, sat, l) = replace_color_params(p, s.tools.foreground);
     rgba_edit(s, "Replace Color", p, |px, _| {
         tone::replace_color(px, [c[0], c[1], c[2]], fuzz, h, sat, l);
     })
@@ -464,7 +494,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Replace Color…",
             ["Image", "Adjustments"],
             r##"{"color":json,"fuzziness":0..200=40,"hue":-180..180=0,"saturation":-100..100=0,"lightness":-100..100=0} (color: "#rrggbb", default the foreground colour)"##,
-            has_pixels,
+            has_adjustable,
             replace_color
         ),
         spec!(
