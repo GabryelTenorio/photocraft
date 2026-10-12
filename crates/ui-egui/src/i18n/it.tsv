@@ -390,6 +390,7 @@
 	Select Linked Layers	Seleziona livelli collegati
 	Merge Layers	Unisci livelli
 	Merge Down	Unisci sotto
+	Merge Group	Unisci gruppo
 	Merge Visible	Unisci visibili
 	Stamp Visible	Unisci visibili in nuovo
 	Select Layer Above	Seleziona livello sopra
@@ -874,6 +875,7 @@
 	Cancel	Annulla
 	Reset	Ripristina
 	Cancel (Esc)	Annulla (Esc)
+	Manage submitted jobs in the system print queue	Gestisci i lavori inviati nella coda di stampa del sistema
 	Cancel any current edits (Esc)	Annulla modifiche correnti (Esc)
 	Cancel current crop operation  (Esc)	Annulla operazione ritaglio corrente (Esc)
 	Cancel transform (Esc)	Annulla trasformazione (Esc)
@@ -4011,3 +4013,27 @@ navigator	Zoom	Zoom
 	{index} of {total}	{index} di {total}
 	{shortcut} assigned.	{shortcut} assegnata.
 	{shortcut} is already in use by {commands} and will be removed from it when you click OK.	{shortcut} è già usata da {commands} e verrà rimossa quando fai clic su OK.
+	Remove after each stroke	Rimuovi dopo ogni tratto
+	Apply the removal ({key})	Applica la rimozione ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Tratti da rimuovere: {n} (Invio applica, Esc annulla)
+
+# Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
+	Load Actions…	Carica azioni…
+	Save Actions…	Salva azioni…
+	{name} (Photoshop)	{name} (Photoshop)
+	{message} ({note})	{message} ({note})
+@plural	Loaded {n} action from {file}|Loaded {n} actions from {file}	Caricata {n} azione da {file}|Caricate {n} azioni da {file}
+@plural	{n} step has no PhotoCraft equivalent yet|{n} steps have no PhotoCraft equivalent yet	{n} passaggio non ha ancora un equivalente in PhotoCraft|{n} passaggi non hanno ancora un equivalente in PhotoCraft
+@plural	Saved {n} action to {file}|Saved {n} actions to {file}	Salvata {n} azione in {file}|Salvate {n} azioni in {file}
+@plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Omesso {n} passaggio senza equivalente in Photoshop|Omessi {n} passaggi senza equivalente in Photoshop
+
+# Actions panel: set folders, dialog toggle, Insert Stop
+	Insert Stop…	Inserisci interruzione…
+	Save Set…	Salva set…
+	Message:	Messaggio:
+	Allow Continue	Consenti di continuare
+	Show dialog during playback	Mostra la finestra di dialogo durante l’esecuzione
+	Select an action first	Seleziona prima un’azione
+	Action playback stopped	Esecuzione dell’azione interrotta
+	Step {step} is waiting for its dialog	Il passaggio {step} attende la sua finestra di dialogo
+@plural	{n} action|{n} actions	{n} azione|{n} azioni
