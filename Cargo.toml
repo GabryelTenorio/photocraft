@@ -109,6 +109,13 @@ opt-level = "z"
 [profile.wasm-release.package.photocraft-web]
 opt-level = "z"
 
+# Keep browser document serialization and PSD format glue compact as well. Native builds
+# and the dedicated pixel-processing overrides below retain their settings.
+[profile.wasm-release.package.photocraft-format]
+opt-level = "z"
+[profile.wasm-release.package.photocraft-psd]
+opt-level = "z"
+
 [profile.wasm-release.package.photocraft-raster]
 opt-level = 3
 [profile.wasm-release.package.photocraft-color]

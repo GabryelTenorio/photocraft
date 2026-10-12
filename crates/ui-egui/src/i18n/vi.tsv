@@ -20,6 +20,35 @@
 # (`plural_none` in i18n/mod.rs).
 
 
+# Shape tool and independent paint controls
+	Align Edges	Căn cạnh
+	Align to Canvas	Căn theo vùng vẽ
+	Arrowheads	Đầu mũi tên
+	Bring Shape Forward	Đưa hình dạng lên một bậc
+	Bring Shape to Front	Đưa hình dạng lên trên cùng
+	Color Picker	Bộ chọn màu
+	Color opacity	Độ mờ màu
+	Concavity:	Độ lõm:
+	Constrain Proportions	Giữ tỷ lệ
+	Distribute Horizontally	Phân bố theo chiều ngang
+	Distribute Vertically	Phân bố theo chiều dọc
+	End	Cuối
+	New Path	Đường dẫn mới
+	No recent colors	Không có màu gần đây
+	Path Alignment	Căn chỉnh đường dẫn
+	Path Arrangement	Sắp xếp đường dẫn
+	Path Operations	Thao tác đường dẫn
+	Path Options	Tùy chọn đường dẫn
+	Proportional	Theo tỷ lệ
+	Recent Colors	Màu gần đây
+	Send Shape Backward	Đưa hình dạng xuống một bậc
+	Send Shape to Back	Đưa hình dạng xuống dưới cùng
+	Show Path	Hiển thị đường dẫn
+	Smooth Indents	Làm mượt chỗ lõm
+	Start	Đầu
+	Stop opacity	Độ mờ điểm dừng
+	Unconstrained	Không ràng buộc
+
 # Phase 3.1 — top-level menus, File menu, Edit menu
 	Again	Lặp lại
 	AI Integrations…	Tích hợp AI…
