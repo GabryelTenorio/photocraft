@@ -335,14 +335,19 @@ fn images_folder_stays_inside_export_directory_and_is_escaped_in_html() {
         assert!(s.execute("file.export.saveForWebLegacy", json!({"format": "gif", "dir": dir, "html": true, "imagesFolder": images})).is_err(), "{images}");
     }
     assert!(!std::path::Path::new(&format!("{root}/escaped")).exists());
-    let folder = "nested/im\" onerror=\"alert(1)&";
+    // Windows forbids quotes in path components; an ampersand still exercises HTML escaping.
+    #[cfg(windows)]
+    let (folder, escaped_folder) = ("nested/im&files", "nested/im&amp;files");
+    #[cfg(not(windows))]
+    let (folder, escaped_folder) = ("nested/im\" onerror=\"alert(1)&", "nested/im&quot; onerror=&quot;alert(1)&amp;");
     let r = s.execute("file.export.saveForWebLegacy", json!({"format": "gif", "dir": dir, "html": true, "imagesFolder": folder})).unwrap();
     let page = std::fs::read_to_string(r["html"].as_str().unwrap()).unwrap();
-    assert!(page.contains("src=\"nested/im&quot; onerror=&quot;alert(1)&amp;/logo.gif\""));
-    assert!(page.contains("src=\"nested/im&quot; onerror=&quot;alert(1)&amp;/spacer.gif\""));
+    assert!(page.contains(&format!("src=\"{escaped_folder}/logo.gif\"")));
+    assert!(page.contains(&format!("src=\"{escaped_folder}/spacer.gif\"")));
+    assert!(page.contains("alt=\"x&quot; onerror=&quot;alert(1)\""));
     assert!(!page.contains("onerror=\"alert(1)\""));
     assert!(!page.contains("onclick=\"alert(1)\""));
-    assert!(std::path::Path::new(&format!("{dir}/{folder}/spacer.gif")).is_file());
+    assert!(std::path::Path::new(&dir).join(folder).join("spacer.gif").is_file());
 }
 
 #[cfg(unix)]
@@ -482,7 +487,7 @@ fn image_assets_are_generated_now_and_on_save() {
     d.layer_mut(lid).unwrap().name = "icon.png".into();
     let (files, errors) = generate_assets(&d, &dir);
     assert!(errors.is_empty(), "{errors:?}");
-    assert_eq!(files, vec![format!("{dir}/icon@2x.png")]);
+    assert_eq!(files.iter().map(|p| std::path::PathBuf::from(p.as_str())).collect::<Vec<_>>(), vec![std::path::Path::new(&dir).join("icon@2x.png")]);
     assert_eq!(decode(&files[0]).dimensions(), (128, 80));
 }
 
@@ -497,7 +502,7 @@ fn image_assets_reject_traversal_from_names_and_defaults() {
     d.layer_mut(id).unwrap().name =
         format!("nested/ok.png, ../escaped.png, ..\\backslash.png, {outside}/absolute.png, C:\\drive\\escape.png, CON.png, aux/escape.png, foo./trailing.png");
     let (files, errors) = generate_assets(&d, &dir);
-    assert_eq!(files, vec![format!("{dir}/nested/ok.png")]);
+    assert_eq!(files.iter().map(|p| std::path::PathBuf::from(p.as_str())).collect::<Vec<_>>(), vec![std::path::Path::new(&dir).join("nested").join("ok.png")]);
     assert_eq!(errors.len(), 7, "{errors:?}");
     assert!(errors.iter().all(|e| e["error"].as_str().unwrap().contains("unsafe component")), "{errors:?}");
     assert!(!std::path::Path::new(&format!("{base}/escaped.png")).exists());
@@ -509,7 +514,10 @@ fn image_assets_reject_traversal_from_names_and_defaults() {
         LayerContent::Group(photocraft_doc::Group { children: vec![], expanded: false, artboard: None }),
     ));
     let (files, errors) = generate_assets(&d, &dir);
-    assert_eq!(files, vec![format!("{dir}/nested/safe.png")]);
+    assert_eq!(
+        files.iter().map(|p| std::path::PathBuf::from(p.as_str())).collect::<Vec<_>>(),
+        vec![std::path::Path::new(&dir).join("nested").join("safe.png")]
+    );
     assert_eq!(errors.len(), 4, "{errors:?}");
     assert!(errors.iter().all(|e| e["error"].as_str().unwrap().contains("unsafe component")), "{errors:?}");
 }
