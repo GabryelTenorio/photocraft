@@ -145,10 +145,10 @@ pub(crate) fn candidates(app: &PhotocraftApp) -> Vec<(PathRef, Path)> {
             if !l.visible || !(1..=path.len()).all(|n| st.doc.layer_at(&path[..n]).is_some_and(|a| a.visible)) {
                 continue;
             }
-            if let photocraft_doc::LayerContent::Shape(sh) = &l.content {
-                if !out.iter().any(|(r, _)| *r == PathRef::Layer(l.id.0)) {
-                    out.push((PathRef::Layer(l.id.0), sh.path.clone()));
-                }
+            if let photocraft_doc::LayerContent::Shape(sh) = &l.content
+                && !out.iter().any(|(r, _)| *r == PathRef::Layer(l.id.0))
+            {
+                out.push((PathRef::Layer(l.id.0), sh.path.clone()));
             }
         }
     }
@@ -242,10 +242,10 @@ fn press(app: &mut PhotocraftApp, p: [f64; 2], mods: Modifiers, convert: bool) -
         app.ui.direct_selection.drag = Some(Drag::Marquee { start: p, end: p, add: mods.shift });
         return true;
     };
-    if let PathRef::Layer(id) = target {
-        if app.session.active().and_then(|st| st.active_layer).map(|l| l.0) != Some(id) {
-            let _ = app.run("layer.select", json!({"layer": id}));
-        }
+    if let PathRef::Layer(id) = target
+        && app.session.active().and_then(|st| st.active_layer).map(|l| l.0) != Some(id)
+    {
+        let _ = app.run("layer.select", json!({"layer": id}));
     }
     let ds = &mut app.ui.direct_selection;
     if ds.target != Some(target) {
