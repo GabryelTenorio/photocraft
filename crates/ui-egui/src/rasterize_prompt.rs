@@ -9,9 +9,9 @@
 //! Cancel does nothing.
 //!
 //! A filter on a type layer asks the same question (#4303), with Photoshop's Convert to Smart
-//! Object / Rasterize / Cancel: the layer is converted or rasterized, then the filter opens (or
-//! runs) on it, a smart filter on the Smart Object. `ui.dialog.set` with `"choice": "smartObject"`
-//! picks the conversion.
+//! Object / Rasterize / Cancel: the layer is converted or rasterized, then the filter is chosen
+//! again from the menu (its dialog, window or mode opens, or it runs), a smart filter on the Smart
+//! Object. `ui.dialog.set` with `"choice": "smartObject"` picks the conversion.
 
 use serde_json::{Map, Value, json};
 
@@ -125,14 +125,11 @@ pub fn open(app: &mut PhotocraftApp, kind: Kind, layer: photocraft_doc::LayerId,
     app.ui.open_dialog(DialogKind::Command, f)
 }
 
-/// Filters with their own window or mode (Liquify, Camera Raw…) and Last Filter, which needs
-/// the journal, are left greyed out on type layers.
-const OWN_UI_FILTERS: [&str; 5] = ["filter.liquify", "filter.filterGallery", "filter.cameraRaw", "filter.adaptiveWideAngle", "filter.lastFilter"];
-
 /// The active type layer when `id` is a filter that only needs it rasterized: the engine greys it
-/// for not being a pixel layer, and the layer is not locked.
-pub fn filter_needs(app: &PhotocraftApp, id: &str) -> Option<photocraft_doc::LayerId> {
-    if !id.starts_with("filter.") || OWN_UI_FILTERS.contains(&id) {
+/// for not being a pixel layer, and the layer is not locked. The flag says whether the filter also
+/// runs on a Smart Object, as a smart filter (Vanishing Point doesn't).
+pub fn filter_needs(app: &PhotocraftApp, id: &str) -> Option<(photocraft_doc::LayerId, bool)> {
+    if !id.starts_with("filter.") {
         return None;
     }
     let st = app.session.active()?;
@@ -144,14 +141,21 @@ pub fn filter_needs(app: &PhotocraftApp, id: &str) -> Option<photocraft_doc::Lay
     if locks.all || locks.pixels {
         return None;
     }
-    // The engine's reason for a type layer (filters::has_filterable_layer); any other reason
-    // (a job running, no last filter) keeps the item grey.
-    app.session.disabled_reason(id).filter(|r| r.starts_with("filters need a pixel layer")).map(|_| layer)
+    // Last Filter checks the layer before the journal: with no filter to repeat it stays grey.
+    if id == "filter.lastFilter" && photocraft_engine::filters::last_filter(&app.session).is_none() {
+        return None;
+    }
+    // The engine's reason for a type layer: "filters need a pixel layer (active layer is a Type
+    // layer)" from filters::has_filterable_layer, which also takes Smart Objects, or a filter's own
+    // wording ("Vanishing Point needs a pixel layer (…)", "active layer is a Type layer, not a pixel
+    // layer"). Any other reason (a job running) keeps the item grey.
+    let reason = app.session.disabled_reason(id)?;
+    (reason.contains("active layer is a Type layer") && reason.contains("pixel layer")).then(|| (layer, reason.starts_with("filters need a pixel layer")))
 }
 
 /// A filter chosen on a type layer: open the prompt instead and return its answer to the caller.
 pub fn intercept_filter(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
-    let layer = filter_needs(app, id)?;
+    let (layer, smart) = filter_needs(app, id)?;
     if let Some(d) = app.ui.dialogs.iter().find(|d| owns(&d.fields)) {
         return Some(Ok(json!({"dialog": d.id})));
     }
@@ -163,12 +167,18 @@ pub fn intercept_filter(app: &mut PhotocraftApp, id: &str, params: &Value) -> Op
     f.insert("filter".into(), json!(id));
     f.insert("params".into(), params.clone());
     f.insert("choice".into(), json!("rasterize"));
+    f.insert("smartObject".into(), json!(smart));
     Some(Ok(json!({"dialog": app.ui.open_dialog(DialogKind::Command, f)})))
 }
 
 /// Is this the filter prompt (Convert to Smart Object / Rasterize / Cancel)?
 pub fn is_filter(fields: &Map<String, Value>) -> bool {
     owns(fields) && fields.contains_key("filter")
+}
+
+/// Does the filter prompt offer Convert to Smart Object?
+pub fn offers_smart_object(fields: &Map<String, Value>) -> bool {
+    fields.get("smartObject").and_then(Value::as_bool) == Some(true)
 }
 
 /// Is this dialog the prompt?
@@ -213,21 +223,28 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
     Ok(json!({ "rasterized": r, "painted": painted }))
 }
 
-/// The filter prompt's answer: convert or rasterize the layer, then the filter's dialog, or the
-/// filter itself when it has none (or came with params).
+/// The filter prompt's answer: convert or rasterize the layer, then queue the filter for
+/// [`run_pending`]. Liquify, Camera Raw and the other filters with their own window need the
+/// egui context to open, which a dialog's answer doesn't have.
 fn confirm_filter(app: &mut PhotocraftApp, f: &Map<String, Value>, filter: &str, layer: u64) -> Result<Value, String> {
     let smart = f.get("choice").and_then(Value::as_str) == Some("smartObject");
+    if smart && !offers_smart_object(f) {
+        return Err(format!("{filter} can't run as a smart filter"));
+    }
     let command = if smart { "layer.smartObjects.convertToSmartObject" } else { Kind::Type.command() };
     let r = app.run(command, json!({ "layer": layer }))?;
     let params = f.get("params").cloned().unwrap_or(Value::Null);
-    if params.as_object().is_none_or(|o| o.is_empty())
-        && crate::filter_dialog::has_dialog(filter)
-        && let Some(d) = crate::filter_dialog::open(app, filter)
-    {
-        return Ok(json!({ "converted": r, "dialog": d }));
+    app.pending_after_prompt = Some((filter.to_string(), params));
+    Ok(json!({ "converted": r, "filter": filter }))
+}
+
+/// Runs the filter a prompt was answered for, as the menu would, now that the layer can take it.
+pub fn run_pending(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    let Some((filter, params)) = app.pending_after_prompt.take() else { return };
+    if let Err(e) = crate::menus::invoke(app, ctx, &filter, params) {
+        app.ui.status = e;
+        app.ui.status_error = true;
     }
-    let applied = app.run(filter, params)?;
-    Ok(json!({ "converted": r, "filter": applied }))
 }
 
 #[cfg(test)]
