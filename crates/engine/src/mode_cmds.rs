@@ -320,8 +320,17 @@ fn color_table(s: &mut Session, p: &Value) -> Result<Value> {
     }
     match p.get("transparent") {
         Some(Value::Null) => table.transparent = None,
-        Some(v) => table.transparent = v.as_u64().filter(|&i| (i as usize) < table.colors.len()).map(|i| i as u8).or(table.transparent),
+        Some(v) => {
+            let i = v.as_u64().ok_or_else(|| bad(CMD, "transparent: an index or null"))?;
+            if i as usize >= table.colors.len() {
+                return Err(bad(CMD, format!("transparent index {i} is past the table ({} entries)", table.colors.len())));
+            }
+            table.transparent = Some(i as u8);
+        }
         None => {}
+    }
+    if table.transparent.is_some_and(|t| t as usize >= table.colors.len()) {
+        table.transparent = None;
     }
     let report = |t: &ColorTable| json!({"colors": t.colors.iter().map(|c| hex(*c)).collect::<Vec<_>>(), "transparent": t.transparent});
     if table == cur {

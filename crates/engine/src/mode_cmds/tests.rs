@@ -235,6 +235,41 @@ fn color_table_presets_and_entries() {
 }
 
 #[test]
+fn color_table_shrink_drops_transparent_index_past_the_end() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 8, "height": 8, "background": "transparent"})).unwrap();
+    paint(&mut s, |x, _| {
+        if x < 3 {
+            [1.0, 0.0, 0.0, 1.0]
+        } else if x < 6 {
+            [0.0, 0.0, 1.0, 1.0]
+        } else {
+            [0.0; 4]
+        }
+    });
+    s.execute("image.mode.indexedColor", json!({"palette": "exact", "forced": "none"})).unwrap();
+    assert_eq!(doc(&s).color_table.as_ref().unwrap().transparent, Some(2));
+    // Shrinking the palette past the transparent index drops it instead of keeping a dangling one.
+    let r = s.execute("image.mode.colorTable", json!({"colors": ["#000000", "#ffffff"]})).unwrap();
+    assert_eq!(r["transparent"], Value::Null);
+    assert_eq!(doc(&s).color_table.as_ref().unwrap().transparent, None);
+    // An invalid explicit index is an error, not a silent keep of the old one.
+    for bad in [json!(999), json!(2), json!(-1), json!("1"), json!(1.5), json!(true)] {
+        assert!(s.execute("image.mode.colorTable", json!({"transparent": bad})).is_err(), "{bad}");
+    }
+    assert_eq!(doc(&s).color_table.as_ref().unwrap().transparent, None);
+    // A valid index still works, and the indexed PNG export that failed on the dangling index succeeds.
+    s.execute("image.mode.colorTable", json!({"transparent": 1})).unwrap();
+    assert_eq!(doc(&s).color_table.as_ref().unwrap().transparent, Some(1));
+    let dir = std::env::temp_dir().join(format!("photocraft-color-table-{}-{}", std::process::id(), "shrink"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("out.png");
+    s.execute("file.saveACopy", json!({"path": out.to_str().unwrap()})).unwrap();
+    assert!(out.exists());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn clearing_color_table_transparency_restores_indexed_pixels() {
     let pixel = |s: &mut Session| -> [f32; 4] { serde_json::from_value(s.execute("document.pixel", json!({"x": 5, "y": 8})).unwrap()).unwrap() };
     let mut s = Session::new();
