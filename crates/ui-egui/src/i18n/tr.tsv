@@ -3921,3 +3921,7 @@ cameraRaw	White balance	Beyaz dengesi
 cameraRaw	Zoom and Pan	Yakınlaştırma ve Kaydırma
 	AHD (adaptive homogeneity)	AHD (uyarlamalı homojenlik)
 	Malvar–He–Cutler	Malvar–He–Cutler
+
+# Camera Raw › Profile: the camera's own rendering of a raw file (written from the plain meaning)
+cameraRaw	Camera Standard	Kamera Standardı
+	The raw file is still being developed	RAW dosyası hâlâ işleniyor
