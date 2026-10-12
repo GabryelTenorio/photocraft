@@ -1719,7 +1719,8 @@ fn icon_label(ui: &mut egui::Ui, icon: &str, tip: &str) {
     let t = crate::theme::Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(egui::vec2(crate::props_layout::LABEL_W, 22.0), egui::Sense::hover());
     crate::icons::paint(ui, r, icon, 12.0, t.text_dim);
-    resp.on_hover_text(tip);
+    // Photoshop's Character panel icons scrub the field beside them.
+    crate::widgets::scrub_label(ui, &resp.on_hover_text(tip));
 }
 
 /// Labelled numeric field (Photoshop's icon + value pairs). Returns the new value when edited.
@@ -1731,7 +1732,7 @@ fn num_field(ui: &mut egui::Ui, label: &str, tip: &str, v: f32, range: std::ops:
         ui.spacing_mut().item_spacing.x = 4.0;
         let (r, resp) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
         ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, crate::theme::semibold(10.0), t.text_dim);
-        resp.on_hover_text(tip);
+        crate::widgets::scrub_label(ui, &resp.on_hover_text(tip));
         if crate::widgets::value_field(ui, &mut v, range, unit, width).changed() {
             out = Some(v);
         }
@@ -1943,6 +1944,8 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
         axis_sliders(app, ui, &c);
         row(ui, &mut |ui| {
             let k = shown_scale(app);
+            // Hover tips stay English until wired through `tl!` in a multi-locale change
+            // (`every_tl_literal_is_translated` requires every complete catalog).
             if let Some(v) = num_field(ui, "tT", "Font size", c.size_pt * k, 0.1..=1296.0, "pt", w) {
                 app.ui.tool_options.type_size = v;
                 apply(app, ui.ctx(), json!({"size": v, "metricsAsShown": true}));
@@ -1999,18 +2002,19 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
         });
         // Faux styles: T (bold)  T (italic)  TT  Tᴛ  T̲  T̶, sharing the row evenly.
         let caps = c.caps;
+        // Tip strings are English keys; `toggle_cell` runs them through `tl!`.
         let toggles: [(&str, &str, bool, serde_json::Value); 6] = [
             ("T", "Faux Bold", c.faux_bold, json!({"fauxBold": !c.faux_bold})),
             ("T", "Faux Italic", c.faux_italic, json!({"fauxItalic": !c.faux_italic})),
             (
                 "TT",
-                tl!("All Caps"),
+                "All Caps",
                 caps == photocraft_doc::text::Caps::AllCaps,
                 json!({"caps": if caps == photocraft_doc::text::Caps::AllCaps { "normal" } else { "allCaps" }}),
             ),
             (
                 "Tᴛ",
-                tl!("Small Caps"),
+                "Small Caps",
                 caps == photocraft_doc::text::Caps::SmallCaps,
                 json!({"caps": if caps == photocraft_doc::text::Caps::SmallCaps { "normal" } else { "smallCaps" }}),
             ),
