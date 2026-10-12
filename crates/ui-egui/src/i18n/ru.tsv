@@ -2995,3 +2995,7 @@ curves	Smooth	Сгладить
 	Remove after each stroke	Удалять после каждого штриха
 	Apply the removal ({key})	Применить удаление ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Изменить выбранные направляющие
+	Clear Selected Guides	Удалить выбранные направляющие

@@ -3051,3 +3051,7 @@ curves	Smooth	Lisser
 	Remove after each stroke	Supprimer après chaque trait
 	Apply the removal ({key})	Appliquer la suppression ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traits à supprimer : {n} (Entrée applique, Échap annule)
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Modifier les repères sélectionnés
+	Clear Selected Guides	Effacer les repères sélectionnés

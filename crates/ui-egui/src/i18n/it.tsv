@@ -4014,3 +4014,6 @@ navigator	Zoom	Zoom
 	Remove after each stroke	Rimuovi dopo ogni tratto
 	Apply the removal ({key})	Applica la rimozione ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Tratti da rimuovere: {n} (Invio applica, Esc annulla)
+# View › Guides › right-click a guide
+	Edit Selected Guides	Modifica guide selezionate
+	Clear Selected Guides	Cancella guide selezionate

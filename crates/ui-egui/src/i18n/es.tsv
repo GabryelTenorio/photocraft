@@ -2731,3 +2731,7 @@ curves	Smooth	Suavizar
 	Remove after each stroke	Eliminar después de cada trazo
 	Apply the removal ({key})	Aplicar la eliminación ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Trazos por eliminar: {n} (Intro aplica, Esc cancela)
+
+# View › Guides › right-click a guide
+	Edit Selected Guides	Editar guías seleccionadas
+	Clear Selected Guides	Borrar guías seleccionadas
