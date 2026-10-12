@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: Character panel OpenType buttons landed, TYPE-218-5 stays partial; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G8: Character panel OpenType buttons landed, TYPE-218-5 stays partial; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation; G5: hold-a-key spring-loaded tools landed, #2672) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -146,8 +146,7 @@ what an agent can't finish alone.
   blend mode/opacity edits during a transform (#1384); locked layers refused before the drag
   (#2585); ⌘-drag temporary Move without box or snapping (#2681), Auto-Select box follows the
   previous layer (#2666); ⌘-arrow layer nudge (#2474); path-point nudge; polygonal lasso Shift
-  angles (#2352); autoscroll at the edge while selecting (#2231); hold-a-key spring-loaded tools
-  (#2672); double-click Zoom tool to 100% (#2508); wheel and pinch behaviour (#2485, #2463,
+  angles (#2352); autoscroll at the edge while selecting (#2231); double-click Zoom tool to 100% (#2508); wheel and pinch behaviour (#2485, #2463,
   #1989); toolbar press-and-hold flyouts (#2301); tool-key memory in a group (#2608).
 - **Detail:** [`ui-parity.md`](ui-parity.md).
 - **Estimate:** 60–110 h.
@@ -232,3 +231,4 @@ what an agent can't finish alone.
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |
+| 2026-10-12 | minor | G5: spring-loaded tool letters done (#2672) |
