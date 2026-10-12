@@ -1210,7 +1210,24 @@ fn detect_physical_memory() -> Option<u64> {
     String::from_utf8(out.stdout).ok()?.trim().parse().ok()
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd")))]
+/// Windows has no `/proc/meminfo`; CIM reports installed RAM without FFI (#3814).
+#[cfg(target_os = "windows")]
+fn detect_physical_memory() -> Option<u64> {
+    let ps = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory"])
+        .output()
+        .ok()?;
+    if ps.status.success() {
+        if let Some(n) = String::from_utf8(ps.stdout).ok()?.trim().parse().ok() {
+            return Some(n);
+        }
+    }
+    let wmic = std::process::Command::new("wmic").args(["ComputerSystem", "get", "TotalPhysicalMemory", "/value"]).output().ok()?;
+    let text = String::from_utf8(wmic.stdout).ok()?;
+    text.lines().find_map(|l| l.strip_prefix("TotalPhysicalMemory="))?.trim().parse().ok()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "windows")))]
 fn detect_physical_memory() -> Option<u64> {
     None
 }
