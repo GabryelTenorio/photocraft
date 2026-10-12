@@ -269,6 +269,7 @@ pub(crate) fn load(src: &dyn ByteSource, opts: &LoadOptions) -> Result<Document>
         id_map: HashMap::new(),
         contents_id_map: HashMap::new(),
         legacy_linked_contents: HashMap::new(),
+        tiles: HashMap::new(),
     };
     loader.document(&m.document)
 }
@@ -813,10 +814,14 @@ impl PcraftWriter {
             }
         }
         write_bundle_file(dir, &dir.join(MANIFEST), &p.manifest)?;
+        // The manifest is committed: the save has succeeded. Removing objects it no longer
+        // references is best-effort housekeeping (a vanished or locked file must not turn a
+        // complete save into a reported failure); a leftover is retried on the next save.
         for path in existing {
             if !p.objects.contains_key(&path) {
-                remove_bundle_file(dir, &dir.join(&path))?;
-                stats.objects_removed += 1;
+                if remove_bundle_file(dir, &dir.join(&path)).is_ok() {
+                    stats.objects_removed += 1;
+                }
                 if let Some(cache) = &mut self.verified_directory {
                     cache.objects.remove(&path);
                 }
@@ -875,8 +880,18 @@ fn list_objects(dir: &Path) -> Result<HashSet<String>> {
             let e = e?;
             let name = e.file_name().to_string_lossy().into_owned();
             if name.ends_with(".zst") {
-                plain_file_or_missing(&e.path())?;
-                out.insert(format!("{sub}/{name}"));
+                let path = e.path();
+                match std::fs::symlink_metadata(&path) {
+                    Ok(metadata) if metadata.file_type().is_symlink() => return Err(unsafe_bundle_entry(&path)),
+                    Ok(metadata) if metadata.is_file() => {
+                        out.insert(format!("{sub}/{name}"));
+                    }
+                    // Stale directories cannot be removed with remove_file; leave them for later
+                    // cleanup without failing a save of otherwise valid content.
+                    Ok(_) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                }
             }
         }
     }
