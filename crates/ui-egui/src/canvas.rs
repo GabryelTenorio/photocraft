@@ -3432,6 +3432,17 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                         egui::CursorIcon::ZoomIn
                     }
                 }
+                Tool::Pen => {
+                    let badge = if crate::vector_ui::can_close_pen_path(app, xf.to_doc(p)) {
+                        crate::icons::PenBadge::Close
+                    } else if crate::vector_ui::can_resume_pen_path(app, xf.to_doc(p)) {
+                        crate::icons::PenBadge::Resume
+                    } else {
+                        crate::icons::PenBadge::None
+                    };
+                    crate::icons::pen_cursor(ui.ctx(), p, badge);
+                    egui::CursorIcon::None
+                }
                 Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => egui::CursorIcon::Text,
                 Tool::MagneticLasso => crate::magnetic_lasso_ui::cursor(app, &painter, p, xf.zoom),
                 Tool::RedEye => {

@@ -1081,6 +1081,9 @@ pub struct UiState {
     /// Pen path under construction.
     #[serde(default)]
     pub pen: Option<crate::vector_ui::PenPath>,
+    /// Target path container from which the pen path was resumed, if any.
+    #[serde(default)]
+    pub pen_resumed_target: Option<crate::vector_ui::PathTarget>,
     #[serde(default)]
     pub stroke_editor: Option<crate::shape_stroke_ui::StrokeEditor>,
     /// Direct Selection tool: selected anchors and the drag in progress (#790).
@@ -1253,6 +1256,7 @@ impl Default for UiState {
             shell: Default::default(),
             layer_filter: Vec::new(),
             pen: None,
+            pen_resumed_target: None,
             stroke_editor: None,
             direct_selection: Default::default(),
             selected_path: None,
