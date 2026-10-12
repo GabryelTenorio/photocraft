@@ -55,11 +55,7 @@ mod tests {
     use photocraft_format::zip::ZipWriter;
 
     fn png() -> Vec<u8> {
-        let image = Image::from_raw(
-            2, 1, ChannelLayout::Rgba, SampleType::U8,
-            vec![255, 0, 0, 255, 0, 0, 255, 128],
-        )
-        .unwrap();
+        let image = Image::from_raw(2, 1, ChannelLayout::Rgba, SampleType::U8, vec![255, 0, 0, 255, 0, 0, 255, 128]).unwrap();
         codecs::encode(&image, Format::Png, &EncodeOptions::default()).unwrap()
     }
 
