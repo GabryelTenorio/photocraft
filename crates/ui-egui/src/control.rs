@@ -46,12 +46,23 @@ pub type ControlResponse = Value;
 /// The control server's per-request reply deadline.
 pub const REPLY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// The error both timeout sites return when a request's [`REPLY_DEADLINE`] passes: the
-/// transport thread waiting for a reply, and the UI thread rejecting a request it is only
-/// now draining. Built from the same constant, so the text cannot drift from the deadline.
+/// The error the transport thread returns when no reply came within [`REPLY_DEADLINE`]. It
+/// cannot see whether the command ran, so it warns that it may still apply: re-sending blindly
+/// could apply an edit twice (#3662). Built from the deadline constant, so the text cannot drift
+/// from it.
 pub fn timeout_error() -> String {
     format!(
-        "timeout: no reply in {}s — the command may still be running, or the app was not drawing frames (display asleep, window fully occluded, or a long operation blocked the frame loop)",
+        "timeout: no reply in {}s — the command may still be running and may still apply, or the app was not drawing frames (display asleep, window fully occluded, or a long operation blocked the frame loop)",
+        REPLY_DEADLINE.as_secs()
+    )
+}
+
+/// The error the UI thread returns for a request still queued when its deadline passed. It was
+/// dropped before dispatch, so re-sending it is safe (#3662). Same `timeout` prefix as
+/// [`timeout_error`], which machines match on.
+pub fn expired_error() -> String {
+    format!(
+        "timeout: not run — the request was still queued when its {}s deadline passed, so it was dropped before dispatch and is safe to re-send; the app was not drawing frames (display asleep, window fully occluded, or a long operation blocked the frame loop)",
         REPLY_DEADLINE.as_secs()
     )
 }
@@ -1567,11 +1578,18 @@ mod tests {
         retry.deadline = Some(Instant::now() + Duration::from_secs(60));
         tx.send(retry).unwrap();
         app.drain_control(&egui::Context::default());
-        assert_eq!(expired_reply.try_recv().unwrap(), json!({"ok": false, "error": super::timeout_error()}));
+        let expired_error = expired_reply.try_recv().unwrap()["error"].as_str().unwrap().to_string();
         assert_eq!(retry_reply.try_recv().unwrap()["ok"], true);
         let after = app.session.active().unwrap();
         assert_eq!(after.doc.layers.len(), layers + 1, "only the live retry adds a layer");
         assert_eq!(after.history.past_len(), steps + 1, "the expired edit adds no undo step");
+        // #3662: a caller must be able to tell this reply, safe to re-send, from the
+        // transport's, sent while the command may still apply.
+        assert!(expired_error.starts_with("timeout"), "machines match on the prefix: {expired_error}");
+        assert!(expired_error.contains("not run"), "the expired request says it never ran: {expired_error}");
+        let transport_error = super::timeout_error();
+        assert!(!transport_error.contains("not run"), "the transport can't know it didn't run: {transport_error}");
+        assert!(transport_error.contains("may still apply"), "the transport warns against a blind re-send: {transport_error}");
     }
 
     #[test]

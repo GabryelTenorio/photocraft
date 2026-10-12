@@ -1469,7 +1469,7 @@ impl PhotocraftApp {
         while let Ok(req) = rx.try_recv() {
             let reply = req.reply.clone();
             if req.deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-                let _ = reply.send(serde_json::json!({"ok": false, "error": control::timeout_error()}));
+                let _ = reply.send(serde_json::json!({"ok": false, "error": control::expired_error()}));
                 continue;
             }
             match control::handle(self, ctx, &req) {
