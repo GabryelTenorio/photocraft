@@ -159,17 +159,6 @@ fn guide_segment(xf: &ViewXform, clip: Rect, vertical: bool, pos: f64) -> [Pos2;
     if vertical { [xf.to_screen(pos, lo), xf.to_screen(pos, hi)] } else { [xf.to_screen(lo, pos), xf.to_screen(hi, pos)] }
 }
 
-pub(crate) fn parse_guide_color(value: &str) -> Option<Color32> {
-    let value = value.strip_prefix('#')?;
-    if value.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(value.get(0..2)?, 16).ok()?;
-    let g = u8::from_str_radix(value.get(2..4)?, 16).ok()?;
-    let b = u8::from_str_radix(value.get(4..6)?, 16).ok()?;
-    Some(Color32::from_rgb(r, g, b))
-}
-
 pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, doc: &Document) {
     let clip = painter.clip_rect();
     let drag = app.guide_drag;
@@ -182,18 +171,23 @@ pub fn draw_guides(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
         let [a, b] = guide_segment(xf, clip, vertical, pos);
         styled_line(painter, a, b, Stroke::new(1.0, color), style);
     };
+    // A guide given a colour in New Guide keeps it; the rest use the preference colour (or, while
+    // New Guide Layout previews, the colour it will set).
+    let own = |vertical: bool, p: f64| guides.color(vertical, p).map_or(guide, |[r, g, b]| Color32::from_rgb(r, g, b));
     if app.ui.extras.guides || preview.is_some() {
         for (vertical, list) in [(true, &guides.vertical), (false, &guides.horizontal)] {
             for (i, p) in list.iter().enumerate() {
                 if drag.is_some_and(|d| d.vertical == vertical && d.index == Some(i)) {
                     continue;
                 }
-                line(vertical, *p, guide);
+                line(vertical, *p, own(vertical, *p));
             }
         }
     }
     if let Some(d) = drag {
-        line(d.vertical, d.pos, guide);
+        // A guide being moved shows its own colour; a new one dragged from a ruler the preference's.
+        let list = if d.vertical { &doc.guides.vertical } else { &doc.guides.horizontal };
+        line(d.vertical, d.pos, d.index.and_then(|i| list.get(i)).map_or(guide, |p| own(d.vertical, *p)));
     }
 }
 
@@ -274,7 +268,7 @@ fn ruler_range(xf: &ViewXform, a: Pos2, b: Pos2, axis: usize, px_per_unit: f64, 
 
 /// Snap a document position to the nearest ruler tick, measured from the zero point `origin`
 /// (`tick` px apart). Shift-dragging the zero point lands it on a tick, as in Photoshop.
-fn snap_to_tick(px: f64, origin: f64, tick: f64) -> f64 {
+fn snap_px_to_tick(px: f64, origin: f64, tick: f64) -> f64 {
     if !(tick.is_finite() && tick > 0.0) {
         return px;
     }
@@ -285,7 +279,7 @@ fn snap_to_tick(px: f64, origin: f64, tick: f64) -> f64 {
 /// nearest ruler tick (`ticks`, px per axis) with Shift, else View › Snap To targets.
 fn origin_drop(app: &mut PhotocraftApp, d: [f64; 2], shift: bool, origin: [f64; 2], ticks: [f64; 2]) -> [f64; 2] {
     if shift {
-        [snap_to_tick(d[0], origin[0], ticks[0]), snap_to_tick(d[1], origin[1], ticks[1])]
+        [snap_px_to_tick(d[0], origin[0], ticks[0]), snap_px_to_tick(d[1], origin[1], ticks[1])]
     } else {
         [crate::snap_ui::snap_guide(app, true, d[0]), crate::snap_ui::snap_guide(app, false, d[1])]
     }
@@ -297,6 +291,30 @@ fn ruler_pos(xf: &ViewXform, vertical: bool, u: f64, px_per_unit: f64, zero: [f6
     let px = (u * px_per_unit) as f32;
     let rxf = ruler_xform(xf, zero);
     if vertical { rxf.to_screen(0.0, px).y } else { rxf.to_screen(px, 0.0).x }
+}
+
+/// Document pixels per ruler unit and the labelled tick step (in ruler units) of the top ruler
+/// (`y_axis` false) or the left one, from Preferences › Units & Rulers and the zoom. Minor ticks
+/// sit at tenths of the step.
+fn ruler_scale(app: &PhotocraftApp, xf: &ViewXform, y_axis: bool) -> (f64, f64) {
+    let ur = &app.session.prefs().units_and_rulers;
+    let (unit, ppi) = (ur.rulers, ur.point_size.per_inch());
+    let (dpi, size) =
+        app.session.active().map_or((72.0, [1.0, 1.0]), |d| (d.doc.resolution_dpi.max(1.0) as f64, [d.doc.size.width as f64, d.doc.size.height as f64]));
+    let px_per_unit = unit.to_px(1.0, dpi, if y_axis { size[1] } else { size[0] }, ppi).max(1e-9);
+    // The top ruler runs along document x, which pixel aspect correction stretches.
+    let zoom = if y_axis { xf.zoom } else { xf.zoom_x() };
+    (px_per_unit, nice_step(60.0 / (zoom as f64 * px_per_unit).max(1e-6), unit == Unit::Pixels))
+}
+
+/// `pos` (document px) moved to the nearest tick mark the ruler draws (counted from the zero point): where a guide lands when
+/// Shift is held while dragging it out of a ruler, as in Photoshop (#3770).
+fn snap_to_tick(app: &PhotocraftApp, xf: &ViewXform, vertical: bool, pos: f64) -> f64 {
+    // A vertical guide sits at an x position, which the top ruler measures.
+    let (px_per_unit, step) = ruler_scale(app, xf, !vertical);
+    // Ticks count from the zero point (#2955), which a vertical guide measures along x.
+    let origin = app.session.active().map_or(0.0, |d| d.doc.ruler_origin[usize::from(!vertical)]);
+    snap_px_to_tick(pos, origin, step / 10.0 * px_per_unit)
 }
 
 /// The number a ruler prints at the tick `v` (in ruler units). Like Photoshop, rulers show the
@@ -323,20 +341,14 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
     let font = egui::FontId::proportional(9.0);
     let tick = Stroke::new(1.0, t.text_faint);
     // Preferences › Units & Rulers: labels in the ruler unit (percent of the document's side).
-    let ur = &app.session.prefs().units_and_rulers;
-    let (unit, ppi) = (ur.rulers, ur.point_size.per_inch());
-    let (dpi, size) =
-        app.session.active().map_or((72.0, [1.0, 1.0]), |d| (d.doc.resolution_dpi.max(1.0) as f64, [d.doc.size.width as f64, d.doc.size.height as f64]));
-    let whole = unit == photocraft_engine::prefs::Unit::Pixels;
+    let unit = app.session.prefs().units_and_rulers.rulers;
+    let whole = unit == Unit::Pixels;
     // The zero point (#2955): rulers read 0 there and count the distance from it.
     let origin = app.session.active().map_or([0.0, 0.0], |d| d.doc.ruler_origin);
     let mut ticks = [1.0; 2];
-    for (vertical, extent) in [(false, size[0]), (true, size[1])] {
+    for vertical in [false, true] {
         let p = p.with_clip_rect(if vertical { left } else { top });
-        let px_per_unit = unit.to_px(1.0, dpi, extent, ppi).max(1e-9);
-        // The top ruler runs along document x, which pixel aspect correction stretches.
-        let zoom = if vertical { xf.zoom } else { xf.zoom_x() };
-        let step = nice_step(60.0 / (zoom as f64 * px_per_unit).max(1e-6), whole);
+        let (px_per_unit, step) = ruler_scale(app, xf, vertical);
         ticks[usize::from(vertical)] = step * px_per_unit / 10.0;
         let (u0, u1) = if vertical {
             ruler_range(xf, left.left_top(), left.left_bottom(), 1, px_per_unit, origin)
@@ -388,7 +400,8 @@ pub fn draw_rulers(app: &mut PhotocraftApp, ui: &mut egui::Ui, full: Rect, xf: &
         }
         if let Some(pos) = resp.interact_pointer_pos().filter(|_| salt != "ruler-corner" && (resp.dragged() || resp.drag_started())) {
             let d = xf.to_doc(pos);
-            let pos = crate::snap_ui::snap_guide(app, vertical, if vertical { d[0] } else { d[1] });
+            let along = if vertical { d[0] } else { d[1] };
+            let pos = if ui.input(|i| i.modifiers.shift) { snap_to_tick(app, xf, vertical, along) } else { crate::snap_ui::snap_guide(app, vertical, along) };
             app.guide_drag = Some(GuideDrag { vertical, index: None, pos });
         }
         if resp.drag_stopped()
@@ -488,14 +501,14 @@ mod tests {
 
     #[test]
     fn shift_snaps_the_zero_point_to_ruler_ticks_from_the_current_origin() {
-        assert_eq!(snap_to_tick(47.0, 0.0, 10.0), 50.0);
-        assert_eq!(snap_to_tick(44.9, 0.0, 10.0), 40.0);
+        assert_eq!(snap_px_to_tick(47.0, 0.0, 10.0), 50.0);
+        assert_eq!(snap_px_to_tick(44.9, 0.0, 10.0), 40.0);
         // Ticks run from the current zero point, so they sit at 3 + 10k.
-        assert_eq!(snap_to_tick(47.0, 3.0, 10.0), 43.0);
-        assert_eq!(snap_to_tick(-8.0, 3.0, 10.0), -7.0);
+        assert_eq!(snap_px_to_tick(47.0, 3.0, 10.0), 43.0);
+        assert_eq!(snap_px_to_tick(-8.0, 3.0, 10.0), -7.0);
         // A degenerate tick never panics or moves the point.
         for tick in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-            assert_eq!(snap_to_tick(47.5, 3.0, tick), 47.5);
+            assert_eq!(snap_px_to_tick(47.5, 3.0, tick), 47.5);
         }
     }
 
@@ -890,5 +903,49 @@ mod tests {
             assert!(u0 <= u1, "flip={flip}: u0 ({u0}) must be <= u1 ({u1})");
             assert!(u1 - u0 > 0.0, "flip={flip}: range is empty");
         }
+    }
+
+    /// #3770: a guide Shift-dragged out of a ruler lands on the nearest tick the ruler draws
+    /// (tenths of the labelled step, in the ruler unit); without Shift it lands where it's dropped.
+    #[test]
+    fn shift_dragged_guides_land_on_ruler_ticks() {
+        let full = Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0));
+        let rect = Rect::from_min_max(full.min + vec2(RULER, RULER), full.max);
+        let xf = ViewXform { rect, zoom: 1.0, center: [128.0, 64.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let new_app = || {
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+            app.run("file.new", json!({"width": 256, "height": 128})).unwrap();
+            app
+        };
+        let drag_guide = |modifiers: egui::Modifiers| {
+            let builder = egui_kittest::Harness::builder().with_size(vec2(400.0, 300.0));
+            let mut h = builder.build_ui_state(move |ui, app| draw_rulers(app, ui, full, &xf), new_app());
+            // Out of the left ruler: a vertical guide, dropped at document x = 37.
+            let (from, to) = (pos2(RULER / 2.0, 100.0), xf.to_screen(37.0, 64.0));
+            h.event_modifiers(egui::Event::PointerMoved(from), modifiers);
+            h.event_modifiers(egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers }, modifiers);
+            h.run_steps(1);
+            h.event_modifiers(egui::Event::PointerMoved(to), modifiers);
+            h.run_steps(1);
+            h.event_modifiers(egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers }, modifiers);
+            h.run_steps(2);
+            h.state().session.active().unwrap().doc.guides.vertical.clone()
+        };
+        assert_eq!(drag_guide(egui::Modifiers::NONE), vec![37.0]);
+        // Pixels at 100%: labels every 100 px, ticks every 10 px.
+        assert_eq!(drag_guide(egui::Modifiers::SHIFT), vec![40.0]);
+
+        let mut app = new_app();
+        // At 200% the labels are every 50 px, so the ticks every 5 px.
+        assert_eq!(snap_to_tick(&app, &ViewXform { zoom: 2.0, ..xf }, true, 37.0), 35.0);
+        // Percent of each side: ticks every 2.5% of 256 px across, every 5% of 128 px down.
+        app.run("prefs.set", json!({"path": "unitsAndRulers.rulers", "value": "percent"})).unwrap();
+        assert!((snap_to_tick(&app, &xf, true, 37.0) - 38.4).abs() < 1e-9);
+        assert!((snap_to_tick(&app, &xf, false, 37.0) - 38.4).abs() < 1e-9);
+        // Ticks count from the zero point (#2955): a vertical guide follows the x origin only.
+        let mut app = new_app();
+        app.run("view.setRulerOrigin", json!({"x": 3, "y": 0})).unwrap();
+        assert_eq!(snap_to_tick(&app, &xf, true, 37.0), 33.0);
+        assert_eq!(snap_to_tick(&app, &xf, false, 37.0), 40.0);
     }
 }
