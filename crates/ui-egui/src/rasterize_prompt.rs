@@ -7,6 +7,11 @@
 //! and `ui.dialog.cancel` answer it). OK runs the matching `layer.rasterize.*` command, then paints
 //! where the click was, so rasterizing and painting are two history states, as in Photoshop.
 //! Cancel does nothing.
+//!
+//! A filter on a type layer asks the same question (#4303), with Photoshop's Convert to Smart
+//! Object / Rasterize / Cancel: the layer is converted or rasterized, then the filter opens (or
+//! runs) on it, a smart filter on the Smart Object. `ui.dialog.set` with `"choice": "smartObject"`
+//! picks the conversion.
 
 use serde_json::{Map, Value, json};
 
@@ -120,6 +125,52 @@ pub fn open(app: &mut PhotocraftApp, kind: Kind, layer: photocraft_doc::LayerId,
     app.ui.open_dialog(DialogKind::Command, f)
 }
 
+/// Filters with their own window or mode (Liquify, Camera Raw…) and Last Filter, which needs
+/// the journal, are left greyed out on type layers.
+const OWN_UI_FILTERS: [&str; 5] = ["filter.liquify", "filter.filterGallery", "filter.cameraRaw", "filter.adaptiveWideAngle", "filter.lastFilter"];
+
+/// The active type layer when `id` is a filter that only needs it rasterized: the engine greys it
+/// for not being a pixel layer, and the layer is not locked.
+pub fn filter_needs(app: &PhotocraftApp, id: &str) -> Option<photocraft_doc::LayerId> {
+    if !id.starts_with("filter.") || OWN_UI_FILTERS.contains(&id) {
+        return None;
+    }
+    let st = app.session.active()?;
+    let layer = st.active_layer?;
+    if !matches!(st.doc.layer(layer)?.content, photocraft_doc::LayerContent::Text(_)) {
+        return None;
+    }
+    let locks = st.doc.effective_locks(layer);
+    if locks.all || locks.pixels {
+        return None;
+    }
+    // The engine's reason for a type layer (filters::has_filterable_layer); any other reason
+    // (a job running, no last filter) keeps the item grey.
+    app.session.disabled_reason(id).filter(|r| r.starts_with("filters need a pixel layer")).map(|_| layer)
+}
+
+/// A filter chosen on a type layer: open the prompt instead and return its answer to the caller.
+pub fn intercept_filter(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
+    let layer = filter_needs(app, id)?;
+    if let Some(d) = app.ui.dialogs.iter().find(|d| owns(&d.fields)) {
+        return Some(Ok(json!({"dialog": d.id})));
+    }
+    let mut f = Map::new();
+    f.insert(MARK.into(), json!(Kind::Type.key()));
+    f.insert("__label".into(), json!("PhotoCraft"));
+    f.insert("message".into(), json!(Kind::Type.message()));
+    f.insert("layer".into(), json!(layer.0));
+    f.insert("filter".into(), json!(id));
+    f.insert("params".into(), params.clone());
+    f.insert("choice".into(), json!("rasterize"));
+    Some(Ok(json!({"dialog": app.ui.open_dialog(DialogKind::Command, f)})))
+}
+
+/// Is this the filter prompt (Convert to Smart Object / Rasterize / Cancel)?
+pub fn is_filter(fields: &Map<String, Value>) -> bool {
+    owns(fields) && fields.contains_key("filter")
+}
+
 /// Is this dialog the prompt?
 pub fn owns(fields: &Map<String, Value>) -> bool {
     fields.contains_key(MARK)
@@ -141,6 +192,9 @@ pub fn body(ui: &mut egui::Ui, f: &Map<String, Value>) {
 pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
     let kind = f.get(MARK).and_then(Value::as_str).and_then(Kind::from_key).ok_or("not a rasterize prompt")?;
     let layer = f.get("layer").and_then(Value::as_u64).ok_or("the prompt has no layer")?;
+    if let Some(filter) = f.get("filter").and_then(Value::as_str) {
+        return confirm_filter(app, f, filter, layer);
+    }
     let r = app.run(kind.command(), json!({ "layer": layer }))?;
     let tool = f.get("tool").and_then(Value::as_str).and_then(Tool::from_name);
     let at: Vec<f64> = f.get("at").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_f64).collect()).unwrap_or_default();
@@ -157,6 +211,23 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
     }
     let painted = app.session.active().map(|st| st.history.past_len()) != before;
     Ok(json!({ "rasterized": r, "painted": painted }))
+}
+
+/// The filter prompt's answer: convert or rasterize the layer, then the filter's dialog, or the
+/// filter itself when it has none (or came with params).
+fn confirm_filter(app: &mut PhotocraftApp, f: &Map<String, Value>, filter: &str, layer: u64) -> Result<Value, String> {
+    let smart = f.get("choice").and_then(Value::as_str) == Some("smartObject");
+    let command = if smart { "layer.smartObjects.convertToSmartObject" } else { Kind::Type.command() };
+    let r = app.run(command, json!({ "layer": layer }))?;
+    let params = f.get("params").cloned().unwrap_or(Value::Null);
+    if params.as_object().is_none_or(|o| o.is_empty())
+        && crate::filter_dialog::has_dialog(filter)
+        && let Some(d) = crate::filter_dialog::open(app, filter)
+    {
+        return Ok(json!({ "converted": r, "dialog": d }));
+    }
+    let applied = app.run(filter, params)?;
+    Ok(json!({ "converted": r, "filter": applied }))
 }
 
 #[cfg(test)]
