@@ -1023,3 +1023,40 @@ mod tests {
         }
     }
 }
+
+/// eframe's browser keydown and DOM clipboard event have separate delivery times. The DOM
+/// event owns the payload; never synthesize a second clipboard action from its physical key.
+pub fn web_clipboard_events(raw: &mut egui::RawInput) {
+    raw.events.retain(|e| {
+        !matches!(e, egui::Event::Key {
+        key: Key::C | Key::X | Key::V, modifiers, ..
+    } if modifiers.command)
+    });
+}
+#[cfg(test)]
+mod web_clipboard_tests {
+    use super::*;
+    #[test]
+    fn browser_payload_is_the_only_owner_with_or_without_text_focus() {
+        for (key, event) in [(Key::C, egui::Event::Copy), (Key::X, egui::Event::Cut), (Key::V, egui::Event::Paste("text".into()))] {
+            for typing in [false, true] {
+                let ctx = egui::Context::default();
+                let press = egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+                let mut raw = egui::RawInput { events: vec![press.clone()], ..Default::default() };
+                web_clipboard_events(&mut raw);
+                clipboard_keys(&ctx, typing, &mut raw);
+                assert!(raw.events.is_empty());
+                raw.events = vec![egui::Event::ModifiersChanged(Modifiers::COMMAND), event.clone()];
+                web_clipboard_events(&mut raw);
+                clipboard_keys(&ctx, typing, &mut raw);
+                assert_eq!(raw.events.len(), 2);
+                if typing {
+                    assert!(raw.events.contains(&event));
+                }
+                raw.events = vec![press, event.clone()];
+                web_clipboard_events(&mut raw);
+                assert_eq!(raw.events, vec![event.clone()]);
+            }
+        }
+    }
+}

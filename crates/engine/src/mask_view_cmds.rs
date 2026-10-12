@@ -21,7 +21,7 @@ pub const ID: &str = "view.layerMask";
 pub const OVERLAY_ID: &str = "layer.toggleMaskOverlay";
 
 /// How a shown layer mask is drawn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MaskViewMode {
     /// The mask alone, as a grayscale image (⌥-click).
@@ -31,7 +31,7 @@ pub enum MaskViewMode {
 }
 
 /// Which layer's mask is shown, and how.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct LayerMaskView {
     pub layer: LayerId,
     pub mode: MaskViewMode,
