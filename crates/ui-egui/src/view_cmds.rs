@@ -216,7 +216,7 @@ fn snap_slot<'a>(s: &'a mut SnapTo, key: &str) -> Option<&'a mut bool> {
 
 /// Window › <panel>: (panel, dock tab) for panels that live as tabs of a dock card.
 fn panel_tab(app: &PhotocraftApp, id: &str) -> Option<(&'static str, usize)> {
-    let pro = matches!(app.ui.theme, crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium);
+    let pro = app.ui.theme.is_pro();
     Some(match id {
         "window.panel.info" => ("navigator", 2),
         "window.panel.histogram" => ("navigator", 1),
@@ -397,17 +397,19 @@ pub fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
     })
 }
 
-/// Checkmarks of the Type menu's anti-aliasing, orientation and OpenType items.
+/// Checkmarks of the Type menu's anti-aliasing, orientation and OpenType items, for the layer the
+/// options bar and Properties show: the one being edited, else the active or a selected type layer.
+/// Anti-aliasing and orientation stay check items (`Some(false)`) without a type layer: a native
+/// menu can't change an item's kind in place.
 fn type_checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
-    use photocraft_doc::LayerContent;
-    let st = app.session.active()?;
-    let LayerContent::Text(t) = &st.doc.layer(st.active_layer?)?.content else { return None };
+    let t = crate::type_tool::target_text(app);
     if let Some(k) = id.strip_prefix("type.antiAlias.") {
-        return Some(photocraft_engine::type_extra_cmds::aa_name(t.antialias) == k);
+        return Some(t.is_some_and(|t| photocraft_engine::type_extra_cmds::aa_name(t.antialias) == k));
     }
     if let Some(k) = id.strip_prefix("type.orientation.") {
-        return Some((t.orientation == photocraft_doc::text::Orientation::Vertical) == (k == "vertical"));
+        return Some(t.is_some_and(|t| (t.orientation == photocraft_doc::text::Orientation::Vertical) == (k == "vertical")));
     }
+    let t = t?;
     let tag = match id.strip_prefix("type.openType.")? {
         "standardLigatures" => "liga",
         "contextualAlternates" => "calt",
@@ -457,6 +459,8 @@ fn wraps(id: &str) -> bool {
             | "type.pasteLoremIpsum"
             | "image.applyImage"
             | "image.calculations"
+            | "select.saveSelection"
+            | "select.loadSelection"
     )
 }
 
@@ -573,7 +577,7 @@ fn run(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, p: &Value) -> Res
         return Ok(json!(k));
     }
     if let Some(k) = id.strip_prefix("window.arrange.") {
-        return arrange(app, k);
+        return arrange(app, k, p);
     }
     match id {
         "view.extras" => {
@@ -639,15 +643,23 @@ fn fit_layers(app: &mut PhotocraftApp) -> Result<Value, String> {
     Ok(json!({"zoom": v.zoom, "bounds": [b.x0, b.y0, b.x1, b.y1]}))
 }
 
+/// A finite `[x, y]` screen position within a sane range (window systems reject wild values).
+fn screen_position(v: &Value) -> Option<[f32; 2]> {
+    const LIMIT: f64 = 1.0e6;
+    let a = v.as_array().filter(|a| a.len() == 2)?;
+    let n = |i: usize| a.get(i).and_then(Value::as_f64).filter(|x| x.is_finite() && x.abs() <= LIMIT).map(|x| x as f32);
+    Some([n(0)?, n(1)?])
+}
+
 pub(crate) fn float_window(app: &mut PhotocraftApp, doc: usize, offset: usize) -> u64 {
     let wid = app.ui.alloc_id();
     let mut view = app.ui.views.get(doc).cloned().unwrap_or_default();
     view.fit_pending = offset > 0 || view.fit_pending;
-    app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true });
+    app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true, position: None });
     wid
 }
 
-fn arrange(app: &mut PhotocraftApp, k: &str) -> Result<Value, String> {
+fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String> {
     if LAYOUTS.contains(&k) {
         app.ui.view.arrange = k.to_string();
         // Each document fits its new cell.
@@ -660,9 +672,30 @@ fn arrange(app: &mut PhotocraftApp, k: &str) -> Result<Value, String> {
             app.ui.windows.clear();
             Ok(json!({"arrange": "tabs"}))
         }
-        "newWindowForDocument" | "floatInWindow" => {
+        "newWindowForDocument" => {
             let doc = app.session.active_index().ok_or("no document")?;
             Ok(json!({"window": float_window(app, doc, 0)}))
+        }
+        // Optional `document` (index; default the active one) and `position` (`[x, y]`, the
+        // window's screen position in points): dragging a tab off the tab strip uses both (#3733).
+        "floatInWindow" => {
+            let doc = match p.get("document") {
+                None | Some(Value::Null) => app.session.active_index().ok_or("no document")?,
+                Some(v) => {
+                    let i = v.as_u64().ok_or("document must be a document index")?;
+                    usize::try_from(i).ok().filter(|&i| i < app.session.documents().len()).ok_or(format!("no document {i}"))?
+                }
+            };
+            let position = match p.get("position") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(screen_position(v).ok_or("position must be [x, y] in points")?),
+            };
+            let wid = float_window(app, doc, 0);
+            if let Some(w) = app.ui.windows.iter_mut().find(|w| w.id == wid) {
+                w.position = position;
+            }
+            app.session.set_active(doc);
+            Ok(json!({"window": wid}))
         }
         "floatAllInWindows" | "cascade" => {
             let n = app.session.documents().len();
@@ -1003,10 +1036,7 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
             json!({"from": "any", "to": "rgb"}),
             json!({"from": ["any", "rgb", "grayscale", "cmyk", "lab", "indexed", "bitmap", "duotone", "multichannel"], "to": ["rgb", "grayscale", "cmyk", "lab"]}),
         ),
-        "view.newGuideLayout" => {
-            let fields = app.ui.view.guide_layout.clone();
-            dialog(app, fields, json!({}))
-        }
+        "view.newGuideLayout" => Some(Ok(json!({"dialog": crate::guide_layout_ui::open(app)}))),
         "type.warpText" => Some(Ok(json!({"dialog": crate::dialogs::open_command_dialog(app, id, label)}))),
         "file.export.layersToFiles" => {
             let (_, _, name) = doc?;
@@ -1119,8 +1149,16 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
                 "add",
                 "subtract",
             ];
+            // The active layer's transparency, and its mask only when it has one.
+            let layer = st.active_layer.and_then(|l| d.layer(l));
             let mut load = chans.clone();
-            load.extend(["transparency", "mask", "selection"].map(String::from));
+            if layer.is_some() {
+                load.push("transparency".into());
+            }
+            if layer.is_some_and(|l| l.mask.is_some()) {
+                load.push("mask".into());
+            }
+            load.push("selection".into());
             match id {
                 "select.saveSelection" => dialog(
                     app,
@@ -1174,13 +1212,16 @@ fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
         if parked {
             return Ok(json!({"path": path, "warnings": []}));
         }
+        let settings = app.save_settings();
         let export = app.services.export.as_ref().ok_or("no exporter configured")?;
-        let (bytes, warnings) = export(&doc, &path, &crate::ExportSettings::default())?;
+        let (bytes, warnings) = export(&doc, &path, &settings)?;
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
         write(&path, &bytes)?;
-        app.ui.status = format!("Saved a copy as {path}");
+        let template = "Saved a copy as {path}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
-        crate::notices::io_warnings(app, &format!("Saved a copy as {}", crate::file_open::display_name(&path)), &warnings);
+        let what = crate::i18n::fmt(tl!(template), &[("path", &crate::file_open::display_name(&path))]);
+        crate::notices::io_warnings(app, &what, &warnings);
         Ok(json!({"path": path, "warnings": warnings}))
     })
 }
@@ -1194,7 +1235,8 @@ fn export_contents(app: &mut PhotocraftApp) -> Result<Value, String> {
     app.pick_save(&name.clone(), move |app, path| {
         let write = app.services.write.as_mut().ok_or("no writer configured")?;
         write(&path, &bytes)?;
-        app.ui.status = format!("Exported contents to {path}");
+        let template = "Exported contents to {path}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("path", &path)]);
         app.ui.status_error = false;
         Ok(json!({"path": path, "fileName": name, "bytes": bytes.len()}))
     })
