@@ -401,6 +401,12 @@ pub const RESUME: &str = "__resumeAction";
 /// A step dialog confirmed: continue the action after it (`dialogs::confirm` calls this).
 pub fn resume(app: &mut PhotocraftApp, fields: &serde_json::Map<String, Value>) {
     let Some(r) = fields.get(RESUME) else { return };
+    // The dialog's command may run as a background job; the next step needs its result.
+    if let Some(doc) = app.session.active().map(|d| d.doc.id)
+        && let Some(job) = app.session.job_on(doc)
+    {
+        let _ = app.session.wait_job(job.id);
+    }
     let params = json!({"action": r.get("action").cloned().unwrap_or(Value::Null), "from": r.get("from").cloned().unwrap_or(Value::Null)});
     match play(app, &params) {
         Ok(v) => report_play(app, &v),
@@ -1391,6 +1397,15 @@ mod tests {
         crate::dialogs::cancel(&mut app, id).unwrap();
         assert!(app.session.active().unwrap().doc.selection.is_none());
         assert!(app.ui.status.contains("stopped"), "{}", app.ui.status);
+        // With background jobs (the desktop default) the resumed steps wait for the dialog's
+        // filter to land instead of meeting a locked document.
+        app.background_jobs = true;
+        let v = play(&mut app, &json!({"action": "Blur"})).unwrap();
+        let id = v["paused"]["dialog"].as_u64().unwrap();
+        crate::dialogs::confirm(&mut app, id).unwrap();
+        assert!(app.session.active().unwrap().doc.selection.is_some(), "the step after the background blur ran");
+        assert!(app.ui.status.starts_with("Played"), "{}", app.ui.status);
+        app.background_jobs = false;
         // Agents play headlessly: no pause, the recorded values run.
         app.automation_input = true;
         let v = play(&mut app, &json!({"action": "Blur"})).unwrap();
