@@ -3536,3 +3536,19 @@ curves	Smooth	Làm mượt
 	Remove after each stroke	Xóa sau mỗi nét vẽ
 	Apply the removal ({key})	Áp dụng việc xóa ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Nét vẽ cần xóa: {n} (Enter áp dụng, Esc hủy)
+# Edit › Content-Aware Fill workspace
+	Excluded Area	Vùng loại trừ
+	Fill Settings	Cài đặt tô
+	Full	Toàn phần
+	Indicates	Biểu thị
+	Mirror	Phản chiếu
+	Output Settings	Cài đặt đầu ra
+	Output To	Đầu ra tới
+	Rectangular	Chữ nhật
+	Rotation Adaptation	Thích ứng xoay
+	Sampling Area	Vùng lấy mẫu
+	Sampling Area Options	Tùy chọn vùng lấy mẫu
+	Sampling Area Overlay	Lớp phủ vùng lấy mẫu
+	Sampling Brush Tool	Công cụ Cọ lấy mẫu
+	Show Sampling Area	Hiện vùng lấy mẫu
+	Very High	Rất cao
