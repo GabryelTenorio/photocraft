@@ -1,7 +1,7 @@
 //! Everyday Photoshop commands: clipboard (Cut/Copy/Copy Merged/Paste/Paste in Place), Layer via
 //! Copy/Cut, Merge Visible, Auto Tone/Contrast/Color, Toggle Last State and Transform Again.
 
-use photocraft_color::PixelFormat;
+use photocraft_color::{ColorMode, PixelFormat};
 use photocraft_doc::adjust::LevelsChannel;
 use photocraft_doc::{Adjustment, Document, Layer, LayerContent, LayerId};
 use photocraft_geom::Rect;
@@ -189,6 +189,48 @@ fn copy(s: &mut Session, merged: bool) -> Result<Value> {
     Ok(json!({"bounds": [b.x0, b.y0, b.width(), b.height()]}))
 }
 
+/// Copy with the layer mask targeted (`"target":"mask"`, #2928): the mask's values as a
+/// grayscale clip, inside the selection or the whole canvas — an untouched mask copies at its
+/// default value, so a plain Reveal All / Hide All mask transfers too. Paste then writes into
+/// another layer's mask (targeted, #1035), in this or another document.
+fn copy_mask(s: &mut Session) -> Result<Value> {
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let canvas = d.doc.bounds();
+    let id = d.active_layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
+    let mask = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?.mask.as_ref().ok_or_else(|| EngineError::Other("the active layer has no layer mask".into()))?;
+    let sel = d.doc.selection.as_ref();
+    let area = sel.map_or(canvas, |m| m.content_bounds().intersect(&canvas));
+    if area.is_empty() {
+        return Err(EngineError::Other("Could not copy: the selected area is empty".into()));
+    }
+    let n = mask.surface.format().channels().max(1);
+    let values = crate::allocation::read_region(&mask.surface, area, "copying the mask")?;
+    let len = values
+        .len()
+        .checked_div(n)
+        .and_then(|pixels| pixels.checked_mul(2))
+        .ok_or_else(|| EngineError::Other("not enough memory for copying the mask (requested size overflowed); the document was not changed".into()))?;
+    let cover = sel.map(|m| (m.read_region(area), m.format().channels().max(1)));
+    let mut px = crate::allocation::filled(len, 0.0, "copying the mask")?;
+    for (i, p) in values.chunks_exact(n).enumerate() {
+        px[i * 2] = p.first().copied().unwrap_or(0.0);
+        px[i * 2 + 1] = cover.as_ref().map_or(1.0, |(m, mk)| m.get(i * mk).copied().unwrap_or(0.0));
+    }
+    let fmt = PixelFormat::new(ColorMode::Grayscale, mask.surface.format().sample, true);
+    let mut surface = Surface::new(fmt);
+    surface
+        .try_write_region(area, &px)
+        .map_err(|e| EngineError::Other(format!("not enough memory while copying the mask ({e}); the document was not changed")))?;
+    surface.prune();
+    let bounds = surface.content_bounds();
+    if bounds.is_empty() {
+        return Err(EngineError::Other("Could not copy: the selected area is empty".into()));
+    }
+    let b = bounds;
+    s.clipboard = Some(Clip { surface, bounds: b, layers: None });
+    Ok(json!({"bounds": [b.x0, b.y0, b.width(), b.height()], "target": "mask"}))
+}
+
 fn clear_selected(doc: &mut Document, id: LayerId, background: [f32; 4]) -> Result<()> {
     let sel = doc.selection.clone();
     let canvas = doc.bounds();
@@ -235,6 +277,7 @@ fn paste(s: &mut Session, p: &Value, in_place: bool) -> Result<Value> {
     let moved = shifted(&clip.surface, dx, dy);
     let target = PixelFormat::new(fmt.mode, fmt.sample, true);
     let surf = if moved.format() == target { moved } else { moved.convert(target) };
+    let before = d.doc.clone();
     let id = s.edit("Paste", |doc, active| {
         let mut l = Layer::raster(doc.next_layer_name("Layer"), target);
         *crate::pixels_mut(&mut l)? = surf;
@@ -243,6 +286,8 @@ fn paste(s: &mut Session, p: &Value, in_place: bool) -> Result<Value> {
         doc.selection = None;
         Ok(id)
     })?;
+    // Only where the pasted pixels land needs recompositing, not the whole document (#2901).
+    crate::layer_multi_cmds::note_insert(s, &before);
     Ok(json!({"layer": id.0, "offset": [dx, dy]}))
 }
 
@@ -530,7 +575,11 @@ fn transform_again(s: &mut Session) -> Result<Value> {
 fn transform_again_copy(s: &mut Session) -> Result<Value> {
     let p = transform_again_params(s)?;
     let id = active_id(s)?;
-    s.execute("layer.duplicate", json!({"layer": id.0}))?;
+    let journal = s.journal.len();
+    // The steps are recorded (Again on a Copy is not replayable itself): with one layer selected,
+    // "duplicate the current layer" plays back on any document, a layer id only on this one.
+    let dup = if crate::layer_multi_cmds::multi(s, &Value::Null) { json!({"layer": id.0}) } else { json!({}) };
+    s.execute("layer.duplicate", dup)?;
     match s.execute("edit.transform", p) {
         Ok(r) => {
             let st = s.active_mut().ok_or(EngineError::NoDocument)?;
@@ -540,8 +589,9 @@ fn transform_again_copy(s: &mut Session) -> Result<Value> {
         }
         Err(e) => {
             // The copy (e.g. of a layer whose position is locked) couldn't be transformed: take
-            // it back, leaving nothing to redo.
+            // it back, leaving nothing to redo and no Duplicate step to record.
             s.undo();
+            s.journal.truncate(journal);
             if let Some(st) = s.active_mut() {
                 st.history.clear_redo();
             }
@@ -592,7 +642,7 @@ fn transform_again_params(s: &Session) -> Result<Value> {
 /// View › New Guide / guide moves (undoable, like Photoshop's "New Guide"/"Move Guide" states).
 fn guide_cmd(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
     let vertical = p.get("orientation").and_then(Value::as_str).unwrap_or("horizontal") == "vertical";
-    let pos = p.get("position").and_then(Value::as_f64).map(|v| v as f32);
+    let pos = p.get("position").and_then(Value::as_f64);
     let index = p.get("index").and_then(Value::as_u64).map(|v| v as usize);
     let label = match op {
         "new" => "New Guide",
@@ -642,12 +692,23 @@ pub fn specs() -> Vec<CommandSpec> {
             s.edit("Cut Pixels", |doc, _| clear_selected(doc, id, bg))?;
             Ok(r)
         }),
-        spec!("edit.copy", "Copy", &["Edit"], Some("Cmd+C"), "{} (a targeted colour or alpha channel copies that channel, as grayscale)", can_copy, |s, _| {
-            match crate::channel_clip::copy(s)? {
-                Some(r) => Ok(r),
-                None => copy(s, false),
+        spec!(
+            "edit.copy",
+            "Copy",
+            &["Edit"],
+            Some("Cmd+C"),
+            r##"{"target":"mask"? = the targeted mask, copied as grayscale (#2928)} (a targeted colour or alpha channel copies that channel, as grayscale)"##,
+            can_copy,
+            |s, p| {
+                if crate::commands::is_mask_target(p) {
+                    return copy_mask(s);
+                }
+                match crate::channel_clip::copy(s)? {
+                    Some(r) => Ok(r),
+                    None => copy(s, false),
+                }
             }
-        }),
+        ),
         spec!("edit.copyMerged", "Copy Merged", &["Edit"], Some("Cmd+Shift+C"), "{}", has_doc, |s, _| copy(s, true)),
         spec!(
             "edit.paste",
@@ -908,6 +969,47 @@ mod tests {
         assert!(px[0][0] > 0.9 && px[0][1] < 0.1 && px[0][2] < 0.1, "pasted content is red: {:?}", px[0]);
     }
 
+    /// #2901 (P10/P11): Paste, Paste in Place and Paste Into recomposite only where the pasted
+    /// layer draws, not the whole document; nothing outside that changes, and undo brings back
+    /// exactly the old pixels.
+    #[test]
+    fn paste_damages_only_the_pasted_layer() {
+        let render = |s: &Session| photocraft_compose::render(&s.active().unwrap().doc, s.active().unwrap().doc.bounds());
+        for depth in [8, 16, 32] {
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width": 60, "height": 50, "depth": depth, "background": "white"})).unwrap();
+            s.execute("layer.new.layer", json!({})).unwrap();
+            s.execute("select.rect", json!({"x": 5, "y": 5, "width": 10, "height": 8})).unwrap();
+            s.execute("edit.fill", json!({"color": "#3366cc"})).unwrap();
+            s.execute("edit.copy", json!({})).unwrap();
+            // Half transparent, so an opaque copy pasted in place over it shows.
+            s.execute("layer.setProps", json!({"opacity": 0.5})).unwrap();
+            for (id, p) in [
+                ("edit.paste", json!({"center": [40, 30]})),
+                ("edit.pasteSpecial.pasteInPlace", json!({})),
+                ("edit.pasteSpecial.pasteInto", json!({"center": [40, 30]})),
+            ] {
+                s.execute("select.rect", json!({"x": 36, "y": 27, "width": 6, "height": 4})).unwrap();
+                let shown = render(&s);
+                s.execute(id, p).unwrap();
+                let st = s.active().unwrap();
+                let area = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().content_bounds();
+                let damage = st.last_damage.unwrap_or_else(|| panic!("{depth}-bit {id}: bounded damage"));
+                assert!(!damage.is_empty() && damage.intersect(&area) == damage, "{depth}-bit {id}: {damage:?} within {area:?}");
+                let now = render(&s);
+                assert_ne!(now, shown, "{depth}-bit {id}: the paste shows");
+                let w = shown.rect.width() as usize;
+                for (i, (a, b)) in shown.px.iter().zip(&now.px).enumerate() {
+                    if !damage.contains((i % w) as i32, (i / w) as i32) {
+                        assert_eq!(a, b, "{depth}-bit {id}: pixel {i} outside the damage changed");
+                    }
+                }
+                s.execute("edit.undo", json!({})).unwrap();
+                assert_eq!(render(&s), shown, "{depth}-bit {id}: undo");
+            }
+        }
+    }
+
     /// #1035: a `depth`-bit document with a blue-grey square copied from layer `src` (at
     /// (5,5)-(15,15)) and an active layer `m` above it with a hide-all mask.
     fn mask_target_session(depth: u32) -> (Session, LayerId, LayerId) {
@@ -951,6 +1053,95 @@ mod tests {
             s.execute("edit.undo", json!({})).unwrap();
             assert_eq!(mask_at(&s, m, 10, 10), 0.0, "{depth}-bit: undo restores the mask");
         }
+    }
+
+    #[test]
+    fn copy_with_the_mask_targeted_takes_the_mask_as_grayscale() {
+        for depth in [8, 16, 32] {
+            let (mut s, _, m) = mask_target_session(depth);
+            s.edit("paint mask", |doc, _| {
+                doc.layer_mut(m).unwrap().mask.as_mut().unwrap().surface.fill_rect(Rect::new(6, 6, 16, 12), &[0.75]);
+                Ok(())
+            })
+            .unwrap();
+            let steps = s.active().unwrap().history.past_len();
+            let r = s.execute("edit.copy", json!({"target": "mask"})).unwrap();
+            assert_eq!(r["bounds"], json!([0, 0, 40, 40]), "{depth}-bit: a mask copies whole, as in Photoshop");
+            assert_eq!(s.active().unwrap().history.past_len(), steps, "{depth}-bit: copy adds no history step");
+            let clip = s.clipboard.clone().unwrap();
+            let px = clip.surface.rgba(10, 10);
+            assert!((px[0] - 0.75).abs() < 2.0 / 255.0, "{depth}-bit: {} vs 0.75", px[0]);
+            assert!(clip.surface.rgba(30, 30)[0] < 0.01, "{depth}-bit: the hidden area copies as black");
+            assert!(px[3] > 0.99, "{depth}-bit: the copy is opaque");
+            // Paste it into another layer's reveal-all mask: it replaces that mask (the request
+            // in #2928): the square, and the black around it, land.
+            let m2 = LayerId(s.execute("layer.new.layer", json!({"name": "m2"})).unwrap()["layer"].as_u64().unwrap());
+            s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+            s.execute("edit.pasteSpecial.pasteInPlace", json!({"target": "mask"})).unwrap();
+            assert!((mask_at(&s, m2, 10, 10) - 0.75).abs() < 2.0 / 255.0, "{depth}-bit: the copied mask lands");
+            assert!(mask_at(&s, m2, 30, 30) < 0.01, "{depth}-bit: the copied black replaces the reveal-all");
+        }
+    }
+
+    #[test]
+    fn an_untouched_mask_copies_the_whole_canvas_at_its_default() {
+        let (mut s, _, _) = mask_target_session(8);
+        s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        let r = s.execute("edit.copy", json!({"target": "mask"})).unwrap();
+        assert_eq!(r["bounds"], json!([0, 0, 40, 40]), "a plain Reveal All mask still transfers");
+        assert!(s.clipboard.clone().unwrap().surface.rgba(20, 20)[0] > 0.99);
+    }
+
+    #[test]
+    fn mask_copy_takes_only_the_selection() {
+        let (mut s, _, m) = mask_target_session(8);
+        s.edit("paint mask", |doc, _| {
+            doc.layer_mut(m).unwrap().mask.as_mut().unwrap().surface.fill_rect(Rect::new(6, 6, 16, 12), &[0.75]);
+            Ok(())
+        })
+        .unwrap();
+        s.execute("select.rect", json!({"x": 8, "y": 8, "width": 4, "height": 4})).unwrap();
+        let r = s.execute("edit.copy", json!({"target": "mask"})).unwrap();
+        assert_eq!(r["bounds"], json!([8, 8, 4, 4]));
+        let clip = s.clipboard.clone().unwrap();
+        assert!((clip.surface.rgba(9, 9)[0] - 0.75).abs() < 2.0 / 255.0);
+        assert!(clip.surface.rgba(5, 5)[3] < 0.01, "nothing outside the selection");
+    }
+
+    #[test]
+    fn mask_copy_needs_a_mask_and_fails_gracefully() {
+        let mut s = Session::new();
+        assert!(s.execute("edit.copy", json!({"target": "mask"})).is_err(), "no document");
+        s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+        assert!(s.execute("edit.copy", json!({"target": "mask"})).is_err(), "the layer has no mask");
+        assert!(s.clipboard.is_none(), "a refused copy leaves the clipboard alone");
+        s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        assert!(s.execute("edit.copy", json!({"target": "mask"})).is_ok());
+        // An adjustment layer has no pixels of its own: Copy is only enabled while its mask is
+        // targeted (#2928).
+        s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+        let a = s.execute("layer.newAdjustmentLayer.levels", json!({})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("layer.select", json!({"layer": a})).unwrap();
+        assert!(!s.is_enabled("edit.copy"), "no pixels to copy");
+        s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        assert!(s.is_enabled_with("edit.copy", &json!({"target": "mask"})), "the mask can be copied");
+    }
+
+    #[test]
+    fn a_copied_mask_travels_to_another_document() {
+        let (mut s, _, m) = mask_target_session(8);
+        s.edit("paint mask", |doc, _| {
+            doc.layer_mut(m).unwrap().mask.as_mut().unwrap().surface.fill_rect(Rect::new(6, 6, 16, 12), &[0.75]);
+            Ok(())
+        })
+        .unwrap();
+        s.execute("edit.copy", json!({"target": "mask"})).unwrap();
+        s.execute("file.new", json!({"width": 40, "height": 40})).unwrap();
+        let n = LayerId(s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap());
+        s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        s.execute("edit.pasteSpecial.pasteInPlace", json!({"target": "mask"})).unwrap();
+        assert!((mask_at(&s, n, 10, 10) - 0.75).abs() < 2.0 / 255.0, "the mask arrived in the second document");
+        assert!(mask_at(&s, n, 30, 30) < 0.01, "it replaced the reveal-all mask there");
     }
 
     #[test]
@@ -1361,5 +1552,26 @@ mod tests {
         s.execute("view.clearGuides", json!({})).unwrap();
         assert!(s.active().unwrap().doc.guides.vertical.is_empty());
         assert!(s.execute("view.moveGuide", json!({"orientation": "vertical", "index": 3, "position": 1})).is_err());
+    }
+
+    /// Guides keep their exact place (#2918): 1 cm at 300 ppi through New Guide and .pcraft, and
+    /// a 1/32 px PSD position past 2^19 px, where f32 has no 1/32 steps left.
+    #[test]
+    fn guides_keep_sub_pixel_positions_through_pcraft_and_psd() {
+        let (cm, far) = (300.0 / 2.54, 600_000.031_25);
+        let mut s = session();
+        s.execute("view.newGuide", json!({"orientation": "horizontal", "position": cm})).unwrap();
+        s.execute("view.newGuide", json!({"orientation": "vertical", "position": far})).unwrap();
+        fn wide(v: impl Into<f64>) -> f64 {
+            v.into()
+        }
+        let exact = |g: &photocraft_doc::Guides| (wide(g.horizontal[0]), wide(g.vertical[0]));
+        let doc = &s.active().unwrap().doc;
+        assert_eq!(exact(&doc.guides), (cm, far));
+        let pcraft = photocraft_format::save_to_bytes(doc, &Default::default()).unwrap();
+        assert_eq!(exact(&photocraft_format::load_from_bytes(&pcraft).unwrap().guides), (cm, far));
+        let psd = photocraft_io::export(doc, "psd", &Default::default()).unwrap().bytes;
+        let back = photocraft_io::import("g.psd", &psd).unwrap().document.guides;
+        assert_eq!(wide(back.vertical[0]), far, "1032 stores 1/32 px");
     }
 }
