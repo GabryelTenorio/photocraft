@@ -125,7 +125,10 @@ fn edit(s: &mut Session, p: &Value) -> Result<Value> {
         "rename" => super::call(s, "pattern.rename", json!({"pattern": req_str(p, "preset", CMD)?, "name": req_str(p, "name", CMD)?}))?,
         "delete" => {
             let keys: Vec<String> = match p.get("preset") {
-                Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+                Some(Value::Array(a)) => a
+                    .iter()
+                    .map(|v| v.as_str().map(str::to_string).ok_or_else(|| bad(CMD, "`preset` must contain only pattern ids or names")))
+                    .collect::<Result<_>>()?,
                 _ => vec![req_str(p, "preset", CMD)?.to_string()],
             };
             if keys.is_empty() {
@@ -135,7 +138,11 @@ fn edit(s: &mut Session, p: &Value) -> Result<Value> {
             // removed when a later name was missing, and Undo cannot put a preset back (#4103).
             let mut ids = Vec::new();
             for k in &keys {
-                let id = crate::pattern_cmds::resolve(s, k).map(|q| q.id).ok_or_else(|| bad(CMD, format!("no pattern \"{k}\"")))?;
+                // Only library patterns can be deleted here; a document-only pattern must
+                // fail the whole batch up front rather than midway through it.
+                let id = photocraft_doc::pattern::find(&s.patterns.items, k, k)
+                    .map(|q| q.id.clone())
+                    .ok_or_else(|| bad(CMD, format!("no library pattern \"{k}\"")))?;
                 if !ids.contains(&id) {
                     ids.push(id);
                 }
