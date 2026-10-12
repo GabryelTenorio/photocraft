@@ -36,8 +36,11 @@ pub mod brush_sections;
 pub mod brushes_tab;
 mod cam_transform;
 mod camera_raw_detail_ui;
+mod camera_raw_panels;
 mod camera_raw_preview_ui;
 mod camera_raw_scope_ui;
+mod camera_raw_style;
+mod camera_raw_tools_ui;
 pub mod camera_raw_ui;
 pub mod canvas;
 mod canvas_popup;
@@ -228,7 +231,7 @@ pub use file_open::OsEvent;
 pub use state::{Tool, UiState};
 
 /// Decode a file: (document, warnings about anything approximated or dropped).
-pub type ImportFn = Box<dyn Fn(&str, &[u8], usize) -> Result<(Document, Vec<String>), String>>;
+pub type ImportFn = Box<dyn Fn(&str, &[u8], &photocraft_io::ImportOptions) -> Result<(Document, Vec<String>), String>>;
 /// Encoder settings chosen in Export As (the file format comes from the name's extension).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExportSettings {
@@ -1130,8 +1133,8 @@ impl PhotocraftApp {
             return Ok(Vec::new());
         }
         let import = self.services.import.as_ref().ok_or("no importer configured")?;
-        let max_svg_group_depth = self.session.prefs().file_handling.rasterize_svg_groups_deeper_than as usize;
-        let (doc, warnings) = import(name, bytes, max_svg_group_depth)?;
+        let opts = photocraft_engine::jobs::import_options(self.session.prefs());
+        let (doc, warnings) = import(name, bytes, &opts)?;
         // Edit › Color Settings policies apply on open; mismatches can ask what to do.
         // No path yet: a bare name isn't a location to save back to (`open_file` sets the path).
         let (_, color) = self.session.open_document(doc, None);
@@ -1150,8 +1153,7 @@ impl PhotocraftApp {
         // Script events bound to "Open Document".
         photocraft_engine::automate_cmds::document_opened(&mut self.session);
         self.sync_views();
-        let ask = color.get("ask").and_then(Value::as_bool) == Some(true);
-        if ask && (color.get("mismatch").and_then(Value::as_bool) == Some(true) || color.get("missing").is_some()) {
+        if camera_raw_ui::asks_about_profile(&color, &warnings) {
             prefs_ui::open_mismatch(self, &color);
         }
         Ok(warnings)
@@ -1180,8 +1182,8 @@ impl PhotocraftApp {
     /// events and no Color Settings policy (which may read user-configured profile paths).
     fn import_automation_document(&mut self, name: &str, bytes: &[u8]) -> Result<Vec<String>, String> {
         let import = self.services.import.as_ref().ok_or("no importer configured")?;
-        let max_svg_group_depth = self.session.prefs().file_handling.rasterize_svg_groups_deeper_than as usize;
-        let (doc, warnings) = import(name, bytes, max_svg_group_depth)?;
+        let opts = photocraft_engine::jobs::import_options(self.session.prefs());
+        let (doc, warnings) = import(name, bytes, &opts)?;
         // The caller records the path it read from.
         self.session.add_document(doc, None);
         if let Some(st) = self.session.active_mut() {
