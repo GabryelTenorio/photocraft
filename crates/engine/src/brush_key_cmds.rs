@@ -56,6 +56,8 @@ mod tests {
     #[test]
     fn steps_like_photoshop() {
         assert_eq!(size_step(1.0, false), 1.0, "never below 1 px");
+        assert_eq!(size_step(2.0, false), 1.0, "2 px steps down to 1 px instead of rounding back to 2 px (#4067)");
+        assert_eq!(size_step(3.0, false), 2.0);
         assert_eq!(size_step(1.0, true), 2.0, "small brushes still grow");
         assert_eq!(size_step(100.0, true), 125.0);
         assert_eq!(size_step(125.0, false), 100.0);
@@ -64,6 +66,16 @@ mod tests {
         assert_eq!(hardness_step(0.6, false), 0.25, "snaps to the quarter below the nearest");
         assert_eq!(hardness_step(1.0, true), 1.0);
         assert_eq!(hardness_step(0.0, false), 0.0);
+    }
+
+    #[test]
+    fn decrease_brush_size_reaches_one_pixel_from_small_sizes() {
+        let mut s = Session::new();
+        s.execute("tools.setBrush", json!({"brush": {"size": 4.0}})).unwrap();
+        for expected in [3.0, 2.0, 1.0, 1.0] {
+            s.execute("tools.decreaseBrushSize", Value::Null).unwrap();
+            assert_eq!(s.tools.brush.size, expected);
+        }
     }
 
     #[test]
