@@ -1,5 +1,5 @@
 //! Window › Actions, as engine commands (`actions.record` / `stop` / `play` / `list` / `get` /
-//! `delete` / `move` / `rename` / `toggle`).
+//! `delete` / `move` / `rename` / `toggle` / `importAtn`).
 //!
 //! The list lives on [`Session`] so the panel, the CLI, the control channel and MCP share one
 //! copy. Recording copies replayable journal entries (commands whose [`CommandSpec::journal`] is
@@ -1059,6 +1059,16 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r##"{"action":name|index, "color":""|"red"|"orange"|"yellow"|"green"|"blue"|"violet"|"gray"} → {action, color}. The button-mode colour. Empty clears it."##,
             enabled: always,
             run: set_color,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.importAtn",
+            label: "Load Action File",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"base64":str|"bytes":[0..255…], "replace":bool=false} → {set, actions, skipped:[…], shortcuts:[{action, shortcut}]}. Reads one Photoshop .atn set. Events PhotoCraft can play become steps (unchecked commands stay unchecked, dialog toggles and the button colour are kept). Other events are named in skipped. replace drops the current list first."##,
+            enabled: always,
+            run: crate::atn_import::import_atn,
             journal: false,
         },
     ]
