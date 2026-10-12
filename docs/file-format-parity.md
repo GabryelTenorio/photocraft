@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding; `.shc` contour files read and write) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -132,7 +132,8 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 | ICC profiles | R | R | Own CMS |
 | Actions `.atn` | R/W | no | AUTO-219-2 |
 | Styles `.asl` | R/W | no | #1693 |
-| Contours `.shc`, custom shapes `.csh`, tool presets `.tpl` | R/W | no | FILE-215-15 |
+| Contours `.shc` | R/W | R/W | `psd/src/shc.rs`; Contour Editor Load…/Save… (FILE-215-15). No user contour library; not yet checked against a Photoshop-written file |
+| Custom shapes `.csh`, tool presets `.tpl` | R/W | no | |
 | Curves `.acv`, Levels `.alv`, other adjustment presets | R/W | not audited | |
 | C2PA Content Credentials | R/W | no | #1050 |
 
@@ -140,6 +141,7 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | Presets table: Contours `.shc` read and write through the Contour Editor (FILE-215-15); `.csh` and `.tpl` stay missing |
 | 2026-10-12 | minor | Palette BMPs open in Indexed Color mode (#3802) |
 | 2026-10-12 | minor | Save writes a JPEG at its own estimated quality and a WebP lossy or lossless as opened (#2399) |
 | 2026-10-11 | minor | D5100 image area and fitted-look preservation in Camera Raw tuning |
