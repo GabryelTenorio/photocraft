@@ -516,7 +516,7 @@ pub struct PhotocraftApp {
     pub(crate) opacity_keys: opacity_keys::Pending,
     control_rx: Option<Receiver<ControlRequest>>,
     /// Liveness counters and snapshot-getter replies the transport threads read while the
-    /// frame loop is wedged (no compositor frame callbacks; #2493, #3667).
+    /// frame loop is wedged (no compositor frame callbacks).
     watch: Option<std::sync::Arc<control::ControlWatch>>,
     pending_screenshots: Vec<(u64, Option<String>, Sender<ControlResponse>)>,
     /// Screenshots not yet requested from the viewport: (token, earliest time in ms, frames seen).
@@ -863,7 +863,7 @@ impl PhotocraftApp {
         self
     }
 
-    /// Attach the liveness/snapshot watch the transport threads read (#2493, #3667).
+    /// Attach the liveness/snapshot watch the transport threads read.
     pub fn with_watch(mut self, watch: std::sync::Arc<control::ControlWatch>) -> Self {
         self.watch = Some(watch);
         self
@@ -1443,8 +1443,7 @@ impl PhotocraftApp {
             }
             match control::handle(self, ctx, &req) {
                 control::Outcome::Done(v) => {
-                    // Keep the last reply of a snapshot getter for serving while wedged (#2493);
-                    // only a successful reply, never an error.
+                    // Keep the last reply of a snapshot getter for serving while wedged.
                     if let Some(key) = control::snapshot_key(&req.method, &req.params)
                         && v.get("ok").and_then(Value::as_bool) == Some(true)
                         && let Some(w) = self.watch.as_ref()

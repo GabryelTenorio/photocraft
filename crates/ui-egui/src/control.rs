@@ -31,7 +31,7 @@
 //! - `jobs.list` / `jobs.cancel {job?}`: background jobs (#210) with progress; cancel one (or all).
 //!   `engine.execute`, `ui.menu.invoke` and `ui.dialog.confirm` wait for a command that runs as a
 //!   job unless `wait: false` (then the reply is `{job, pending: true}`)
-//! - `health`: liveness counters and ages, answered by the transport without the frame loop (#3667)
+//! - `health`: liveness counters and ages, answered by the transport without the frame loop
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -60,7 +60,7 @@ pub fn timeout_error() -> String {
     )
 }
 
-/// The reply both timeout sites send when a request's [`REPLY_DEADLINE`] passes.
+/// The reply a request gets when its [`REPLY_DEADLINE`] passes.
 pub fn timeout_reply() -> Value {
     json!({"ok": false, "error": timeout_error()})
 }
@@ -81,7 +81,7 @@ impl ControlRequest {
 }
 
 /// How long the transport waits after requesting a repaint before deciding the frame loop
-/// did not service it: a wedged compositor sends no frame callbacks at all (#2493).
+/// did not service it: a wedged compositor sends no frame callbacks at all.
 pub const STALL_CHECK: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The error a read-only getter fails fast with when the frame loop is wedged and no
@@ -94,7 +94,7 @@ pub fn not_drawing_frames_error() -> String {
 }
 
 /// The read-only getters whose last reply is kept for serving while the frame loop is
-/// wedged: the methods an agent probes state with (#2493). `document.inspect` is keyed per
+/// wedged: the methods an agent probes state with. `document.inspect` is keyed per
 /// document (the `document` param, top-level or inside `params`), since each document has
 /// its own reply; no param means the active document.
 pub fn snapshot_key(method: &str, params: &Value) -> Option<String> {
@@ -121,7 +121,7 @@ pub fn snapshot_key(method: &str, params: &Value) -> Option<String> {
     }
 }
 
-/// A `document` index as the key renders it, the way serde_json prints the number.
+/// A `document` index rendered into a snapshot key.
 fn index_key(value: &Value) -> String {
     if let Some(n) = value.as_u64() {
         n.to_string()
@@ -136,7 +136,7 @@ fn index_key(value: &Value) -> String {
 
 /// Liveness counters and the last snapshot-getter replies, shared between the UI thread
 /// (which updates them) and the transport threads (which read them while the frame loop
-/// is wedged; #2493, #3667). `health` is answered from these alone, so it works even when
+/// is wedged). `health` is answered from these alone, so it works even when
 /// no frame ever runs.
 #[derive(Default)]
 pub struct ControlWatch {
@@ -171,7 +171,6 @@ impl ControlWatch {
         self.logic_count.load(Ordering::Relaxed)
     }
 
-    /// How many drawn frames were stamped (see [`ControlWatch::health`]).
     pub fn drawn_count(&self) -> u64 {
         self.drawn_count.load(Ordering::Relaxed)
     }
@@ -192,7 +191,7 @@ impl ControlWatch {
     }
 
     /// The `health` result: factual counters and ages only, answerable from a transport
-    /// thread (#3667). An idle-but-healthy app legitimately shows stale ages; a counter at
+    /// thread. An idle-but-healthy app legitimately shows stale ages; a counter at
     /// zero reports its age as null, since no pass has ever run.
     pub fn health(&self) -> Value {
         let now = (crate::gpu_canvas::now_ms().max(0.0)) as u64;
@@ -3099,7 +3098,7 @@ mod tests {
 
     #[test]
     fn not_drawing_frames_error_names_the_stall_and_the_liveness_probe() {
-        // #2493: the fast-fail must tell "wedged" from "slow", point at `health`, and its
+        // The fast-fail must tell "wedged" from "slow", point at `health`, and its
         // number must come from the stall check it reports.
         let error = not_drawing_frames_error();
         assert!(error.contains("not drawing frames"), "machines match on the phrase: {error}");

@@ -88,7 +88,7 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
                 let method = msg.get("method").and_then(Value::as_str).unwrap_or("").to_string();
                 let params = msg.get("params").cloned().unwrap_or(json!({}));
                 // `health` is answered from the watch alone, before the queue: it must not
-                // need a frame (#3667), which is the state it exists to report on.
+                // need a frame, which is the state it exists to report on.
                 let mut r = if method == "health" {
                     json!({"ok": true, "result": watch.health()})
                 } else {
@@ -120,10 +120,10 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
     }
 }
 
-/// Wait for the frame thread's reply, falling back when the frame loop is wedged (#2493):
+/// Wait for the frame thread's reply, falling back when the frame loop is wedged:
 /// after [`STALL_CHECK`] without a reply, a live loop keeps waiting while a wedged one serves
 /// the getter's last snapshot or fails fast. A dropped reply sender can never be answered; it
-/// gets the same deadline error as before.
+/// gets the deadline error.
 fn wait_reply(rrx: &Receiver<ControlResponse>, watch: &ControlWatch, method: &str, params: &Value, logic_before: u64, deadline: Instant) -> Value {
     let until = deadline.saturating_duration_since(Instant::now()).min(STALL_CHECK);
     match rrx.recv_timeout(until) {
