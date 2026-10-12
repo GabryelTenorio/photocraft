@@ -147,6 +147,14 @@ struct Upsampled {
 }
 
 impl Upsampled {
+    /// [`Upsampled::change`] through precomputed axes, with `log` the luminance's log2 (`None`
+    /// when the luminance is not positive).
+    #[inline]
+    fn change_at(&self, ax: &Axis, ay: &Axis, x: usize, y: usize, log: Option<f32>) -> f32 {
+        let l = log.map_or(self.floor, |v| v.max(self.floor));
+        bilinear_at(&self.a, self.sw, ax, ay, x, y) * l + bilinear_at(&self.b, self.sw, ax, ay, x, y)
+    }
+
     /// The change at full-size pixel (`x`, `y`) of a `w × h` image, of linear luminance `lum`.
     fn change(&self, w: usize, h: usize, x: usize, y: usize, lum: f32) -> f32 {
         let l = if lum > 0.0 { lum.log2().max(self.floor) } else { self.floor };
@@ -341,38 +349,57 @@ fn gauss(v: &[f32], w: usize, h: usize, sigma: f32) -> Vec<f32> {
     let mut k: Vec<f32> = (-r..=r).map(|x| (-(x * x) as f32 / (2.0 * sigma * sigma)).exp()).collect();
     let sum: f32 = k.iter().sum();
     k.iter_mut().for_each(|v| *v /= sum);
-    let rows = par::map(h, |y| {
+    // Each output is the taps' products added in tap order from −0.0 (as `Iterator::sum`), so
+    // the interior's slices, the mirrored edges and the row-major column pass give the same bits.
+    let mut tmp = vec![0.0f32; w * h];
+    par::chunks_mut(&mut tmp, w.max(1), |y, out| {
         let src = &v[y * w..(y + 1) * w];
-        (0..w as isize).map(|x| k.iter().enumerate().map(|(j, kv)| kv * src[mirror(x + j as isize - r, w)]).sum::<f32>()).collect::<Vec<f32>>()
-    });
-    let tmp = rows.concat();
-    let cols = par::map(w, |x| {
-        (0..h as isize).map(|y| k.iter().enumerate().map(|(j, kv)| kv * tmp[mirror(y + j as isize - r, h) * w + x]).sum::<f32>()).collect::<Vec<f32>>()
+        for (x, o) in out.iter_mut().enumerate() {
+            let xi = x as isize;
+            let mut acc = -0.0f32;
+            if xi >= r && xi + r < w as isize {
+                for (kv, sv) in k.iter().zip(&src[x - r as usize..=x + r as usize]) {
+                    acc += kv * sv;
+                }
+            } else {
+                for (j, kv) in k.iter().enumerate() {
+                    acc += kv * src[mirror(xi + j as isize - r, w)];
+                }
+            }
+            *o = acc;
+        }
     });
     let mut out = vec![0.0f32; w * h];
-    for (x, col) in cols.iter().enumerate() {
-        for (y, v) in col.iter().enumerate() {
-            out[y * w + x] = *v;
+    par::chunks_mut(&mut out, w.max(1), |y, row| {
+        row.fill(-0.0);
+        for (j, kv) in k.iter().enumerate() {
+            let src = &tmp[mirror(y as isize + j as isize - r, h) * w..][..w];
+            for (o, sv) in row.iter_mut().zip(src) {
+                *o += kv * sv;
+            }
         }
-    }
+    });
     out
 }
 
 /// Minimum over a `(2r + 1)²` window, edges clamped.
 fn min_filter(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
-    let rows = par::map(h, |y| {
+    let mut tmp = vec![0.0f32; w * h];
+    par::chunks_mut(&mut tmp, w.max(1), |y, out| {
         let src = &v[y * w..(y + 1) * w];
-        (0..w).map(|x| src[x.saturating_sub(r)..=(x + r).min(w - 1)].iter().fold(f32::MAX, |a, b| a.min(*b))).collect::<Vec<f32>>()
-    });
-    let tmp = rows.concat();
-    let cols =
-        par::map(w, |x| (0..h).map(|y| (y.saturating_sub(r)..=(y + r).min(h - 1)).map(|yy| tmp[yy * w + x]).fold(f32::MAX, f32::min)).collect::<Vec<f32>>());
-    let mut out = vec![0.0f32; w * h];
-    for (x, col) in cols.iter().enumerate() {
-        for (y, v) in col.iter().enumerate() {
-            out[y * w + x] = *v;
+        for (x, o) in out.iter_mut().enumerate() {
+            *o = src[x.saturating_sub(r)..=(x + r).min(w - 1)].iter().fold(f32::MAX, |a, b| a.min(*b));
         }
-    }
+    });
+    let mut out = vec![0.0f32; w * h];
+    par::chunks_mut(&mut out, w.max(1), |y, row| {
+        row.fill(f32::MAX);
+        for yy in y.saturating_sub(r)..=(y + r).min(h - 1) {
+            for (o, t) in row.iter_mut().zip(&tmp[yy * w..(yy + 1) * w]) {
+                *o = o.min(*t);
+            }
+        }
+    });
     out
 }
 
@@ -480,6 +507,9 @@ fn quantile(v: &[f32], q: f32) -> f32 {
 
 /// Index `i` mirrored into `0..n` (half-sample symmetric: … 1 0 | 0 1 … n−1 | n−1 n−2 …).
 fn mirror(i: isize, n: usize) -> usize {
+    if i >= 0 && (i as usize) < n {
+        return i as usize;
+    }
     let n = n as isize;
     let p = i.rem_euclid(2 * n);
     (if p < n { p } else { 2 * n - 1 - p }) as usize
@@ -489,53 +519,74 @@ fn mirror(i: isize, n: usize) -> usize {
 fn box_mean(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
     let k = (2 * r + 1) as f64;
     let ri = r as isize;
-    let rows = par::map(h, |y| {
+    let mut tmp = vec![0.0f32; w * h];
+    par::chunks_mut(&mut tmp, w.max(1), |y, out| {
         let src = &v[y * w..(y + 1) * w];
         let mut acc: f64 = (-ri..=ri).map(|i| f64::from(src[mirror(i, w)])).sum();
-        let mut out = vec![0.0f32; w];
         for (x, o) in out.iter_mut().enumerate() {
             *o = (acc / k) as f32;
             let x = x as isize;
             acc += f64::from(src[mirror(x + ri + 1, w)]) - f64::from(src[mirror(x - ri, w)]);
         }
-        out
     });
-    let tmp = rows.concat();
-    let cols = par::map(w, |x| {
-        let at = |y: isize| f64::from(tmp[mirror(y, h) * w + x]);
-        let mut acc: f64 = (-ri..=ri).map(at).sum();
-        let mut out = vec![0.0f32; h];
-        for (y, o) in out.iter_mut().enumerate() {
-            *o = (acc / k) as f32;
+    // Columns slide down in bands of `BAND` (row-major reads; each column's sums as before).
+    const BAND: usize = 256;
+    let bands = par::map(w.div_ceil(BAND), |b| {
+        let (x0, x1) = (b * BAND, ((b + 1) * BAND).min(w));
+        let bw = x1 - x0;
+        let row = |y: isize| &tmp[mirror(y, h) * w + x0..mirror(y, h) * w + x1];
+        let mut acc = vec![-0.0f64; bw];
+        for i in -ri..=ri {
+            for (a, t) in acc.iter_mut().zip(row(i)) {
+                *a += f64::from(*t);
+            }
+        }
+        let mut out = vec![0.0f32; bw * h];
+        for y in 0..h {
+            for (o, a) in out[y * bw..(y + 1) * bw].iter_mut().zip(&acc) {
+                *o = (a / k) as f32;
+            }
             let y = y as isize;
-            acc += at(y + ri + 1) - at(y - ri);
+            for ((a, add), sub) in acc.iter_mut().zip(row(y + ri + 1)).zip(row(y - ri)) {
+                *a += f64::from(*add) - f64::from(*sub);
+            }
         }
         out
     });
     let mut out = vec![0.0f32; w * h];
-    for (x, col) in cols.iter().enumerate() {
-        for (y, v) in col.iter().enumerate() {
-            out[y * w + x] = *v;
+    par::chunks_mut(&mut out, w.max(1), |y, row| {
+        for (b, band) in bands.iter().enumerate() {
+            let (x0, x1) = (b * BAND, ((b + 1) * BAND).min(w));
+            let bw = x1 - x0;
+            row[x0..x1].copy_from_slice(&band[y * bw..(y + 1) * bw]);
         }
-    }
+    });
     out
 }
 
 /// Local linear fit `p ≈ a · i + b` over boxes of radius `r` (regularized by `eps`), with `a`
 /// and `b` box-averaged (K. He, J. Sun, X. Tang, *Guided Image Filtering*, 2010).
 fn linear_fit(i: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> (Vec<f32>, Vec<f32>) {
-    let ip: Vec<f32> = i.iter().zip(p).map(|(a, b)| a * b).collect();
-    let ii: Vec<f32> = i.iter().map(|a| a * a).collect();
-    let (mi, mp, mip, mii) = (box_mean(i, w, h, r), box_mean(p, w, h, r), box_mean(&ip, w, h, r), box_mean(&ii, w, h, r));
-    let a: Vec<f32> = (0..w * h).map(|k| (mip[k] - mi[k] * mp[k]) / ((mii[k] - mi[k] * mi[k]).max(0.0) + eps)).collect();
-    let b: Vec<f32> = (0..w * h).map(|k| mp[k] - a[k] * mi[k]).collect();
+    let same = std::ptr::eq(i, p);
+    let ii = par::map(w * h, |k| i[k] * i[k]);
+    let (mi, mii) = (box_mean(i, w, h, r), box_mean(&ii, w, h, r));
+    // Fitted against itself, the means of `p` and `i·p` are those of `i` and `i·i`.
+    let (mp, mip) = if same {
+        (None, None)
+    } else {
+        let ip = par::map(w * h, |k| i[k] * p[k]);
+        (Some(box_mean(p, w, h, r)), Some(box_mean(&ip, w, h, r)))
+    };
+    let (mp, mip) = (mp.as_deref().unwrap_or(&mi), mip.as_deref().unwrap_or(&mii));
+    let a = par::map(w * h, |k| (mip[k] - mi[k] * mp[k]) / ((mii[k] - mi[k] * mi[k]).max(0.0) + eps));
+    let b = par::map(w * h, |k| mp[k] - a[k] * mi[k]);
     (box_mean(&a, w, h, r), box_mean(&b, w, h, r))
 }
 
 /// Guided filter of `p` with guide `i`.
 fn guided(i: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> Vec<f32> {
     let (a, b) = linear_fit(i, p, w, h, r, eps);
-    a.iter().zip(&b).zip(i).map(|((a, b), i)| a * i + b).collect()
+    par::map(w * h, |k| a[k] * i[k] + b[k])
 }
 
 /// The raw-stage sliders ([`Tone`]) on an image [`develop`](crate::develop) already made (gamma-1.8 ProPhoto
@@ -591,7 +642,11 @@ pub fn retone_with(
     let haze = c.haze_map(tone.dehaze);
     let work = c.work_change(tone);
     let texture = c.texture_change(tone);
-    let (lin, lum, forward) = (&c.lin, &c.lum, &c.forward);
+    let (lin, lum, forward) = (c.lin(), &c.lum, &c.forward);
+    // Where each column and row samples the small maps, worked out once (as `bilinear` does).
+    let haze_axes = haze.as_ref().filter(|hz| !hz.t.is_empty()).map(|hz| (Axis::new(hz.base.sw, w), Axis::new(hz.base.sh, h)));
+    let maps: Vec<(&Upsampled, Axis, Axis)> =
+        [&work, &texture].into_iter().filter_map(|u| u.as_ref()).map(|u| (u, Axis::new(u.sw, w), Axis::new(u.sh, h))).collect();
     let rows = crate::par::band_rows(w);
     crate::par::chunks_mut(px, rows * w, |band, chunk| {
         for (j, p) in chunk.iter_mut().enumerate() {
@@ -599,15 +654,55 @@ pub fn retone_with(
             let (x, y) = (i % w, i / w);
             let mut l = lin[i];
             if let Some(hz) = &haze {
-                l = hz.apply(x, y, l);
+                l = match &haze_axes {
+                    Some((ax, ay)) => hz.apply_at(ax, ay, x, y, l),
+                    None => hz.apply(x, y, l),
+                };
             }
-            let change = [&work, &texture].iter().filter_map(|u| u.as_ref()).map(|u| u.change(w, h, x, y, lum[i])).sum::<f32>();
+            // Added from −0.0 in the same order as `Iterator::sum` did.
+            let log = (lum[i] > 0.0).then(|| lum[i].log2());
+            let mut change = -0.0f32;
+            for (u, ax, ay) in &maps {
+                change += u.change_at(ax, ay, x, y, log);
+            }
             let g = change.clamp(-6.0, 6.0).exp2();
             for k in 0..3 {
                 p[k] = encode(forward, l[k] * g);
             }
         }
     });
+}
+
+/// For each output column (or row) of an `n`-long axis, the two samples of an `s`-long small map
+/// it lies between and its weight, as [`bilinear`] computes them.
+struct Axis {
+    i0: Vec<u32>,
+    i1: Vec<u32>,
+    f: Vec<f32>,
+}
+
+impl Axis {
+    fn new(s: usize, n: usize) -> Self {
+        let (mut i0, mut i1, mut f) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
+        for x in 0..n {
+            let sx = ((x as f32 + 0.5) * s as f32 / n as f32 - 0.5).clamp(0.0, (s - 1) as f32);
+            let x0 = sx as usize;
+            i0.push(x0 as u32);
+            i1.push((x0 + 1).min(s - 1) as u32);
+            f.push(sx - x0 as f32);
+        }
+        Axis { i0, i1, f }
+    }
+}
+
+/// [`bilinear`] of the `sw`-wide map `v` at output pixel (`x`, `y`) through its axes.
+#[inline]
+fn bilinear_at(v: &[f32], sw: usize, ax: &Axis, ay: &Axis, x: usize, y: usize) -> f32 {
+    let (x0, x1, fx) = (ax.i0[x] as usize, ax.i1[x] as usize, ax.f[x]);
+    let (y0, y1, fy) = (ay.i0[y] as usize, ay.i1[y] as usize, ay.f[y]);
+    let top = v[y0 * sw + x0] * (1.0 - fx) + v[y0 * sw + x1] * fx;
+    let bottom = v[y1 * sw + x0] * (1.0 - fx) + v[y1 * sw + x1] * fx;
+    top * (1.0 - fy) + bottom * fy
 }
 
 /// The linear value of each 16-bit code a development with tone `curve` writes (the curve and
@@ -656,8 +751,9 @@ pub struct RetoneCache {
     h: usize,
     curve: Vec<[f32; 2]>,
     print: u64,
-    /// Linear ProPhoto RGB per pixel (the curve undone), then `pre`.
-    lin: Vec<[f32; 3]>,
+    /// Linear ProPhoto RGB per pixel (the curve undone), then `pre` and the colour noise reduction;
+    /// `None` when neither applies and it is `undone` (see [`RetoneCache::lin`]).
+    lin: Option<Vec<[f32; 3]>>,
     /// The pixels' linear values with the curve undone, before `pre`.
     undone: Vec<[f32; 3]>,
     pre: Option<[[f32; 3]; 3]>,
@@ -729,6 +825,14 @@ struct HazeMap<'a> {
 }
 
 impl HazeMap<'_> {
+    /// [`HazeMap::apply`] through precomputed axes (a map with a transmission).
+    #[inline]
+    fn apply_at(&self, ax: &Axis, ay: &Axis, x: usize, y: usize, v: [f32; 3]) -> [f32; 3] {
+        let air = self.base.air;
+        let t = bilinear_at(&self.t, self.base.sw, ax, ay, x, y).max(HAZE_T0);
+        [0, 1, 2].map(|c| ((v[c] - air[c]) / t + air[c]).max(0.0))
+    }
+
     fn apply(&self, x: usize, y: usize, v: [f32; 3]) -> [f32; 3] {
         let air = self.base.air;
         if self.t.is_empty() {
@@ -740,6 +844,11 @@ impl HazeMap<'_> {
 }
 
 impl RetoneCache {
+    /// The linear values the sliders work on (see the `lin` field).
+    fn lin(&self) -> &[[f32; 3]] {
+        self.lin.as_deref().unwrap_or(&self.undone)
+    }
+
     fn new(px: &[[f32; 4]], w: usize, h: usize, curve: &[[f32; 2]], print: u64) -> Self {
         let forward_of = |v: f32| crate::develop::tone(curve, v.clamp(0.0, 1.0)).clamp(0.0, 1.0).powf(1.0 / 1.8);
         // The inverse from a table over s = √v (the encoding is steep near 0).
@@ -751,20 +860,28 @@ impl RetoneCache {
             let f = if b > a { ((e - a) / (b - a)).clamp(0.0, 1.0) } else { 0.0 };
             (((i - 1) as f32 + f) / N as f32).powi(2)
         };
-        let rows = crate::par::band_rows(w);
-        let lin: Vec<[f32; 3]> = crate::par::map(h.div_ceil(rows), |band| {
-            let (y0, y1) = (band * rows, ((band + 1) * rows).min(h));
-            px[y0 * w..y1 * w].iter().map(|p| [inverse(p[0]), inverse(p[1]), inverse(p[2])]).collect::<Vec<_>>()
-        })
-        .concat();
+        // Developed pixels are 16-bit codes read back as `code / 65535`: their inverses come from a
+        // table of every code; anything else is searched as before.
+        let codes: Vec<f32> = par::map(usize::from(u16::MAX) + 1, |c| inverse(c as f32 / 65535.0));
+        let undo = |e: f32| {
+            let c = (e * 65535.0).round();
+            if (0.0..=65535.0).contains(&c) && (c as u16 as f32 / 65535.0).to_bits() == e.to_bits() { codes[c as usize] } else { inverse(e) }
+        };
+        // Filled in place by the workers (a fresh frame-sized buffer is slow to touch on one thread).
+        let mut undone = vec![[0.0f32; 3]; w * h];
+        par::chunks_mut(&mut undone, 65536, |b, chunk| {
+            for (o, p) in chunk.iter_mut().zip(&px[b * 65536..]) {
+                *o = [undo(p[0]), undo(p[1]), undo(p[2])];
+            }
+        });
         let forward = (0..=FORWARD_STEPS + 1).map(|i| forward_of((i.min(FORWARD_STEPS) as f32 / FORWARD_STEPS as f32).powi(2))).collect();
         RetoneCache {
             w,
             h,
             curve: curve.to_vec(),
             print,
-            undone: lin.clone(),
-            lin,
+            undone,
+            lin: None,
             pre: None,
             noise: None,
             forward,
@@ -782,16 +899,22 @@ impl RetoneCache {
         if self.pre == pre && self.noise == noise {
             return;
         }
-        self.lin = match pre {
-            Some(m) => self.undone.iter().map(|v| [0, 1, 2].map(|r| (m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2]).max(0.0))).collect(),
-            None => self.undone.clone(),
+        let undone = &self.undone;
+        let reduce_noise = noise.filter(|n| n.level.is_finite() && n.level > 0.0);
+        self.lin = match (pre, reduce_noise) {
+            (None, None) => None,
+            (Some(m), _) => Some(par::map(undone.len(), |i| {
+                let v = undone[i];
+                [0, 1, 2].map(|r| (m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2]).max(0.0))
+            })),
+            (None, Some(_)) => Some(par::map(undone.len(), |i| undone[i])),
         };
-        if let Some(n) = noise.filter(|n| n.level.is_finite() && n.level > 0.0) {
+        if let (Some(n), Some(lin)) = (reduce_noise, self.lin.as_mut()) {
             let frame = crate::chroma::NoiseFrame { weights: crate::chroma::prophoto_luminance(), pixel_scale: n.pixel_scale, noise: n.noise };
-            let data = self.lin.as_flattened_mut();
-            data.iter_mut().for_each(|v| *v *= n.level);
+            let data = lin.as_flattened_mut();
+            par::chunks_mut(data, 65536, |_, c| c.iter_mut().for_each(|v| *v *= n.level));
             crate::chroma::reduce_color_noise(data, 3, self.w, self.h, &n.color, &frame);
-            data.iter_mut().for_each(|v| *v /= n.level);
+            par::chunks_mut(data, 65536, |_, c| c.iter_mut().for_each(|v| *v /= n.level));
         }
         (self.pre, self.noise) = (pre, noise);
         (self.haze, self.dehaze, self.work, self.texture) = (None, None, None, None);
@@ -802,32 +925,27 @@ impl RetoneCache {
     fn analyse(&mut self, tone: Tone) {
         let (w, h) = (self.w, self.h);
         if tone.dehaze != 0.0 && self.haze.is_none() {
-            let (sw, sh, small) = reduce(w, h, WORK_SIDE, |i| self.lin[i]);
+            let lin = self.lin();
+            let (sw, sh, small) = reduce(w, h, WORK_SIDE, |i| lin[i]);
             self.haze = Some(HazeBase { sw, sh, air: airlight(&small), smooth: None });
         }
         if tone.dehaze > 0.0
             && let Some(hz) = self.haze.as_mut()
             && hz.smooth.is_none()
         {
-            let (_, _, small) = reduce(w, h, WORK_SIDE, |i| self.lin[i]);
+            let lin = self.lin.as_deref().unwrap_or(&self.undone);
+            let (_, _, small) = reduce(w, h, WORK_SIDE, |i| lin[i]);
             hz.smooth = Some(haze_smooth(&small, hz.sw, hz.sh, hz.air));
         }
         let dehaze = tone.dehaze.clamp(-100.0, 100.0);
         if self.dehaze != Some(dehaze) {
             let haze = self.haze_map(dehaze);
             let y = crate::color::rgb_to_xyz(crate::color::ROMM, crate::color::D50_XY)[1].map(|v| v as f32);
-            let rows = crate::par::band_rows(w);
-            let lin = &self.lin;
-            self.lum = crate::par::map(h.div_ceil(rows), |band| {
-                let (y0, y1) = (band * rows, ((band + 1) * rows).min(h));
-                (y0 * w..y1 * w)
-                    .map(|i| {
-                        let l = haze.as_ref().map_or(lin[i], |hz| hz.apply(i % w, i / w, lin[i]));
-                        y[0] * l[0] + y[1] * l[1] + y[2] * l[2]
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .concat();
+            let lin = self.lin();
+            self.lum = par::map(w * h, |i| {
+                let l = haze.as_ref().map_or(lin[i], |hz| hz.apply(i % w, i / w, lin[i]));
+                y[0] * l[0] + y[1] * l[1] + y[2] * l[2]
+            });
             self.dehaze = Some(dehaze);
             self.work = None;
             self.texture = None;
@@ -916,14 +1034,19 @@ impl RetoneCache {
     fn work_change(&self, tone: Tone) -> Option<Upsampled> {
         let work = self.work.as_ref().filter(|_| !tone.work_neutral())?;
         let n = work.l.len();
-        let (mut a, mut b) = (vec![0.0f32; n], vec![0.0f32; n]);
-        for (unit, weight) in work_weights(tone) {
-            let Some((_, (ua, ub))) = work.fits.iter().find(|(u, _)| *u == unit) else { continue };
-            for k in 0..n {
-                a[k] += weight * ua[k];
-                b[k] += weight * ub[k];
-            }
-        }
+        let units: Vec<(f32, &Fit)> =
+            work_weights(tone).into_iter().filter_map(|(unit, weight)| work.fits.iter().find(|(u, _)| *u == unit).map(|(_, f)| (weight, f))).collect();
+        // Each sample adds the units in the same order, from 0.
+        let sum = |part: fn(&Fit) -> &Vec<f32>| {
+            par::map(n, |k| {
+                let mut v = 0.0f32;
+                for (weight, fit) in &units {
+                    v += weight * part(fit)[k];
+                }
+                v
+            })
+        };
+        let (a, b) = (sum(|f| &f.0), sum(|f| &f.1));
         Some(Upsampled { sw: work.sw, sh: work.sh, a, b, floor: work.p01.log2() })
     }
 
@@ -932,7 +1055,7 @@ impl RetoneCache {
         let tex = self.texture.as_ref().filter(|_| tone.texture != 0.0)?;
         let (ua, ub) = tex.fits[usize::from(tone.texture < 0.0)].as_ref()?;
         let k = tone.texture.clamp(-100.0, 100.0).abs() / 100.0;
-        Some(Upsampled { sw: tex.sw, sh: tex.sh, a: ua.iter().map(|v| v * k).collect(), b: ub.iter().map(|v| v * k).collect(), floor: tex.p01.log2() })
+        Some(Upsampled { sw: tex.sw, sh: tex.sh, a: par::map(ua.len(), |i| ua[i] * k), b: par::map(ub.len(), |i| ub[i] * k), floor: tex.p01.log2() })
     }
 }
 

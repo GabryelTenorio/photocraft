@@ -299,13 +299,15 @@ fn reconstruct_level(lv: &Level<'_>, k: f32, rk: f32, noise: ChromaNoise) -> [Pl
     let coarse: Vec<[f32; 5]> = par::map(lc.v.len(), |j| [at(lc, j), at(&g1[0], j), at(&g1[1], j), at(&out1[0], j), at(&out1[1], j)]);
     // Pass 1: expansions, detail, its energy and the noise variance.
     let mut px = vec![[0.0f32; 6]; w * h];
+    // Each column's coarse taps, worked out once for the level.
+    let column_taps: Vec<[(usize, f32); 3]> = (0..w).map(|x| taps(x, lc.w)).collect();
     par::chunks_mut(&mut px, w * par::band_rows(w), |band, chunk| {
         let y0 = band * par::band_rows(w);
         for (r, row) in chunk.chunks_mut(w).enumerate() {
             let y = y0 + r;
             let ty = taps(y, lc.h);
             for (x, o) in row.iter_mut().enumerate() {
-                let tx = taps(x, lc.w);
+                let tx = column_taps[x];
                 let i = y * w + x;
                 let l = at(lf, i);
                 let (f0, f1) = (at(&g[0], i), at(&g[1], i));
