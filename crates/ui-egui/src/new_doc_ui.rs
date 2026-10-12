@@ -776,7 +776,9 @@ mod tests {
     fn new_document_depth_labels_and_tooltips_are_translated() {
         for lang in crate::i18n::Lang::all().filter(|lang| lang.code() != "en") {
             for (_, label, tooltip) in DEPTH_OPTIONS {
-                assert_ne!(crate::i18n::tr(lang, label), *label, "{}: {label}", lang.code());
+                // Technical units can legitimately match English (Turkish "8 bit").
+                // Require an explicit catalog entry rather than accepting a fallback.
+                assert!(lang.has_plain_translation(label), "{}: missing {label}", lang.code());
                 assert_ne!(crate::i18n::tr(lang, tooltip), *tooltip, "{}: {tooltip}", lang.code());
             }
         }
