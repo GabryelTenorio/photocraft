@@ -284,7 +284,7 @@ fn apply(app: &mut PhotocraftApp, p: [f64; 2], mods: egui::Modifiers) -> [f64; 2
         return p;
     }
     let (out, lines) = match &snap.gesture {
-        Gesture::Point => live_crop_handle(app, p, mods, &snap.targets, tol).unwrap_or_else(|| snap.targets.snap_point(p, tol)),
+        Gesture::Point => crop_handle(app, p, mods, &snap.targets, tol).unwrap_or_else(|| snap.targets.snap_point(p, tol)),
         Gesture::TransformCorner { point, .. } if corner_distorts(app, &snap.gesture, mods) => {
             let proposed = [point[0] + p[0] - snap.start[0], point[1] + p[1] - snap.start[1]];
             let (corner, lines) = snap.targets.snap_point(proposed, tol);
@@ -316,18 +316,26 @@ pub(crate) fn retain_transform_lines(app: &mut PhotocraftApp, mods: egui::Modifi
     app.prefs_rt.snap_lines.retain(|line| (if line.vertical { point[0] } else { point[1] } - line.pos).abs() < 1e-6);
 }
 
-/// Snap the proposed handle on the image, calculated from the original camera. Snapping the
-/// pointer in the moving camera feeds the previous frame's pan back into the resize and makes
+/// Snap a crop handle being dragged: the handle itself (the frame's edge or corner), not the
+/// pointer, which grabbed it up to the grab radius away (#1919: snapping the pointer left a strip
+/// as wide as that offset between the frame and the edge it showed as snapped to). With Auto
+/// Center Preview the handle is found on the image, calculated from the original camera: snapping
+/// the pointer in the moving camera feeds the previous frame's pan back into the resize and makes
 /// a stationary pointer oscillate near the canvas edges.
-fn live_crop_handle(app: &PhotocraftApp, p: [f64; 2], mods: egui::Modifiers, targets: &SnapTargets, tol: f64) -> Option<([f64; 2], Vec<SnapLine>)> {
+fn crop_handle(app: &PhotocraftApp, p: [f64; 2], mods: egui::Modifiers, targets: &SnapTargets, tol: f64) -> Option<([f64; 2], Vec<SnapLine>)> {
     if app.ui.tool != Tool::Crop {
         return None;
     }
-    let crate::crop_ui::CropDrag::Resize { hx, hy, start, rect, view: Some(view) } = app.crop.drag? else { return None };
+    let crate::crop_ui::CropDrag::Resize { hx, hy, start, rect, view } = app.crop.drag? else { return None };
     let deg = crate::crop_ui::angle(app);
-    let q = crate::crop_mode::to_press(app, Some(view), p);
-    let g = crate::crop_mode::LiveResize { rect, deg, hx, hy, start, q, ratio: crate::crop_ui::resize_ratio(app, rect, mods), alt: mods.alt };
-    let (frame, _) = crate::crop_mode::resized_frame(g)?;
+    let ratio = crate::crop_ui::resize_ratio(app, rect, mods);
+    let q = view.map_or(p, |view| crate::crop_mode::to_press(app, Some(view), p));
+    // The frame for the pointer at `q`, as `crop_ui` resizes it.
+    let frame_at = |q: [f64; 2]| match view {
+        Some(_) => crate::crop_mode::resized_frame(crate::crop_mode::LiveResize { rect, deg, hx, hy, start, q, ratio, alt: mods.alt }).map(|(f, _)| f),
+        None => Some(crate::crop_ui::resized_turned(rect, deg, hx, hy, [q[0] - start[0], q[1] - start[1]], ratio, mods.alt)),
+    };
+    let frame = frame_at(q)?;
     let at = |r: [f64; 4]| {
         let c = crate::crop_ui::center(r);
         crate::crop_ui::turn([c[0] + f64::from(hx) * (r[2] - r[0]) / 2.0, c[1] + f64::from(hy) * (r[3] - r[1]) / 2.0], c, deg)
@@ -345,35 +353,39 @@ fn live_crop_handle(app: &PhotocraftApp, p: [f64; 2], mods: egui::Modifiers, tar
     if deg == 0.0 {
         lines.retain(|line| if line.vertical { hx != 0 } else { hy != 0 });
     }
-    // Auto Center Preview moves both screen edges. On the image the opposite edge stays put,
-    // so the grabbed edge travels twice as far as the pointer (once with Alt).
-    let scale = if mods.alt { 1.0 } else { 2.0 };
     if lines.is_empty() {
         return Some((p, lines));
     }
+    // Auto Center Preview moves both screen edges. On the image the opposite edge stays put,
+    // so the grabbed edge travels twice as far as the pointer (once with Alt). Without it the
+    // handle follows the pointer.
+    let scale = if view.is_some() && !mods.alt { 2.0 } else { 1.0 };
+    // How much the frame's extent grows per unit of pointer travel: both sides with Auto Center
+    // Preview or Alt, else the grabbed one.
+    let grow = if view.is_some() || mods.alt { 2.0 } else { 1.0 };
     let original = at(rect);
     let travel = crate::crop_ui::turn([handle[0] - original[0], handle[1] - original[1]], [0.0, 0.0], -deg);
     let mut local = [(travel[0] + d[0]) / scale, (travel[1] + d[1]) / scale];
     if deg == 0.0
         && hx != 0
         && hy != 0
-        && let Some(k) = g.ratio
+        && let Some(k) = ratio
     {
         // A corner with a ratio has one degree of freedom. Put the other axis on the same
         // ratio, rather than letting the raw pointer's unused axis override the snapped edge.
         if lines.iter().any(|line| line.vertical) {
-            local[1] = f64::from(hy) * ((rect[2] - rect[0] + 2.0 * f64::from(hx) * local[0]) / k - (rect[3] - rect[1])) / 2.0;
+            local[1] = f64::from(hy) * ((rect[2] - rect[0] + grow * f64::from(hx) * local[0]) / k - (rect[3] - rect[1])) / grow;
         } else {
-            local[0] = f64::from(hx) * ((rect[3] - rect[1] + 2.0 * f64::from(hy) * local[1]) * k - (rect[2] - rect[0])) / 2.0;
+            local[0] = f64::from(hx) * ((rect[3] - rect[1] + grow * f64::from(hy) * local[1]) * k - (rect[2] - rect[0])) / grow;
         }
     }
     let d = crate::crop_ui::turn(local, [0.0, 0.0], deg);
     let q = [start[0] + d[0], start[1] + d[1]];
-    if let Some((snapped_frame, _)) = crate::crop_mode::resized_frame(crate::crop_mode::LiveResize { q, ..g }) {
+    if let Some(snapped_frame) = frame_at(q) {
         let h = at(snapped_frame);
         lines.retain(|line| (if line.vertical { h[0] } else { h[1] } - line.pos).abs() < 1e-3);
     }
-    Some((crate::crop_mode::from_press(app, view, q), lines))
+    Some((view.map_or(q, |view| crate::crop_mode::from_press(app, view, q)), lines))
 }
 
 /// Snap a tool event's coordinates (called by `canvas::tool_event` before the tools see it).
@@ -770,6 +782,62 @@ mod tests {
         assert_eq!(app.ui.transform.as_ref().unwrap().quad[1], [108.0, 32.0]);
         assert!(app.prefs_rt.snap.as_ref().unwrap().disabled);
         assert!(app.prefs_rt.snap_lines.is_empty());
+    }
+
+    #[test]
+    fn skew_control_corner_keeps_its_axis_instead_of_snapping_as_distort() {
+        let ctrl = egui::Modifiers { command: true, ctrl: true, ..egui::Modifiers::NONE };
+        for legacy in [false, true] {
+            for (menu, expected, snapping) in [
+                ("edit.transform.skew", [[40.0, 40.0], [108.0, 40.0], [90.0, 80.0], [40.0, 80.0]], false),
+                ("edit.transform.distort", [[40.0, 40.0], [110.0, 30.0], [90.0, 80.0], [40.0, 80.0]], true),
+                ("edit.transform.perspective", [[22.0, 40.0], [108.0, 40.0], [90.0, 80.0], [40.0, 80.0]], false),
+            ] {
+                let mut app = app_with_corner_guides(menu);
+                app.run("prefs.set", json!({"path": "general.useLegacyFreeTransform", "value": legacy})).unwrap();
+                let doc = app.session.active().unwrap().doc.clone();
+                let past = app.session.active().unwrap().history.past_len();
+                let prefs = serde_json::to_value(app.session.prefs()).unwrap();
+                // Ctrl arrives after the raw, off-centre press, as on the actual canvas path.
+                move_corner(&mut app, 1, [4.0, 3.0], [108.0, 32.0], egui::Modifiers::NONE, ctrl);
+                assert_eq!(app.ui.transform.as_ref().unwrap().quad, expected, "{menu}, legacy {legacy}");
+                assert_eq!(!app.prefs_rt.snap.as_ref().unwrap().disabled, snapping, "{menu}");
+                assert_eq!(app.prefs_rt.snap_lines.len(), if snapping { 2 } else { 0 }, "{menu}");
+                crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 112.0, y: 35.0 }, ctrl);
+                assert_eq!(app.ui.transform.as_ref().unwrap().quad, expected, "release preserves {menu}");
+                crate::transform_tool::cancel(&mut app);
+                assert!(app.ui.transform.is_none() && app.prefs_rt.snap.is_none() && app.prefs_rt.snap_lines.is_empty());
+                assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &doc), "cancel preserves {menu}'s document");
+                assert_eq!(app.session.active().unwrap().history.past_len(), past, "cancel preserves {menu}'s history");
+                assert_eq!(serde_json::to_value(app.session.prefs()).unwrap(), prefs, "{menu} does not change preferences");
+            }
+        }
+    }
+
+    #[test]
+    fn skew_control_corner_on_editable_type_slides_the_whole_edge() {
+        let ctrl = egui::Modifiers { command: true, ctrl: true, ..egui::Modifiers::NONE };
+        for legacy in [false, true] {
+            let mut app = app_with_box();
+            app.run("type.create", json!({"x": 40, "y": 60, "text": "Hello"})).unwrap();
+            app.run("prefs.set", json!({"path": "general.useLegacyFreeTransform", "value": legacy})).unwrap();
+            crate::menus::invoke(&mut app, &egui::Context::default(), "edit.transform.skew", json!({})).unwrap();
+            let before = app.ui.transform.as_ref().unwrap().quad;
+            let end = [before[1][0] + 18.0, before[1][1] - 8.0];
+            let doc = app.session.active().unwrap().doc.clone();
+            let past = app.session.active().unwrap().history.past_len();
+            move_corner(&mut app, 1, [2.0, 1.0], end, egui::Modifiers::NONE, ctrl);
+            let mut expected = before;
+            expected[0][0] += 18.0;
+            expected[1][0] += 18.0;
+            assert_eq!(app.ui.transform.as_ref().unwrap().quad, expected, "type remains affine, legacy {legacy}");
+            assert!(app.prefs_rt.snap.as_ref().unwrap().disabled && app.prefs_rt.snap_lines.is_empty());
+            crate::canvas::tool_event(&mut app, ToolEvent::Up { x: end[0] + 2.0, y: end[1] + 1.0 }, ctrl);
+            assert_eq!(app.ui.transform.as_ref().unwrap().quad, expected, "release preserves the type's edge");
+            crate::transform_tool::cancel(&mut app);
+            assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &doc));
+            assert_eq!(app.session.active().unwrap().history.past_len(), past);
+        }
     }
 
     #[test]
