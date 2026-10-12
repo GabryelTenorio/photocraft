@@ -51,6 +51,11 @@ pub fn open(app: &mut PhotocraftApp) -> u64 {
         f.insert("target".into(), json!("document"));
     }
     f.entry("__preset").or_insert_with(|| json!("custom"));
+    // Preferences ▸ Units & Rulers ▸ Gutter: the first layout (before the dialog has been used
+    // and its values remembered) starts from the preferred gutter, as in Photoshop.
+    if app.ui.view.guide_layout == crate::view_cmds::default_guide_layout() {
+        f.insert("gutter".into(), json!(app.session.prefs().units_and_rulers.gutter));
+    }
     f.entry("width").or_insert(Value::Null);
     f.entry("height").or_insert(Value::Null);
     let margin = f.get("margin").cloned().unwrap_or(json!(0));

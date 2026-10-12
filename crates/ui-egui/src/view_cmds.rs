@@ -98,7 +98,7 @@ pub struct ViewOptions {
     pub guide_layout: Value,
 }
 
-fn default_guide_layout() -> Value {
+pub(crate) fn default_guide_layout() -> Value {
     json!({"columns": 8, "gutter": 20, "rows": 0, "rowGutter": 0, "margin": 0, "centerColumns": false, "clearExisting": false})
 }
 
