@@ -763,6 +763,21 @@
 	Split Warp Vertically	Bagi Warp Vertikal
 	Statistics…	Statistik…
 	Refine Strokes	Goresan penyempurnaan
+# Count-aware status and dialog text
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	{n} sampel warna diekspor ke {file}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{n} kuas diimpor dari {group}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{n} sampel warna diimpor dari {file}
+@plural	Played {n} step|Played {n} steps	{n} langkah diputar
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	{n} objek pintar tertaut yang berubah di disk diperbarui
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Simpan untuk Web: {n} file
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	{n} lapisan yang dicatat dalam komposisi ini telah dihapus. Perbarui komposisi atau hapus peringatan.
+@plural	{n} plane|{n} planes	{n} bidang
+@plural	{n} preset|{n} presets	{n} prasetel
+@plural	{n} sample point removed|{n} sample points removed	{n} titik sampel dihapus
+@plural	{n} slice|{n} slices	{n} irisan
+@plural	{n} step|{n} steps	{n} langkah
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} peringatan prasetel kuas lainnya)
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} dengan {n} peringatan
 @plural	{n} item|{n} items	{n} item
 	Auto	Otomatis
 	(print to the printer)	(cetak ke printer)

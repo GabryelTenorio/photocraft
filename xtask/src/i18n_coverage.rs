@@ -185,9 +185,14 @@ fn plural_keys(sources: &[(PathBuf, String)]) -> BTreeSet<Key> {
             rest = rest.get(at + 4..).unwrap_or("");
             let Some(end) = call_end(rest) else { break };
             let args = rest.get(..end).unwrap_or("");
-            let forms = quoted_strings(args);
-            if forms.len() >= 2 {
-                keys.insert(Key { context: "@plural".into(), source: format!("{}|{}", forms[0], forms[1]) });
+            let arguments = split_arguments(args);
+            let literal = |index: usize| {
+                let value = arguments.get(index)?.trim();
+                let raw = value.strip_prefix('"')?.strip_suffix('"')?;
+                (quoted_strings(value).len() == 1).then(|| unescape_rust_string(raw))
+            };
+            if let (Some(one), Some(other)) = (literal(2), literal(3)) {
+                keys.insert(Key { context: "@plural".into(), source: format!("{one}|{other}") });
             }
             rest = rest.get(end + 1..).unwrap_or("");
         }
@@ -543,6 +548,25 @@ mod tests {
     fn plural_keys_come_from_source_calls() {
         let sources = vec![(PathBuf::from("ui.rs"), r#"trn(lang, count, "{n} layer", "{n} layers");"#.into())];
         assert!(plural_keys(&sources).contains(&Key { context: "@plural".into(), source: "{n} layer|{n} layers".into() }));
+    }
+
+    #[test]
+    fn plural_keys_use_form_arguments_instead_of_language_or_count_strings() {
+        let sources = vec![(
+            PathBuf::from("ui.rs"),
+            r#"trn(Lang::from_code("cs"), result["files"].as_array().map_or(0, Vec::len) as u64, "Saved for Web: {n} file", "Saved for Web: {n} files");"#
+                .into(),
+        )];
+        assert_eq!(
+            plural_keys(&sources),
+            BTreeSet::from([Key { context: "@plural".into(), source: "Saved for Web: {n} file|Saved for Web: {n} files".into() }])
+        );
+    }
+
+    #[test]
+    fn plural_keys_do_not_invent_forms_from_count_arguments() {
+        let sources = vec![(PathBuf::from("ui.rs"), r#"trn(lang, counts["files"].get("count"), one, other);"#.into())];
+        assert!(plural_keys(&sources).is_empty());
     }
 
     #[test]
