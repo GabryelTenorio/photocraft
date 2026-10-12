@@ -114,16 +114,26 @@ fn key(ctx: &egui::Context, family: &str, size: f32) -> Key {
     (family.to_owned(), scale, (photocraft_text::fonts::generation(), photocraft_text::served::generation()), size as u32)
 }
 
+/// Whether the newest cached samples of `key`'s family, scale and size (from any font database
+/// generation) include an Arabic sample.
+fn had_arabic(ctx: &egui::Context, key: &Key) -> bool {
+    ctx.data_mut(|d| {
+        let cache = d.get_temp_mut_or_default::<Cache>(egui::Id::new(CACHE_ID));
+        cache
+            .0
+            .iter()
+            .rev()
+            .find(|(k, _)| k.0 == key.0 && k.1 == key.1 && k.3 == key.3)
+            .is_some_and(|(_, samples)| samples.as_ref().is_some_and(|s| s.arabic.is_some()))
+    })
+}
+
 /// Width a row reserves for its samples: wider once a painted row showed the family covers
 /// Arabic, so the label truncates before the samples. Never renders, so rows scrolled out of
-/// view cost nothing.
+/// view cost nothing. Samples from an older font generation still count, so a refresh after
+/// fonts arrive does not shrink and regrow the row.
 pub(crate) fn slot_width(ctx: &egui::Context, family: &str, size: f32) -> f32 {
-    let key = key(ctx, family, size);
-    let arabic = ctx.data_mut(|d| {
-        let cache = d.get_temp_mut_or_default::<Cache>(egui::Id::new(CACHE_ID));
-        cache.0.iter().any(|(k, samples)| k == &key && samples.as_ref().is_some_and(|s| s.arabic.is_some()))
-    });
-    if arabic { scaled(WIDTH, size) + GAP + scaled(ARABIC_WIDTH, size) } else { scaled(WIDTH, size) }
+    if had_arabic(ctx, &key(ctx, family, size)) { scaled(WIDTH, size) + GAP + scaled(ARABIC_WIDTH, size) } else { scaled(WIDTH, size) }
 }
 
 pub(crate) fn paint(ui: &egui::Ui, family: &str, row: Rect, size: f32) {
@@ -140,11 +150,12 @@ pub(crate) fn paint(ui: &egui::Ui, family: &str, row: Rect, size: f32) {
         Some(samples)
     });
     let samples = cached.unwrap_or_else(|| {
+        let reserved = had_arabic(ctx, &key);
         let samples = images(&mut photocraft_text::shared().lock().unwrap_or_else(PoisonError::into_inner), family, scale, size).map(|img| {
             let load = |image| ctx.load_texture(format!("font-sample-{family}"), image, TextureOptions::LINEAR);
             Samples { latin: load(img.latin), arabic: img.arabic.map(load) }
         });
-        if samples.as_ref().is_some_and(|s| s.arabic.is_some()) {
+        if !reserved && samples.as_ref().is_some_and(|s| s.arabic.is_some()) {
             // The row reserved only the Latin width until now.
             ctx.request_repaint();
         }
@@ -235,6 +246,22 @@ mod tests {
             let partial: String = format!("{latin}{arabic}").chars().filter(|&c| c != missing).collect();
             assert_eq!(sample_texts(&charmap(&partial)).1, None, "without U+{:04X}", missing as u32);
         }
+    }
+
+    /// A font database refresh (another engine registering fonts) re-renders the samples under a
+    /// new generation. The row keeps the Arabic width it already showed, so the refresh neither
+    /// shrinks it for a frame nor asks for another repaint.
+    #[test]
+    fn rows_keep_their_arabic_width_across_font_generations() {
+        let ctx = egui::Context::default();
+        let texture = || ctx.load_texture("font-sample-test", ColorImage::filled([1, 1], egui::Color32::WHITE), TextureOptions::LINEAR);
+        let mut old = key(&ctx, "Both Scripts", MEDIUM);
+        old.2 = (old.2.0.wrapping_sub(1), old.2.1);
+        let samples = Samples { latin: texture(), arabic: Some(texture()) };
+        ctx.data_mut(|d| d.get_temp_mut_or_default::<Cache>(egui::Id::new(CACHE_ID)).0.push_back((old, Some(samples))));
+        assert_eq!(slot_width(&ctx, "Both Scripts", MEDIUM), WIDTH + GAP + ARABIC_WIDTH);
+        assert_eq!(slot_width(&ctx, "Latin Only", MEDIUM), WIDTH);
+        assert!(had_arabic(&ctx, &key(&ctx, "Both Scripts", MEDIUM)));
     }
 
     #[test]

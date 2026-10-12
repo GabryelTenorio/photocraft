@@ -2228,6 +2228,18 @@ mod tests {
         }
     }
 
+    /// Ticks the frame loop until the background save has been collected. The save worker is a
+    /// thread, so how long it takes depends on machine load: poll the condition with only a
+    /// generous cap rather than a fixed number of short sleeps.
+    fn tick_until_saved(app: &mut PhotocraftApp, ctx: &egui::Context) {
+        let start = std::time::Instant::now();
+        crate::jobs_ui::tick(app, ctx);
+        while app.saving() && start.elapsed() < std::time::Duration::from_secs(60) {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            crate::jobs_ui::tick(app, ctx);
+        }
+    }
+
     #[test]
     fn app_open_opens_a_directory_pcraft_and_falls_back_for_the_zip_form() {
         use photocraft_doc::Document;
@@ -2315,13 +2327,7 @@ mod tests {
         // Started in the background: no reply yet, the job is on the document.
         assert!(reply.try_recv().is_err(), "the reply waits for the save job");
         assert!(app.saving(), "the save runs as a background job");
-        for _ in 0..100 {
-            crate::jobs_ui::tick(&mut app, &ctx);
-            if !app.saving() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        tick_until_saved(&mut app, &ctx);
         assert!(!app.saving(), "the save finished");
         assert_eq!(*saved.lock().unwrap(), vec!["out.psd".to_string()]);
         assert_eq!(app.session.active().unwrap().path.as_deref(), Some("out.psd"), "the save was recorded");
@@ -2335,13 +2341,7 @@ mod tests {
             Ok(Vec::new())
         }) as crate::SaveFileFn;
         crate::jobs_ui::start_save(&mut app, "user.psd".into(), crate::ExportSettings::default(), false, save, false).unwrap();
-        for _ in 0..100 {
-            crate::jobs_ui::tick(&mut app, &ctx);
-            if !app.saving() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        tick_until_saved(&mut app, &ctx);
         assert!(!app.saving(), "the interactive save finished");
         assert_eq!(app.session.active().unwrap().doc.layer_count(), 2, "the binding runs for an interactive save");
     }
@@ -2391,13 +2391,7 @@ mod tests {
         assert_eq!(inspected["ok"], true, "{inspected}");
 
         gate.store(true, std::sync::atomic::Ordering::Release);
-        for _ in 0..500 {
-            crate::jobs_ui::tick(&mut app, &ctx);
-            if !app.saving() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        tick_until_saved(&mut app, &ctx);
         assert_eq!(*saved.lock().unwrap(), vec!["out.png".to_string()], "the save completed after the gate opened");
     }
 

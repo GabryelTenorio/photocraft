@@ -47,6 +47,22 @@ fn registering_fonts_moves_the_generation() {
     assert!(fonts::generation() > g);
 }
 
+/// Building a database registers only the bundled fonts, which changes no existing database: it
+/// must not move the generation, or every short-lived engine (an SVG import, a parallel test)
+/// would make the font menu re-render all its samples and repaint again.
+#[test]
+fn building_a_database_keeps_the_generation() {
+    // Other tests in this binary register fonts concurrently; only a bump on every build fails.
+    let moved = (0..8)
+        .filter(|_| {
+            let g = fonts::generation();
+            drop(TextEngine::new());
+            fonts::generation() != g
+        })
+        .count();
+    assert!(moved < 8, "TextEngine::new moved the font generation every time");
+}
+
 #[test]
 fn literal_psd_tabs_shape_as_whitespace_without_shifting_text_offsets() {
     let mut e = TextEngine::new();

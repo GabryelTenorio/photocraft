@@ -1236,11 +1236,16 @@ async fn convention_resources_are_live_json() {
     assert_eq!(read("photocraft://document").await["width"], 8);
     // Edit › Purge › All is enabled while the process-wide effect, mask and stack caches hold
     // anything, and the other tests in this binary fill and purge those caches concurrently, so
-    // its `enabled` flag can flip between the two reads. Every other field must match exactly.
+    // its `enabled` flag (and the `disabledReason` that goes with it) can flip between the two
+    // reads. Every other field must match exactly.
     let stable = |mut v: Value| {
         for c in v.as_array_mut().into_iter().flatten() {
-            if c["id"] == "edit.purge.all" {
-                c.as_object_mut().map(|o| o.remove("enabled"));
+            if c["id"] == "edit.purge.all"
+                && let Some(o) = c.as_object_mut()
+            {
+                for k in ["enabled", "disabledReason", "needsDocument"] {
+                    o.remove(k);
+                }
             }
         }
         v

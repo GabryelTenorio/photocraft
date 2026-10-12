@@ -64,17 +64,27 @@ fn slow_job(app: &mut PhotocraftApp, gate: &Arc<AtomicBool>) -> JobId {
     }
 }
 
-/// Step frames for `ms` of wall time; returns (frames, slowest frame in ms).
-fn frames_for(h: &mut Harness<'_, PhotocraftApp>, ms: u64) -> (u64, f64) {
+/// Step at least `min` frames and until `ready` holds (the progress dialog appears only after
+/// [`crate::jobs_ui::DIALOG_DELAY_MS`] of wall time); returns (frames, slowest frame in ms).
+/// Counting frames rather than stepping for a fixed window keeps the tests load-independent: a
+/// loaded machine draws fewer frames per second, but a frame loop that is not blocked by the job
+/// still draws every one of them. The cap only stops a hung test.
+fn frames_until(h: &mut Harness<'_, PhotocraftApp>, min: u64, ready: impl Fn(&Harness<'_, PhotocraftApp>) -> bool) -> (u64, f64) {
     let t = Instant::now();
     let (mut n, mut worst) = (0, 0.0f64);
-    while t.elapsed() < Duration::from_millis(ms) {
+    while n < min || !ready(h) {
+        assert!(t.elapsed() < Duration::from_secs(60), "not ready after {n} frames");
         let f = Instant::now();
         h.step();
         worst = worst.max(f.elapsed().as_secs_f64() * 1000.0);
         n += 1;
     }
     (n, worst)
+}
+
+/// The modal progress dialog (and its Cancel button) is showing.
+fn progress_dialog(h: &Harness<'_, PhotocraftApp>) -> bool {
+    h.query_by_label("Cancel").is_some()
 }
 
 #[test]
@@ -84,7 +94,8 @@ fn the_frame_loop_keeps_running_during_a_slow_job_and_esc_cancels_it() {
     let doc_before = h.state().session.active().unwrap().doc.clone();
     let job = slow_job(h.state_mut(), &gate);
     let frame0 = h.state().frame;
-    let (n, worst) = frames_for(&mut h, 400);
+    let (n, worst) = frames_until(&mut h, 10, progress_dialog);
+    assert!(h.state().session.job(job).is_some(), "the job is still running");
     assert!(h.state().frame - frame0 >= 10, "the UI kept rendering ({n} frames)");
     eprintln!("{n} frames during the job, slowest {worst:.1} ms");
     // The status bar shows the job, and after the delay the modal progress dialog.
@@ -131,10 +142,10 @@ fn a_finished_job_lands_as_one_undo_step_and_the_dialog_cancel_button_works() {
     let gate = Arc::new(AtomicBool::new(false));
     let steps = h.state().session.active().unwrap().history.past_len();
     slow_job(h.state_mut(), &gate);
-    frames_for(&mut h, 320);
+    frames_until(&mut h, 4, progress_dialog);
     gate.store(true, Ordering::Relaxed);
     let t = Instant::now();
-    while h.state().session.has_jobs() && t.elapsed() < Duration::from_secs(10) {
+    while h.state().session.has_jobs() && t.elapsed() < Duration::from_secs(60) {
         h.step();
     }
     h.run_steps(2);
@@ -143,7 +154,7 @@ fn a_finished_job_lands_as_one_undo_step_and_the_dialog_cancel_button_works() {
     // A second job, cancelled from the dialog's button.
     let gate = Arc::new(AtomicBool::new(false));
     let job = slow_job(h.state_mut(), &gate);
-    frames_for(&mut h, 320);
+    frames_until(&mut h, 4, progress_dialog);
     h.get_by_label("Cancel").click();
     h.run_steps(3);
     assert!(h.state().session.job(job).is_none());
@@ -418,8 +429,8 @@ fn saves_run_in_the_background_and_are_recorded_when_they_end() {
     assert!(h.state().saving());
 
     // The window keeps drawing; the document stays unsaved and can't be edited meanwhile.
-    let (frames, _) = frames_for(&mut h, 400);
-    assert!(frames >= 4, "only {frames} frames while saving");
+    let (frames, _) = frames_until(&mut h, 4, |h| h.query_by_label("Encoding").is_some());
+    assert!(h.state().saving(), "the save is still encoding after {frames} frames");
     let st = h.state().session.active().unwrap();
     assert!(st.is_dirty() && st.path.is_none());
     assert!(h.state_mut().run("layer.new.layer", json!({})).is_err(), "the saving document is locked");
@@ -626,12 +637,12 @@ fn a_finished_job_beeps_when_the_preference_is_on() {
     // Off by default: the first job finishes without a beep.
     let gate = Arc::new(AtomicBool::new(true));
     let _ = slow_job(h.state_mut(), &gate);
-    frames_for(&mut h, 800);
+    step_until(&mut h, |a| !a.session.has_jobs());
     assert_eq!(BEEPS.load(Ordering::Relaxed), 0, "silent by default");
     // On: the next finished job beeps once.
     h.state_mut().run("prefs.set", json!({"path": "general.beepWhenDone", "value": true})).unwrap();
     let gate = Arc::new(AtomicBool::new(true));
     let _ = slow_job(h.state_mut(), &gate);
-    frames_for(&mut h, 800);
+    step_until(&mut h, |a| !a.session.has_jobs());
     assert_eq!(BEEPS.load(Ordering::Relaxed), 1, "one beep for the finished job");
 }

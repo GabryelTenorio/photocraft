@@ -101,10 +101,12 @@ pub fn fallback_candidates(order: &[crate::cjk::CjkScript; 4]) -> Vec<&'static s
 
 /// Bumped whenever font data is registered: fonts can arrive after start (the web build fetches
 /// served fonts on demand, [`crate::served`]), so lists derived from the database, such as font
-/// menus, compare it to know when to refresh.
+/// menus, compare it to know when to refresh. Building a new database (bundled fonts only) does
+/// not count: it changes no existing database, and a bump there would make the font menu
+/// re-render its samples whenever any short-lived engine is created (an SVG import, a test).
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 
-/// Changes whenever font data is registered in any [`FontDb`].
+/// Changes whenever font data is registered in an existing [`FontDb`].
 pub fn generation() -> u64 {
     GENERATION.load(Ordering::Relaxed)
 }
@@ -219,12 +221,19 @@ impl FontDb {
         self.register_blob(Blob::new(Arc::new(bytes)))
     }
 
-    /// Registers embedded font data without copying it.
+    /// Adds embedded font data to a database being built, without copying it (no
+    /// [`generation`] bump: see [`GENERATION`]).
     fn register_static_font(&mut self, bytes: &'static [u8]) -> Vec<String> {
-        self.register_blob(Blob::new(Arc::new(bytes)))
+        self.add_blob(Blob::new(Arc::new(bytes)))
     }
 
     fn register_blob(&mut self, blob: Blob<u8>) -> Vec<String> {
+        let names = self.add_blob(blob);
+        GENERATION.fetch_add(1, Ordering::Relaxed);
+        names
+    }
+
+    fn add_blob(&mut self, blob: Blob<u8>) -> Vec<String> {
         let added = self.fcx.collection.register_fonts(blob, None);
         let mut names = Vec::new();
         for (id, _) in added {
@@ -241,7 +250,6 @@ impl FontDb {
         self.ps_cache.clear();
         self.face_cache.clear();
         self.refresh_generics();
-        GENERATION.fetch_add(1, Ordering::Relaxed);
         names
     }
 
