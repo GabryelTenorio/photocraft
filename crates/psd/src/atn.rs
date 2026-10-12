@@ -14,7 +14,7 @@ use crate::error::{PsdError, Result};
 use crate::io::Reader;
 
 /// Commands in one file. Action files are small; this rejects hostile counts before allocating.
-const MAX_COUNT: u32 = 100_000;
+pub const MAX_COUNT: u32 = 100_000;
 /// A name or event id longer than this is not a Photoshop action file.
 const MAX_STRING: u32 = 1_000_000;
 
@@ -178,6 +178,7 @@ fn read_byte_string(r: &mut Reader<'_>) -> Result<String> {
 mod tests {
     use super::*;
     use crate::descriptor::{Descriptor, Value};
+    use crate::error::PsdError;
     use crate::io::WriteExt;
 
     fn put_unicode(out: &mut Vec<u8>, text: &str) {
@@ -281,6 +282,30 @@ mod tests {
         assert!(!command.enabled);
         assert!(command.with_dialog);
         assert_eq!(command.dialog_options, 1);
+    }
+
+    #[test]
+    fn an_action_count_past_the_cap_is_rejected() {
+        let mut out = Vec::new();
+        out.put_u32(16);
+        put_unicode(&mut out, "A");
+        out.push(1);
+        out.put_u32(MAX_COUNT.saturating_add(1));
+        let err = parse(&out).unwrap_err();
+        assert!(matches!(err, PsdError::LimitExceeded(_)), "{err}");
+    }
+
+    #[test]
+    fn bitflips_of_a_valid_file_do_not_panic() {
+        let bytes = sample();
+        for byte in 0..bytes.len() {
+            for bit in 0..8 {
+                let mut damaged = bytes.clone();
+                damaged[byte] ^= 1u8 << bit;
+                let parsed = std::panic::catch_unwind(|| parse(&damaged));
+                assert!(parsed.is_ok(), "panic after flipping bit {bit} of byte {byte}");
+            }
+        }
     }
 
     #[test]

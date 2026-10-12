@@ -546,4 +546,11 @@ proptest! {
         let b = TaggedBlock::new(*KEYS[ki], data);
         let _ = b.check_structure();
     }
+
+    /// `.atn` is a standalone parser (nothing in `PsdFile::from_bytes` calls it). Arbitrary bytes
+    /// must return `Ok` or `Err`, never panic. The matching `atn` fuzz target is manual-only.
+    #[test]
+    fn atn_parser_never_panics(data in proptest::collection::vec(any::<u8>(), 0..400)) {
+        let _ = photocraft_psd::atn::parse(&data);
+    }
 }
