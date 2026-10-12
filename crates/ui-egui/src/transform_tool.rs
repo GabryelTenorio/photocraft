@@ -2642,6 +2642,83 @@ fn rotate_about_pivot(app: &mut PhotocraftApp, da: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn aspect_scale_app(aspect: f64, ppp: f32, rotation: f32, content_aware: bool) -> PhotocraftApp {
+        let mut app = app_with_square(256, photocraft_geom::Rect::new(20, 20, 120, 100));
+        app.ui.view.pixel_aspect = format!("custom:{aspect}");
+        app.ui.view.pixel_aspect_correction = true;
+        app.ui.views[0].zoom = ppp;
+        app.ppp = ppp;
+        app.ui.views[0].rotation = rotation;
+        let command = if content_aware { "edit.contentAwareScale" } else { "edit.freeTransform" };
+        crate::menus::invoke(&mut app, &egui::Context::default(), command, json!({})).unwrap();
+        assert_eq!(app.ui.transform.as_ref().unwrap().content_aware.is_some(), content_aware);
+        app
+    }
+
+    #[test]
+    fn aspect_content_aware_scale_suppresses_rotation_feedback() {
+        for aspect in [0.1, 1.0, 10.0] {
+            for ppp in [1.0, 2.0] {
+                for rotation in [0.0, 37.0] {
+                    let mut app = aspect_scale_app(aspect, ppp, rotation, true);
+                    let metric = crate::canvas::ScreenMetric::active(&app);
+                    let t = app.ui.transform.as_ref().unwrap();
+                    let original = t.quad;
+                    let reach = metric.reach(HANDLE_PX * 1.5);
+                    let p = [t.quad[0][0] - reach[0], t.quad[0][1] - reach[1]];
+                    assert!(rotate_cursor_dir(&app, p).is_none(), "CAS PAR {aspect} ppp {ppp} rotation {rotation}");
+                    // A real outside gesture also keeps CAS scale-only and suppresses feedback
+                    // while the ordinary transform would be rotating.
+                    pointer(&mut app, ToolEvent::Down { x: p[0], y: p[1], pressure: 1.0 }, egui::Modifiers::NONE);
+                    let travel = metric.reach(6.0);
+                    let q = [p[0] - travel[0], p[1] + travel[1]];
+                    pointer(&mut app, ToolEvent::Move { x: q[0], y: q[1], pressure: 1.0 }, egui::Modifiers::NONE);
+                    assert_eq!(app.ui.transform.as_ref().unwrap().quad, original);
+                    assert!(rotate_cursor_dir(&app, q).is_none(), "CAS never rotates during an outside drag");
+                    pointer(&mut app, ToolEvent::Up { x: q[0], y: q[1] }, egui::Modifiers::NONE);
+                    assert_eq!(app.ui.transform.as_ref().unwrap().quad, original);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn aspect_content_aware_scale_keeps_outside_cursor_default() {
+        for aspect in [0.1, 1.0, 10.0] {
+            for ppp in [1.0, 2.0] {
+                for rotation in [0.0, 37.0] {
+                    let app = aspect_scale_app(aspect, ppp, rotation, true);
+                    let t = app.ui.transform.as_ref().unwrap();
+                    let metric = crate::canvas::ScreenMetric::active(&app);
+                    for distance in [HANDLE_PX * 1.5, HANDLE_PX * 4.0] {
+                        let reach = metric.reach(distance);
+                        let p = [t.quad[0][0] - reach[0], t.quad[0][1] - reach[1]];
+                        assert_eq!(cursor(&app, p, false), Some(CursorIcon::Default), "CAS PAR {aspect} ppp {ppp} rotation {rotation}");
+                    }
+                    // The same CAS session still offers a resize cursor on its corner.
+                    assert_eq!(cursor(&app, t.quad[1], false), Some(CursorIcon::ResizeNeSw));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn aspect_free_transform_keeps_rotation_feedback() {
+        for aspect in [0.1, 1.0, 10.0] {
+            for ppp in [1.0, 2.0] {
+                for rotation in [0.0, 37.0] {
+                    let app = aspect_scale_app(aspect, ppp, rotation, false);
+                    let t = app.ui.transform.as_ref().unwrap();
+                    let reach = crate::canvas::ScreenMetric::active(&app).reach(HANDLE_PX * 1.5);
+                    let p = [t.quad[0][0] - reach[0], t.quad[0][1] - reach[1]];
+                    assert!(rotate_cursor_dir(&app, p).is_some(), "Free Transform PAR {aspect} ppp {ppp} rotation {rotation}");
+                    assert_eq!(cursor(&app, p, false), Some(CursorIcon::None), "the overlay draws the rotate cursor");
+                }
+            }
+        }
+    }
+
     #[test]
     fn aspect_review_low_zoom_handle_reach_matches_rendered_geometry() {
         for aspect in [0.1, 10.0] {
