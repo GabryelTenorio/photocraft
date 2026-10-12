@@ -3,6 +3,12 @@
 # Original translations based on general Greek graphics/computing terminology.
 # Covers every source label the i18n coverage check lists.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Χρώμα καναλιού
+	Color Indicates:	Το χρώμα υποδεικνύει:
+	Solidity:	Συμπαγότητα:
+	Ink Characteristics	Χαρακτηριστικά μελανιού
+
 # Guide layout dialog
 	Rows	Γραμμές
 	Number	Πλήθος
@@ -3682,11 +3688,11 @@ cameraData	Lens	Φακός
 	Amount:	Ποσότητα:
 	Protect:	Προστασία:
 	Protect skin tones	Προστασία τόνων δέρματος
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Χρώμα καναλιού
-	Color Indicates:	Το χρώμα υποδεικνύει:
-	Solidity:	Συμπαγότητα:
-	Ink Characteristics	Χαρακτηριστικά μελανιού
+	Edit points to modify the curve	Επεξεργασία σημείων για αλλαγή της καμπύλης
+	Draw to modify the curve	Σχεδίαση για αλλαγή της καμπύλης
+curves	Smooth	Εξομάλυνση
+	Smooth the curve values	Εξομάλυνση των τιμών της καμπύλης
+	Drag to draw the curve · {key}-click draws a straight line	Σύρετε για να σχεδιάσετε την καμπύλη · {key}-κλικ σχεδιάζει ευθεία γραμμή
 # Select and Mask view modes (#1754)
 	Onion Skin	Φλούδα κρεμμυδιού
 	Marching Ants	Κινούμενο περίγραμμα

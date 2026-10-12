@@ -12,6 +12,14 @@
 # Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing … of dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Colore canale
+	Color Indicates:	Il colore indica:
+	Solidity:	Solidità:
+	Masked Areas	Aree mascherate
+	Selected Areas	Aree selezionate
+	Ink Characteristics	Caratteristiche inchiostro
+
 # Guide layout dialog
 	Columns	Colonne
 	Rows	Righe
@@ -2653,13 +2661,11 @@ cameraData	Lens	Obiettivo
 	Amount:	Quantità:
 	Protect:	Proteggi:
 	Protect skin tones	Proteggi toni pelle
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Colore canale
-	Color Indicates:	Il colore indica:
-	Solidity:	Solidità:
-	Masked Areas	Aree mascherate
-	Selected Areas	Aree selezionate
-	Ink Characteristics	Caratteristiche inchiostro
+	Edit points to modify the curve	Modifica i punti per cambiare la curva
+	Draw to modify the curve	Disegna per modificare la curva
+curves	Smooth	Leviga
+	Smooth the curve values	Leviga i valori della curva
+	Drag to draw the curve · {key}-click draws a straight line	Trascina per disegnare la curva · {key}-clic traccia una linea retta
 # Select and Mask view modes (#1754)
 	Onion Skin	Velina
 	Marching Ants	Formiche in marcia

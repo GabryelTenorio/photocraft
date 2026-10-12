@@ -15,6 +15,14 @@
 # way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept. Plural rule: one|other (n != 1 -> other).
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Kanalfarbe
+	Color Indicates:	Farbe kennzeichnet:
+	Solidity:	Solidität:
+	Masked Areas	Maskierte Bereiche
+	Selected Areas	Ausgewählte Bereiche
+	Ink Characteristics	Farbeigenschaften
+
 # Guide layout dialog
 	Columns	Spalten
 	Rows	Zeilen
@@ -2621,13 +2629,11 @@ cameraData	Lens	Objektiv
 	Amount:	Stärke:
 	Protect:	Schützen:
 	Protect skin tones	Hauttöne schützen
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Kanalfarbe
-	Color Indicates:	Farbe kennzeichnet:
-	Solidity:	Solidität:
-	Masked Areas	Maskierte Bereiche
-	Selected Areas	Ausgewählte Bereiche
-	Ink Characteristics	Farbeigenschaften
+	Edit points to modify the curve	Punkte bearbeiten, um die Kurve zu ändern
+	Draw to modify the curve	Zeichnen, um die Kurve zu ändern
+curves	Smooth	Glätten
+	Smooth the curve values	Kurvenwerte glätten
+	Drag to draw the curve · {key}-click draws a straight line	Ziehen, um die Kurve zu zeichnen · {key}-Klick zeichnet eine gerade Linie
 # Select and Mask view modes (#1754)
 	Onion Skin	Zwiebelschicht
 	Marching Ants	Laufende Ameisen

@@ -8,6 +8,12 @@
 # stay as they are; the trailing "…" of dialog commands is kept. UI text addresses the user
 # informally ("je") and uses sentence case.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Kanaalkleur
+	Color Indicates:	Kleur geeft aan:
+	Solidity:	Soliditeit:
+	Ink Characteristics	Inktkenmerken
+
 # Guide layout dialog
 	Rows	Rijen
 	Number	Aantal
@@ -3738,11 +3744,11 @@ cameraData	Lens	Lens
 	Amount:	Hoeveelheid:
 	Protect:	Beschermen:
 	Protect skin tones	Huidtinten beschermen
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Kanaalkleur
-	Color Indicates:	Kleur geeft aan:
-	Solidity:	Soliditeit:
-	Ink Characteristics	Inktkenmerken
+	Edit points to modify the curve	Punten bewerken om de curve te wijzigen
+	Draw to modify the curve	Tekenen om de curve te wijzigen
+curves	Smooth	Vloeiend maken
+	Smooth the curve values	Curvewaarden vloeiend maken
+	Drag to draw the curve · {key}-click draws a straight line	Sleep om de curve te tekenen · {key}-klik tekent een rechte lijn
 # Select and Mask view modes (#1754)
 	Onion Skin	Uienschil
 	Marching Ants	Mierenmars

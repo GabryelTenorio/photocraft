@@ -17,6 +17,12 @@
 # letters; the trailing "…" of dialog commands is kept; the colon of a label ("Width:") becomes
 # the Russian typographic equivalent, with the space the source carries.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Цвет канала
+	Color Indicates:	Цветом обозначены:
+	Solidity:	Плотность:
+	Ink Characteristics	Характеристики краски
+
 # Menus
 
 # Guide layout dialog
@@ -2922,11 +2928,11 @@ cameraData	Lens	Объектив
 	Amount:	Эффект:
 	Protect:	Защитить:
 	Protect skin tones	Защищать тона кожи
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Цвет канала
-	Color Indicates:	Цветом обозначены:
-	Solidity:	Плотность:
-	Ink Characteristics	Характеристики краски
+	Edit points to modify the curve	Изменять кривую по точкам
+	Draw to modify the curve	Рисовать кривую
+curves	Smooth	Сгладить
+	Smooth the curve values	Сгладить значения кривой
+	Drag to draw the curve · {key}-click draws a straight line	Перетащите, чтобы нарисовать кривую · {key}-щелчок рисует прямую линию
 # Select and Mask view modes (#1754)
 	Onion Skin	Калька
 	Marching Ants	Бегущие муравьи

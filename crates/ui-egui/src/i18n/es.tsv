@@ -12,6 +12,14 @@
 # Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Color del canal
+	Color Indicates:	El color indica:
+	Solidity:	Solidez:
+	Masked Areas	Áreas enmascaradas
+	Selected Areas	Áreas seleccionadas
+	Ink Characteristics	Características de la tinta
+
 # Guide layout dialog
 	Columns	Columnas
 	Rows	Filas
@@ -2662,13 +2670,11 @@ cameraData	Lens	Objetivo
 	Amount:	Cantidad:
 	Protect:	Proteger:
 	Protect skin tones	Proteger tonos de piel
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Color del canal
-	Color Indicates:	El color indica:
-	Solidity:	Solidez:
-	Masked Areas	Áreas enmascaradas
-	Selected Areas	Áreas seleccionadas
-	Ink Characteristics	Características de la tinta
+	Edit points to modify the curve	Editar puntos para modificar la curva
+	Draw to modify the curve	Dibujar para modificar la curva
+curves	Smooth	Suavizar
+	Smooth the curve values	Suavizar los valores de la curva
+	Drag to draw the curve · {key}-click draws a straight line	Arrastre para dibujar la curva · {key}-clic traza una línea recta
 # Select and Mask view modes (#1754)
 	Onion Skin	Papel cebolla
 	Marching Ants	Hormigas en marcha

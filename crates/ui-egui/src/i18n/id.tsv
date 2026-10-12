@@ -12,6 +12,12 @@
 # Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Warna Saluran
+	Color Indicates:	Warna Menunjukkan:
+	Solidity:	Soliditas:
+	Ink Characteristics	Karakteristik Tinta
+
 # Guide layout dialog
 	Rows	Baris
 	Number	Jumlah
@@ -2986,11 +2992,11 @@ cameraData	Lens	Lensa
 	Amount:	Jumlah:
 	Protect:	Lindungi:
 	Protect skin tones	Lindungi warna kulit
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Warna Saluran
-	Color Indicates:	Warna Menunjukkan:
-	Solidity:	Soliditas:
-	Ink Characteristics	Karakteristik Tinta
+	Edit points to modify the curve	Edit titik untuk mengubah kurva
+	Draw to modify the curve	Gambar untuk mengubah kurva
+curves	Smooth	Haluskan
+	Smooth the curve values	Haluskan nilai kurva
+	Drag to draw the curve · {key}-click draws a straight line	Seret untuk menggambar kurva · {key}-klik menggambar garis lurus
 # Select and Mask view modes (#1754)
 	Onion Skin	Kulit Bawang
 	Marching Ants	Semut Berbaris

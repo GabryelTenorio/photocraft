@@ -19,6 +19,12 @@
 # (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin letters; the trailing "…" of
 # dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Barva kanálu
+	Color Indicates:	Barva označuje:
+	Solidity:	Plnost:
+	Ink Characteristics	Vlastnosti inkoustu
+
 # Guide layout dialog
 	Columns	Sloupce
 	Rows	Řádky
@@ -3438,11 +3444,11 @@ layerLabel	No Color	Žádná barva
 	Amount:	Míra:
 	Protect:	Chránit:
 	Protect skin tones	Chránit tóny pleti
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Barva kanálu
-	Color Indicates:	Barva označuje:
-	Solidity:	Plnost:
-	Ink Characteristics	Vlastnosti inkoustu
+	Edit points to modify the curve	Upravit body pro změnu křivky
+	Draw to modify the curve	Kreslit pro změnu křivky
+curves	Smooth	Vyhladit
+	Smooth the curve values	Vyhladit hodnoty křivky
+	Drag to draw the curve · {key}-click draws a straight line	Tažením nakreslíte křivku · {key}-klik nakreslí rovnou čáru
 # Select and Mask view modes (#1754)
 	Onion Skin	Cibulová slupka
 	Marching Ants	Pochodující mravenci

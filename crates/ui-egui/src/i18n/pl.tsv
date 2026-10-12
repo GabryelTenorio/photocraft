@@ -18,6 +18,12 @@
 # Conventions: menus are nouns (Plik, Edycja, Obraz ...), commands are infinitives (Otwórz…,
 # Zapisz jako…), sentence case as in the English source. Quotes: „…”.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Kolor kanału
+	Color Indicates:	Kolor oznacza:
+	Solidity:	Gęstość:
+	Ink Characteristics	Właściwości farby
+
 # Guide layout dialog
 	Rows	Wiersze
 	Number	Liczba
@@ -3595,11 +3601,11 @@ cameraData	Lens	Obiektyw
 	Amount:	Wartość:
 	Protect:	Chroń:
 	Protect skin tones	Chroń odcienie skóry
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	Kolor kanału
-	Color Indicates:	Kolor oznacza:
-	Solidity:	Gęstość:
-	Ink Characteristics	Właściwości farby
+	Edit points to modify the curve	Edytuj punkty, aby zmienić krzywą
+	Draw to modify the curve	Rysuj, aby zmienić krzywą
+curves	Smooth	Wygładź
+	Smooth the curve values	Wygładź wartości krzywej
+	Drag to draw the curve · {key}-click draws a straight line	Przeciągnij, aby narysować krzywą · {key}-klik rysuje linię prostą
 # Select and Mask view modes (#1754)
 	Onion Skin	Skórka cebuli
 	Marching Ants	Maszerujące mrówki

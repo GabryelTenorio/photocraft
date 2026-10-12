@@ -11,6 +11,15 @@
 # Licensed MIT OR Apache-2.0, as the code.
 # Product and technology names retain their spelling. See docs/localization-zh-hans.md.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	通道颜色
+	Color Indicates:	色彩指示：
+	Solidity:	密度：
+	Masked Areas	被蒙版区域
+	Selected Areas	所选区域
+	Spot Color	专色
+	Ink Characteristics	油墨特性
+
 # Guide layout dialog
 	Columns	列
 	Rows	行
@@ -2595,14 +2604,11 @@ cameraData	Lens	镜头
 	Amount:	数量：
 	Protect:	保护：
 	Protect skin tones	保护肤色
-# Channel Options and New Spot Channel (#3761)
-	Channel Color	通道颜色
-	Color Indicates:	色彩指示：
-	Solidity:	密度：
-	Masked Areas	被蒙版区域
-	Selected Areas	所选区域
-	Spot Color	专色
-	Ink Characteristics	油墨特性
+	Edit points to modify the curve	编辑点以修改曲线
+	Draw to modify the curve	绘制以修改曲线
+curves	Smooth	平滑
+	Smooth the curve values	平滑曲线值
+	Drag to draw the curve · {key}-click draws a straight line	拖动以绘制曲线 · 按住 {key} 单击可绘制直线
 # Select and Mask view modes (#1754)
 	Onion Skin	洋葱皮
 	Marching Ants	蚂蚁线
