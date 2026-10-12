@@ -29,23 +29,21 @@ fn target_shape_layer(s: &Session, p: &Value) -> Option<LayerId> {
     if st.channel_view.target == crate::channel_cmds::ChannelTarget::LayerMask {
         return None;
     }
-    let id = if let Some(v) = p.get("layer") {
-        LayerId(v.as_u64()?)
-    } else {
-        st.active_layer?
-    };
+    let id = if let Some(v) = p.get("layer") { LayerId(v.as_u64()?) } else { st.active_layer? };
     let layer = st.doc.layer(id)?;
-    if matches!(layer.content, LayerContent::Shape(_)) {
-        Some(id)
-    } else {
-        None
-    }
+    if matches!(layer.content, LayerContent::Shape(_)) { Some(id) } else { None }
 }
 
+/// The colour fill keys also recolor a targeted shape layer's fill.
 fn enabled(s: &Session) -> std::result::Result<(), String> {
     if target_shape_layer(s, &Value::Null).is_some() {
         return Ok(());
     }
+    fill_enabled(s)
+}
+
+/// Enabled when `edit.fill` is (Fill from History has no shape-layer meaning).
+fn fill_enabled(s: &Session) -> std::result::Result<(), String> {
     let edit_fill = crate::commands::find("edit.fill").ok_or_else(|| "Fill is unavailable".to_string())?;
     (edit_fill.enabled)(s)
 }
@@ -146,7 +144,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: Some("Cmd+Alt+Backspace"),
             params: r##"{"state":n? (default: the History Brush's source, the oldest state still held),"layer":id?,"target":"pixels"|"mask"|"quickMask"|{"channel":i}?,"preserveTransparency":bool?}"##,
-            enabled,
+            enabled: fill_enabled,
             run: fill_history,
             journal: true,
         },
@@ -333,10 +331,9 @@ mod tests {
 
         // Locked shape layer errors gracefully without crashing
         s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
-        for id in IDS {
+        for id in &IDS[..4] {
             let err = s.execute(id, json!({})).unwrap_err().to_string();
             assert!(err.contains("locked"), "{id}: {err}");
         }
     }
 }
-
