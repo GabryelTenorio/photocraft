@@ -3083,15 +3083,10 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
         return;
     }
     let Some(st) = app.session.active() else { return };
-    let Some(id) = st.active_layer else { return };
-    let doc = st.doc.clone();
-    let Some(layer) = doc.layer(id) else { return };
-    // Mask controls (pixel or vector) also belong here when their thumbnail is targeted.
-    let mask_target = crate::mask_props_ui::targeted(app, layer);
-    let vector_target = crate::mask_props_ui::vector_targeted(app, layer);
-    if !mask_target && !vector_target && !matches!(layer.content, LayerContent::Adjustment(_) | LayerContent::Fill(_)) {
-        return;
-    }
+    let doc_id = st.doc.id;
+    let active_layer = st.active_layer;
+    // Non-Pro themes keep their floating card, but it should expose the same
+    // document, pixel, shape, text, fill, and mask properties as the dock (#2773).
     let t = Tokens::get(ctx);
     let canvas = app.last_canvas_rect;
     let width = 320.0;
@@ -3110,6 +3105,10 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let shown = egui::Area::new(card_id).order(egui::Order::Middle).fixed_pos(pos + offset).show(ctx, |ui| {
         frame.show(ui, |ui| {
             ui.set_width(width - 28.0);
+            // The Area's previous frame height can otherwise clip longer controls after
+            // switching from a short target (e.g. a solid fill to a text layer).
+            let max_height = (canvas.height() - 80.0).clamp(160.0, 720.0);
+            ui.set_max_height(max_height);
             let title = ui.horizontal(|ui| {
                 ui.label(RichText::new(tl!("Properties")).font(theme::semibold(13.5)).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -3125,41 +3124,12 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
             }
             drag = grip.drag_delta();
             ui.add_space(6.0);
-            let icon = match &layer.content {
-                LayerContent::Adjustment(_) => "sliders-horizontal",
-                LayerContent::Group(_) => "folder",
-                LayerContent::Fill(_) => "paint-bucket",
-                _ => "image",
-            };
-            ui.horizontal(|ui| {
-                let (r, _) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::hover());
-                ui.painter().rect_filled(r, t.radius_sm, t.field);
-                icons::paint(ui, r, icon, 17.0, t.icon);
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(&layer.name).font(theme::medium(13.0)).color(t.text));
-                    let kind = match &layer.content {
-                        LayerContent::Adjustment(a) => crate::i18n::fmt(tl!("{name} Properties"), &[("name", tl!(a.label()))]),
-                        // Whole phrases ("Type Layer"), as the Properties header translates them.
-                        other => tl!(&format!("{} Layer", other.kind_name())).to_string(),
-                    };
-                    ui.label(RichText::new(kind).small().color(t.text_faint));
+            egui::ScrollArea::vertical()
+                .id_salt(("properties-card-scroll", doc_id, active_layer))
+                .max_height(max_height - 38.0)
+                .show(ui, |ui| {
+                    properties_body(app, ui);
                 });
-            });
-            ui.add_space(8.0);
-            widgets::hairline(ui);
-            ui.add_space(8.0);
-            // Per-layer ids, so text still being typed for one layer can't commit to the next.
-            ui.push_id((doc.id, id, mask_target), |ui| {
-                if mask_target {
-                    crate::mask_props_ui::properties(app, ui, layer);
-                } else if vector_target {
-                    crate::mask_props_ui::vector_properties(app, ui, layer);
-                } else if let LayerContent::Adjustment(adj) = &layer.content {
-                    adjustment_controls(app, ui, id, adj);
-                } else {
-                    layer_controls(app, ui, layer);
-                }
-            });
         });
     });
     if drag != egui::Vec2::ZERO && canvas.is_positive() {
@@ -4860,6 +4830,38 @@ mod toolbar_hidden_tests {
 mod properties_card_tests {
     use super::*;
     use egui_kittest::{Harness, kittest::Queryable};
+
+    /// Non-Pro themes must not hide ordinary pixel layer Properties or ignore its toggle (#2773).
+    #[test]
+    fn studio_and_adwaita_properties_show_pixel_layers_and_respect_visibility() {
+        for theme in [crate::theme::ThemeKind::Studio, crate::theme::ThemeKind::AdwaitaDark, crate::theme::ThemeKind::Adwaita] {
+            let mut s = photocraft_engine::Session::new();
+            s.execute("file.new", json!({"width": 120, "height": 80})).unwrap();
+            s.execute("layer.new.layer", json!({"name":"Pixels"})).unwrap();
+            let mut app = PhotocraftApp::new(s, crate::Services::default());
+            app.ui.panels.properties = true;
+            let mut h = Harness::builder().with_size(vec2(900.0, 680.0)).build_ui_state(
+                |ui, app: &mut PhotocraftApp| {
+                    if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("semibold".into()))) {
+                        app.last_canvas_rect = ui.max_rect();
+                        properties_window(app, ui.ctx());
+                    }
+                },
+                app,
+            );
+            PhotocraftApp::setup_context(&h.ctx, theme);
+            h.run_steps(3);
+            assert!(h.get_all_by_role(egui::accesskit::Role::SpinButton).next().is_some(), "{theme:?}: pixel properties absent");
+
+            h.state_mut().ui.panels.properties = false;
+            h.run_steps(2);
+            assert!(h.get_all_by_role(egui::accesskit::Role::SpinButton).next().is_none(), "{theme:?}: hidden card still accepts inputs");
+
+            h.state_mut().ui.panels.properties = true;
+            h.run_steps(2);
+            assert!(h.get_all_by_role(egui::accesskit::Role::SpinButton).next().is_some(), "{theme:?}: card did not reopen");
+        }
+    }
 
     /// Arithmetic left uncommitted in one fill layer's card never lands on the layer selected next.
     #[test]
