@@ -3921,3 +3921,8 @@ cameraRaw	White balance	Beyaz dengesi
 cameraRaw	Zoom and Pan	Yakınlaştırma ve Kaydırma
 	AHD (adaptive homogeneity)	AHD (uyarlamalı homojenlik)
 	Malvar–He–Cutler	Malvar–He–Cutler
+
+# Camera Raw filmstrip (several raws in one dialog): written from the plain meaning of each label
+	Open ({n})	Aç ({n})
+	Remove from Filmstrip	Film Şeridinden Kaldır
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Film Şeridinden Kaldır: fotoğraf açılmaz; dosya diskte kalır
