@@ -201,10 +201,27 @@ fn document_size(proxy: [u32; 2], k: u32) -> Vec2 {
 
 /// A composite as monitor pixels, matching the canvas (`canvas::display_image`).
 fn upload(ctx: &egui::Context, app: &PhotocraftApp, name: &str, doc: &Document) -> egui::TextureHandle {
+    // Never exceed what the GPU accepts (egui panics on an oversized texture): with low-resolution
+    // previews off the proxy is the full document. The view maps through UV fractions, so a reduced
+    // texture still lines up.
+    let k = texture_factor(doc.size.width, doc.size.height, ctx.input(|i| i.max_texture_side));
+    let reduced;
+    let doc = if k > 1 {
+        reduced = crate::proxy::proxy_document(doc, k);
+        &reduced
+    } else {
+        doc
+    };
     let buf = photocraft_compose::flatten(doc);
     let (display, _) = crate::canvas::canvas_display(app, doc, None);
     let img = crate::canvas::display_image(display.as_deref(), &buf);
     ctx.load_texture(name, img, egui::TextureOptions::LINEAR)
+}
+
+/// The reduction that fits a `w`×`h` image inside a `max_side` texture (1: it already fits).
+fn texture_factor(w: u32, h: u32, max_side: usize) -> u32 {
+    let max_side = u32::try_from(max_side).unwrap_or(u32::MAX).max(1);
+    w.max(h).div_ceil(max_side).max(1)
 }
 
 /// What a cached texture was built from, so it is rebuilt only when its source changes.
@@ -257,6 +274,16 @@ mod tests {
         // No Preview checkbox or no command: no window.
         assert!(!shows(json!({"__command": "filter.blur.gaussianBlur"}).as_object().unwrap()));
         assert!(!shows(json!({"__preview": true}).as_object().unwrap()));
+    }
+
+    #[test]
+    fn textures_are_reduced_to_fit_the_gpu() {
+        assert_eq!(texture_factor(3000, 2000, 2048), 2);
+        assert_eq!(texture_factor(2048, 100, 2048), 1);
+        assert_eq!(texture_factor(9000, 9000, 2048), 5);
+        // A zero or absurd limit never divides by zero.
+        assert_eq!(texture_factor(3000, 2000, 0), 3000);
+        assert_eq!(texture_factor(0, 0, 2048), 1);
     }
 
     #[test]
