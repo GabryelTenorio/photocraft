@@ -69,9 +69,13 @@ fn paint_in_mode(mut rgba: [f32; 4], source_mode: ColorMode, mode: ColorMode) ->
 /// colour mode `mode`. A pattern keeps its own colours (an RGB pattern stays RGB, in the
 /// library and in the document), but in a Grayscale or CMYK document it paints that mode's
 /// colours: what Edit › Fill writes into the document's pixels, and what Photoshop shows (the
-/// pattern in colour in its picker, filled in grey).
+/// pattern in colour in its picker, filled in grey). Empty for a pattern that is not
+/// [paintable](Pattern::is_paintable).
 pub fn pattern_rgba(p: &Pattern, mode: ColorMode) -> Vec<[f32; 4]> {
-    let mut px = vec![[0.0f32; 4]; (p.width as usize).saturating_mul(p.height as usize)];
+    let Some(n) = p.is_paintable().then(|| usize::try_from(p.pixel_count()).ok()).flatten() else {
+        return Vec::new();
+    };
+    let mut px = vec![[0.0f32; 4]; n];
     p.surface.read_rgba_into(p.rect(), &mut px);
     for q in &mut px {
         *q = paint_in_mode(*q, p.surface.format().mode, mode);
@@ -101,7 +105,7 @@ impl Tile {
     }
 
     fn new_in_with_budget(p: &Pattern, mode: ColorMode, budget: usize) -> Option<Tile> {
-        if p.is_empty() || i32::try_from(p.width).is_err() || i32::try_from(p.height).is_err() {
+        if !p.is_paintable() {
             return None;
         }
         let (w, h) = (p.width as usize, p.height as usize);
