@@ -328,7 +328,8 @@ pub fn ensure(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize) -> Optio
         }
         _ => {
             let tex = ctx.load_texture(format!("channel-view-{id}"), img, TextureOptions::LINEAR);
-            app.channel_views.insert(id, Cache { revision, key, preview_key, factor, valid: true, tex, source: fresh.map(|pixels| SampledComposite { doc: source_id, factor, pixels }) });
+            let source = fresh.map(|pixels| SampledComposite { doc: source_id, factor, pixels });
+            app.channel_views.insert(id, Cache { revision, key, preview_key, factor, valid: true, tex, source });
         }
     }
     if new_source {
