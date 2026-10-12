@@ -128,8 +128,15 @@ pub fn import_tiff_page(name: &str, bytes: &[u8], page: Option<usize>) -> Result
 /// A decoded flat image as a single-layer document: a locked "Background" when it is opaque, a
 /// normal "Layer 0" when it has transparency.
 pub(crate) fn image_to_document(name: &str, img: &Image) -> Result<ImportResult, IoError> {
+    let mut converted = None;
+    let mut profile_warnings = Vec::new();
+    if let Some(next) = convert_input_only_icc(img, &mut profile_warnings)? {
+        converted = Some(next);
+    }
+    let img = converted.as_ref().unwrap_or(img);
     // What the decoder noticed (frames or pages left out, data ending early) comes first.
     let mut warnings: Vec<String> = img.warnings.iter().map(ToString::to_string).collect();
+    warnings.extend(profile_warnings);
     let (mode, target_layout) = match img.layout() {
         ChannelLayout::Gray | ChannelLayout::GrayA => (ColorMode::Grayscale, ChannelLayout::GrayA),
         ChannelLayout::Rgb | ChannelLayout::Rgba => (ColorMode::Rgb, ChannelLayout::Rgba),
@@ -553,6 +560,46 @@ fn matte_over_white(img: &Image) -> Result<Image, IoError> {
     })
 }
 
+/// When the embedded ICC profile can convert *from* the device but not *to* it (typical of
+/// iPhone "Wide Color Sharing" input profiles), convert into sRGB/sGray and tag that working
+/// space so later composites into the document succeed (#3876).
+fn convert_input_only_icc(img: &Image, warnings: &mut Vec<String>) -> Result<Option<Image>, IoError> {
+    use photocraft_cms::{Builtin, ColorSpace, Intent, Profile};
+    let Some(bytes) = img.icc.as_ref() else {
+        return Ok(None);
+    };
+    let Ok(src) = Profile::parse(bytes) else {
+        return Ok(None);
+    };
+    if src.can_map_pcs_to_device() {
+        return Ok(None);
+    }
+    let dst = match src.color_space {
+        ColorSpace::Rgb => Builtin::Srgb.profile().clone(),
+        ColorSpace::Gray => Builtin::SGray.profile().clone(),
+        _ => {
+            warnings.push(format!("embedded profile '{}' cannot be used as a working space and was not assigned", src.description));
+            let mut out = img.clone();
+            out.icc = None;
+            return Ok(Some(out));
+        }
+    };
+    let name = src.description.clone();
+    match convert_from(img, &src, &dst, Intent::RelativeColorimetric, true, img.sample_type())? {
+        Some(mut out) => {
+            out.icc = Some(dst.to_bytes().to_vec());
+            warnings.push(format!("embedded profile '{name}' has no PCS-to-device table; converted to a working RGB/gray space"));
+            Ok(Some(out))
+        }
+        None => {
+            warnings.push(format!("embedded profile '{name}' cannot be used as a working space and was not assigned"));
+            let mut out = img.clone();
+            out.icc = Some(dst.to_bytes().to_vec());
+            Ok(Some(out))
+        }
+    }
+}
+
 /// RGB pixels converted from their profile (sRGB when untagged) to `dst`, unclamped, untagged and
 /// stored as `sample`. `None` when the image isn't RGB or already holds `dst`'s colours.
 fn convert_rgb(img: &Image, dst: &photocraft_cms::Profile, intent: photocraft_cms::Intent, bpc: bool, sample: CSample) -> Result<Option<Image>, IoError> {
@@ -715,5 +762,33 @@ mod cmyk_band_tests {
         let first = out.data().get(..4).unwrap().to_vec();
         assert!(out.data().chunks(4).all(|p| p == first.as_slice()), "{:?}", out.data());
         assert_eq!(first[3], 255);
+    }
+
+    fn scanner_icc() -> Vec<u8> {
+        use photocraft_cms::pipeline::Stage;
+        use photocraft_cms::profile::{Lut, LutKind, ProfileClass};
+        use photocraft_cms::{Builtin, Curve};
+        let mut p = Builtin::Srgb.profile().clone();
+        p.class = ProfileClass::Input;
+        p.description = "Wide Color Sharing Profile".into();
+        p.matrix = None;
+        p.trc = None;
+        p.b2a = Default::default();
+        let c = Curve::Identity;
+        p.a2b[0] = Some(Lut { kind: LutKind::Ab, inputs: 3, outputs: 3, stages: vec![Stage::Curves(vec![c.clone(), c.clone(), c])] });
+        p.with_encoded_bytes().to_bytes().to_vec()
+    }
+
+    #[test]
+    fn input_only_icc_converts_into_a_working_space() {
+        use photocraft_cms::{Builtin, Profile};
+        let icc = scanner_icc();
+        assert!(!Profile::parse(&icc).unwrap().can_map_pcs_to_device());
+        let img = Image::new(2, 2, ChannelLayout::Rgb, CSample::U8).unwrap().with_icc(Some(icc));
+        let r = image_to_document("iphone.jpg", &img).unwrap();
+        assert!(r.warnings.iter().any(|w| w.contains("PCS-to-device") || w.contains("working")), "{:?}", r.warnings);
+        let dest = r.document.icc_profile.as_ref().and_then(|b| Profile::parse(b).ok()).expect("working profile");
+        assert!(dest.can_map_pcs_to_device(), "{}", dest.description);
+        assert!(dest.same_colors(Builtin::Srgb.profile()) || dest.color_space == photocraft_cms::ColorSpace::Rgb);
     }
 }

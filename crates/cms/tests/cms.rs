@@ -651,6 +651,29 @@ fn gray_profile_with_reversed_lut_type_reencodes() {
     let _ = Profile::parse(&odd.with_encoded_bytes().to_bytes()).unwrap();
 }
 
+#[test]
+fn input_rgb_profile_without_b2a_cannot_map_pcs_to_device() {
+    let p = scanner_rgb();
+    assert!(p.device_to_pcs(Intent::RelativeColorimetric).is_ok());
+    assert!(!p.can_map_pcs_to_device());
+    assert!(p.pcs_to_device(Intent::RelativeColorimetric).is_err());
+    assert!(Builtin::Srgb.profile().can_map_pcs_to_device());
+}
+
+fn scanner_rgb() -> Profile {
+    use photocraft_cms::pipeline::Stage;
+    use photocraft_cms::profile::{Lut, LutKind, ProfileClass};
+    let mut p = Builtin::Srgb.profile().clone();
+    p.class = ProfileClass::Input;
+    p.description = "Test scanner RGB".into();
+    p.matrix = None;
+    p.trc = None;
+    p.b2a = Default::default();
+    let c = photocraft_cms::Curve::Identity;
+    p.a2b[0] = Some(Lut { kind: LutKind::Ab, inputs: 3, outputs: 3, stages: vec![Stage::Curves(vec![c.clone(), c.clone(), c])] });
+    Profile::parse(&p.with_encoded_bytes().to_bytes()).unwrap()
+}
+
 /// sRGB the way Photoshop embeds it: a v2 profile whose TRCs are 1024-entry 16-bit tables.
 fn srgb_as_v2_tables() -> Profile {
     let mut p = srgb().clone();

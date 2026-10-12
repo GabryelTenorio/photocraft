@@ -296,6 +296,13 @@ impl Profile {
         self.a2b.iter().all(Option::is_none) && (self.matrix.is_some() && self.trc.is_some() || self.gray_trc.is_some())
     }
 
+    /// Whether this profile can convert from the PCS into device values (a working-space or
+    /// output profile). Input-class scanner profiles often ship only AToB tables, so this is
+    /// false even when [`Self::device_to_pcs`] succeeds (#3876).
+    pub fn can_map_pcs_to_device(&self) -> bool {
+        self.pcs_to_device(crate::Intent::RelativeColorimetric).is_ok()
+    }
+
     fn lut_for(luts: &[Option<Lut>; 3], intent: Intent) -> Option<&Lut> {
         let i = match intent {
             Intent::Perceptual => 0,
