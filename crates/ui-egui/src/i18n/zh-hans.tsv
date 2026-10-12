@@ -2810,3 +2810,6 @@ cameraRaw	Type	类型
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks：边缘最干净、色边最少，速度最慢。
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	梯度校正插值：锐利且快速，细节处有些许色边。
 	The fastest and the softest, with colour fringing on fine detail.	最快也最柔和，细节处有色边。
+# Camera Raw › Profile: the camera's own rendering of a raw file
+cameraRaw	Camera Standard	相机标准
+	The raw file is still being developed	原始文件仍在显影

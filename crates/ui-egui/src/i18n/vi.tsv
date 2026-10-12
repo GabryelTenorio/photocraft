@@ -3691,3 +3691,6 @@ cameraRaw	Warm	Ấm
 cameraRaw	White balance	Cân bằng trắng
 cameraRaw	Yellows	Vàng
 cameraRaw	Zoom and Pan	Thu phóng và kéo
+# Camera Raw › Profile: the camera's own rendering of a raw file
+cameraRaw	Camera Standard	Máy ảnh Tiêu chuẩn
+	The raw file is still being developed	Tệp RAW vẫn đang được xử lý

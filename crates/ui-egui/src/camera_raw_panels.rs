@@ -244,13 +244,38 @@ fn profile_row(ui: &mut Ui, d: &mut CameraRawDialog, dirty: &mut bool) {
             .max_rect(Rect::from_min_max(pos2(row.left() + 67.0, row.top() + 8.0), pos2(row.right() - 14.0, row.bottom() - 8.0)))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    let mut choice = if d.params.monochrome { 1 } else { 0 };
-    if crate::widgets::dropdown(&mut inner, "cr-profile", &mut choice, &[(0, tr("Color")), (1, tr("Monochrome")), (2, tr("Browse..."))], 128.0) {
+    // A raw being opened also offers the camera's own rendering (Camera Raw's Camera Matching).
+    use photocraft_io::raw::RawProfile;
+    let raw = d.raw_open.as_ref().map(|r| r.profile);
+    let mut choice = match (d.params.monochrome, raw) {
+        (true, _) => 1,
+        (false, Some(RawProfile::CameraStandard)) => 3,
+        (false, _) => 0,
+    };
+    let mut options = vec![(0, tr("Color")), (1, tr("Monochrome"))];
+    if raw.is_some() {
+        options.insert(0, (3, tr("Camera Standard")));
+    }
+    options.push((2, tr("Browse...")));
+    if crate::widgets::dropdown(&mut inner, "cr-profile", &mut choice, &options, 128.0) {
         match choice {
             2 => d.profile_browser = true,
             n => {
-                d.params.monochrome = n == 1;
-                *dirty = true;
+                let mono = n == 1;
+                if d.params.monochrome != mono {
+                    d.params.monochrome = mono;
+                    *dirty = true;
+                }
+                let wanted = match n {
+                    3 => Some(RawProfile::CameraStandard),
+                    0 => Some(RawProfile::Color),
+                    _ => None,
+                };
+                if let (Some(p), Some(current)) = (wanted, raw)
+                    && p != current
+                {
+                    d.profile_request = Some(p);
+                }
             }
         }
     }
@@ -274,7 +299,11 @@ fn profile_browser(ui: &mut Ui, d: &mut CameraRawDialog, dirty: &mut bool) {
         d.profile_browser = false;
     }
     st::rule(ui);
-    let current = if d.params.monochrome { tr("Monochrome") } else { tr("Color") };
+    let current = match (d.params.monochrome, d.raw_open.as_ref().map(|r| r.profile)) {
+        (true, _) => tr("Monochrome"),
+        (false, Some(photocraft_io::raw::RawProfile::CameraStandard)) => tr("Camera Standard"),
+        (false, _) => tr("Color"),
+    };
     st::caption(ui, &format!("{current} - {}", tr("Basic")));
     st::rule(ui);
     let mut favorites = false;

@@ -75,6 +75,8 @@ pub struct CameraRawDialog {
     /// Panels whose eye is off: the preview leaves their settings out (OK still applies them).
     pub(crate) hidden: Vec<String>,
     pub(crate) profile_browser: bool,
+    /// A profile picked in the Profile menu of the open-time dialog, for [`show`] to develop.
+    pub(crate) profile_request: Option<photocraft_io::raw::RawProfile>,
     /// The White Balance tool: the next click on the preview neutralises that colour.
     pub(crate) wb_picker: bool,
     pub(crate) mono_tex: Option<TextureHandle>,
@@ -139,7 +141,9 @@ impl CameraRawDialog {
             Target::SmartFilter(index) => Some(index),
             Target::NewFilter | Target::OpenRaw => None,
         });
-        result["openingRaw"] = json!(self.raw_open.as_ref().map(|r| json!({"name": r.name, "path": r.path, "demosaic": r.demosaic.id()})));
+        result["openingRaw"] = json!(self.raw_open.as_ref().map(
+            |r| json!({"name": r.name, "path": r.path, "demosaic": r.demosaic.id(), "profile": r.profile.id(), "developedProfile": r.developed_profile.id()})
+        ));
         result["view"] = json!(navigation);
         result["sourceSize"] = json!([self.full_w, self.full_h]);
         result["previewApproximate"] = json!(!self.detail.ready && (self.pw != self.full_w || self.ph != self.full_h));
@@ -281,6 +285,14 @@ pub struct RawOpen {
     pub developed_with: photocraft_io::raw::Demosaic,
     /// The method chosen in the dialog: Open re-develops when it differs from `developed_with`.
     pub demosaic: photocraft_io::raw::Demosaic,
+    /// The colour profile the document is developed with.
+    pub developed_profile: photocraft_io::raw::RawProfile,
+    /// The profile chosen in the dialog's Profile menu: choosing one re-develops the document
+    /// with it (the preview shows it), and Open develops with it.
+    pub profile: photocraft_io::raw::RawProfile,
+    /// The settings and their Reset to Open state, shown again when the dialog reopens on the
+    /// document re-developed for a profile change.
+    pub restore: Option<Box<(CameraRaw, CameraRaw)>>,
 }
 
 /// Should an interactive open of `name` show the open-time Camera Raw dialog? `warnings` are
@@ -317,6 +329,9 @@ pub fn queue_open_dialog(app: &mut PhotocraftApp, name: &str, path: Option<&str>
             bytes: bytes.map(|b| std::sync::Arc::new(b.to_vec())),
             developed_with: method,
             demosaic: method,
+            developed_profile: Default::default(),
+            profile: Default::default(),
+            restore: None,
         });
     }
 }
@@ -357,9 +372,9 @@ fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Resul
     let (layer, surf, _) = crate::distort_ui::active_pixels(app)?;
     open_pixels(app, ctx, layer, surf, CameraRaw::default(), Coverage::None, Target::OpenRaw)?;
     let curve = match (&raw.bytes, &raw.path) {
-        (Some(b), _) => Some(photocraft_io::raw::raw_preview(b)),
+        (Some(b), _) => Some(photocraft_io::raw::raw_preview_for(b, raw.developed_profile)),
         #[cfg(not(target_arch = "wasm32"))]
-        (None, Some(p)) => std::fs::read(p).ok().map(|b| photocraft_io::raw::raw_preview(&b)),
+        (None, Some(p)) => std::fs::read(p).ok().map(|b| photocraft_io::raw::raw_preview_for(&b, raw.developed_profile)),
         _ => None,
     };
     if let Some(d) = app.camera_raw.as_mut() {
@@ -383,6 +398,11 @@ fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Resul
         // 50). The document was developed without it; Open develops with it.
         d.params.noise_color = RAW_COLOR_NOISE;
         d.original = d.params.clone();
+        let mut raw = raw;
+        // Reopened on the document re-developed for another profile: the same settings.
+        if let Some(kept) = raw.restore.take() {
+            (d.params, d.original) = *kept;
+        }
         d.dirty = true;
         d.raw_open = Some(raw);
     }
@@ -420,6 +440,9 @@ pub struct Redevelop {
     /// The job is the final Camera Raw step (`filter.cameraRaw`), not the re-develop: when it
     /// lands the document is marked unmodified.
     filter_step: bool,
+    /// The job re-develops for a profile chosen in the dialog, which then reopens on the new
+    /// document ([`switch_profile`]).
+    profile_switch: bool,
 }
 
 /// Open: re-develop for raw-stage settings, apply the rest, keep the document unmodified.
@@ -429,6 +452,9 @@ pub struct Redevelop {
 /// document is locked meanwhile, and [`on_redevelop_event`] finishes when it lands. Elsewhere
 /// (tests, the web) it runs inline.
 fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -> Result<Value, String> {
+    if app.raw_redevelop.as_ref().is_some_and(|r| r.profile_switch) {
+        return Err(tl!("The raw file is still being developed").into());
+    }
     let index = document_index(app, raw.document).ok_or("the raw document was closed")?;
     let tuning = photocraft_io::raw::RawTuning {
         temperature: params.temperature,
@@ -441,8 +467,9 @@ fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -
         texture: params.texture,
         dehaze: params.dehaze,
         color_noise: super::camera_raw_detail_ui::color_noise_of(params),
+        profile: raw.profile,
     };
-    let as_opened = photocraft_io::raw::RawTuning { demosaic: raw.developed_with, ..Default::default() };
+    let as_opened = photocraft_io::raw::RawTuning { demosaic: raw.developed_with, profile: raw.developed_profile, ..Default::default() };
     // Without the file the raw-stage settings stay RGB adjustments, like the filter's.
     let source = match (&raw.bytes, &raw.path) {
         (Some(b), _) => Some(photocraft_engine::jobs::OpenSource::Bytes(b.clone())),
@@ -481,7 +508,7 @@ fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -
     match started {
         photocraft_engine::jobs::Started::Done(v) => finish_redevelop(app, params, raw, &v),
         photocraft_engine::jobs::Started::Job(job) => {
-            app.raw_redevelop = Some(Redevelop { job, params: params.clone(), raw: raw.clone(), filter_step: false });
+            app.raw_redevelop = Some(Redevelop { job, params: params.clone(), raw: raw.clone(), filter_step: false, profile_switch: false });
             app.ui.status = label;
             app.ui.status_error = false;
             Ok(json!({"job": job.0, "pending": true}))
@@ -508,6 +535,89 @@ fn replace_raw_document(
     };
     s.set_active(index);
     Ok(json!({"document": index, "previous": doc_id.0, "warnings": r.warnings, "wb": wb}))
+}
+
+/// The Profile menu of the open-time dialog picked `profile`: re-develop the document with it
+/// (in the background in the desktop app) and reopen the dialog on the new document with the
+/// same settings, so the preview shows the profile.
+fn switch_profile(app: &mut PhotocraftApp, profile: photocraft_io::raw::RawProfile) -> Result<(), String> {
+    if app.raw_redevelop.is_some() {
+        return Err(tl!("The raw file is still being developed").into());
+    }
+    let d = app.camera_raw.as_mut().ok_or(tl!("Camera Raw isn't open"))?;
+    let raw = d.raw_open.as_mut().ok_or("profiles apply only while a raw file opens")?;
+    raw.profile = profile;
+    if profile == raw.developed_profile {
+        return Ok(());
+    }
+    let raw = raw.clone();
+    let source = match (&raw.bytes, &raw.path) {
+        (Some(b), _) => photocraft_engine::jobs::OpenSource::Bytes(b.clone()),
+        #[cfg(not(target_arch = "wasm32"))]
+        (None, Some(p)) => photocraft_engine::jobs::OpenSource::Path(p.clone()),
+        _ => return Err("the raw file can't be read again".into()),
+    };
+    let (name, doc_id, demosaic) = (raw.name.clone(), raw.document, raw.developed_with);
+    let work = move |ctx: &photocraft_engine::jobs::JobCtx| -> photocraft_engine::Result<photocraft_io::ImportResult> {
+        ctx.progress(0.0, "Reading");
+        let bytes = match source {
+            photocraft_engine::jobs::OpenSource::Bytes(b) => b,
+            #[cfg(not(target_arch = "wasm32"))]
+            photocraft_engine::jobs::OpenSource::Path(p) => {
+                std::sync::Arc::new(std::fs::read(&p).map_err(|e| photocraft_engine::EngineError::Other(format!("{p}: {e}")))?)
+            }
+            #[cfg(target_arch = "wasm32")]
+            photocraft_engine::jobs::OpenSource::Path(p) => return Err(photocraft_engine::EngineError::Other(format!("{p}: cannot read files here"))),
+        };
+        ctx.check()?;
+        ctx.progress(0.05, "Developing");
+        photocraft_io::raw::import_raw_as(&name, &bytes, demosaic, profile).map_err(|e| photocraft_engine::EngineError::Other(e.to_string()))
+    };
+    let apply = move |s: &mut photocraft_engine::Session, r: photocraft_io::ImportResult| replace_raw_document(s, doc_id, r, false);
+    let label = crate::i18n::fmt(tl!("Developing {name}"), &[("name", &raw.name)]);
+    let index = document_index(app, raw.document).ok_or("the raw document was closed")?;
+    app.session.set_active(index);
+    if app.background_jobs {
+        match app.session.start_job(REDEVELOP_JOB, json!({"name": raw.name}), &label, true, work, apply).map_err(|e| e.to_string())? {
+            photocraft_engine::jobs::Started::Done(v) => finish_profile_switch(app, raw, &v),
+            photocraft_engine::jobs::Started::Job(job) => {
+                let params = app.camera_raw.as_ref().map(|d| d.params.clone()).unwrap_or_default();
+                app.raw_redevelop = Some(Redevelop { job, params, raw, filter_step: false, profile_switch: true });
+                app.ui.status = label;
+                app.ui.status_error = false;
+                Ok(())
+            }
+        }
+    } else {
+        let v = work(&photocraft_engine::jobs::JobCtx::new()).and_then(|r| apply(&mut app.session, r)).map_err(|e| e.to_string())?;
+        finish_profile_switch(app, raw, &v)
+    }
+}
+
+/// The document is re-developed with `raw.profile` (`v` from [`replace_raw_document`]): the
+/// dialog reopens on it with its settings.
+fn finish_profile_switch(app: &mut PhotocraftApp, mut raw: RawOpen, v: &Value) -> Result<(), String> {
+    let index = v.get("document").and_then(Value::as_u64).ok_or("the re-develop returned no document")? as usize;
+    let new_id = app.session.documents().get(index).map(|st| st.doc.id).ok_or("the re-developed document is missing")?;
+    for id in app.view_docs.iter_mut().filter(|id| **id == raw.document) {
+        *id = new_id;
+    }
+    app.sync_views();
+    let kept = app.camera_raw.as_ref().map(|d| (d.params.clone(), d.original.clone()));
+    raw.document = new_id;
+    raw.developed_profile = raw.profile;
+    raw.restore = kept.map(Box::new);
+    app.pending_raw_open = Some(raw);
+    app.ui.status.clear();
+    Ok(())
+}
+
+/// A profile re-develop failed or was cancelled: the dialog's choice goes back to the profile
+/// the document is developed with.
+fn profile_switch_failed(app: &mut PhotocraftApp) {
+    if let Some(raw) = app.camera_raw.as_mut().and_then(|d| d.raw_open.as_mut()) {
+        raw.profile = raw.developed_profile;
+    }
 }
 
 /// After the re-develop: keep the old document's view (zoom, scroll) on the new one, report
@@ -553,7 +663,8 @@ fn finish_open_raw(app: &mut PhotocraftApp, index: usize, rest: CameraRaw, redev
         if r.get("pending").and_then(Value::as_bool) == Some(true)
             && let (Some(job), Some(raw)) = (r.get("job").and_then(Value::as_u64), raw)
         {
-            app.raw_redevelop = Some(Redevelop { job: photocraft_engine::jobs::JobId(job), params: rest.clone(), raw: raw.clone(), filter_step: true });
+            app.raw_redevelop =
+                Some(Redevelop { job: photocraft_engine::jobs::JobId(job), params: rest.clone(), raw: raw.clone(), filter_step: true, profile_switch: false });
         }
         result["filter"] = r;
     }
@@ -577,6 +688,22 @@ fn mark_unmodified(app: &mut PhotocraftApp, index: usize) {
 /// when the event was one of those (handled here).
 pub fn on_redevelop_event(app: &mut PhotocraftApp, e: &photocraft_engine::jobs::JobEvent) -> bool {
     let Some(pending) = app.raw_redevelop.take_if(|r| r.job == e.id) else { return false };
+    if pending.profile_switch {
+        match &e.outcome {
+            photocraft_engine::jobs::JobOutcome::Done(v) => {
+                if let Err(err) = finish_profile_switch(app, pending.raw, v) {
+                    crate::notices::error(app, format!("{}: {err}", e.label));
+                }
+            }
+            // The dialog stays on the profile the document has.
+            photocraft_engine::jobs::JobOutcome::Failed(err) => {
+                profile_switch_failed(app);
+                crate::notices::error(app, format!("{}: {err}", e.label));
+            }
+            photocraft_engine::jobs::JobOutcome::Cancelled => profile_switch_failed(app),
+        }
+        return true;
+    }
     if pending.filter_step {
         if matches!(e.outcome, photocraft_engine::jobs::JobOutcome::Done(_))
             && let Some(index) = e.document.and_then(|id| document_index(app, id))
@@ -785,6 +912,7 @@ fn open_pixels(
         curve_rect: None,
         hidden: Vec::new(),
         profile_browser: false,
+        profile_request: None,
         wb_picker: false,
         mono_tex: None,
         before_after: BeforeAfter::Off,
@@ -836,7 +964,7 @@ pub fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Val
     };
     for (key, value) in fields {
         match key.as_str() {
-            "set" | "scope" | "view" | "layout" | "hidden" | "beforeAfter" | "demosaic" => {}
+            "set" | "scope" | "view" | "layout" | "hidden" | "beforeAfter" | "demosaic" | "profile" => {}
             "before" | "commit" | "cancel" | "profileBrowser" if value.is_boolean() => {}
             "before" | "commit" | "cancel" | "profileBrowser" => return Some(Err(format!("Camera Raw {key} must be a boolean"))),
             _ => return Some(Err(format!("unknown Camera Raw ui property {key}"))),
@@ -958,6 +1086,14 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
             None => return Some(Err("demosaic must be ahd, mhc or bilinear".into())),
         },
     };
+    let profile = match ui.get("profile") {
+        None => None,
+        Some(_) if d.raw_open.is_none() => return Some(Err("profile applies only while a raw file opens".into())),
+        Some(v) => match v.as_str().and_then(photocraft_io::raw::RawProfile::from_id) {
+            Some(p) => Some(p),
+            None => return Some(Err("profile must be cameraStandard or color".into())),
+        },
+    };
     let d = app.camera_raw.as_mut()?;
     if let (Some(m), Some(raw)) = (demosaic, d.raw_open.as_mut()) {
         raw.demosaic = m;
@@ -1000,6 +1136,19 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
         d.ensure_scope(app.ui.camera_raw_scope.selected_region);
     }
     super::camera_raw_scope_ui::persist(app, ctx);
+    if let Some(p) = profile {
+        if let Err(e) = switch_profile(app, p) {
+            profile_switch_failed(app);
+            return Some(Err(e));
+        }
+        // Developed inline (no background jobs): reopen on the new document now.
+        if app.pending_raw_open.as_ref().is_some_and(|r| r.restore.is_some())
+            && let Some(raw) = app.pending_raw_open.take()
+            && let Err(e) = open_raw(app, ctx, raw)
+        {
+            return Some(Err(e));
+        }
+    }
     if ui.get("cancel").and_then(Value::as_bool) == Some(true) {
         cancel(app);
         return Some(Ok(json!({"cancelled": true})));
@@ -1073,7 +1222,16 @@ pub(crate) fn is_linear(c: &[[f32; 2]]) -> bool {
 }
 
 pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    if app.camera_raw.is_none()
+    if let Some(profile) = app.camera_raw.as_mut().and_then(|d| d.profile_request.take())
+        && let Err(e) = switch_profile(app, profile)
+    {
+        profile_switch_failed(app);
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
+    // A dialog re-developed for another profile reopens in place, without closing its window.
+    let reopen = app.pending_raw_open.as_ref().is_some_and(|r| r.restore.is_some());
+    if (app.camera_raw.is_none() || reopen)
         && let Some(raw) = app.pending_raw_open.take()
         && let Err(e) = open_raw(app, ctx, raw)
     {
@@ -2191,6 +2349,36 @@ mod tests {
     }
 
     #[test]
+    fn a_profile_picked_while_a_raw_opens_redevelops_it_and_keeps_the_settings() {
+        use photocraft_io::raw::RawProfile;
+        let (mut app, dng) = raw_app();
+        let ctx = egui::Context::default();
+        app.open_bytes("IMG_0005.dng", &dng).unwrap();
+        let raw = app.pending_raw_open.take().unwrap();
+        assert_eq!((raw.profile, raw.developed_profile), (RawProfile::CameraStandard, RawProfile::CameraStandard), "the default profile");
+        open_raw(&mut app, &ctx, raw).unwrap();
+        let first = app.camera_raw.as_ref().unwrap().raw_open.as_ref().unwrap().document;
+        menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"set": {"contrast": 30, "noiseColor": 0}}})).unwrap().unwrap();
+        let d = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"profile": "color"}})).unwrap().unwrap();
+        assert_eq!((d["openingRaw"]["profile"].as_str(), d["openingRaw"]["developedProfile"].as_str()), (Some("color"), Some("color")), "{d}");
+        let dialog = app.camera_raw.as_ref().unwrap();
+        assert_ne!(dialog.raw_open.as_ref().unwrap().document, first, "re-developed into a new document");
+        assert_eq!(dialog.params.contrast, 30.0, "the settings stay");
+        assert_eq!(dialog.original.noise_color, RAW_COLOR_NOISE, "Reset to Open still goes back to the open's settings");
+        assert_eq!(app.session.documents().len(), 1, "the re-developed document replaces the first");
+        assert!(menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"profile": "vivid"}})).unwrap().is_err());
+        // Open develops with the chosen profile: the document already has it.
+        let r = menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"commit": true}})).unwrap().unwrap();
+        assert_eq!(r["redeveloped"], false, "{r}");
+        assert!(r.get("filter").is_some(), "Contrast is applied as the filter: {r}");
+        // On a plain layer there is no raw profile to pick.
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        open(&mut app, &ctx).unwrap();
+        assert!(menu(&mut app, &ctx, "filter.cameraRaw", &json!({"ui": {"profile": "color"}})).unwrap().is_err());
+    }
+
+    #[test]
     fn the_demosaic_method_is_chosen_at_open() {
         let (mut app, dng) = raw_app();
         let ctx = egui::Context::default();
@@ -2338,7 +2526,10 @@ mod tests {
                     path: None,
                     bytes: None,
                     developed_with: Default::default(),
-                    demosaic: Default::default()
+                    demosaic: Default::default(),
+                    developed_profile: Default::default(),
+                    profile: Default::default(),
+                    restore: None,
                 }
             )
             .is_err()

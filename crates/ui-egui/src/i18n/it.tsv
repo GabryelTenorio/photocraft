@@ -4197,3 +4197,6 @@ navigator	Zoom	Zoom
 	Transform Vertical	Trasforma: verticale
 	Upright	Raddrizzamento
 	White Balance	Bilanciamento bianco
+# Camera Raw › Profile: the camera's own rendering of a raw file
+cameraRaw	Camera Standard	Fotocamera standard
+	The raw file is still being developed	Il file raw è ancora in fase di sviluppo

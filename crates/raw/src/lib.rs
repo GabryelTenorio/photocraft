@@ -70,6 +70,7 @@ mod tone;
 #[cfg(feature = "testgen")]
 pub mod testgen;
 
+pub use crate::cameras::CAMERA_STANDARD;
 pub use crate::chroma::{ChromaNoise, ColorNoise, NoiseFrame, estimate_color_noise, prophoto_luminance, reduce_color_noise};
 pub use crate::color::{Calibration, ColorInfo, Mat3};
 pub use crate::demosaic::Demosaic;
@@ -221,6 +222,13 @@ pub fn identify(bytes: &[u8]) -> Option<RawFormat> {
 /// `true` if `bytes` look like a camera raw file.
 pub fn is_raw(bytes: &[u8]) -> bool {
     identify(bytes).is_some()
+}
+
+/// The camera's own rendering of `s` when PhotoCraft has measured it (the camera's JPEGs with its
+/// default picture style): a look for [`DevelopOptions::camera_look`], to develop with
+/// [`Sensor::black_point`] 0. `None` for cameras without one.
+pub fn camera_standard(s: &Sensor) -> Option<CameraLook> {
+    cameras::standard(s)
 }
 
 /// Reads the undeveloped sensor data and metadata.

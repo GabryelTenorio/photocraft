@@ -3790,3 +3790,6 @@ cameraRaw	Type	Typ
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks: najczystsze krawędzie i najmniej barwnych obwódek, najwolniejsza.
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	Interpolacja z korekcją gradientu: ostra i szybka, z niewielkimi barwnymi obwódkami na drobnych szczegółach.
 	The fastest and the softest, with colour fringing on fine detail.	Najszybsza i najmiększa, z barwnymi obwódkami na drobnych szczegółach.
+# Camera Raw › Profile: the camera's own rendering of a raw file
+cameraRaw	Camera Standard	Aparat: standardowy
+	The raw file is still being developed	Plik RAW jest jeszcze wywoływany
