@@ -108,6 +108,11 @@
 	Open…	Mở…
 	Package…	Đóng gói…
 	Paste	Dán
+	Copy Mask	Sao chép mặt nạ
+	Paste Mask	Dán mặt nạ
+	Replace Layer Mask?	Thay thế mặt nạ lớp?
+	Replace the existing pixel mask on “{layer}”?	Thay thế mặt nạ điểm ảnh hiện có trên “{layer}”?
+	Replace	Thay thế
 	Paste in Place	Dán tại chỗ
 	Paste Into	Dán vào trong
 	Paste Outside	Dán ra ngoài
