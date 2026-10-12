@@ -1624,12 +1624,11 @@ mod tests {
 
     #[test]
     fn destructive_levels_dont_clip_in_32_bit() {
-        // Input 15..230, gamma 1.3, output 10..245: black and white land on the output range in
-        // integer documents, but in a 32-bit document the float curve runs on past it unclamped
-        // (HDR, upstream #2592): below the input black point it goes negative, above the input
-        // white point past 1 (0.0698 below black → -20.3/255; 1.116 above white → 265.8/255).
+        // Input 15..230, gamma 1.3, output 10..245: integer documents stop at the output range,
+        // while float documents preserve the curve's signed and HDR values beyond it (the
+        // compose-side `levels_dont_clip_in_32_bit` pins the same curve, #2592).
         let params = json!({"inBlack": 15, "inWhite": 230, "gamma": 1.3, "outBlack": 10, "outWhite": 245});
-        for (depth, low, high) in [(8, 10.0, 245.0), (16, 10.0, 245.0), (32, -20.3, 265.8)] {
+        for depth in [8, 16, 32] {
             let mut s = crate::Session::new();
             s.execute("file.new", json!({"width": 16, "height": 16, "depth": depth, "background": "white"})).unwrap();
             s.execute("select.rect", json!({"x": 0, "y": 0, "width": 8, "height": 16})).unwrap();
@@ -1637,8 +1636,13 @@ mod tests {
             s.execute("select.deselect", json!({})).unwrap();
             s.execute("image.adjustments.levels", params.clone()).unwrap();
             let px = pixels(&s);
-            assert!((px[0][0] * 255.0 - low).abs() < 0.6, "black @{depth}: {:?}", px[0]);
-            assert!((px[1][0] * 255.0 - high).abs() < 0.6, "white @{depth}: {:?}", px[1]);
+            if depth == 32 {
+                assert!(px[0][0].is_finite() && px[0][0] < 0.0, "float black keeps its signed result: {:?}", px[0]);
+                assert!(px[1][0].is_finite() && px[1][0] > 1.0, "float white keeps its HDR result: {:?}", px[1]);
+            } else {
+                assert!((px[0][0] * 255.0 - 10.0).abs() < 0.6, "black @{depth}: {:?}", px[0]);
+                assert!((px[1][0] * 255.0 - 245.0).abs() < 0.6, "white @{depth}: {:?}", px[1]);
+            }
         }
     }
 
