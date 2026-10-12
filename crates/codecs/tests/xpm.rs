@@ -67,6 +67,26 @@ static char *i[] = {
 }
 
 #[test]
+fn named_x11_colors_use_x11_not_css_values() {
+    let bytes = br#"/* XPM */
+static char *icon[] = {
+"6 1 6 1",
+"a c gray",
+"b c maroon",
+"c c purple",
+"d c LightGoldenrodYellow",
+"e c DarkSlateGray4",
+"f c Ghost White",
+"abcdef"
+};"#;
+    let image = decode(bytes).unwrap();
+    assert_eq!(image.data(), &[
+        190, 190, 190, 255, 176, 48, 96, 255, 160, 32, 240, 255,
+        250, 250, 210, 255, 82, 139, 139, 255, 248, 248, 255, 255,
+    ]);
+}
+
+#[test]
 fn xpm_is_import_only() {
     assert!(caps(Format::Xpm).read);
     assert!(!caps(Format::Xpm).write);
