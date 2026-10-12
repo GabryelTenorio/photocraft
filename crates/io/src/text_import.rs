@@ -36,10 +36,12 @@ pub(crate) fn prepare(doc: &mut Document) {
                     let mut changed = false;
                     for r in &mut t.runs {
                         if let Some(ps) = r.style.postscript_name.clone()
-                            && !eng.fonts.has_family(&r.style.font_family)
+                            && !eng.fonts.faces(&r.style.font_family).iter().any(|f| f.postscript_name.as_deref() == Some(&ps))
                         {
                             let f = eng.fonts.resolve_postscript(&ps);
-                            if f.exact || eng.fonts.has_family(&f.family) {
+                            // An exact face wins even when the heuristic named another installed
+                            // family; a heuristic only fills a missing family, as layout does.
+                            if f.exact || (!eng.fonts.has_family(&r.style.font_family) && eng.fonts.has_family(&f.family)) {
                                 r.style.font_family = f.family;
                                 r.style.weight = f.weight;
                                 r.style.italic = f.italic;
