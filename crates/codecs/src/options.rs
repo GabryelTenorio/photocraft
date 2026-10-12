@@ -104,8 +104,12 @@ pub enum PngCompression {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TiffCompression {
     None,
-    Lzw,
+    /// LZW (TIFF 6.0), the default: it is part of the format proper, so every reader that
+    /// accepts a TIFF at all accepts it. ZIP/Deflate ([`Self::Deflate`]) compresses better but
+    /// is an Adobe extension that some readers (older Windows imaging stacks among them)
+    /// reject, which is what kept other applications from opening our TIFFs (#4484).
     #[default]
+    Lzw,
     Deflate,
     PackBits,
 }
@@ -156,7 +160,7 @@ impl Default for EncodeOptions {
             png_interlaced: false,
             webp_lossless: true,
             webp_quality: 80,
-            tiff_compression: TiffCompression::Deflate,
+            tiff_compression: TiffCompression::Lzw,
             tiff_bigtiff: false,
             exr_compression: ExrCompression::Zip16,
             embed_icc: true,
