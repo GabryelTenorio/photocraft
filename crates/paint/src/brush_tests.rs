@@ -657,6 +657,24 @@ fn smoothing_modes() {
 }
 
 #[test]
+fn smoothing_enable_box_turns_the_section_off() {
+    // #4458: the Brush Settings enable checkbox gates smoothing; the amount stays put.
+    let zig: Vec<StrokePoint> = (0..40).map(|i| StrokePoint::new(i as f64 * 5.0, if i % 2 == 0 { 0.0 } else { 6.0 }, 1.0)).collect();
+    let cfg = Smoothing { enabled: false, amount: 0.8, ..Default::default() };
+    let pts = smooth_points(&cfg, 1.0, &zig);
+    assert_eq!(pts, zig, "off: the pointer drives the brush directly");
+    let mut s = Smoother::new(&cfg, 1.0);
+    let mut out = Vec::new();
+    s.push(StrokePoint::new(0.0, 0.0, 1.0), &mut out);
+    s.push(StrokePoint::new(100.0, 0.0, 1.0), &mut out);
+    assert_eq!(s.string(), None, "off: no string");
+    assert!(!s.lagging(), "off: nothing to catch up with");
+    // Turning it back on keeps the settings (as the other sections do).
+    let on = Smoothing { enabled: true, ..cfg };
+    assert!(smooth_points(&on, 1.0, &zig).len() != zig.len(), "on again: smoothing applies");
+}
+
+#[test]
 fn smoothing_string_runs_from_the_lagging_brush_to_the_pointer() {
     // #3479: the canvas draws the line between the brush and the pointer.
     let cfg = Smoothing { amount: 0.8, ..Default::default() };

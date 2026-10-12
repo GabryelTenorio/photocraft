@@ -20,3 +20,17 @@ fn presets_keep_the_tool_smoothing() {
     s.execute("tools.setBrush", json!({"preset": preset, "brush": {"smoothing": {"amount": 0.0}}})).unwrap();
     assert_eq!(s.tools.brush.smoothing.amount, 0.0);
 }
+
+#[test]
+fn smoothing_section_has_an_enable_flag() {
+    // #4458: the Brush Settings checkbox toggles `smoothing.enabled` through tools.setBrush.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 64})).unwrap();
+    assert!(s.tools.brush.smoothing.enabled, "on by default");
+    s.execute("tools.setBrush", json!({"brush": {"smoothing": {"enabled": false, "amount": 0.6}}})).unwrap();
+    assert!(!s.tools.brush.smoothing.enabled);
+    assert_eq!(s.tools.brush.smoothing.amount, 0.6, "the settings survive the toggle");
+    s.execute("tools.setBrush", json!({"brush": {"smoothing": {"enabled": true}}})).unwrap();
+    assert!(s.tools.brush.smoothing.enabled);
+    assert_eq!(s.tools.brush.smoothing.amount, 0.6);
+}
