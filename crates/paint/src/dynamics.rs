@@ -761,7 +761,7 @@ pub fn apply_pose(b: &BrushSettings, mut p: StrokePoint) -> StrokePoint {
 #[derive(Clone, Debug)]
 pub struct DabGenerator {
     smoother: Smoother,
-    spline: Spline,
+    spline: Option<Spline>,
     walker: PathWalker,
     dual_walker: Option<PathWalker>,
     builder: DabBuilder,
@@ -792,13 +792,19 @@ impl DabGenerator {
         }
         Self {
             smoother: Smoother::new(&brush.smoothing, zoom),
-            spline: Spline::default(),
+            spline: None,
             walker,
             dual_walker: dual_on.then(|| PathWalker::new(None)),
             builder: DabBuilder::new(&brush),
             dual: dual_on.then(|| DualBuilder::new(&brush)),
             scratch: Vec::new(),
         }
+    }
+    /// Fit a midpoint Bézier curve through the input points (live pointer input). Off keeps the
+    /// exact polyline, which Stroke Path, scripts and recorded actions rely on.
+    pub fn fit_curve(mut self, on: bool) -> Self {
+        self.spline = on.then(Spline::default);
+        self
     }
 
     fn walk(&mut self, pts: &[StrokePoint], dabs: &mut Vec<Dab>, dual: &mut Vec<Dab>) {
@@ -827,7 +833,10 @@ impl DabGenerator {
         let mut curve = std::mem::take(&mut self.scratch);
         curve.clear();
         for p in pts {
-            self.spline.push(*p, &mut curve);
+            match self.spline.as_mut() {
+                Some(s) => s.push(*p, &mut curve),
+                None => curve.push(*p),
+            }
         }
         let mut sm = Vec::new();
         for p in &curve {
@@ -840,7 +849,9 @@ impl DabGenerator {
     /// End of stroke.
     pub fn finish(&mut self, dabs: &mut Vec<Dab>, dual: &mut Vec<Dab>) {
         let mut curve = Vec::new();
-        self.spline.finish(&mut curve);
+        if let Some(s) = self.spline.as_mut() {
+            s.finish(&mut curve);
+        }
 
         let mut sm = Vec::new();
         for p in &curve {

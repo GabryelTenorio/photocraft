@@ -19,7 +19,7 @@ fn line(x0: f64, x1: f64, y: f64) -> Vec<StrokePoint> {
 }
 
 fn dabs_of(b: &BrushSettings, pts: &[StrokePoint]) -> Vec<Dab> {
-    dabs(&Stroke { brush: b.clone(), points: pts.to_vec() })
+    dabs(&Stroke { brush: b.clone(), points: pts.to_vec(), fit_curve: false })
 }
 
 fn raster(b: &BrushSettings, d: &Dab) -> (Rect, Vec<f32>) {

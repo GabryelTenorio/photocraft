@@ -153,7 +153,7 @@ fn background_eraser(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(EngineError::Other(format!("Could not use the Background Eraser because the transparency of layer \"{}\" is locked", l.name)));
         }
     }
-    let stroke = Stroke { brush, points: pts };
+    let stroke = Stroke { brush, points: pts, fit_curve: false };
     let dmg = s.edit("Background Eraser", |doc, _| {
         let selection = doc.selection.clone();
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
