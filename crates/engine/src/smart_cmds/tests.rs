@@ -1007,3 +1007,43 @@ fn displace_smart_filter_reads_its_map_path_on_re_render() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// #3649: a smart object keeps its placement, so Free Transform frames the placed rectangle (which
+/// may be rotated), and a transform given that frame composes the delta once instead of re-deriving
+/// the frame from the rendered pixels' axis-aligned bounds.
+#[test]
+fn frame_quad_follows_a_rotated_placement_and_from_quad_composes_the_delta() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 200, "height": 200})).unwrap();
+    // A 90-degree-rotated placement of a 40 x 20 source.
+    let rot = photocraft_geom::Affine { m: [0.0, 1.0, -1.0, 0.0, 120.0, 60.0] };
+    let mut so = SmartObject::new(SmartSource::Linked { path: String::new() }, rot, None);
+    so.source_size = Some([40, 20]);
+    let frame = frame_quad(&so).expect("a recorded source size gives a frame");
+    let want = [[120.0, 60.0], [120.0, 100.0], [100.0, 100.0], [100.0, 60.0]];
+    for (a, b) in frame.iter().zip(&want) {
+        assert!((a[0] - b[0]).abs() < 1e-6 && (a[1] - b[1]).abs() < 1e-6, "{frame:?}");
+    }
+    let id = s
+        .edit("smart", |doc, active| {
+            let id = doc.insert_above(Some(active.unwrap()), Layer::new("so", LayerContent::Smart(so.clone())));
+            *active = Some(id);
+            Ok(id)
+        })
+        .unwrap();
+    // Move the frame by (5, -3): the placement must compose that delta exactly once.
+    let to: [[f64; 2]; 4] = frame.map(|p| [p[0] + 5.0, p[1] - 3.0]);
+    s.execute("edit.transform", json!({"layer": id.0, "from": frame, "quad": to})).unwrap();
+    let got = s
+        .active()
+        .and_then(|st| st.doc.layer(id))
+        .and_then(|l| match &l.content {
+            LayerContent::Smart(sm) => Some(sm.clone()),
+            _ => None,
+        })
+        .and_then(|sm| frame_quad(&sm))
+        .expect("still a smart object with a frame");
+    for (a, b) in got.iter().zip(&to) {
+        assert!((a[0] - b[0]).abs() < 1e-6 && (a[1] - b[1]).abs() < 1e-6, "{got:?} vs {to:?}");
+    }
+}

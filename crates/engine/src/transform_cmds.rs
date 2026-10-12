@@ -394,7 +394,12 @@ pub(crate) fn composite_over(dst: &mut Surface, top: &Surface) {
 }
 
 fn quad_param(p: &Value) -> Option<[[f64; 2]; 4]> {
-    let a = p.get("quad")?.as_array()?;
+    quad_array(p.get("quad")?)
+}
+
+/// A four-corner array `[[x, y], …]` to corners.
+fn quad_array(a: &Value) -> Option<[[f64; 2]; 4]> {
+    let a = a.as_array()?;
     if a.len() != 4 {
         return None;
     }
@@ -443,14 +448,21 @@ fn transform(s: &mut Session, p: &Value) -> Result<Value> {
                 (None, Some(id)) => transform_bounds(&st.doc, st.doc.layer(id).ok_or(EngineError::NoLayer(id))?),
                 (None, None) => Rect::EMPTY,
             };
-            if b.is_empty() {
+            // With explicit corners (`quad`, optionally `from`) the rect is only a fallback frame:
+            // an empty content rect is fine.
+            if b.is_empty() && p.get("quad").is_none() {
                 return Err(EngineError::Other("nothing to transform".into()));
             }
             [b.x0 as f64, b.y0 as f64, b.x1 as f64, b.y1 as f64]
         }
     };
+    let from = p.get("from").and_then(quad_array);
     let h = if let Some(q) = quad_param(p) {
-        Homography::rect_to_quad(rect, q).ok_or_else(|| bad("degenerate quad"))?
+        match from {
+            // A rotated/sheared source frame (a smart object's placement) maps quad to quad.
+            Some(f) => Homography::quad_to_quad(f, q).ok_or_else(|| bad("degenerate quad"))?,
+            None => Homography::rect_to_quad(rect, q).ok_or_else(|| bad("degenerate quad"))?,
+        }
     } else if let Some(m) = p.get("matrix").and_then(Value::as_array) {
         let v: Vec<f64> = m.iter().filter_map(Value::as_f64).collect();
         if v.len() != 6 {

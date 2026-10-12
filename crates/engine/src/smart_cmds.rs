@@ -561,6 +561,19 @@ pub fn placement(sm: &SmartObject) -> Homography {
     sm.perspective.map(Homography).unwrap_or_else(|| affine_homography(&sm.transform))
 }
 
+/// The smart object's frame in the document: its placement applied to the source rectangle, clockwise
+/// from top-left. `None` without a recorded source size (older files), so callers fall back to the
+/// rendered content's bounds.
+pub fn frame_quad(sm: &SmartObject) -> Option<[[f64; 2]; 4]> {
+    let [w, h] = sm.source_size?;
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let (w, h) = (f64::from(w), f64::from(h));
+    let p = placement(sm);
+    Some([p.apply(0.0, 0.0), p.apply(w, 0.0), p.apply(w, h), p.apply(0.0, h)].map(|(x, y)| [x, y]))
+}
+
 pub(crate) fn affine_homography(a: &Affine) -> Homography {
     let [a, b, c, d, e, f] = a.m;
     Homography([a, c, e, b, d, f, 0.0, 0.0, 1.0])

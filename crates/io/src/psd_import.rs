@@ -333,6 +333,7 @@ impl Ctx<'_> {
             LayerContent::Smart(SmartObject {
                 contents_id,
                 source: SmartSource::Linked { path: id },
+                source_size: None,
                 transform,
                 smart_filters: stack.filters,
                 cache: Some(self.record_surface(rec, &name)),

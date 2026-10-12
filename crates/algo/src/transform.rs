@@ -103,6 +103,13 @@ impl Homography {
         Some(Self::square_to_quad(quad)?.mul(&to_unit))
     }
 
+    /// The transform taking the frame `from` (corners clockwise from top-left) onto `to`. `None` for
+    /// degenerate quads. Unlike [`rect_to_quad`], `from` may be rotated or sheared (a smart object's
+    /// placement frame), not just axis-aligned.
+    pub fn quad_to_quad(from: [[f64; 2]; 4], to: [[f64; 2]; 4]) -> Option<Homography> {
+        Some(Self::square_to_quad(to)?.mul(&Self::square_to_quad(from)?.inverse()?))
+    }
+
     /// Approximate linear scale of the mapping near `(x, y)` (sqrt of the Jacobian determinant).
     pub fn local_scale(&self, x: f64, y: f64) -> f64 {
         let e = 0.5;

@@ -486,6 +486,7 @@ pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<S
     let id = s.edit(label, |doc, active| {
         let layer = if smart {
             let mut so = SmartObject::new(source, Affine { m: [scale, 0.0, 0.0, scale, dx, dy] }, Some(px));
+            so.source_size = Some([src.size.width, src.size.height]);
             // A vector source (SVG) renders at its placement scale instead of as a resampled raster.
             if vector && let Some(sharp) = crate::smart_cmds::render(doc, &so)? {
                 so.cache = Some(sharp);

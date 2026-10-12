@@ -872,6 +872,10 @@ pub struct TransformSession {
     pub rect: [f64; 4],
     /// Corners clockwise from top-left (document px).
     pub quad: [[f64; 2]; 4],
+    /// The frame the box opened on, when it is not `rect`'s corners: a smart object's placement
+    /// frame (rotated / sheared), so the box follows the content and the commit maps frame → quad.
+    #[serde(default)]
+    pub from: Option<[[f64; 2]; 4]>,
     /// Reference point (rotation / ⌥-scale centre).
     pub pivot: [f64; 2],
     pub interpolation: String,

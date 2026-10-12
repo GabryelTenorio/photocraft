@@ -117,6 +117,7 @@ pub(crate) fn frame(app: &mut PhotocraftApp) -> Option<TransformSession> {
         layer: id.0,
         rect,
         quad,
+        from: None,
         pivot,
         interpolation: "bicubic".into(),
         warp: None,

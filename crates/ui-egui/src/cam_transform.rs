@@ -50,6 +50,7 @@ pub(crate) fn begin(app: &mut PhotocraftApp, offset: [i32; 2]) -> bool {
         layer: 0,
         rect: r,
         quad: [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]],
+        from: None,
         pivot: [(r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0],
         interpolation: "bilinear".into(),
         warp: None,

@@ -240,11 +240,27 @@ pub fn begin(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(), String>
         path: None,
         content_aware: None,
     });
+    // A smart object keeps its placement, which may be rotated: open the box on that frame rather
+    // than the rendered pixels' axis-aligned bounds, so re-entering Free Transform frames the
+    // content (#3649).
+    let frame = match &layer.content {
+        LayerContent::Smart(sm) => photocraft_engine::smart_cmds::frame_quad(sm),
+        _ => None,
+    };
+    let (rect, quad, from) = match frame {
+        Some(q) => {
+            let (x0, y0) = q.iter().fold((f64::MAX, f64::MAX), |a, p| (a.0.min(p[0]), a.1.min(p[1])));
+            let (x1, y1) = q.iter().fold((f64::MIN, f64::MIN), |a, p| (a.0.max(p[0]), a.1.max(p[1])));
+            ([x0, y0, x1, y1], q, Some(q))
+        }
+        None => (rect, corners(rect), None),
+    };
     app.ui.transform = Some(TransformSession {
         session,
         layer: id.0,
         rect,
-        quad: corners(rect),
+        quad,
+        from,
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
         interpolation: "bicubic".into(),
         warp: None,
@@ -344,6 +360,7 @@ pub(crate) fn begin_content_aware(
         layer: id.0,
         rect,
         quad: corners(rect),
+        from: None,
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
         interpolation: "bicubic".into(),
         warp: None,
@@ -456,6 +473,7 @@ fn begin_lone(
         layer,
         rect,
         quad: corners(rect),
+        from: None,
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
         interpolation: "bicubic".into(),
         warp: None,
@@ -507,6 +525,7 @@ fn begin_path(app: &mut PhotocraftApp, ctx: &egui::Context, params: serde_json::
         layer: layer.0,
         rect,
         quad: corners(rect),
+        from: None,
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
         interpolation: "bicubic".into(),
         warp: None,
@@ -521,20 +540,30 @@ fn begin_path(app: &mut PhotocraftApp, ctx: &egui::Context, params: serde_json::
     Ok(())
 }
 
-/// The affine map taking `rect`'s corners to `quad`'s; `None` when the box was distorted out of a
-/// parallelogram (Distort, Perspective): the path then goes as a `quad`.
-fn rect_to_quad_affine(r: [f64; 4], q: [[f64; 2]; 4]) -> Option<photocraft_geom::Affine> {
-    let (w, h) = (r[2] - r[0], r[3] - r[1]);
-    if w <= 0.0 || h <= 0.0 {
-        return None;
-    }
-    let tol = 1e-3 * (1.0 + w.max(h));
+/// The frame the box opened on: an explicit `from` quad (a smart object's rotated placement), else
+/// `rect`'s corners.
+fn origin(t: &TransformSession) -> [[f64; 2]; 4] {
+    t.from.unwrap_or_else(|| corners(t.rect))
+}
+
+/// The affine map taking `from`'s corners to `quad`'s; `None` when `quad` was distorted out of a
+/// parallelogram (Distort, Perspective), which an affine path transform can't follow.
+fn frame_to_quad_affine(f: [[f64; 2]; 4], q: [[f64; 2]; 4]) -> Option<photocraft_geom::Affine> {
+    let tol = 1e-3 * (1.0 + q.iter().flat_map(|p| p.iter().map(|v| v.abs())).fold(0.0_f64, f64::max));
     if (q[0][0] + q[2][0] - q[1][0] - q[3][0]).abs() > tol || (q[0][1] + q[2][1] - q[1][1] - q[3][1]).abs() > tol {
         return None;
     }
-    let (a, b) = ((q[1][0] - q[0][0]) / w, (q[1][1] - q[0][1]) / w);
-    let (c, d) = ((q[3][0] - q[0][0]) / h, (q[3][1] - q[0][1]) / h);
-    let m = [a, b, c, d, q[0][0] - a * r[0] - c * r[1], q[0][1] - b * r[0] - d * r[1]];
+    let (u, v) = ([f[1][0] - f[0][0], f[1][1] - f[0][1]], [f[3][0] - f[0][0], f[3][1] - f[0][1]]);
+    let (w, z) = ([q[1][0] - q[0][0], q[1][1] - q[0][1]], [q[3][0] - q[0][0], q[3][1] - q[0][1]]);
+    let det = u[0] * v[1] - u[1] * v[0];
+    if det.abs() < 1e-9 {
+        return None;
+    }
+    let a = (w[0] * v[1] - z[0] * u[1]) / det;
+    let c = (z[0] * u[0] - w[0] * v[0]) / det;
+    let b = (w[1] * v[1] - z[1] * u[1]) / det;
+    let d = (z[1] * u[0] - w[1] * v[0]) / det;
+    let m = [a, b, c, d, q[0][0] - a * f[0][0] - c * f[0][1], q[0][1] - b * f[0][0] - d * f[0][1]];
     m.iter().all(|v| v.is_finite()).then_some(photocraft_geom::Affine { m })
 }
 
@@ -590,6 +619,7 @@ pub fn begin_selection(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(
         layer: layer.0,
         rect,
         quad: corners(rect),
+        from: None,
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
         interpolation: "bilinear".into(),
         warp: None,
@@ -635,7 +665,7 @@ pub fn enter_warp(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if t.warp.is_some() || t.target.is_some() {
         return;
     }
-    if t.quad == corners(t.rect)
+    if t.quad == origin(t)
         && !t.selection
         && t.path.is_none()
         && let Some(w) = existing
@@ -645,7 +675,11 @@ pub fn enter_warp(app: &mut PhotocraftApp, ctx: &egui::Context) {
         t.warp = Some(w);
         return;
     }
-    let h = Homography::rect_to_quad(t.rect, t.quad).unwrap_or(Homography::IDENTITY);
+    let h = match t.from {
+        Some(f) => Homography::quad_to_quad(f, t.quad),
+        None => Homography::rect_to_quad(t.rect, t.quad),
+    }
+    .unwrap_or(Homography::IDENTITY);
     let mesh = BezierMesh::identity(t.rect, 1, 1).map_points(|p| {
         let (x, y) = h.apply(p[0], p[1]);
         [x, y]
@@ -959,12 +993,13 @@ pub fn commit(app: &mut PhotocraftApp) {
         crate::cas_transform::commit(app, &t, options);
         return;
     }
+    let origin_quad = origin(&t);
     if t.selection {
         let mut p = json!({"rect": t.rect, "interpolation": t.interpolation});
         match &t.warp {
             Some(w) if !w.is_identity() => p["warp"] = json!(w),
             Some(_) => return,
-            None if t.quad == corners(t.rect) => return,
+            None if t.quad == origin_quad => return,
             None => p["quad"] = json!(t.quad),
         }
         if let Err(e) = app.run("select.transformSelection", p) {
@@ -977,9 +1012,9 @@ pub fn commit(app: &mut PhotocraftApp) {
         match &t.warp {
             Some(w) if w.is_identity() => return,
             Some(w) => p["warp"] = json!(w),
-            None if t.quad == corners(t.rect) => return,
+            None if t.quad == origin_quad => return,
             // Distort and Perspective map the path through the box (#3027).
-            None => match rect_to_quad_affine(t.rect, t.quad) {
+            None => match frame_to_quad_affine(origin_quad, t.quad) {
                 Some(a) => p["matrix"] = json!(a.m),
                 None => {
                     p["rect"] = json!(t.rect);
@@ -1000,10 +1035,13 @@ pub fn commit(app: &mut PhotocraftApp) {
         }
         app.run("edit.transform.warp", json!({"layer": t.layer, "rect": t.rect, "warp": w, "interpolation": t.interpolation}))
     } else {
-        if t.quad == corners(t.rect) {
+        if t.quad == origin_quad {
             return; // untouched: nothing to do and no history step; a ⌥⌘T copy or a place stays
         }
         let mut p = json!({"layer": t.layer, "rect": t.rect, "quad": t.quad, "interpolation": t.interpolation});
+        if let Some(from) = t.from {
+            p["from"] = json!(from);
+        }
         if let Some(target) = t.target {
             p["target"] = target;
         }
@@ -2728,6 +2766,7 @@ mod tests {
             layer: 1,
             rect: [0.0, 0.0, 100.0, 50.0],
             quad: corners([0.0, 0.0, 100.0, 50.0]),
+            from: None,
             pivot: [50.0, 25.0],
             interpolation: "bicubic".into(),
             warp: None,

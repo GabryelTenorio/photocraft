@@ -761,6 +761,7 @@ mod tests {
                 LayerContent::Smart(SmartObject {
                     contents_id: photocraft_doc::SmartContentsId::fresh(),
                     source: SmartSource::Linked { path: String::new() },
+                    source_size: None,
                     transform: photocraft_geom::Affine::IDENTITY,
                     smart_filters: vec![],
                     cache: Some(cache),
