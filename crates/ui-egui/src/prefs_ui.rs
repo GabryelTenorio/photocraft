@@ -383,21 +383,6 @@ fn sync_tooltips(app: &PhotocraftApp, ctx: &egui::Context) {
     }
 }
 
-/// Interface › Enable Animations: off, egui's fades and slides take no time and scroll areas jump
-/// straight to their target (#3273). Re-checked every frame because a theme change rebuilds the
-/// style; both the dark and light styles are set, so a system appearance switch keeps it.
-fn sync_animations(app: &PhotocraftApp, ctx: &egui::Context) {
-    let on = app.session.prefs().interface.enable_animations;
-    let time = if on { egui::Style::default().animation_time } else { 0.0 };
-    if ctx.global_style().animation_time != time {
-        let scroll = if on { egui::style::ScrollAnimation::default() } else { egui::style::ScrollAnimation::none() };
-        ctx.all_styles_mut(|s| {
-            s.animation_time = time;
-            s.scroll_animation = scroll;
-        });
-    }
-}
-
 /// Resolve the saved appearance mode without changing it or either theme slot.
 pub(crate) fn sync_appearance(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // A restored or embedding-supplied pin must not suppress native appearance events.
@@ -421,7 +406,6 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
     crate::theme::set_ui_font_size(ctx, app.session.prefs().interface.ui_font_size);
     presets_store(app);
     sync_tooltips(app, ctx);
-    sync_animations(app, ctx);
     app.sync_recent();
     if let Some(wait) = persist(app, ctx.input(|i| i.time)) {
         ctx.request_repaint_after(std::time::Duration::try_from_secs_f64(wait).unwrap_or_default());
@@ -1082,7 +1066,7 @@ fn hex_field(ui: &mut egui::Ui, key: &str, rgb: &mut [u8; 3]) {
     let id = egui::Id::new(("pref-hex", key));
     let shown = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
     let mut text = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_else(|| shown.clone());
-    let r = ui.add(egui::TextEdit::singleline(&mut text).font(crate::theme::mono(11.5)).desired_width(72.0).char_limit(7));
+    let r = crate::widgets::outlined_text_edit(ui, id, &mut text, crate::widgets::OutlinedTextEdit::new(72.0).font_size(11.5).char_limit(7));
     if r.changed()
         && let Some(c) = prefs::parse_hex(&text)
     {
@@ -1130,7 +1114,13 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
     // The dialog follows the language being edited, so a change shows before OK.
     let lang = crate::i18n::Lang::from_pref(values.pointer("/interface/language").and_then(Value::as_str).unwrap_or("auto"));
     let mut search = f.get("__search").and_then(Value::as_str).unwrap_or("").to_string();
-    ui.add(egui::TextEdit::singleline(&mut search).hint_text(tl!("Search settings…")).desired_width(f32::INFINITY));
+    let search_w = ui.available_width().max(200.0);
+    crate::widgets::outlined_text_edit(
+        ui,
+        egui::Id::new("prefs-search"),
+        &mut search,
+        crate::widgets::OutlinedTextEdit::new(search_w).hint_text(tl!("Search settings…")),
+    );
     let found = preference_sections(&values, &search);
     if !found.iter().any(|(id, _)| *id == section)
         && let Some((first, _)) = found.first()
@@ -1519,20 +1509,24 @@ fn section_fields(
                 Value::String(s) => {
                     ui.label(RichText::new(tl!(&label)).color(t.text_dim));
                     let mut s = s.clone();
-                    ui.add(egui::TextEdit::singleline(&mut s).desired_width(260.0));
+                    crate::widgets::outlined_text_edit(ui, egui::Id::new(("pref-string", path.as_str())), &mut s, crate::widgets::OutlinedTextEdit::new(260.0));
                     obj.insert(k, json!(s));
                 }
                 Value::Number(n) => {
                     ui.label(RichText::new(tl!(&label)).color(t.text_dim));
                     let (lo, hi) = prefs::range(&path).unwrap_or((-1e9, 1e9));
+                    let lo_f = lo as f32;
+                    let hi_f = hi as f32;
                     if n.is_u64() || n.is_i64() {
-                        let mut x = n.as_i64().unwrap_or(0);
-                        ui.add(egui::DragValue::new(&mut x).range(lo as i64..=hi as i64).custom_parser(crate::widgets::parse_num));
-                        obj.insert(k, json!(x));
+                        let mut x = n.as_i64().unwrap_or(0) as f32;
+                        if crate::widgets::value_field(ui, &mut x, lo_f..=hi_f, "", 72.0).changed() {
+                            obj.insert(k, json!(x.round() as i64));
+                        }
                     } else {
-                        let mut x = n.as_f64().unwrap_or(0.0);
-                        ui.add(egui::DragValue::new(&mut x).range(lo..=hi).speed(0.1).max_decimals(3).custom_parser(crate::widgets::parse_num));
-                        obj.insert(k, json!(x));
+                        let mut x = n.as_f64().unwrap_or(0.0) as f32;
+                        if crate::widgets::value_field(ui, &mut x, lo_f..=hi_f, "", 72.0).changed() {
+                            obj.insert(k, json!(x));
+                        }
                     }
                 }
                 Value::Array(_) if path == "tools.pressureCurve" => {
@@ -1545,12 +1539,17 @@ fn section_fields(
                     ui.label(RichText::new(tl!("Scratch disks")).color(t.text_dim));
                     let mut items = items.clone();
                     ui.vertical(|ui| {
-                        for d in &mut items {
+                        for (i, d) in items.iter_mut().enumerate() {
                             ui.horizontal(|ui| {
                                 let mut on = d.get("enabled").and_then(Value::as_bool).unwrap_or(false);
                                 let mut path = d.get("path").and_then(Value::as_str).unwrap_or("").to_string();
                                 crate::widgets::checkbox(ui, &mut on, "");
-                                ui.add(egui::TextEdit::singleline(&mut path).desired_width(240.0));
+                                crate::widgets::outlined_text_edit(
+                                    ui,
+                                    ui.id().with(("scratch-disk", i)),
+                                    &mut path,
+                                    crate::widgets::OutlinedTextEdit::new(240.0),
+                                );
                                 *d = json!({"enabled": on, "path": path});
                             });
                         }
@@ -1596,7 +1595,12 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
     let mut filter = f.get("filter").and_then(Value::as_str).unwrap_or("").to_string();
     ui.horizontal(|ui| {
         ui.label(RichText::new(tl!("Search")).color(t.text_dim));
-        ui.add(egui::TextEdit::singleline(&mut filter).desired_width(260.0).hint_text(tl!("command or shortcut")));
+        crate::widgets::outlined_text_edit(
+            ui,
+            egui::Id::new("shortcut-filter"),
+            &mut filter,
+            crate::widgets::OutlinedTextEdit::new(260.0).hint_text(tl!("command or shortcut")),
+        );
     });
     f.insert("filter".into(), json!(filter));
     // A malformed map (set over automation) is left as it is, so OK rejects it instead of
@@ -1830,7 +1834,7 @@ fn presets_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, 
     });
     let mut new_name = f.get("newName").and_then(Value::as_str).unwrap_or("").to_string();
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut new_name).desired_width(200.0));
+        crate::widgets::outlined_text_edit(ui, egui::Id::new("preset-rename"), &mut new_name, crate::widgets::OutlinedTextEdit::new(200.0));
         if ui.add_enabled(selected < list.len() && !new_name.trim().is_empty(), egui::Button::new(tl!("Rename"))).clicked() {
             let _ = app.run("edit.presets.presetManager", json!({"action": "rename", "kind": kind, "index": selected, "newName": new_name}));
         }
@@ -2663,31 +2667,6 @@ mod tests {
             tick(&mut app, &ctx);
             assert_eq!(ctx.global_style().interaction.tooltip_delay, crate::theme::TOOLTIP_DELAY);
         }
-    }
-
-    #[test]
-    fn enable_animations_off_stops_fades_and_scroll_glides_and_is_remembered() {
-        let on = egui::Style::default().animation_time;
-        let both = |ctx: &egui::Context| [egui::Theme::Dark, egui::Theme::Light].map(|t| ctx.style_of(t).animation_time);
-        // Saved off: the first frame after a restart applies it to both appearance styles.
-        let (mut app, _) = app_with_saved(Some(json!({"interface": {"enableAnimations": false}}).to_string()));
-        let ctx = egui::Context::default();
-        tick(&mut app, &ctx);
-        assert_eq!(both(&ctx), [0.0, 0.0]);
-        assert_eq!(ctx.global_style().scroll_animation.duration.max, 0.0);
-        // A theme change rebuilds the style; the next frame turns animations off again.
-        app.apply_theme(&ctx, crate::theme::ThemeKind::StudioLight);
-        tick(&mut app, &ctx);
-        assert_eq!(both(&ctx), [0.0, 0.0]);
-        app.run("prefs.set", json!({"values": {"interface.enableAnimations": true}})).unwrap();
-        tick(&mut app, &ctx);
-        assert_eq!(both(&ctx), [on, on]);
-        assert!(on > 0.0 && ctx.global_style().scroll_animation.duration.max > 0.0);
-        // A hand-edited value of the wrong type doesn't crash: the defaults (animations on) stay.
-        let (mut bad, _) = app_with_saved(Some(json!({"interface": {"enableAnimations": "nope"}}).to_string()));
-        let ctx2 = egui::Context::default();
-        tick(&mut bad, &ctx2);
-        assert_eq!(both(&ctx2), [on, on]);
     }
 
     #[test]
