@@ -19,6 +19,16 @@ pub(crate) fn surfaces(doc: &Document, mut visit: impl FnMut(&Surface)) {
         if let Some(mask) = &layer.mask {
             visit(&mask.surface);
         }
+        if let Some(video) = &layer.video {
+            for frame in &video.frames {
+                visit(frame);
+            }
+            if let Some(originals) = &video.original_frames {
+                for frame in originals {
+                    visit(frame);
+                }
+            }
+        }
     }
     for channel in doc.channels.iter().chain(&doc.quick_mask) {
         visit(&channel.surface);

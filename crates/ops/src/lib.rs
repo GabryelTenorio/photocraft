@@ -530,4 +530,83 @@ mod tests {
         assert_eq!(h.trim(&current), 1, "current alone exceeds the budget; only the mandatory undo survives");
         assert_counter(&h, &current);
     }
+
+    #[test]
+    fn video_frames_and_original_footage_accounted_in_history_byte_budget() {
+        use photocraft_doc::{LayerContent, PixelFormat, Surface, VideoData};
+
+        for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+            let mut doc = Document::new("video_doc", Size::new(64, 64), ColorMode::Rgb, depth);
+            let format = PixelFormat::new(ColorMode::Rgb, depth, true);
+
+            // Create 6 independently allocated frames
+            let frames: Vec<Surface> = (0..6)
+                .map(|i| {
+                    let mut s = Surface::new(format);
+                    s.write_pixel(1, 1, &[i as f32 / 10.0, 0.0, 0.0, 1.0]);
+                    s
+                })
+                .collect();
+
+            // Display frame 0 on the layer
+            let mut layer = Layer::raster("Video", format);
+            if let LayerContent::Raster(s) = &mut layer.content {
+                *s = frames[0].clone();
+            }
+
+            // Original frames containing original footage (some shared via COW, some unique)
+            let mut orig = Surface::new(format);
+            orig.write_pixel(2, 2, &[0.5, 0.5, 0.5, 1.0]);
+            let mut video_data = VideoData::new(frames.clone(), 30.0);
+            video_data.original_frames = Some(vec![frames[0].clone(), orig]);
+            layer.video = Some(video_data);
+
+            doc.layers.push(layer);
+
+            let mut cur = Arc::new(doc);
+            let mut h = History::new(50);
+            h.max_bytes = usize::MAX;
+
+            let frame_bytes = frames[0].tiles().next().unwrap().1.bytes().len();
+            // Total unique frames in cur: 6 frames + 1 orig = 7 unique frame surfaces
+            assert_eq!(h.pixel_bytes(&cur), 7 * frame_bytes);
+
+            // Delete 4 frames in separate history steps
+            for i in 1..=4 {
+                edit(&mut h, &mut cur, &format!("Delete Frame {i}"), |d| {
+                    let vid = d.layers[0].video.as_mut().unwrap();
+                    vid.frames.remove(1);
+                });
+                h.trim(&cur);
+                if i >= 2 {
+                    assert_counter(&h, &cur);
+                }
+            }
+
+            // Now current has 2 frames + 1 orig = 3 frames.
+            // History retains the 4 deleted frames.
+            assert_eq!(cur.layers[0].video.as_ref().unwrap().frames.len(), 2);
+            assert_eq!(h.unique_bytes(&cur), 4 * frame_bytes);
+            assert_eq!(h.pixel_bytes(&cur), 7 * frame_bytes);
+
+            // Budget of 4 frames keeps current (3) + 1 undo state
+            h.max_bytes = 4 * frame_bytes;
+            let dropped = h.trim(&cur);
+            assert_eq!(dropped, 3);
+            assert_eq!(h.past_len(), 1);
+            assert_counter(&h, &cur);
+
+            // Verify undo/redo works and updates counters
+            cur = h.undo(cur).unwrap().0;
+            assert_counter(&h, &cur);
+            cur = h.redo(cur).unwrap().0;
+            assert_counter(&h, &cur);
+
+            // Test rasterizing the video layer (clears video metadata)
+            edit(&mut h, &mut cur, "Rasterize Video", |d| {
+                d.layers[0].video = None;
+            });
+            assert_counter(&h, &cur);
+        }
+    }
 }
