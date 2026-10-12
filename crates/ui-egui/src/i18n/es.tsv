@@ -2695,3 +2695,7 @@ cameraData	Lens	Objetivo
 	Apply mask to layer before removing?	¿Aplicar la máscara a la capa antes de eliminarla?
 	The layer or its mask changed. Drag the mask onto the Trash again.	La capa o su máscara ha cambiado. Arrastre de nuevo la máscara a la papelera.
 	Delete the vector mask?	¿Eliminar la máscara vectorial?
+
+# Custom print paper (#3820)
+	Paper Width	Ancho del papel
+	Paper Height	Altura del papel
