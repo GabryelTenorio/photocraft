@@ -599,6 +599,9 @@ pub struct PhotocraftApp {
     /// makes shortcut- and dialog-triggered commands pass the same policy as
     /// direct control calls.
     pub(crate) automation_input: bool,
+    /// A command a dialog's OK parked for the caller to run once the frame's egui context is
+    /// available (the rasterize prompt's filter, #4303): drained by [`menus::drain_pending`].
+    pub(crate) pending_command: Option<(String, Value)>,
     /// Levels/Curves histogram cache: (document, adjustment layer, revision it is valid for).
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
     /// Histogram panel cache: (document, revision, computed at ms, histograms).
@@ -769,6 +772,7 @@ impl PhotocraftApp {
             adjust_preview: None,
             synthetic: Vec::new(),
             automation_input: false,
+            pending_command: None,
             channel_thumbs: None,
             channel_views: HashMap::new(),
             type_layout: None,

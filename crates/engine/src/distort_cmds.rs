@@ -370,7 +370,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &["Filter"],
             shortcut: Some("Cmd+Shift+X"),
             params: L,
-            enabled: crate::filters::has_filterable_layer,
+            enabled: crate::filters::filter_available,
             journal: true,
             run: liquify,
         },

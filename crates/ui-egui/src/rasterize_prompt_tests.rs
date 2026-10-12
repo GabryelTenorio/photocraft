@@ -169,3 +169,121 @@ fn the_control_channel_sees_and_confirms_the_prompt() {
     assert_eq!(r["ok"], json!(true), "{r}");
     assert_eq!(active_content(&app), "Pixel");
 }
+
+/// A Filter-menu effect chosen on a type layer asks to rasterize it first (#4303); OK rasterizes,
+/// then the filter's own dialog opens as choosing the menu item would have.
+#[test]
+fn a_filter_on_a_type_layer_asks_to_rasterize_first() {
+    let mut app = app_with(Kind::Type);
+    let ctx = egui::Context::default();
+    let before = past(&app);
+    crate::menus::invoke(&mut app, &ctx, "filter.blur.gaussianBlur", json!({})).unwrap();
+    let d = prompt(&app).expect("the rasterize prompt");
+    assert_eq!(d.fields["filter"], json!("filter.blur.gaussianBlur"));
+    assert_eq!(d.fields["message"], json!(Kind::Type.message()));
+    assert_eq!(past(&app), before, "nothing happens until the answer");
+    // OK rasterizes, then parks the filter for the frame that has the egui context.
+    let id = d.id;
+    crate::dialogs::confirm(&mut app, id).unwrap();
+    assert_eq!(active_content(&app), "Pixel");
+    assert_eq!(past(&app), before + 1, "rasterizing is its own history state");
+    crate::menus::drain_pending(&mut app, &ctx);
+    let filter = app.ui.dialogs.iter().find(|d| d.fields.contains_key("__filter")).expect("the filter dialog opens");
+    assert_eq!(filter.fields["__command"], json!("filter.blur.gaussianBlur"));
+    // Confirming the filter applies it: a second history state.
+    let fid = filter.id;
+    crate::dialogs::confirm(&mut app, fid).unwrap();
+    assert_eq!(past(&app), before + 2);
+}
+
+/// Every layer kind a filter must rasterize first asks with its own question, shape and fill too,
+/// not just type (#4303). A Smart Object filters non-destructively, so it is not in this list.
+#[test]
+fn shape_and_fill_layers_ask_before_a_filter() {
+    for (kind, command) in [(Kind::Shape, "layer.rasterize.shape"), (Kind::Fill, "layer.rasterize.fillContent")] {
+        let mut app = app_with(kind);
+        let ctx = egui::Context::default();
+        let before = past(&app);
+        crate::menus::invoke(&mut app, &ctx, "filter.blur.blur", json!({})).unwrap();
+        let d = prompt(&app).unwrap_or_else(|| panic!("{kind:?}: no prompt"));
+        assert_eq!(d.fields["__command"], json!(command), "{kind:?}");
+        assert_eq!(d.fields["message"], json!(kind.message()), "{kind:?}");
+        let id = d.id;
+        crate::dialogs::confirm(&mut app, id).unwrap();
+        assert_eq!(active_content(&app), "Pixel", "{kind:?}");
+        crate::menus::drain_pending(&mut app, &ctx);
+        assert_eq!(past(&app), before + 2, "{kind:?}: rasterize, then the filter");
+    }
+}
+
+/// A filter with no dialog (Blur) runs straight after rasterizing, as two history states.
+#[test]
+fn a_filter_without_a_dialog_runs_after_rasterizing() {
+    let mut app = app_with(Kind::Type);
+    let ctx = egui::Context::default();
+    let before = past(&app);
+    crate::menus::invoke(&mut app, &ctx, "filter.blur.blur", json!({})).unwrap();
+    let id = prompt(&app).expect("the rasterize prompt").id;
+    crate::dialogs::confirm(&mut app, id).unwrap();
+    assert_eq!(active_content(&app), "Pixel");
+    assert_eq!(app.pending_command.as_ref().map(|(c, _)| c.as_str()), Some("filter.blur.blur"));
+    crate::menus::drain_pending(&mut app, &ctx);
+    assert!(app.pending_command.is_none());
+    assert!(app.ui.dialogs.is_empty(), "a direct filter opens no dialog");
+    assert_eq!(past(&app), before + 2, "rasterize, then the filter");
+}
+
+/// A pixel layer needs no prompt: the filter's dialog opens as before.
+#[test]
+fn a_filter_on_a_pixel_layer_does_not_ask() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+    app.run("file.new", json!({"width": 64, "height": 64})).unwrap();
+    let ctx = egui::Context::default();
+    crate::menus::invoke(&mut app, &ctx, "filter.blur.gaussianBlur", json!({})).unwrap();
+    assert!(prompt(&app).is_none(), "a pixel layer needs no rasterizing");
+    assert!(app.ui.dialogs.iter().any(|d| d.fields.contains_key("__filter")), "the filter dialog opens");
+}
+
+/// Cancelling the prompt changes nothing: the type layer stays, no filter is parked.
+#[test]
+fn cancelling_a_filter_prompt_leaves_the_type_layer() {
+    let mut app = app_with(Kind::Type);
+    let ctx = egui::Context::default();
+    let before = past(&app);
+    crate::menus::invoke(&mut app, &ctx, "filter.blur.blur", json!({})).unwrap();
+    let id = prompt(&app).expect("the prompt").id;
+    crate::dialogs::cancel(&mut app, id).unwrap();
+    assert_eq!(active_content(&app), "Type");
+    assert_eq!(past(&app), before);
+    assert!(app.pending_command.is_none());
+}
+
+/// The control channel confirms the prompt and drains the parked filter itself.
+#[test]
+fn the_control_channel_confirms_the_filter_prompt() {
+    let mut app = app_with(Kind::Type);
+    let ctx = egui::Context::default();
+    let call = |app: &mut PhotocraftApp, method: &str, params: serde_json::Value| {
+        let (req, _rx) = crate::control::ControlRequest::new(method, params);
+        match crate::control::handle(app, &ctx, &req) {
+            crate::control::Outcome::Done(v) => v,
+            _ => panic!("deferred"),
+        }
+    };
+    call(&mut app, "ui.menu.invoke", json!({"id": "filter.blur.blur"}));
+    let id = prompt(&app).map(|d| d.id).expect("prompt");
+    let r = call(&mut app, "ui.dialog.confirm", json!({"dialog": id}));
+    assert_eq!(r["ok"], json!(true), "{r}");
+    assert_eq!(active_content(&app), "Pixel");
+    assert!(app.pending_command.is_none(), "the control channel drains it");
+}
+
+/// `filter.convertForSmartFilters` makes a Smart Object rather than editing pixels, so it is
+/// never treated as a filter that must rasterize first.
+#[test]
+fn convert_for_smart_filters_is_not_a_rasterizing_filter() {
+    let app = app_with(Kind::Type);
+    assert!(filter_needed(&app, "filter.convertForSmartFilters").is_none());
+    assert!(filter_needed(&app, "layer.rasterize.type").is_none(), "not a filter command");
+    assert!(filter_needed(&app, "filter.blur.blur").is_some());
+}

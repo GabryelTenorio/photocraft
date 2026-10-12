@@ -257,13 +257,8 @@ fn camera_info(doc: &Document) -> Option<exif::CameraInfo> {
 }
 
 fn filterable(s: &Session) -> std::result::Result<(), String> {
-    let d = s.active().ok_or("no document open")?;
-    let id = d.active_layer.ok_or("no active layer")?;
-    match &d.doc.layer(id).ok_or("no active layer")?.content {
-        LayerContent::Raster(_) => Ok(()),
-        LayerContent::Smart(sm) if sm.cache.is_some() => Ok(()),
-        other => Err(format!("filters need a pixel layer (active layer is {} {} layer)", other.article(), other.kind_name())),
-    }
+    // The shell offers to rasterize a type, shape, fill or Smart Object layer first (#4303).
+    crate::filters::filter_available(s)
 }
 
 fn raw_enabled(s: &Session) -> std::result::Result<(), String> {

@@ -7,7 +7,7 @@
 use photocraft_algo::{
     self as algo, Distribution, FilterParams, PolarMode, Preserve, RadialMethod, RadialQuality, RippleSize, SpherizeMode, UndefinedAreas, WaveType,
 };
-use photocraft_doc::{LayerContent, SmartFilter};
+use photocraft_doc::{LayerContent, LayerId, SmartFilter};
 use serde_json::{Value, json};
 
 use crate::commands::CommandSpec;
@@ -210,6 +210,52 @@ pub(crate) fn has_filterable_layer(s: &Session) -> std::result::Result<(), Strin
     }
 }
 
+/// The active layer when a filter can only act on it after rasterizing it (#4303): a type, shape,
+/// fill or Smart Object layer that isn't locked, with no channel or Quick Mask targeted. `None`
+/// when filters already work on the layer (a pixel layer or a cached Smart Object), when nothing
+/// can be rasterized, or when the layer is locked.
+pub(crate) fn rasterizable_filter_layer(s: &Session) -> Option<LayerId> {
+    // A pixel layer or a cached Smart Object needs no rasterizing.
+    if has_filterable_layer(s).is_ok() {
+        return None;
+    }
+    let d = s.active()?;
+    let id = d.active_layer?;
+    let l = d.doc.layer(id)?;
+    let locks = d.doc.effective_locks(id);
+    if locks.all || locks.pixels {
+        return None;
+    }
+    match &l.content {
+        LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Fill(_) | LayerContent::Smart(_) => Some(id),
+        _ => None,
+    }
+}
+
+/// The menu gate for a filter command: [`has_filterable_layer`], or a layer the shell offers to
+/// rasterize first. Photoshop greys the Filter menu on a type layer; choosing a filter there asks
+/// "Rasterize the type?" and applies it after, so the item stays live (#4303).
+pub(crate) fn filter_available(s: &Session) -> std::result::Result<(), String> {
+    match has_filterable_layer(s) {
+        Ok(()) => Ok(()),
+        Err(_) if rasterizable_filter_layer(s).is_some() => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// The layer a filter must rasterize first, and the `layer.rasterize.*` command that converts it:
+/// what the shell's "Rasterize?" prompt acts on (#4303). `None` when no rasterizing is needed.
+pub fn rasterize_for_filter(s: &Session) -> Option<(LayerId, &'static str)> {
+    let id = rasterizable_filter_layer(s)?;
+    let command = match &s.active()?.doc.layer(id)?.content {
+        LayerContent::Text(_) => "layer.rasterize.type",
+        LayerContent::Shape(_) => "layer.rasterize.shape",
+        LayerContent::Fill(_) => "layer.rasterize.fillContent",
+        _ => "layer.rasterize.smartObject",
+    };
+    Some((id, command))
+}
+
 pub(crate) fn run_filter(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     validate_params(id, p)?;
     // Session state some filters read (colours) becomes explicit params; external inputs resolve here.
@@ -321,7 +367,7 @@ macro_rules! filter_cmd {
             menu: &[$($m),*],
             shortcut: None,
             params: $params,
-            enabled: has_filterable_layer,
+            enabled: filter_available,
             run: |s, p| run_filter(s, $id, p),
             journal: true,
         }
@@ -398,7 +444,7 @@ pub fn specs() -> Vec<CommandSpec> {
             shortcut: Some("Cmd+Alt+F"),
             params: "{}",
             enabled: |s| {
-                has_filterable_layer(s)?;
+                filter_available(s)?;
                 last_filter(s).map(|_| ()).ok_or_else(|| "no filter applied yet".into())
             },
             run: |s, _| {
@@ -568,6 +614,39 @@ mod tests {
         s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
         s.execute("layer.newAdjustmentLayer.invert", json!({})).unwrap();
         assert!(matches!(s.execute("filter.blur.gaussianBlur", json!({})), Err(EngineError::Disabled(..))));
+    }
+
+    #[test]
+    fn filters_are_offered_on_rasterizable_layers() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 32, "height": 32})).unwrap();
+        // A pixel layer runs filters and needs no prompt.
+        assert!(s.is_enabled("filter.blur.gaussianBlur"));
+        assert_eq!(rasterize_for_filter(&s), None);
+
+        // A type layer offers the filter; the shell asks to rasterize it first (#4303).
+        s.execute("type.create", json!({"text": "Hi", "x": 2, "y": 12})).unwrap();
+        assert!(s.is_enabled("filter.blur.gaussianBlur"));
+        let (_, command) = rasterize_for_filter(&s).expect("a type layer needs rasterizing");
+        assert_eq!(command, "layer.rasterize.type");
+        // Running it without rasterizing still returns an error, never a panic.
+        assert!(s.execute("filter.blur.gaussianBlur", json!({})).is_err());
+
+        // Rasterize, then the filter runs and there is nothing left to prompt about.
+        s.execute("layer.rasterize.type", json!({})).unwrap();
+        assert_eq!(rasterize_for_filter(&s), None);
+        assert!(s.execute("filter.blur.gaussianBlur", json!({"radius": 1})).is_ok());
+    }
+
+    #[test]
+    fn a_locked_rasterizable_layer_stays_greyed() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 32, "height": 32})).unwrap();
+        s.execute("type.create", json!({"text": "Hi", "x": 2, "y": 12})).unwrap();
+        s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
+        // Nothing can be rasterized (or filtered) on a locked layer: the item stays greyed.
+        assert!(!s.is_enabled("filter.blur.gaussianBlur"));
+        assert_eq!(rasterize_for_filter(&s), None);
     }
 
     #[test]

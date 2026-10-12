@@ -841,7 +841,12 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     return err(error);
                 }
                 let apply = req.method == "ui.dialog.apply";
-                run_waiting(app, wait, |app| if apply { crate::prefs_ui::apply(app, id) } else { crate::dialogs::confirm(app, id) })
+                run_waiting(app, wait, |app| {
+                    let r = if apply { crate::prefs_ui::apply(app, id) } else { crate::dialogs::confirm(app, id) };
+                    // The rasterize prompt's OK parks the filter it was asked to apply (#4303).
+                    crate::menus::drain_pending(app, ctx);
+                    r
+                })
             }
             None => err("missing `dialog`"),
         },

@@ -60,6 +60,11 @@ impl Kind {
     fn from_key(k: &str) -> Option<Kind> {
         Kind::ALL.into_iter().find(|x| x.key() == k)
     }
+
+    /// The kind whose `layer.rasterize.*` command this is.
+    fn from_command(command: &str) -> Option<Kind> {
+        Kind::ALL.into_iter().find(|k| k.command() == command)
+    }
 }
 
 /// Does `tool` paint the layer's pixels (so a vector or Smart Object layer must be rasterized)?
@@ -92,6 +97,32 @@ pub fn needed(app: &PhotocraftApp) -> Option<(Kind, photocraft_doc::LayerId)> {
         _ => return None,
     };
     Some((kind, id))
+}
+
+/// The active layer's kind when choosing the Filter-menu command `id` needs it rasterized first
+/// (#4303): the engine reports the item live on a type, shape, fill or Smart Object layer, and the
+/// shell asks before running it. `None` for non-filter commands and for
+/// `filter.convertForSmartFilters`, which makes a Smart Object instead of editing pixels.
+pub fn filter_needed(app: &PhotocraftApp, id: &str) -> Option<(Kind, photocraft_doc::LayerId)> {
+    if !id.starts_with("filter.") || id == "filter.convertForSmartFilters" {
+        return None;
+    }
+    let (layer, command) = photocraft_engine::filters::rasterize_for_filter(&app.session)?;
+    Some((Kind::from_command(command)?, layer))
+}
+
+/// Open the prompt for a filter chosen on `layer`: OK rasterizes it, then the shell runs `filter`
+/// (its dialog, mode or algorithm) as the menu item would have (#4303).
+pub fn open_filter(app: &mut PhotocraftApp, kind: Kind, layer: photocraft_doc::LayerId, filter: &str, params: &Value) -> u64 {
+    let mut f = Map::new();
+    f.insert(MARK.into(), json!(kind.key()));
+    f.insert("__command".into(), json!(kind.command()));
+    f.insert("__label".into(), json!("PhotoCraft"));
+    f.insert("message".into(), json!(kind.message()));
+    f.insert("layer".into(), json!(layer.0));
+    f.insert("filter".into(), json!(filter));
+    f.insert("filter_params".into(), params.clone());
+    app.ui.open_dialog(DialogKind::Command, f)
 }
 
 /// A tool's pointer press: when it would paint a layer that must be rasterized first, park it
@@ -137,11 +168,19 @@ pub fn body(ui: &mut egui::Ui, f: &Map<String, Value>) {
     });
 }
 
-/// OK: rasterize, then paint at the click (two history states).
+/// OK: rasterize, then paint at the click (two history states), or run the filter that asked
+/// for the rasterizing (#4303).
 pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
     let kind = f.get(MARK).and_then(Value::as_str).and_then(Kind::from_key).ok_or("not a rasterize prompt")?;
     let layer = f.get("layer").and_then(Value::as_u64).ok_or("the prompt has no layer")?;
     let r = app.run(kind.command(), json!({ "layer": layer }))?;
+    // A filter chosen on the layer: park it for the caller to run once this frame's egui context
+    // is available (`menus::drain_pending`), so rasterizing and the filter are two history states.
+    if let Some(filter) = f.get("filter").and_then(Value::as_str) {
+        let params = f.get("filter_params").cloned().unwrap_or_else(|| json!({}));
+        app.pending_command = Some((filter.to_string(), params));
+        return Ok(json!({ "rasterized": r, "filter": filter }));
+    }
     let tool = f.get("tool").and_then(Value::as_str).and_then(Tool::from_name);
     let at: Vec<f64> = f.get("at").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_f64).collect()).unwrap_or_default();
     let (Some(tool), Some(&x), Some(&y)) = (tool, at.first(), at.get(1)) else {

@@ -400,6 +400,9 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             }
         }
     }
+    // A dialog's OK can park a follow-up command that needs this frame's context (the rasterize
+    // prompt's filter, #4303): run it now, as choosing the menu item would have.
+    crate::menus::drain_pending(app, ctx);
     ctx.data_mut(|m| m.insert_temp(egui::Id::new(RECTS), shown));
 }
 

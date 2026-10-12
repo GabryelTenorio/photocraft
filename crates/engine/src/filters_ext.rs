@@ -528,7 +528,7 @@ fn validate_relight(p: &Value) -> Result<()> {
 }
 
 fn relight_enabled(s: &Session) -> std::result::Result<(), String> {
-    crate::filters::has_filterable_layer(s)?;
+    crate::filters::filter_available(s)?;
     if crate::channel_cmds::edits_channel(s) {
         return Ok(());
     }
@@ -550,7 +550,7 @@ macro_rules! cmd {
             menu: &[$($m),*],
             shortcut: None,
             params: $params,
-            enabled: crate::filters::has_filterable_layer,
+            enabled: crate::filters::filter_available,
             run: |s, p| crate::filters::run_filter(s, $id, p),
             journal: true,
         }

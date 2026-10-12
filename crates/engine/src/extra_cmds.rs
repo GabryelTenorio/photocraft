@@ -33,6 +33,17 @@ fn has_pixels(s: &Session) -> std::result::Result<(), String> {
     }
 }
 
+/// Like [`has_pixels`], plus a type, shape, fill or Smart Object layer the shell offers to
+/// rasterize first (#4303). A cached Smart Object stays greyed: these commands edit a layer
+/// surface directly, not through a smart filter.
+fn filter_pixels(s: &Session) -> std::result::Result<(), String> {
+    match has_pixels(s) {
+        Ok(()) => Ok(()),
+        Err(_) if crate::filters::rasterizable_filter_layer(s).is_some() => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 fn has_mask(s: &Session) -> std::result::Result<(), String> {
     active_layer(s)?.mask.as_ref().map(|_| ()).ok_or_else(|| "the active layer has no layer mask".into())
 }
@@ -997,9 +1008,9 @@ pub fn specs() -> Vec<CommandSpec> {
             has_layer,
             show_only
         ),
-        spec!("filter.blur.average", "Average", &["Filter", "Blur"], None, "{}", has_pixels, average),
-        spec!("filter.render.clouds", "Clouds", &["Filter", "Render"], None, r##"{"seed":u32=0}"##, has_pixels, |s, p| clouds(s, p, false)),
-        spec!("filter.render.differenceClouds", "Difference Clouds", &["Filter", "Render"], None, r##"{"seed":u32=0}"##, has_pixels, |s, p| clouds(s, p, true)),
+        spec!("filter.blur.average", "Average", &["Filter", "Blur"], None, "{}", filter_pixels, average),
+        spec!("filter.render.clouds", "Clouds", &["Filter", "Render"], None, r##"{"seed":u32=0}"##, filter_pixels, |s, p| clouds(s, p, false)),
+        spec!("filter.render.differenceClouds", "Difference Clouds", &["Filter", "Render"], None, r##"{"seed":u32=0}"##, filter_pixels, |s, p| clouds(s, p, true)),
     ]
 }
 

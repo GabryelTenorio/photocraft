@@ -81,7 +81,7 @@ fn enabled(s: &Session) -> std::result::Result<(), String> {
     if crate::channel_cmds::edits_channel(s) {
         return Err("Color to Alpha works on layer pixels, not on a channel or Quick Mask".into());
     }
-    crate::filters::has_filterable_layer(s)?;
+    crate::filters::filter_available(s)?;
     let d = s.active().ok_or("no document open")?;
     match d.doc.mode {
         ColorMode::Rgb | ColorMode::Grayscale => {}

@@ -266,7 +266,9 @@ fn relight_command_exists_and_toggles_with_document() {
     s.execute("layer.new.layer", json!({})).unwrap();
     assert!(s.is_enabled("filter.render.relight"));
     s.execute("type.create", json!({"x": 8, "y": 16, "text": "Hi", "size": 12})).unwrap();
-    assert!(!s.is_enabled("filter.render.relight"));
+    // A type layer is offered the filter: the shell prompts to rasterize it first (#4303).
+    assert!(s.is_enabled("filter.render.relight"));
+    assert_eq!(crate::filters::rasterize_for_filter(&s).map(|(_, c)| c), Some("layer.rasterize.type"));
 }
 
 #[test]

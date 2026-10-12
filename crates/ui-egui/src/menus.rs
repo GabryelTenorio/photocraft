@@ -235,6 +235,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if let Some(r) = crate::view_cmds::invoke(app, ctx, id, &params) {
         return r;
     }
+    // Filter › <effect> chosen on a type, shape, fill or Smart Object layer asks to rasterize it
+    // first, as Photoshop does (#4303), instead of opening the dialog or failing.
+    if params.as_object().is_none_or(|o| o.is_empty())
+        && let Some((kind, layer)) = crate::rasterize_prompt::filter_needed(app, id)
+    {
+        return Ok(json!({"dialog": crate::rasterize_prompt::open_filter(app, kind, layer, id, &params)}));
+    }
     // Liquify dialog, Puppet Warp and Perspective Warp modes (and their control params).
     if let Some(r) = crate::distort_ui::menu(app, ctx, id, &params) {
         return r;
@@ -648,6 +655,17 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             crate::layer_style::open(app, Some(kind)).map(|d| json!({"dialog": d})).ok_or_else(|| "no active layer".to_string())
         }
         _ => app.run(id, params),
+    }
+}
+
+/// Run a command a dialog's OK parked for after its own step (the rasterize prompt's filter,
+/// #4303), now that a frame with the egui context is available. No-op when nothing is parked.
+pub(crate) fn drain_pending(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    if let Some((id, params)) = app.pending_command.take()
+        && let Err(e) = invoke(app, ctx, &id, params)
+    {
+        app.ui.status = e;
+        app.ui.status_error = true;
     }
 }
 
