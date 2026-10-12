@@ -118,20 +118,30 @@ fn new_preset(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn edit(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "pattern.presets.edit";
-    sync(s);
     let action = req_str(p, "action", CMD)?.to_string();
+    // A refused deletion must leave the folders unchanged too.
+    if action != "delete" {
+        sync(s);
+    }
     // Rename/delete act on the library pattern (by id or name).
     let r = match action.as_str() {
         "rename" => super::call(s, "pattern.rename", json!({"pattern": req_str(p, "preset", CMD)?, "name": req_str(p, "name", CMD)?}))?,
         "delete" => {
-            let keys: Vec<String> = match p.get("preset") {
-                Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
-                _ => vec![req_str(p, "preset", CMD)?.to_string()],
+            let keys: Vec<&str> = match p.get("preset") {
+                Some(Value::Array(a)) => {
+                    a.iter().map(|v| v.as_str().ok_or_else(|| bad(CMD, "`preset` must contain only pattern ids or names"))).collect::<Result<_>>()?
+                }
+                _ => vec![req_str(p, "preset", CMD)?],
             };
-            for k in &keys {
-                super::call(s, "pattern.delete", json!({"pattern": k}))?;
+            // Resolve the whole batch before removing anything. A name and an id can refer
+            // to the same tile, which must be deleted only once.
+            let mut ids = std::collections::BTreeSet::new();
+            for key in keys {
+                let pat = photocraft_doc::pattern::find(&s.patterns.items, key, key).ok_or_else(|| bad(CMD, format!("no library pattern \"{key}\"")))?;
+                ids.insert(pat.id.clone());
             }
-            json!({"deleted": keys.len()})
+            s.patterns.items.retain(|pat| !ids.contains(&pat.id));
+            json!({"deleted": ids.len()})
         }
         "deleteGroup" => {
             // Deleting a folder deletes its patterns, as in Photoshop.
@@ -208,4 +218,94 @@ pub fn specs() -> Vec<CommandSpec> {
             journal: true,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn custom_patterns(depth: u32) -> (Session, String) {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 4, "height": 4, "depth": depth, "background": "white"})).unwrap();
+        let first = s.execute("pattern.presets.new", json!({"name": "First", "group": "Custom"})).unwrap();
+        s.execute("pattern.presets.new", json!({"name": "Second", "group": "Custom"})).unwrap();
+        let id = first["pattern"].as_str().unwrap().to_string();
+        s.execute("pattern.presets.select", json!({"pattern": id, "applyToLayer": false})).unwrap();
+        (s, id)
+    }
+
+    fn assert_failed_delete_preserves_state(s: &mut Session, keys: Value) {
+        let patterns = s.patterns.items.clone();
+        let groups = s.presets.pattern_groups.clone();
+        let selected = s.presets.pattern.clone();
+        let prefs = s.prefs_to_json();
+        let revisions = (s.presets.rev, s.prefs.rev());
+        let result = s.execute("pattern.presets.edit", json!({"action": "delete", "preset": keys}));
+        assert!(result.is_err(), "malformed or unresolved deletion must fail: {result:?}");
+        assert_eq!(s.patterns.items, patterns, "a refused batch must preserve every pattern and its pixels");
+        assert_eq!(s.presets.pattern_groups, groups);
+        assert_eq!(s.presets.pattern, selected);
+        assert_eq!(s.prefs_to_json(), prefs, "persisted preferences must remain unchanged");
+        assert_eq!((s.presets.rev, s.prefs.rev()), revisions);
+    }
+
+    #[test]
+    fn pattern_batch_delete_missing_name_is_atomic() {
+        for depth in [8, 16, 32] {
+            let (mut s, _) = custom_patterns(depth);
+            assert_failed_delete_preserves_state(&mut s, json!(["First", "missing"]));
+        }
+    }
+
+    #[test]
+    fn pattern_batch_delete_failure_preserves_unsynced_groups() {
+        let (mut s, _) = custom_patterns(8);
+        // Define Pattern adds a library tile; the panel has not reconciled its folders yet.
+        s.execute("edit.definePattern", json!({"name": "Not Yet Grouped"})).unwrap();
+        assert_failed_delete_preserves_state(&mut s, json!(["missing"]));
+    }
+
+    #[test]
+    fn pattern_batch_delete_rejects_document_only_pattern() {
+        let (mut s, _) = custom_patterns(8);
+        let added = s.execute("edit.definePattern", json!({"name": "Document Only"})).unwrap();
+        let id = added["pattern"].as_str().unwrap();
+        let pattern = s.patterns.items.iter().find(|p| p.id == id).unwrap().clone();
+        s.edit("Embed pattern fixture", |doc, _| {
+            doc.patterns.push(pattern.clone());
+            Ok(())
+        })
+        .unwrap();
+        s.execute("pattern.delete", json!({"pattern": id})).unwrap();
+        let embedded = s.active().unwrap().doc.patterns.clone();
+        assert_failed_delete_preserves_state(&mut s, json!(["First", id]));
+        assert_eq!(s.active().unwrap().doc.patterns, embedded);
+    }
+
+    #[test]
+    fn pattern_batch_delete_rejects_non_string_members() {
+        for depth in [8, 16, 32] {
+            for invalid in [json!(null), json!(7), json!({})] {
+                let (mut s, _) = custom_patterns(depth);
+                assert_failed_delete_preserves_state(&mut s, json!(["First", invalid]));
+            }
+        }
+    }
+
+    #[test]
+    fn pattern_batch_delete_deduplicates_names_and_ids() {
+        for depth in [8, 16, 32] {
+            for by_id in [false, true] {
+                let (mut s, id) = custom_patterns(depth);
+                let remaining: Vec<_> = s.patterns.items.iter().filter(|p| p.id != id).cloned().collect();
+                let alias = if by_id { id.as_str() } else { "First" };
+                let result = s.execute("pattern.presets.edit", json!({"action": "delete", "preset": ["First", alias]})).unwrap();
+                assert_eq!(result["deleted"], 1, "aliases name one pattern");
+                assert_eq!(s.patterns.items, remaining);
+                assert!(s.presets.pattern_groups.iter().all(|g| !g.items.contains(&id)));
+                let saved: Value = serde_json::from_str(&s.prefs_to_json()).unwrap();
+                assert!(!saved["presets"]["pattern_groups"].to_string().contains(&id));
+            }
+        }
+    }
 }
