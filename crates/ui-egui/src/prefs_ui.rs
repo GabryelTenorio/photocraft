@@ -1456,10 +1456,15 @@ fn section_fields(
     let mut keys: Vec<String> = order.iter().filter(|k| obj.contains_key(*k)).cloned().collect();
     keys.extend(obj.keys().filter(|k| !order.contains(k)).cloned());
     const COLUMN_SPACING: f32 = 14.0;
+    const LABEL_MAX_WIDTH: f32 = 220.0;
     let field_width = 260.0_f32.min((ui.available_width() - COLUMN_SPACING).max(1.0));
-    let label_width = (ui.available_width() - field_width - COLUMN_SPACING).max(1.0);
+    // Keep fields beside their labels instead of filling the label column with spare dialog width.
+    let label_width = (ui.available_width() - field_width - COLUMN_SPACING).clamp(1.0, LABEL_MAX_WIDTH);
+    let row_height = ui.spacing().interact_size.y;
     let draw_label = |ui: &mut egui::Ui, text: &str| {
-        ui.add_sized(vec2(label_width, 0.0), egui::Label::new(RichText::new(text).color(t.text_dim)).wrap().halign(egui::Align::Min));
+        ui.allocate_ui_with_layout(vec2(label_width, row_height), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.add(egui::Label::new(RichText::new(text).color(t.text_dim)).wrap());
+        });
     };
     egui::Grid::new(("prefs-grid", section)).num_columns(2).max_col_width(field_width).spacing([COLUMN_SPACING, 7.0]).show(ui, |ui| {
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
@@ -1501,7 +1506,7 @@ fn section_fields(
                     let mut pairs: Vec<(String, &str)> = vec![("auto".into(), tl!("Auto"))];
                     pairs.extend(crate::i18n::Lang::all().map(|l| (l.code().to_string(), l.name())));
                     let mut cur = s.clone();
-                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0);
+                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0_f32.min(field_width));
                     obj.insert(k, json!(cur));
                 }
                 Value::String(s) if prefs::choices(&path).is_some() => {
@@ -1510,7 +1515,7 @@ fn section_fields(
                     let labels: Vec<String> = opts.iter().map(|o| choice_label(o)).collect();
                     let pairs: Vec<(String, &str)> = opts.iter().map(|o| o.to_string()).zip(labels.iter().map(String::as_str)).collect();
                     let mut cur = s.clone();
-                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0);
+                    crate::widgets::dropdown(ui, &format!("pref-{path}"), &mut cur, &pairs, 220.0_f32.min(field_width));
                     obj.insert(k, json!(cur));
                 }
                 Value::String(s) if prefs::is_color(&path) => {
@@ -1530,7 +1535,7 @@ fn section_fields(
                 Value::String(s) => {
                     draw_label(ui, &label);
                     let mut s = s.clone();
-                    ui.add(egui::TextEdit::singleline(&mut s).desired_width(260.0));
+                    ui.add(egui::TextEdit::singleline(&mut s).desired_width(field_width));
                     obj.insert(k, json!(s));
                 }
                 Value::Number(n) => {
@@ -1701,10 +1706,9 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 }
                 let top = shown_path.first().cloned().unwrap_or_else(|| tl!("Other").into());
                 if top != last_top {
-                    ui.add_sized(
-                        vec2(name_width, row_height),
-                        egui::Label::new(RichText::new(&top).font(crate::theme::semibold(12.5)).color(t.text)).truncate().halign(egui::Align::Min),
-                    );
+                    ui.allocate_ui_with_layout(vec2(name_width, row_height), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new(RichText::new(&top).font(crate::theme::semibold(12.5)).color(t.text)).truncate()).on_hover_text(&top);
+                    });
                     ui.label("");
                     ui.label("");
                     ui.end_row();
