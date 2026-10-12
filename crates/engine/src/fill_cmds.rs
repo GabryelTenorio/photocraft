@@ -106,7 +106,7 @@ pub fn fill(s: &mut Session, p: &Value) -> Result<Value> {
         "pattern" => {
             let pat = crate::pattern_cmds::resolve_param(s, CMD, p)?;
             let (scale, angle, _, phase) = crate::pattern_cmds::placement(p);
-            let tile = photocraft_compose::pattern::Tile::new(&pat).ok_or_else(|| bad("the pattern is empty"))?;
+            let tile = photocraft_compose::pattern::Tile::new(&pat).ok_or_else(|| bad("the pattern is empty or too large to paint"))?;
             // Photoshop's Fill uses the canvas origin.
             let place = photocraft_compose::pattern::Placement::new(Rect::EMPTY, false, phase, scale, angle);
             out["pattern"] = json!(pat.id);
@@ -244,6 +244,67 @@ pub(crate) fn window_size(window: Rect) -> Result<(usize, usize)> {
         return Err(EngineError::Other("the selection is too large for Content-Aware fill".into()));
     }
     Ok((w as usize, h as usize))
+}
+
+/// [`Surface::read_region`] of `r`, read in parallel bands and asking `cancelled` before each
+/// (`None` once it says so): a Content-Aware window can be tens of megapixels.
+pub(crate) fn read_window(surf: &Surface, r: Rect, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<f32>> {
+    use rayon::prelude::*;
+    const BAND: usize = 64;
+    let n = surf.channels();
+    let (w, h) = (r.width() as usize, r.height() as usize);
+    let mut out = vec![0.0f32; w * h * n];
+    if out.is_empty() {
+        return Some(out);
+    }
+    // Each worker reads its bands through one buffer of its own.
+    out.par_chunks_mut(BAND * w * n).enumerate().for_each_init(Vec::new, |buf, (i, chunk)| {
+        if cancelled() {
+            return;
+        }
+        let y0 = r.y0 + (i * BAND) as i32;
+        let band = Rect::new(r.x0, y0, r.x1, y0 + (chunk.len() / (w * n)) as i32);
+        surf.read_region_into(band, buf);
+        if buf.len() == chunk.len() {
+            chunk.copy_from_slice(buf);
+        }
+    });
+    if cancelled() { None } else { Some(out) }
+}
+
+/// Which pixels of `r` a selection (or mask) covers at all: channel 0 above zero, read in
+/// parallel bands as [`read_window`] does, without holding the coverage itself.
+pub(crate) fn read_window_cover(surf: &Surface, r: Rect, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<bool>> {
+    use rayon::prelude::*;
+    const BAND: usize = 64;
+    let n = surf.channels().max(1);
+    let (w, h) = (r.width() as usize, r.height() as usize);
+    let mut out = vec![false; w * h];
+    if out.is_empty() {
+        return Some(out);
+    }
+    out.par_chunks_mut(BAND * w).enumerate().for_each_init(Vec::new, |buf, (i, chunk)| {
+        if cancelled() {
+            return;
+        }
+        let y0 = r.y0 + (i * BAND) as i32;
+        surf.read_region_into(Rect::new(r.x0, y0, r.x1, y0 + (chunk.len() / w) as i32), buf);
+        for (o, px) in chunk.iter_mut().zip(buf.chunks_exact(n)) {
+            *o = px[0] > 0.0;
+        }
+    });
+    if cancelled() { None } else { Some(out) }
+}
+
+/// Channel 0 of [`read_window`] (a selection's or an alpha channel's coverage).
+pub(crate) fn read_window_mask(surf: &Surface, r: Rect, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<f32>> {
+    use rayon::prelude::*;
+    let n = surf.channels().max(1);
+    let all = read_window(surf, r, cancelled)?;
+    if n == 1 {
+        return Some(all);
+    }
+    Some(all.par_chunks_exact(n).map(|px| px[0]).collect())
 }
 
 /// How the source goes onto the target.
@@ -465,7 +526,7 @@ mod tests {
         assert!(blacks > 300 && blacks < 900, "{blacks}");
         assert!((0..40).all(|x| {
             let v = surf.rgba(x, 3)[0];
-            !v.is_nan() && !(0.01..=0.99).contains(&v)
+            v.is_finite() && !(0.01..=0.99).contains(&v)
         }));
     }
 
