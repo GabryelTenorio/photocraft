@@ -49,3 +49,4 @@ mod type_format_targets;
 mod undo_keeps_active_layer;
 mod unicode_colors;
 mod wand_transparent_copy;
+mod working_rgb_profile;

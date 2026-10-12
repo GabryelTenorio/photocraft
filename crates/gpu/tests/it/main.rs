@@ -6,4 +6,5 @@ mod support;
 
 mod device_loss;
 mod parity;
+mod uniform_limits;
 mod vector_mask;

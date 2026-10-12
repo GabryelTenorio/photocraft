@@ -1,7 +1,7 @@
 //! A `.pcraft` bundle's manifest reports the file it is in (#3312): writing a document to a new
 //! name must not leave the previous one inside, on every path that produces `.pcraft` bytes.
 
-mod common;
+use crate::common;
 
 use common::*;
 use photocraft_color::{ColorMode, SampleType};
