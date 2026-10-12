@@ -35,8 +35,8 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 use base64::Engine as _;
 use serde_json::{Value, json};
@@ -107,8 +107,7 @@ pub fn snapshot_key(method: &str, params: &Value) -> Option<String> {
             let command = params.get("command").or_else(|| params.get("id")).and_then(Value::as_str)?;
             match command {
                 "document.inspect" => {
-                    let index =
-                        params.get("document").or_else(|| params.get("params").and_then(|p| p.get("document")));
+                    let index = params.get("document").or_else(|| params.get("params").and_then(|p| p.get("document")));
                     Some(match index {
                         Some(index) => format!("engine.execute:document.inspect:{}", index_key(index)),
                         None => "engine.execute:document.inspect".into(),
@@ -165,11 +164,16 @@ impl ControlWatch {
 
     fn note(&self, count: &AtomicU64, at: &AtomicU64) {
         count.fetch_add(1, Ordering::Relaxed);
-        at.store((crate::gpu_canvas::now_ms().max(0.0) as u64), Ordering::Relaxed);
+        at.store(crate::gpu_canvas::now_ms().max(0.0) as u64, Ordering::Relaxed);
     }
 
     pub fn logic_count(&self) -> u64 {
         self.logic_count.load(Ordering::Relaxed)
+    }
+
+    /// How many drawn frames were stamped (see [`ControlWatch::health`]).
+    pub fn drawn_count(&self) -> u64 {
+        self.drawn_count.load(Ordering::Relaxed)
     }
 
     /// Remember a snapshot getter's reply, so a wedged frame loop can still serve it.
@@ -2972,18 +2976,9 @@ mod tests {
             "different indexes get different snapshots"
         );
         // `dispatch` accepts the command id as `command` or `id`; both spellings key alike.
-        assert_eq!(
-            snapshot_key("engine.execute", &json!({"id": "document.inspect", "document": 1})).as_deref(),
-            Some("engine.execute:document.inspect:1")
-        );
-        assert_eq!(
-            snapshot_key("engine.execute", &json!({"id": "document.inspect"})).as_deref(),
-            Some("engine.execute:document.inspect")
-        );
-        assert_eq!(
-            snapshot_key("engine.execute", &json!({"command": "session.inspect"})).as_deref(),
-            Some("engine.execute:session.inspect")
-        );
+        assert_eq!(snapshot_key("engine.execute", &json!({"id": "document.inspect", "document": 1})).as_deref(), Some("engine.execute:document.inspect:1"));
+        assert_eq!(snapshot_key("engine.execute", &json!({"id": "document.inspect"})).as_deref(), Some("engine.execute:document.inspect"));
+        assert_eq!(snapshot_key("engine.execute", &json!({"command": "session.inspect"})).as_deref(), Some("engine.execute:session.inspect"));
         // Only those two engine commands read state; everything else changes it.
         assert_eq!(snapshot_key("engine.execute", &json!({"command": "layer.new.layer"})), None);
         assert_eq!(snapshot_key("engine.execute", &json!({})), None, "a missing command");
@@ -3023,11 +3018,7 @@ mod tests {
         assert_eq!(*value, json!({"ok": true, "tool": "Brush"}));
         assert!(age_ms < 10_000, "a snapshot stored now is young: {age_ms}ms");
         watch.note_snapshot("ui.inspect", &json!({"ok": true, "tool": "Eraser"}));
-        assert_eq!(
-            watch.snapshot_with_age("ui.inspect").expect("the latest reply wins").1["tool"],
-            json!("Eraser"),
-            "a newer snapshot replaces the older one"
-        );
+        assert_eq!(watch.snapshot_with_age("ui.inspect").expect("the latest reply wins").1["tool"], json!("Eraser"), "a newer snapshot replaces the older one");
         assert!(watch.snapshot_with_age("engine.commands").is_none(), "only requested getters are stored");
     }
 
@@ -3119,9 +3110,6 @@ mod tests {
         assert_eq!(health["logicCount"], json!(0), "no logic pass ran yet");
         assert_eq!(health["drawnCount"], json!(0), "no frame drawn yet");
         assert!(watch.snapshot_with_age("ui.inspect").is_none(), "the empty map answers None, not an error");
-        assert!(
-            matches!(stalled_action(&watch, "ui.inspect", &json!({}), 0), Stalled::NotDrawingFrames),
-            "no logic pass, no snapshot: fail fast"
-        );
+        assert!(matches!(stalled_action(&watch, "ui.inspect", &json!({}), 0), Stalled::NotDrawingFrames), "no logic pass, no snapshot: fail fast");
     }
 }

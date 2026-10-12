@@ -11,10 +11,8 @@ use photocraft_automation::budgets::write_reply;
 use photocraft_automation::security::{
     ConnectionLimiter, LineRead, MAX_CONNECTIONS, MAX_REQUEST_BYTES, authentication_reply, configure_stream, read_bounded_line,
 };
+use photocraft_ui_egui::control::{ControlWatch, REPLY_DEADLINE, STALL_CHECK, Stalled, not_drawing_frames_error, stalled_action, timeout_reply};
 use photocraft_ui_egui::{ControlRequest, ControlResponse};
-use photocraft_ui_egui::control::{
-    ControlWatch, REPLY_DEADLINE, STALL_CHECK, Stalled, not_drawing_frames_error, stalled_action, timeout_reply,
-};
 use serde_json::{Value, json};
 
 pub fn start(port: u16, token: String, ctx: egui::Context) -> (Receiver<ControlRequest>, Arc<ControlWatch>) {
@@ -28,6 +26,7 @@ pub fn start(port: u16, token: String, ctx: egui::Context) -> (Receiver<ControlR
         }
     };
     eprintln!("photocraft: control server listening on 127.0.0.1:{port}");
+    let accept_watch = Arc::clone(&watch);
     std::thread::spawn(move || {
         let limiter = ConnectionLimiter::new(MAX_CONNECTIONS);
         let token = Arc::new(token);
@@ -40,7 +39,7 @@ pub fn start(port: u16, token: String, ctx: egui::Context) -> (Receiver<ControlR
             let tx = tx.clone();
             let ctx = ctx.clone();
             let token = Arc::clone(&token);
-            let watch = Arc::clone(&watch);
+            let watch = Arc::clone(&accept_watch);
             std::thread::spawn(move || {
                 let _permit = permit;
                 serve(stream, &token, tx, ctx, &watch);
@@ -125,14 +124,7 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
 /// after [`STALL_CHECK`] without a reply, a live loop keeps waiting while a wedged one serves
 /// the getter's last snapshot or fails fast. A dropped reply sender can never be answered; it
 /// gets the same deadline error as before.
-fn wait_reply(
-    rrx: &Receiver<ControlResponse>,
-    watch: &ControlWatch,
-    method: &str,
-    params: &Value,
-    logic_before: u64,
-    deadline: Instant,
-) -> Value {
+fn wait_reply(rrx: &Receiver<ControlResponse>, watch: &ControlWatch, method: &str, params: &Value, logic_before: u64, deadline: Instant) -> Value {
     let until = deadline.saturating_duration_since(Instant::now()).min(STALL_CHECK);
     match rrx.recv_timeout(until) {
         Ok(r) => return r,
