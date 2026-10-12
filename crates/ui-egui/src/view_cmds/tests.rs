@@ -268,7 +268,17 @@ fn new_guide_layout_does_not_remember_a_failed_command() {
 }
 
 #[test]
+fn a_missing_move_target_defaults_to_group() {
+    let (app, _ctx) = app_with(0);
+    let mut json_state = serde_json::to_value(&app.ui).unwrap();
+    json_state["tool_options"].as_object_mut().unwrap().remove("move_target");
+    let restored: crate::state::UiState = serde_json::from_value(json_state).unwrap();
+    assert_eq!(restored.tool_options.move_target, "group");
+}
+
+#[test]
 fn lookup_export_dialog_uses_the_current_adjustment_selection() {
+
     let (mut app, _ctx) = app_with(1);
     app.run("layer.newAdjustmentLayer.invert", json!({})).unwrap();
     let current = app.session.active().unwrap().active_layer.unwrap();
