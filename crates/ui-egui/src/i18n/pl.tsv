@@ -19,6 +19,10 @@
 # Zapisz jako…), sentence case as in the English source. Quotes: „…”.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	Szerokość papieru
+	Paper Height	Wysokość papieru
 	Rows	Wiersze
 	Number	Liczba
 	Top:	Góra:
@@ -3628,7 +3632,3 @@ cameraData	Lens	Obiektyw
 	Apply mask to layer before removing?	Zastosować maskę do warstwy przed usunięciem?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Warstwa lub jej maska uległa zmianie. Przeciągnij maskę ponownie do kosza.
 	Delete the vector mask?	Usunąć maskę wektorową?
-
-# Custom print paper (#3820)
-	Paper Width	Szerokość papieru
-	Paper Height	Wysokość papieru

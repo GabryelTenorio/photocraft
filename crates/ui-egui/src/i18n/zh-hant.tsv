@@ -20,6 +20,10 @@
 # separators as in the English.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	紙張寬度
+	Paper Height	紙張高度
 	Columns	欄
 	Rows	列
 	Number	數量
@@ -2604,7 +2608,3 @@ cameraData	Lens	鏡頭
 	Apply mask to layer before removing?	移除之前將遮色片套用到圖層嗎？
 	The layer or its mask changed. Drag the mask onto the Trash again.	圖層或其遮色片已變更。請再次將遮色片拖曳到垃圾桶。
 	Delete the vector mask?	要刪除向量遮色片嗎？
-
-# Custom print paper (#3820)
-	Paper Width	紙張寬度
-	Paper Height	紙張高度

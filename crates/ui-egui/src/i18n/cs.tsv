@@ -20,6 +20,10 @@
 # dialog commands is kept.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	Šířka papíru
+	Paper Height	Výška papíru
 	Columns	Sloupce
 	Rows	Řádky
 	Number	Počet
@@ -3651,7 +3655,3 @@ navigator	Zoom	Zvětšení
 	Apply mask to layer before removing?	Použít masku na vrstvu před odstraněním?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Vrstva nebo její maska se změnila. Přetáhněte masku do koše znovu.
 	Delete the vector mask?	Odstranit vektorovou masku?
-
-# Custom print paper (#3820)
-	Paper Width	Šířka papíru
-	Paper Height	Výška papíru

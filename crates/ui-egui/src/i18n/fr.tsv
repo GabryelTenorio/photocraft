@@ -20,6 +20,10 @@
 # dialog commands is kept.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	Largeur du papier
+	Paper Height	Hauteur du papier
 	Rows	Lignes
 	Number	Nombre
 	Margin	Marge
@@ -3032,7 +3036,3 @@ cameraData	Lens	Objectif
 	Apply mask to layer before removing?	Appliquer le masque au calque avant de le supprimer ?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Le calque ou son masque a changé. Faites de nouveau glisser le masque sur la corbeille.
 	Delete the vector mask?	Supprimer le masque vectoriel ?
-
-# Custom print paper (#3820)
-	Paper Width	Largeur du papier
-	Paper Height	Hauteur du papier

@@ -8,6 +8,10 @@
 # Product names and technology names retain their spelling.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	용지 너비
+	Paper Height	용지 높이
 	Columns	열
 	Rows	행
 	Number	개수
@@ -3199,7 +3203,3 @@ cameraData	Lens	렌즈
 	Apply mask to layer before removing?	제거하기 전에 마스크를 레이어에 적용하시겠습니까?
 	The layer or its mask changed. Drag the mask onto the Trash again.	레이어 또는 마스크가 변경되었습니다. 마스크를 휴지통으로 다시 드래그하세요.
 	Delete the vector mask?	벡터 마스크를 삭제하시겠습니까?
-
-# Custom print paper (#3820)
-	Paper Width	용지 너비
-	Paper Height	용지 높이

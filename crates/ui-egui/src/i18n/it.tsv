@@ -13,6 +13,10 @@
 # letters; the trailing … of dialog commands is kept.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	Larghezza della carta
+	Paper Height	Altezza della carta
 	Columns	Colonne
 	Rows	Righe
 	Number	Numero
@@ -2686,7 +2690,3 @@ cameraData	Lens	Obiettivo
 	Apply mask to layer before removing?	Applicare la maschera al livello prima di rimuoverla?
 	The layer or its mask changed. Drag the mask onto the Trash again.	Il livello o la sua maschera è cambiato. Trascina di nuovo la maschera nel cestino.
 	Delete the vector mask?	Eliminare la maschera vettoriale?
-
-# Custom print paper (#3820)
-	Paper Width	Larghezza della carta
-	Paper Height	Altezza della carta

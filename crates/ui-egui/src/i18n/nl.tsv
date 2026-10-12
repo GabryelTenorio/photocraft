@@ -9,6 +9,10 @@
 # informally ("je") and uses sentence case.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	Papierbreedte
+	Paper Height	Papierhoogte
 	Rows	Rijen
 	Number	Aantal
 	Top:	Boven:
@@ -3776,7 +3780,3 @@ cameraData	Lens	Lens
 	Apply mask to layer before removing?	Masker toepassen op laag voordat het wordt verwijderd?
 	The layer or its mask changed. Drag the mask onto the Trash again.	De laag of het masker is gewijzigd. Sleep het masker opnieuw naar de prullenbak.
 	Delete the vector mask?	Het vectormasker verwijderen?
-
-# Custom print paper (#3820)
-	Paper Width	Papierbreedte
-	Paper Height	Papierhoogte

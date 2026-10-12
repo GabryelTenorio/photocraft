@@ -12,6 +12,10 @@
 # Product and technology names retain their spelling. See docs/localization-zh-hans.md.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	纸张宽度
+	Paper Height	纸张高度
 	Columns	列
 	Rows	行
 	Number	数量
@@ -2634,7 +2638,3 @@ cameraData	Lens	镜头
 	Apply mask to layer before removing?	移去之前将蒙版应用到图层吗？
 	The layer or its mask changed. Drag the mask onto the Trash again.	图层或其蒙版已更改。请再次将蒙版拖到垃圾桶。
 	Delete the vector mask?	要删除矢量蒙版吗？
-
-# Custom print paper (#3820)
-	Paper Width	纸张宽度
-	Paper Height	纸张高度

@@ -16,6 +16,10 @@
 # letters; the trailing "…" of dialog commands is kept.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	用紙の幅
+	Paper Height	用紙の高さ
 	Rows	行
 	Number	数
 	Top:	上:
@@ -3626,7 +3630,3 @@ cameraData	Lens	レンズ
 	Apply mask to layer before removing?	削除する前にマスクをレイヤーに適用しますか？
 	The layer or its mask changed. Drag the mask onto the Trash again.	レイヤーまたはそのマスクが変更されました。もう一度マスクをゴミ箱にドラッグしてください。
 	Delete the vector mask?	ベクトルマスクを削除しますか？
-
-# Custom print paper (#3820)
-	Paper Width	用紙の幅
-	Paper Height	用紙の高さ
