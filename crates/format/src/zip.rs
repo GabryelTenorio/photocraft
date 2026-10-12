@@ -206,7 +206,8 @@ impl<'a> ZipReader<'a> {
         if e.uncompressed > max {
             return Err(FormatError::LimitExceeded(format!("zip entry `{}` is {} bytes (max {max})", e.name, e.uncompressed)));
         }
-        let raw = &self.bytes[e.data_offset..e.data_offset + e.compressed];
+        let end = e.data_offset.checked_add(e.compressed).ok_or_else(|| FormatError::corrupt(format!("zip entry `{}` out of range", e.name)))?;
+        let raw = self.bytes.get(e.data_offset..end).ok_or_else(|| FormatError::corrupt(format!("zip entry `{}` out of range", e.name)))?;
         let data = match e.method {
             0 => raw.to_vec(),
             8 => {
@@ -322,5 +323,19 @@ mod tests {
     fn offset_access_rejects_overflow() {
         assert!(u16_at(&[], usize::MAX).is_err());
         assert!(u32_at(&[], usize::MAX - 3).is_err());
+    }
+
+    #[test]
+    fn foreign_entry_read_is_an_error() {
+        let mut a = ZipWriter::new();
+        a.add("small", b"hi").unwrap();
+        let bytes_a = a.finish().unwrap();
+        let mut b = ZipWriter::new();
+        b.add("small", b"hello world").unwrap();
+        let bytes_b = b.finish().unwrap();
+        let ra = ZipReader::new(&bytes_a).unwrap();
+        let rb = ZipReader::new(&bytes_b).unwrap();
+        let foreign = ra.entries[0].clone();
+        assert!(matches!(rb.read(&foreign, usize::MAX), Err(FormatError::Corrupt(_))));
     }
 }

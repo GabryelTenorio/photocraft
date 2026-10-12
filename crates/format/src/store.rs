@@ -30,10 +30,22 @@ fn compress(data: &[u8]) -> Vec<u8> {
     ruzstd::encoding::compress_to_vec(data, ruzstd::encoding::CompressionLevel::Fastest)
 }
 
-fn decompress(data: &[u8], expected: usize, what: &str) -> Result<Vec<u8>> {
+fn take_limit(max: usize) -> u64 {
+    (max as u64).saturating_add(1)
+}
+
+fn zstd_decode(data: &[u8], max: usize, what: &str) -> Result<Vec<u8>> {
     let mut dec = ruzstd::decoding::StreamingDecoder::new(data).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
-    let mut out = Vec::with_capacity(expected.min(64 << 20));
-    (&mut dec).take(expected as u64 + 1).read_to_end(&mut out).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
+    let mut out = Vec::with_capacity(max.min(64 << 20));
+    (&mut dec).take(take_limit(max)).read_to_end(&mut out).map_err(|e| FormatError::corrupt(format!("{what}: zstd: {e}")))?;
+    if out.len() > max {
+        return Err(FormatError::LimitExceeded(format!("{what} exceeds size limit")));
+    }
+    Ok(out)
+}
+
+fn decompress(data: &[u8], expected: usize, what: &str) -> Result<Vec<u8>> {
+    let out = zstd_decode(data, expected, what)?;
     if out.len() != expected {
         return Err(FormatError::corrupt(format!("{what}: expected {expected} bytes, got {}", out.len())));
     }
@@ -227,13 +239,8 @@ impl Fetch for LoadFetch<'_> {
         let path = blob_path(hash);
         let z = self.src.get(&path, self.opts.max_blob_bytes)?;
         // Blob length is not in the manifest; the frame header bounds it and
-        // we cap at max_blob_bytes.
-        let mut dec = ruzstd::decoding::StreamingDecoder::new(&z[..]).map_err(|e| FormatError::corrupt(format!("{path}: zstd: {e}")))?;
-        let mut data = Vec::new();
-        (&mut dec).take(self.opts.max_blob_bytes as u64 + 1).read_to_end(&mut data).map_err(|e| FormatError::corrupt(format!("{path}: zstd: {e}")))?;
-        if data.len() > self.opts.max_blob_bytes {
-            return Err(FormatError::LimitExceeded(format!("{path} exceeds max_blob_bytes")));
-        }
+        // we cap at max_blob_bytes. `usize::MAX` means unlimited: take must saturate (#3486).
+        let data = zstd_decode(&z, self.opts.max_blob_bytes, &path)?;
         self.account(data.len())?;
         if hash_bytes(&data) != hash {
             return Err(FormatError::corrupt(format!("{path}: content does not match its hash")));
@@ -312,13 +319,7 @@ impl Sink for Collect<'_> {
             self.tiles.entry(h.clone()).or_insert_with(|| (tile.clone(), format.sample));
             return h;
         }
-        let h = if cfg!(target_endian = "big") {
-            let mut b = tile.bytes().to_vec();
-            swap_to_le(&mut b, format.sample);
-            hash_bytes(&b)
-        } else {
-            hash_bytes(tile.bytes())
-        };
+        let h = hash_bytes(&tile_le(tile, format.sample));
         if let Some(cache) = self.hash_cache.as_deref_mut() {
             cache.insert(key, (Arc::downgrade(tile), h.clone()));
         }
@@ -463,10 +464,11 @@ fn existing_object_is_valid(path: &Path, object: &Object, what: &str) -> Result<
     }
     let signature = file_signature(&metadata);
 
-    let expected_len = match object {
-        Object::Tile(tile, sample) => tile_le(tile, *sample).len(),
-        Object::Blob(blob) => blob.len(),
+    let expected = match object {
+        Object::Tile(tile, sample) => tile_le(tile, *sample),
+        Object::Blob(blob) => std::borrow::Cow::Borrowed(blob.as_slice()),
     };
+    let expected_len = expected.len();
     // This is the same bound used by the tile loader. It comfortably includes
     // zstd framing overhead while keeping damaged files bounded when inspected.
     let max_compressed_len = expected_len.saturating_add(expected_len / 8).saturating_add(4096);
@@ -480,7 +482,7 @@ fn existing_object_is_valid(path: &Path, object: &Object, what: &str) -> Result<
     if compressed.len() > max_compressed_len {
         return Ok((false, None));
     }
-    Ok((object.matches_content_hash(&compressed, what), signature))
+    Ok((decompress(&compressed, expected_len, what).is_ok_and(|actual| hash_bytes(&actual) == hash_bytes(&expected)), signature))
 }
 
 /// A bundle path and its compressed bytes.

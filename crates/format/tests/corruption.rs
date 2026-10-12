@@ -155,6 +155,14 @@ fn total_size_limit() {
 }
 
 #[test]
+fn unbounded_blob_budget_still_loads() {
+    let b = sample();
+    let opts = LoadOptions { max_blob_bytes: usize::MAX, ..Default::default() };
+    let doc = load_from_bytes_with(&b, &opts).expect("usize::MAX blob budget must not overflow take()");
+    assert!(doc.icc_profile.is_some());
+}
+
+#[test]
 fn directory_bundle_resave_repairs_tampered_objects() {
     let doc = rich_doc(ColorMode::Rgb, SampleType::U8);
     let dir = temp_dir("tamper");
