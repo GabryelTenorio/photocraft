@@ -3028,3 +3028,6 @@ cameraData	Lens	Objectif
 	Fill with {mode}-neutral color (black)	Remplir avec la couleur neutre de {mode} (noir)
 	Fill with {mode}-neutral color (50% gray)	Remplir avec la couleur neutre de {mode} (gris 50 %)
 	(No neutral color exists for {mode} mode.)	(Il n’existe aucune couleur neutre pour le mode {mode}.)
+	⌘H Hides PhotoCraft	⌘H masque PhotoCraft
+	View › Extras uses ⌃⌘H.	Affichage › Extras utilise ⌃⌘H.
+	Hide PhotoCraft uses ⌃⌘H.	Masquer PhotoCraft utilise ⌃⌘H.

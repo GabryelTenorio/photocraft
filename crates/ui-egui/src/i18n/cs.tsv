@@ -3647,3 +3647,6 @@ navigator	Zoom	Zvětšení
 	Fill with {mode}-neutral color (black)	Vyplnit neutrální barvou pro režim {mode} (černá)
 	Fill with {mode}-neutral color (50% gray)	Vyplnit neutrální barvou pro režim {mode} (50% šedá)
 	(No neutral color exists for {mode} mode.)	(Pro režim {mode} neexistuje neutrální barva.)
+	⌘H Hides PhotoCraft	⌘H skryje PhotoCraft
+	View › Extras uses ⌃⌘H.	Zobrazení › Pomocné prvky používá ⌃⌘H.
+	Hide PhotoCraft uses ⌃⌘H.	Skrýt PhotoCraft používá ⌃⌘H.

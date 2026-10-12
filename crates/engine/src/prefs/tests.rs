@@ -340,6 +340,24 @@ fn keyboard_shortcuts_reassign_and_reset() {
     assert!(r["commands"].as_array().unwrap().iter().any(|c| c["id"] == "filter.blur.gaussianBlur"));
 }
 
+/// ⌘H Hides PhotoCraft moves View › Extras's default to ⌃⌘H; on by default on macOS only, and
+/// the user's own key for Extras still wins.
+#[test]
+fn cmd_h_hides_app_moves_the_extras_default() {
+    let mut p = Preferences::default();
+    assert_eq!(p.interface.cmd_h_hides_app, cfg!(target_os = "macos"));
+    p.interface.cmd_h_hides_app = false;
+    assert_eq!(p.shortcut("view.extras", Some("Cmd+H")), Some("Cmd+H"));
+    p.interface.cmd_h_hides_app = true;
+    assert_eq!(p.shortcut("view.extras", Some("Cmd+H")), Some("Ctrl+Cmd+H"));
+    assert_eq!(p.interface.default_shortcut("view.extras", Some("Cmd+H")), Some("Ctrl+Cmd+H"));
+    assert_eq!(p.shortcut("edit.undo", Some("Cmd+Z")), Some("Cmd+Z"), "other commands keep theirs");
+    p.shortcuts.insert("view.extras".into(), "Cmd+H".into());
+    assert_eq!(p.shortcut("view.extras", Some("Cmd+H")), Some("Cmd+H"));
+    p.shortcuts.insert("view.extras".into(), String::new());
+    assert_eq!(p.shortcut("view.extras", Some("Cmd+H")), None);
+}
+
 /// #249: temporary tools (held keys) and the fill / colour keys are bindable like commands.
 #[test]
 fn temporary_tools_and_fill_keys_are_rebindable() {

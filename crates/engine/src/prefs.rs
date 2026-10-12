@@ -251,6 +251,9 @@ pub struct Interface {
     pub notification_auto_hide: bool,
     /// Seconds a notice stays on screen before it hides itself (Auto Hide Notifications).
     pub notification_duration_seconds: u32,
+    /// macOS: ⌘H hides PhotoCraft, as in every other Mac app, and View › Extras moves to ⌃⌘H.
+    /// Off, Extras keeps Photoshop's ⌘H and Hide moves to ⌃⌘H. On by default on macOS.
+    pub cmd_h_hides_app: bool,
 }
 
 impl Default for Interface {
@@ -276,7 +279,16 @@ impl Default for Interface {
             system_title_bar: false,
             notification_auto_hide: true,
             notification_duration_seconds: 6,
+            cmd_h_hides_app: cfg!(target_os = "macos"),
         }
+    }
+}
+
+impl Interface {
+    /// A command's default shortcut as these preferences have it: `default`, except that View ›
+    /// Extras gives ⌘H up to Hide PhotoCraft (`cmd_h_hides_app`).
+    pub fn default_shortcut<'a>(&self, id: &str, default: Option<&'a str>) -> Option<&'a str> {
+        if id == EXTRAS && self.cmd_h_hides_app { Some(EXTRAS_WHEN_CMD_H_HIDES) } else { default }
     }
 }
 
@@ -1029,8 +1041,13 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
 
 /// Is the preference at `path` (`"section.key"`) hidden from the Preferences dialog?
 pub fn is_hidden(path: &str) -> bool {
-    HIDDEN_UNTIL_IMPLEMENTED.contains(&path) || (!cfg!(target_os = "linux") && LINUX_ONLY.contains(&path))
+    HIDDEN_UNTIL_IMPLEMENTED.contains(&path)
+        || (!cfg!(target_os = "linux") && LINUX_ONLY.contains(&path))
+        || (!cfg!(target_os = "macos") && MAC_ONLY.contains(&path))
 }
+
+/// Preferences that only do something on macOS; the dialog doesn't show them elsewhere.
+pub const MAC_ONLY: &[&str] = &["interface.cmdHHidesApp"];
 
 /// Preferences that only do something on Linux; the dialog doesn't show them elsewhere. They
 /// still load, save and round-trip on every platform.
@@ -1302,12 +1319,16 @@ impl Preferences {
         match self.shortcuts.get(id) {
             Some(s) if s.is_empty() => None,
             Some(s) => Some(s.as_str()),
-            None => default,
+            None => self.interface.default_shortcut(id, default),
         }
     }
 }
 
 // ------------------------------------------------------------------ shortcuts
+
+/// View › Extras, Photoshop's ⌘H, and where it moves when ⌘H hides the app.
+const EXTRAS: &str = "view.extras";
+const EXTRAS_WHEN_CMD_H_HIDES: &str = "Ctrl+Cmd+H";
 
 /// Canonical spelling of a shortcut: modifiers in `Cmd+Ctrl+Alt+Shift` order, key last
 /// (single characters upper-cased). `None` if it has no key or an unknown modifier.

@@ -3710,3 +3710,6 @@ cameraData	Lens	Φακός
 	Fill with {mode}-neutral color (black)	Γέμισμα με το ουδέτερο χρώμα της λειτουργίας {mode} (μαύρο)
 	Fill with {mode}-neutral color (50% gray)	Γέμισμα με το ουδέτερο χρώμα της λειτουργίας {mode} (50% γκρι)
 	(No neutral color exists for {mode} mode.)	(Δεν υπάρχει ουδέτερο χρώμα για τη λειτουργία {mode}.)
+	⌘H Hides PhotoCraft	Το ⌘H αποκρύπτει το PhotoCraft
+	View › Extras uses ⌃⌘H.	Η Προβολή › Πρόσθετα στοιχεία χρησιμοποιεί ⌃⌘H.
+	Hide PhotoCraft uses ⌃⌘H.	Η Απόκρυψη του PhotoCraft χρησιμοποιεί ⌃⌘H.

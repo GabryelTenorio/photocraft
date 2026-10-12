@@ -98,6 +98,11 @@ pub fn effective_shortcut(app: &PhotocraftApp, id: &str, default: Option<&str>) 
     app.session.prefs().shortcut(id, default).map(str::to_string)
 }
 
+/// `default` as the preferences have it: ⌘H Hides PhotoCraft moves View › Extras to ⌃⌘H.
+pub fn default_in_effect(app: &PhotocraftApp, id: &str, default: Option<String>) -> Option<String> {
+    app.session.prefs().interface.default_shortcut(id, default.as_deref()).map(str::to_string)
+}
+
 /// Default (unmodified) shortcut of a command id.
 pub fn default_shortcut(id: &str) -> Option<String> {
     crate::menus::UI_COMMANDS

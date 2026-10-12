@@ -723,6 +723,7 @@ pub fn shortcut_items(app: &PhotocraftApp) -> Vec<(String, String, Vec<String>, 
             continue;
         }
         let default = default_shortcut(&it.id).or(it.shortcut.clone().filter(|_| !app.session.prefs().shortcuts.contains_key(&it.id)));
+        let default = crate::shortcuts::default_in_effect(app, &it.id, default);
         out.push((it.id, it.label, it.path, default));
     }
     // Commands without a menu item: the colour and fill keys (D, X, ⌥⌫…) sit under Tools, as
@@ -1027,6 +1028,9 @@ fn humanize(key: &str) -> String {
     }
     if key == "notificationDurationSeconds" {
         return "Notification Duration (seconds)".into();
+    }
+    if key == "cmdHHidesApp" {
+        return "⌘H Hides PhotoCraft".into();
     }
     let mut s = String::new();
     for (i, ch) in key.chars().enumerate() {
@@ -1463,6 +1467,12 @@ fn section_fields(
                         ui.vertical(|ui| {
                             crate::widgets::checkbox(ui, &mut b, &label);
                             ui.label(RichText::new(tl!("Applies at next launch.")).color(t.text_dim));
+                        });
+                    } else if path == "interface.cmdHHidesApp" {
+                        ui.vertical(|ui| {
+                            crate::widgets::checkbox(ui, &mut b, &label);
+                            let note = if b { tl!("View › Extras uses ⌃⌘H.") } else { tl!("Hide PhotoCraft uses ⌃⌘H.") };
+                            ui.label(RichText::new(note).color(t.text_dim));
                         });
                     } else {
                         crate::widgets::checkbox(ui, &mut b, &label);
@@ -2814,6 +2824,41 @@ mod tests {
         assert_eq!(restarted.session.prefs().performance.history_states, 22);
         assert_eq!(restarted.ui.theme, ThemeKind::StudioLight);
         assert_eq!(restarted.session.prefs().interface.ui_font_size, prefs::UiFontSize::Large);
+    }
+
+    /// Interface › ⌘H Hides PhotoCraft: macOS only; the note says where the other item went.
+    #[test]
+    fn cmd_h_hides_photocraft_is_a_mac_checkbox() {
+        use egui_kittest::{Harness, kittest::Queryable};
+
+        let (mut app, _store) = app_with_store();
+        app.run("prefs.set", json!({"values": {"interface.language": "en", "interface.cmdHHidesApp": true}})).unwrap();
+        open_preferences(&mut app, "interface");
+        let mut h = Harness::builder().with_size(vec2(1280.0, 800.0)).build_eframe(move |cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            app
+        });
+        h.run_steps(4);
+        if !cfg!(target_os = "macos") {
+            assert!(h.query_by_label("⌘H Hides PhotoCraft").is_none());
+            return;
+        }
+        h.get_by_label("⌘H Hides PhotoCraft").scroll_to_me();
+        h.run_steps(4);
+        h.get_by_label("View › Extras uses ⌃⌘H.");
+        h.get_by_label("⌘H Hides PhotoCraft").click();
+        h.run_steps(4);
+        h.get_by_label("Hide PhotoCraft uses ⌃⌘H.");
+        h.get_by_label("Apply").click();
+        h.run_steps(4);
+        assert!(!h.state().session.prefs().interface.cmd_h_hides_app);
+        if let Ok(dir) = std::env::var("PHOTOCRAFT_SHOT_DIR") {
+            h.get_by_label("⌘H Hides PhotoCraft").click();
+            h.run_steps(4);
+            if let Ok(img) = h.render() {
+                let _ = img.save(format!("{dir}/cmd_h_pref.png"));
+            }
+        }
     }
 
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]

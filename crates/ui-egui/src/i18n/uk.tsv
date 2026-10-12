@@ -3710,3 +3710,6 @@ cameraData	Lens	Об'єктив
 	Fill with {mode}-neutral color (black)	Залити нейтральним кольором режиму «{mode}» (чорний)
 	Fill with {mode}-neutral color (50% gray)	Залити нейтральним кольором режиму «{mode}» (50% сірого)
 	(No neutral color exists for {mode} mode.)	(Для режиму «{mode}» немає нейтрального кольору.)
+	⌘H Hides PhotoCraft	⌘H приховує PhotoCraft
+	View › Extras uses ⌃⌘H.	Перегляд › Допоміжні елементи — ⌃⌘H.
+	Hide PhotoCraft uses ⌃⌘H.	Приховати PhotoCraft — ⌃⌘H.

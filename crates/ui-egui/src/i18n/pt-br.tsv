@@ -3802,3 +3802,6 @@ layerLabel	No Color	Sem cor
 	Fill with {mode}-neutral color (black)	Preencher com a cor neutra de {mode} (preto)
 	Fill with {mode}-neutral color (50% gray)	Preencher com a cor neutra de {mode} (cinza 50%)
 	(No neutral color exists for {mode} mode.)	(Não existe cor neutra para o modo {mode}.)
+	⌘H Hides PhotoCraft	⌘H oculta o PhotoCraft
+	View › Extras uses ⌃⌘H.	Exibir › Extras usa ⌃⌘H.
+	Hide PhotoCraft uses ⌃⌘H.	Ocultar PhotoCraft usa ⌃⌘H.

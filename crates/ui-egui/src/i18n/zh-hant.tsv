@@ -2600,3 +2600,6 @@ cameraData	Lens	鏡頭
 	Fill with {mode}-neutral color (black)	使用{mode}中性色填滿（黑色）
 	Fill with {mode}-neutral color (50% gray)	使用{mode}中性色填滿（50% 灰色）
 	(No neutral color exists for {mode} mode.)	（{mode}模式沒有中性色。）
+	⌘H Hides PhotoCraft	⌘H 隱藏 PhotoCraft
+	View › Extras uses ⌃⌘H.	檢視 › 顯示額外內容使用 ⌃⌘H。
+	Hide PhotoCraft uses ⌃⌘H.	隱藏 PhotoCraft 使用 ⌃⌘H。
