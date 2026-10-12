@@ -487,9 +487,12 @@ impl Default for View {
     }
 }
 
-/// An extra OS window showing a document ("Window → Arrange → New Window for Document").
+/// An OS document window: primary presentation or an additional independent view.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DocWindow {
+    /// Primary floats own document input/close; legacy and New Window views remain additional.
+    #[serde(default)]
+    pub primary: bool,
     pub id: u64,
     pub document: usize,
     pub view: View,

@@ -756,8 +756,21 @@ pub(crate) fn float_window(app: &mut PhotocraftApp, doc: usize, offset: usize) -
     let wid = app.ui.alloc_id();
     let mut view = app.ui.views.get(doc).cloned().unwrap_or_default();
     view.fit_pending = offset > 0 || view.fit_pending;
-    app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true, position: None });
+    app.ui.windows.push(crate::state::DocWindow { primary: false, id: wid, document: doc, view, open: true, position: None });
     wid
+}
+
+/// Explicit Float keeps accepted view creation behavior, with one primary per document.
+pub(crate) fn float_primary_window(app: &mut PhotocraftApp, doc: usize, offset: usize) -> u64 {
+    for window in app.ui.windows.iter_mut().filter(|w| w.document == doc && w.primary) {
+        window.primary = false;
+    }
+    let id = float_window(app, doc, offset);
+    if let Some(window) = app.ui.windows.last_mut() {
+        window.primary = true;
+    }
+    crate::document_windows::prune(app);
+    id
 }
 
 fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String> {
@@ -771,6 +784,7 @@ fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String>
         "consolidateAllToTabs" => {
             app.ui.view.arrange = "tabs".into();
             app.ui.windows.clear();
+            crate::document_windows::consolidate(app);
             Ok(json!({"arrange": "tabs"}))
         }
         "newWindowForDocument" => {
@@ -791,7 +805,7 @@ fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String>
                 None | Some(Value::Null) => None,
                 Some(v) => Some(screen_position(v).ok_or("position must be [x, y] in points")?),
             };
-            let wid = float_window(app, doc, 0);
+            let wid = float_primary_window(app, doc, 0);
             if let Some(w) = app.ui.windows.iter_mut().find(|w| w.id == wid) {
                 w.position = position;
             }
@@ -800,7 +814,7 @@ fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String>
         }
         "floatAllInWindows" | "cascade" => {
             let n = app.session.documents().len();
-            let ids: Vec<u64> = (0..n).map(|d| float_window(app, d, d)).collect();
+            let ids: Vec<u64> = (0..n).map(|d| float_primary_window(app, d, d)).collect();
             Ok(json!({"windows": ids}))
         }
         "matchZoom" | "matchLocation" | "matchRotation" | "matchAll" => {
@@ -1096,12 +1110,9 @@ fn default_dir(app: &PhotocraftApp) -> String {
 
 fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
     if id == "file.closeAll" || id == "file.closeOthers" {
-        // Keep the remaining document's view (views are index-aligned with documents).
-        let keep = app.session.active_index().and_then(|i| app.ui.views.get(i).cloned());
+        // sync_views preserves cameras and primary windows by document identity.
         let r = app.run(id, params.clone());
         if r.is_ok() {
-            app.ui.views = if id == "file.closeAll" { Vec::new() } else { keep.into_iter().collect() };
-            app.ui.windows.clear();
             app.sync_views();
         }
         return Some(r);
