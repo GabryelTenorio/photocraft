@@ -1426,16 +1426,18 @@ impl PhotocraftApp {
         while let Ok(req) = rx.try_recv() {
             let reply = req.reply.clone();
             if req.deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-                let _ = reply.send(serde_json::json!({"ok": false, "error": control::timeout_error()}));
+                let _ = reply.send(control::timeout_reply());
                 continue;
             }
             match control::handle(self, ctx, &req) {
                 control::Outcome::Done(v) => {
-                    // Keep the last reply of a snapshot getter for serving while wedged (#2493).
-                    if let Some(key) = control::snapshot_key(&req.method, &req.params) {
-                        if let Some(w) = self.watch.as_ref() {
-                            w.note_snapshot(key, &v);
-                        }
+                    // Keep the last reply of a snapshot getter for serving while wedged (#2493);
+                    // only a successful reply, never an error.
+                    if let Some(key) = control::snapshot_key(&req.method, &req.params)
+                        && v.get("ok").and_then(Value::as_bool) == Some(true)
+                        && let Some(w) = self.watch.as_ref()
+                    {
+                        w.note_snapshot(&key, &v);
                     }
                     let _ = reply.send(v);
                 }

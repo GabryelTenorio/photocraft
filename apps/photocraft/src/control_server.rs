@@ -13,7 +13,7 @@ use photocraft_automation::security::{
 };
 use photocraft_ui_egui::{ControlRequest, ControlResponse};
 use photocraft_ui_egui::control::{
-    ControlWatch, REPLY_DEADLINE, STALL_CHECK, Stalled, not_drawing_frames_error, stalled_action, timeout_error,
+    ControlWatch, REPLY_DEADLINE, STALL_CHECK, Stalled, not_drawing_frames_error, stalled_action, timeout_reply,
 };
 use serde_json::{Value, json};
 
@@ -136,18 +136,19 @@ fn wait_reply(
     let until = deadline.saturating_duration_since(Instant::now()).min(STALL_CHECK);
     match rrx.recv_timeout(until) {
         Ok(r) => return r,
-        Err(RecvTimeoutError::Disconnected) => return json!({"ok": false, "error": timeout_error()}),
+        Err(RecvTimeoutError::Disconnected) => return timeout_reply(),
         Err(RecvTimeoutError::Timeout) => {}
     }
     if Instant::now() >= deadline {
-        return json!({"ok": false, "error": timeout_error()});
+        return timeout_reply();
     }
     match stalled_action(watch, method, params, logic_before) {
         Stalled::KeepWaiting => match rrx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(r) => r,
-            Err(_) => json!({"ok": false, "error": timeout_error()}),
+            Err(_) => timeout_reply(),
         },
-        Stalled::Snapshot { age_ms, mut value } => {
+        Stalled::Snapshot { age_ms, value } => {
+            let mut value = (*value).clone();
             // Stamp into `result` when it is an object; a non-object result still gets the
             // flags, into the reply itself.
             if let Some(obj) = value.get_mut("result").and_then(Value::as_object_mut) {

@@ -12,6 +12,8 @@ fn annotated(mut tool: Tool) -> Tool {
     let words = tool.name.replace('_', " ");
     let mut chars = words.chars();
     let title = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
+    // The control-channel counterpart of these read tools is snapshot_key() in photocraft-ui-egui's
+    // control module; keep the two lists in sync.
     let read = matches!(
         tool.name.as_ref(),
         "command_list" | "doc_inspect" | "session_list" | "render_preview" | "doc_render_preview" | "ui_inspect" | "ui_screenshot"
