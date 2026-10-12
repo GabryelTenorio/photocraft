@@ -352,6 +352,59 @@ fn canvas_size(s: &mut Session, p: &Value) -> Result<Value> {
 /// The largest side an explicit crop may give the canvas (the `file.new` and Canvas Size limit).
 const MAX_CROP_SIDE: i32 = 300_000;
 
+/// The Crop tool's Content-Aware option: the canvas area the frame grew past the old canvas is
+/// filled from each visible pixel layer's own surroundings — the same patch-based completion as
+/// Edit › Fill ([`photocraft_algo::content_aware`]) with the whole document as sampling window.
+/// Hidden layers, groups' non-pixel contents and layers without any pixels keep the new area
+/// empty, as Photoshop's Content-Aware Crop does. `old` is the pre-crop canvas in the cropped
+/// document's coordinates; `fill` returns once there is nothing to do when `old` covers it.
+fn fill_crop_extension(doc: &mut Document, old: Rect) -> Result<()> {
+    use photocraft_algo::content_aware::FillOptions;
+    let canvas = doc.bounds();
+    if old.contains_rect(&canvas) {
+        return Ok(());
+    }
+    // The whole canvas is the sampling window: the new band runs along one or more of its edges,
+    // so its Photoshop window clamps to the canvas anyway. Same budget check as Edit › Fill (#963).
+    let (w, h) = crate::fill_cmds::window_size(canvas)?;
+    let mut hole = vec![false; w * h];
+    for (i, v) in hole.iter_mut().enumerate() {
+        let (x, y) = (canvas.x0 + (i % w) as i32, canvas.y0 + (i / w) as i32);
+        *v = !old.contains(x, y);
+    }
+    let source = vec![true; w * h];
+    fill_crop_layers(&mut doc.layers, canvas, w, h, &hole, &source, &FillOptions::default());
+    Ok(())
+}
+
+/// [`fill_crop_extension`] over a layer list: visible raster layers are filled; groups recurse.
+fn fill_crop_layers(layers: &mut [Layer], canvas: Rect, w: usize, h: usize, hole: &[bool], source: &[bool], opts: &photocraft_algo::content_aware::FillOptions) {
+    for l in layers {
+        if !l.visible {
+            continue;
+        }
+        match &mut l.content {
+            LayerContent::Raster(surf) => {
+                // A layer without pixels has nothing to extend itself from.
+                if surf.content_bounds().is_empty() {
+                    continue;
+                }
+                let n = surf.format().channels();
+                let img = surf.read_region(canvas);
+                if img.len() != w * h * n {
+                    continue;
+                }
+                // The completion guarantees pixels outside the hole come back unchanged; at
+                // 8/16-bit the normalised round trip through the fill is exact.
+                let filled = photocraft_algo::content_aware::fill(w, h, n, &img, hole, source, opts);
+                surf.write_region(canvas, &filled);
+            }
+            LayerContent::Group(g) => fill_crop_layers(&mut g.children, canvas, w, h, hole, source, opts),
+            _ => {}
+        }
+    }
+}
+
 /// Image → Crop (to the selection bounds).
 fn crop(s: &mut Session, p: &Value) -> Result<Value> {
     let delete = p.get("deleteCroppedPixels").and_then(Value::as_bool).unwrap_or(true);
@@ -395,8 +448,21 @@ fn crop(s: &mut Session, p: &Value) -> Result<Value> {
     if r.is_empty() {
         return Err(EngineError::Other("nothing to crop: pass x/y/width/height or make a selection".into()));
     }
+    // Content-Aware Crop: fill whatever of the new canvas the old one did not cover.
+    let content_aware = p.get("contentAware").and_then(Value::as_bool).unwrap_or(false);
+    let old_here = if content_aware {
+        let (Some(mx), Some(my)) = (r.x0.checked_neg(), r.y0.checked_neg()) else {
+            return Err(bad("image.crop", format!("the crop origin ({}, {}) can't be moved to (0, 0) within the 32-bit coordinate range", r.x0, r.y0)));
+        };
+        Some(s.active().ok_or(EngineError::NoDocument)?.doc.bounds().translate(mx, my))
+    } else {
+        None
+    };
     s.edit("Crop", |doc, _| {
         crop_doc(doc, "image.crop", r, delete)?;
+        if let Some(old) = old_here {
+            fill_crop_extension(doc, old)?;
+        }
         doc.selection = None;
         target.apply(doc);
         Ok(())
@@ -939,6 +1005,42 @@ mod tests {
         s.execute("image.crop", json!({"x": -10, "y": 0, "width": 60, "height": 20})).unwrap();
         assert_eq!(doc(&s).size, Size::new(60, 20));
         assert_eq!(doc(&s).layers[1].surface().unwrap().pixel(20, 5), vec![1.0, 0.0, 0.0, 1.0]);
+    }
+
+    /// The Crop tool's Content-Aware option: the canvas a crop grows into is filled from the
+    /// layers' own pixels; with it off the same area stays empty.
+    #[test]
+    fn content_aware_crop_fills_the_extension() {
+        // Off (the default): the band left of the old canvas stays the surface's default pixel.
+        let mut s = session();
+        s.execute("image.crop", json!({"x": -10, "y": 0, "width": 60, "height": 20})).unwrap();
+        assert_ne!(layer_rgba(&s, 0, 2, 10), [1.0, 1.0, 1.0, 1.0]);
+        // On: the white Background extends as white; the sparse layer above leaves it empty.
+        let mut s = session();
+        s.execute("image.crop", json!({"x": -10, "y": 0, "width": 60, "height": 20, "contentAware": true})).unwrap();
+        assert_eq!(doc(&s).size, Size::new(60, 20));
+        assert_eq!(layer_rgba(&s, 0, 2, 10), [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(layer_rgba(&s, 0, 55, 10), [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(layer_rgba(&s, 1, 2, 10)[3], 0.0);
+        // One history step undoes the crop and the fill together.
+        s.execute("edit.undo", json!({})).unwrap();
+        assert_eq!(doc(&s).size, Size::new(40, 20));
+        assert_eq!(layer_rgba(&s, 0, 0, 0), [1.0, 1.0, 1.0, 1.0]);
+    }
+
+    /// A crop fully inside the canvas changes nothing with the option on.
+    #[test]
+    fn content_aware_crop_without_extension_is_a_noop() {
+        let mut s = session();
+        let before: Vec<_> = (0..8).map(|x| layer_rgba(&s, 0, x, 0)).collect();
+        s.execute("image.crop", json!({"x": 5, "y": 5, "width": 30, "height": 10, "contentAware": true})).unwrap();
+        assert_eq!(layer_rgba(&s, 0, 0, 0), before[5]);
+        let mut s = session();
+        s.execute("image.crop", json!({"x": 5, "y": 5, "width": 30, "height": 10})).unwrap();
+        let plain = layer_rgba(&s, 0, 0, 0);
+        let mut s = session();
+        s.execute("image.crop", json!({"x": 5, "y": 5, "width": 30, "height": 10, "contentAware": true})).unwrap();
+        assert_eq!(layer_rgba(&s, 0, 0, 0), plain);
     }
 
     /// A document (`mode`, `depth`) with a white Background and a layer holding a red pixel at

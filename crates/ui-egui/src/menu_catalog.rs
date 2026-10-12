@@ -687,6 +687,7 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["View", "Snap To"], "Layers", None, "view.snapTo.layers"),
     (&["View", "Snap To"], "Slices", None, "view.snapTo.slices"),
     (&["View", "Snap To"], "Document Bounds", None, "view.snapTo.documentBounds"),
+    (&["View", "Snap To"], "Content", None, "view.snapTo.content"),
     (&["View", "Snap To"], "---", None, "---"),
     (&["View", "Snap To"], "All", None, "view.snapTo.all"),
     (&["View"], "---", None, "---"),

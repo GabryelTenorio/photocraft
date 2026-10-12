@@ -4675,6 +4675,11 @@ pub fn commit_crop(app: &mut PhotocraftApp) {
     if angle != 0.0 {
         p["angle"] = json!(angle);
     }
+    // Content-Aware extension fill for canvas the frame grew past (no-op when nothing extended;
+    // a turned frame rotates first and keeps its own fill for now).
+    if app.ui.tool_options.crop_content_aware && angle == 0.0 {
+        p["contentAware"] = json!(true);
+    }
     // W x H x Resolution (#2443): resample to that size and set the resolution.
     crate::crop_size::commit_params(app, &mut p);
     if app.run("image.crop", p).is_ok()

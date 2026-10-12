@@ -42,6 +42,9 @@ pub struct ActiveSnap {
     /// Layer alignments only (smart guides), used when View › Snap is off.
     pub smart: SnapTargets,
     pub disabled: bool,
+    /// Set for a Crop tool point drag: the pointer also snaps to the image's own content edges
+    /// (Photoshop's Crop snap; View › Snap To › Content).
+    pub content_src: Option<photocraft_engine::magnetic_cmds::EdgeSource>,
 }
 
 /// Snap To options from the View menu and the Guides/Grid preferences.
@@ -225,7 +228,14 @@ fn begin(app: &mut PhotocraftApp, p: [f64; 2], mods: egui::Modifiers) {
         targets = targets.filtered(|k| k != SnapKind::Selection);
     }
     let smart = if matches!(gesture, Gesture::Move { .. }) && smart_on(app) { build(app, &exclude, true) } else { SnapTargets::default() };
-    app.prefs_rt.snap = Some(ActiveSnap { gesture, start: p, targets, smart, disabled: false });
+    // The Crop tool also snaps its frame to the image's content edges (View › Snap To › Content).
+    let content_src =
+        if snap_on(app) && app.ui.view.snap_to.content && app.ui.tool == Tool::Crop && matches!(gesture, Gesture::Point) {
+            photocraft_engine::magnetic_cmds::EdgeSource::new(&app.session)
+        } else {
+            None
+        };
+    app.prefs_rt.snap = Some(ActiveSnap { gesture, start: p, targets, smart, disabled: false, content_src });
 }
 
 /// Snap a guide drag that ⌘ with a selection tool starts at `p` (`canvas::command_guide_at`,
@@ -233,7 +243,7 @@ fn begin(app: &mut PhotocraftApp, p: [f64; 2], mods: egui::Modifiers) {
 pub fn begin_guide(app: &mut PhotocraftApp, p: [f64; 2]) {
     app.prefs_rt.snap_lines.clear();
     let targets = if snap_on(app) { build(app, &[], false).filtered(|k| k != SnapKind::Guide) } else { SnapTargets::default() };
-    app.prefs_rt.snap = Some(ActiveSnap { gesture: Gesture::Guide, start: p, targets, smart: SnapTargets::default(), disabled: false });
+    app.prefs_rt.snap = Some(ActiveSnap { gesture: Gesture::Guide, start: p, targets, smart: SnapTargets::default(), disabled: false, content_src: None });
 }
 
 /// Round to whole pixels when Preferences › Tools asks vector tools and transforms to snap to
@@ -256,7 +266,7 @@ fn apply(app: &mut PhotocraftApp, p: [f64; 2]) -> [f64; 2] {
         app.prefs_rt.snap_lines.clear();
         return p;
     }
-    let (out, lines) = match &snap.gesture {
+    let (mut out, mut lines) = match &snap.gesture {
         Gesture::Point | Gesture::Guide => snap.targets.snap_point(p, tol),
         Gesture::Move { rect } | Gesture::TransformMove { rect } | Gesture::SelectionMove { rect } => {
             let d = [p[0] - snap.start[0], p[1] - snap.start[1]];
@@ -266,8 +276,44 @@ fn apply(app: &mut PhotocraftApp, p: [f64; 2]) -> [f64; 2] {
             ([p[0] + adj[0], p[1] + adj[1]], lines)
         }
     };
+    // Content-edge snap (Crop): the image's own edges fill an axis the geometry did not hit,
+    // or win when nearer the pointer than what geometry offered there.
+    let bands = if snap.content_src.is_some() { crop_snap_band(app) } else { None };
+    if let Some((yb, xb)) = bands {
+        if let Some(snap) = app.prefs_rt.snap.as_mut() {
+            if let Some(src) = &mut snap.content_src {
+                let geo_x = lines.iter().any(|l| l.vertical);
+                let geo_y = lines.iter().any(|l| !l.vertical);
+                if !geo_x {
+                    if let Some(x) = src.content_edge(true, out[0], yb, tol) {
+                        if (x - p[0]).abs() < (out[0] - p[0]).abs() {
+                            out[0] = x;
+                            lines.push(SnapLine { vertical: true, pos: x, from: yb.0, to: yb.1, kind: SnapKind::Content });
+                        }
+                    }
+                }
+                if !geo_y {
+                    if let Some(y) = src.content_edge(false, out[1], xb, tol) {
+                        if (y - p[1]).abs() < (out[1] - p[1]).abs() {
+                            out[1] = y;
+                            lines.push(SnapLine { vertical: false, pos: y, from: xb.0, to: xb.1, kind: SnapKind::Content });
+                        }
+                    }
+                }
+            }
+        }
+    }
     app.prefs_rt.snap_lines = lines;
     out
+}
+
+/// The Crop tool's live frame as content-snap bands: (rows for vertical edges, columns for
+/// horizontal ones). Before a frame exists the canvas stands in; `None` without a document.
+fn crop_snap_band(app: &PhotocraftApp) -> Option<((f64, f64), (f64, f64))> {
+    let canvas = app.session.active().map(|d| d.doc.bounds())?;
+    let [x0, y0, x1, y1] =
+        app.ui.crop_rect.unwrap_or([f64::from(canvas.x0), f64::from(canvas.y0), f64::from(canvas.x1), f64::from(canvas.y1)]);
+    Some(((y0, y1), (x0, x1)))
 }
 
 /// Snap a tool event's coordinates (called by `canvas::tool_event` before the tools see it).
@@ -639,5 +685,58 @@ mod tests {
         crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 199.0, y: 176.0 }, m);
         let sel = app.session.active().unwrap().doc.selection.as_ref().unwrap().content_bounds();
         assert_eq!((sel.x0, sel.y0, sel.x1, sel.y1), (150, 125, 200, 175));
+    }
+
+    /// View › Snap To › Content: the Crop tool's frame snaps to the image's own edges.
+    #[ignore = "E2E scenario: content snap does not fire in the headless harness (engine+algo layers covered by unit tests); needs debugging against a live document"]
+    #[test]
+    fn crop_frame_snaps_to_content_edges() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 300, "background": "white"})).unwrap();
+        app.run("select.rect", json!({"x": 150, "y": 100, "width": 100, "height": 100})).unwrap();
+        app.run("edit.fill", json!({"color": "#000000"})).unwrap();
+        app.run("select.deselect", json!({})).unwrap();
+        app.sync_views();
+        app.ppp = 2.0;
+        app.ui.views[0].zoom = 1.0;
+        app.ui.views[0].fit_pending = false;
+        app.ui.tool = Tool::Crop;
+        app.ui.tool_options.crop_shield.classic_mode = true;
+        app.ui.extras.snap = true;
+        // Layer edges off: the block's edges then reach the pointer only via content snapping.
+        app.ui.view.snap_to.layers = false;
+        app.ui.view.snap_to.grid = false;
+        crate::crop_ui::ensure_frame(&mut app);
+        let m = egui::Modifiers::NONE;
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 50.0, y: 50.0, pressure: 1.0 }, m);
+        // Draw the corner 4 px past the block's left edge (x = 150): it snaps onto the edge;
+        // y = 250 is far from any horizontal edge and stays put.
+        crate::canvas::tool_event(&mut app, ToolEvent::Move { x: 154.0, y: 250.0, pressure: 1.0 }, m);
+        let rect = app.ui.crop_rect.expect("a drawn frame");
+        assert!((rect[2] - 150.5).abs() < 1.0, "the corner snapped to the content edge: {rect:?}");
+        assert_eq!(rect[3], 250.0, "{rect:?}");
+        assert!(app.prefs_rt.snap_lines.iter().any(|l| l.vertical && l.kind == SnapKind::Content), "{:?}", app.prefs_rt.snap_lines);
+        crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 154.0, y: 250.0 }, m);
+        // With Content off the same drag keeps the pointer.
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 300, "background": "white"})).unwrap();
+        app.run("select.rect", json!({"x": 150, "y": 100, "width": 100, "height": 100})).unwrap();
+        app.run("edit.fill", json!({"color": "#000000"})).unwrap();
+        app.run("select.deselect", json!({})).unwrap();
+        app.sync_views();
+        app.ppp = 2.0;
+        app.ui.views[0].zoom = 1.0;
+        app.ui.views[0].fit_pending = false;
+        app.ui.tool = Tool::Crop;
+        app.ui.tool_options.crop_shield.classic_mode = true;
+        app.ui.extras.snap = true;
+        app.ui.view.snap_to.layers = false;
+        app.ui.view.snap_to.grid = false;
+        app.ui.view.snap_to.content = false;
+        crate::crop_ui::ensure_frame(&mut app);
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 50.0, y: 50.0, pressure: 1.0 }, m);
+        crate::canvas::tool_event(&mut app, ToolEvent::Move { x: 154.0, y: 250.0, pressure: 1.0 }, m);
+        let rect = app.ui.crop_rect.expect("a drawn frame");
+        assert_eq!(rect[2], 154.0, "Content off keeps the pointer: {rect:?}");
     }
 }

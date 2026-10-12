@@ -26,6 +26,7 @@ const MAX_LENGTH: f64 = 200_000.0;
 /// The pixels the Magnetic Lasso follows: the active layer's when it is a pixel layer (Photoshop's
 /// tool sees only the current layer), else the composite. A snapshot of one document revision,
 /// read lazily and cached while a border is drawn.
+#[derive(Clone, Debug)]
 pub struct EdgeSource {
     doc: Arc<Document>,
     layer: Option<LayerId>,
@@ -60,6 +61,14 @@ impl EdgeSource {
     pub fn snap(&mut self, p: [f64; 2], s: Settings) -> Option<[f64; 2]> {
         let (doc, layer) = (&self.doc, self.layer);
         self.tracer.snap(&mut |r| read(doc, layer, r), p, s)
+    }
+
+    /// The position of the nearest content edge to `at` (a vertical edge snaps an x coordinate,
+    /// a horizontal one a y coordinate), measured over `band` (document px) within `tol`.
+    /// Used to snap a crop edge to the image contents (Photoshop's Crop snap to content).
+    pub fn content_edge(&mut self, vertical: bool, at: f64, band: (f64, f64), tol: f64) -> Option<f64> {
+        let (doc, layer) = (&self.doc, self.layer);
+        self.tracer.edge_near(&mut |r| read(doc, layer, r), vertical, at, band, tol)
     }
 
     /// The border from `from` to `to` along the edges near `guide`, the pointer's path between them

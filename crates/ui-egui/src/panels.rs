@@ -1139,6 +1139,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         crate::crop_overlay::options_button(o, ui);
                         let pick_shield_color = crate::crop_shield::options_button(&mut o.crop_shield, ui);
                         widgets::checkbox(ui, &mut o.crop_delete, tl!("Delete Cropped Pixels"));
+                        widgets::checkbox(ui, &mut o.crop_content_aware, tl!("Content-Aware"));
                         if pick_shield_color {
                             crate::crop_shield::pick_custom_color(app);
                         }

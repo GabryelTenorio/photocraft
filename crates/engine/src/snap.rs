@@ -22,6 +22,8 @@ pub enum SnapKind {
     LayerEdge,
     LayerCenter,
     Selection,
+    /// The Crop tool snapping its frame to the image's own content edges.
+    Content,
 }
 
 impl SnapKind {

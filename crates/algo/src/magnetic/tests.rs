@@ -193,3 +193,34 @@ fn split_and_simplify() {
     assert_eq!(simplify(&[[0.0, 0.0], [1.0, 0.1], [2.0, 0.0], [3.0, 5.0]], 0.3), vec![[0.0, 0.0], [2.0, 0.0], [3.0, 5.0]]);
     assert!(split(&[], 256.0).is_empty());
 }
+
+#[test]
+fn edge_near_snaps_a_straight_edge_per_axis() {
+    let read = Cell::new(0);
+    // Black left of x = 20, white from it; every row identical.
+    let mut f = image(|x, _| grey(if x < 20 { 0 } else { 255 }), &read);
+    let mut t = Tracer::new(Rect::new(0, 0, 64, 32));
+    // A vertical edge pulls an x within reach onto it.
+    let x = t.edge_near(&mut f, true, 23.0, (4.0, 28.0), 8.0).unwrap();
+    assert!((x - 20.5).abs() < 1.0, "on the step's column: {x}");
+    // …but not from beyond the tolerance.
+    assert_eq!(t.edge_near(&mut f, true, 35.0, (4.0, 28.0), 8.0), None);
+    // Identical rows offer no horizontal edge to snap a y to.
+    assert_eq!(t.edge_near(&mut f, false, 10.0, (4.0, 60.0), 8.0), None);
+    // A horizontal step snaps the y instead (a fresh tracer: the old one cached the old image).
+    let mut g = image(|_, y| grey(if y < 12 { 0 } else { 255 }), &read);
+    let mut t2 = Tracer::new(Rect::new(0, 0, 64, 32));
+    let y = t2.edge_near(&mut g, false, 15.0, (4.0, 60.0), 8.0).unwrap();
+    assert!((y - 12.5).abs() < 1.0, "{y}");
+}
+
+#[test]
+fn edge_near_ignores_faint_steps() {
+    let read = Cell::new(0);
+    let mut f = image(|x, _| grey(if x < 20 { 100 } else { 105 }), &read);
+    let mut t = Tracer::new(Rect::new(0, 0, 64, 32));
+    assert_eq!(t.edge_near(&mut f, true, 22.0, (4.0, 28.0), 8.0), None, "2% does not reach the contrast");
+    // A flat image never produces an edge.
+    let mut g = image(|_, _| grey(128), &read);
+    assert_eq!(t.edge_near(&mut g, true, 22.0, (4.0, 28.0), 8.0), None);
+}

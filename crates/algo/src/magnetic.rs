@@ -82,7 +82,7 @@ impl Settings {
 pub type Fetch<'a> = dyn FnMut(Rect) -> Vec<[u8; 4]> + 'a;
 
 /// Edge tracing over one image, caching the pixels it has read.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Tracer {
     bounds: Rect,
     blocks: HashMap<(i32, i32), Vec<[u8; 4]>>,
@@ -134,6 +134,63 @@ impl Tracer {
             }
         }
         Some(best.map_or(p, |(_, q)| q))
+    }
+
+    /// The position of the nearest strong straight edge to `at` (a `vertical` edge snaps an x
+    /// coordinate, a horizontal one a y coordinate), measured over `band` (the axis the edge runs
+    /// along, document px) within `tol` of `at`. `None` when no ridge there reaches the lasso's
+    /// default contrast. Used to snap a crop edge to the image contents.
+    pub fn edge_near(&mut self, fetch: &mut Fetch, vertical: bool, at: f64, band: (f64, f64), tol: f64) -> Option<f64> {
+        if !at.is_finite() || self.bounds.is_empty() {
+            return None;
+        }
+        let tol = tol.clamp(1.0, 256.0);
+        let (lo, hi) = (band.0.min(band.1).floor() as i32, band.0.max(band.1).ceil() as i32);
+        let (a0, a1) = ((at - tol).floor() as i32, (at + tol).ceil() as i32);
+        let area = if vertical { Rect::new(a0, lo, a1, hi) } else { Rect::new(lo, a0, hi, a1) }.intersect(&self.bounds);
+        if area.is_empty() || area.width().min(area.height()) == 0 {
+            return None;
+        }
+        let f = self.field(fetch, area);
+        let n = if vertical { area.width() } else { area.height() } as usize;
+        // Per-axis edge profile: ridge strength, weighted towards edges that run along the band
+        // (a vertical edge's gradient is horizontal).
+        let mut score = vec![0.0f32; n];
+        let mut cnt = vec![0u32; n];
+        for y in area.y0..area.y1 {
+            for x in area.x0..area.x1 {
+                let Some(i) = f.index(x, y) else { continue };
+                if !f.ridge.get(i).copied().unwrap_or(false) {
+                    continue;
+                }
+                let st = f.strength.get(i).copied().unwrap_or(0.0);
+                let g = f.grad.get(i).copied().unwrap_or([0.0; 2]);
+                let (gx, gy) = (g[0].abs(), g[1].abs());
+                let dom = (if vertical { gx } else { gy }) / (gx + gy + f32::EPSILON);
+                let s = (if vertical { x - area.x0 } else { y - area.y0 }) as usize;
+                score[s] += st * dom;
+                cnt[s] += 1;
+            }
+        }
+        // The local maximum nearest `at` whose mean strength clears the contrast.
+        let mean = |i: usize| score.get(i).copied().unwrap_or(0.0) / cnt.get(i).copied().unwrap_or(0).max(1) as f32;
+        let origin = if vertical { area.x0 } else { area.y0 } as f64;
+        let mut best: Option<(f64, f64)> = None;
+        for i in 0..n {
+            let m = mean(i);
+            if m < Settings::default().contrast {
+                continue;
+            }
+            if (i > 0 && m < mean(i - 1)) || (i + 1 < n && m < mean(i + 1)) {
+                continue;
+            }
+            let pos = origin + i as f64 + 0.5;
+            let d = (pos - at).abs();
+            if d <= tol && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, pos));
+            }
+        }
+        best.map(|(_, pos)| pos)
     }
 
     /// The border from `from` to `to` along the edges near `guide`, the pointer's path between

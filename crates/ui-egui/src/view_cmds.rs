@@ -61,11 +61,13 @@ pub struct SnapTo {
     pub layers: bool,
     pub slices: bool,
     pub document_bounds: bool,
+    /// The Crop tool snaps its frame to the image's own content edges (Photoshop's Crop snap).
+    pub content: bool,
 }
 
 impl Default for SnapTo {
     fn default() -> Self {
-        Self { guides: true, grid: true, layers: true, slices: true, document_bounds: true }
+        Self { guides: true, grid: true, layers: true, slices: true, document_bounds: true, content: true }
     }
 }
 
@@ -210,6 +212,7 @@ fn snap_slot<'a>(s: &'a mut SnapTo, key: &str) -> Option<&'a mut bool> {
         "layers" => &mut s.layers,
         "slices" => &mut s.slices,
         "documentBounds" => &mut s.document_bounds,
+        "content" => &mut s.content,
         _ => return None,
     })
 }
@@ -526,7 +529,7 @@ fn run(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, p: &Value) -> Res
     if let Some(k) = id.strip_prefix("view.snapTo.") {
         if k == "all" || k == "none" {
             let on = k == "all";
-            o.snap_to = SnapTo { guides: on, grid: on, layers: on, slices: on, document_bounds: on };
+            o.snap_to = SnapTo { guides: on, grid: on, layers: on, slices: on, document_bounds: on, content: on };
             return Ok(json!(on));
         }
         let slot = snap_slot(&mut o.snap_to, k).ok_or("unknown Snap To item")?;

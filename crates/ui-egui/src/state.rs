@@ -543,6 +543,9 @@ pub struct ToolOptions {
     pub crop_ratio: String,
     #[serde(default = "yes")]
     pub crop_delete: bool,
+    /// Crop options bar: Content-Aware fill for canvas the crop grows into (#content-aware-crop).
+    #[serde(default)]
+    pub crop_content_aware: bool,
     /// Crop W x H x Resolution (`crop_ratio` = "whr", #2443): width and height as typed lengths
     /// with their unit ("4 in", "1024 px"; empty = unset), the resolution ("" = the document's)
     /// and its unit ("px/in" or "px/cm"). See `crop_size`.
@@ -708,6 +711,7 @@ impl Default for ToolOptions {
             move_show_transform: false,
             crop_ratio: String::new(),
             crop_delete: true,
+            crop_content_aware: false,
             crop_width: String::new(),
             crop_height: String::new(),
             crop_resolution: String::new(),
