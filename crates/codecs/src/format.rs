@@ -17,6 +17,8 @@ pub enum Format {
     Pnm,
     /// ZSoft Paintbrush: 1/2/4-bit planar palettes, 8-bit indexed and 24-bit RGB.
     Pcx,
+    /// DirectDraw Surface: the top mip level of a 2D texture, uncompressed or BC1–BC3.
+    Dds,
     Qoi,
     OpenExr,
     /// Radiance RGBE.
@@ -63,6 +65,10 @@ pub const ASYMMETRIC_EXCEPTIONS: &[(Format, &str)] = &[
         "PCX is supported for opening legacy paint and clipart assets. New files should use PNG; writing obsolete indexed and planar variants is intentionally not provided.",
     ),
     (
+        Format::Dds,
+        "DDS is supported for opening game and 3D textures. Writing one well means choosing a block compression and generating mip levels, which belongs in a texture export, not Save As.",
+    ),
+    (
         Format::Avif,
         "AVIF encode uses ravif (pure Rust) but decoding requires dav1d (C); read stays unsupported \
          until a pure-Rust AV1 decoder is viable. Only enabled with the non-default `avif` feature.",
@@ -84,7 +90,7 @@ const ALL_LAYOUTS: &[ChannelLayout] = &[L::Gray, L::GrayA, L::Rgb, L::Rgba, L::C
 
 impl Format {
     /// Every format known to the crate (enabled or not).
-    pub const ALL: [Format; 16] = [
+    pub const ALL: [Format; 17] = [
         Format::Png,
         Format::Jpeg,
         Format::Tiff,
@@ -95,6 +101,7 @@ impl Format {
         Format::Ico,
         Format::Pnm,
         Format::Pcx,
+        Format::Dds,
         Format::Qoi,
         Format::OpenExr,
         Format::Hdr,
@@ -125,6 +132,7 @@ impl Format {
             Format::Ico => "ICO",
             Format::Pnm => "Netpbm",
             Format::Pcx => "PCX",
+            Format::Dds => "DDS",
             Format::Qoi => "QOI",
             Format::OpenExr => "OpenEXR",
             Format::Hdr => "Radiance HDR",
@@ -148,6 +156,7 @@ impl Format {
             Format::Ico => &["ico"],
             Format::Pnm => &["pnm", "pbm", "pgm", "ppm", "pam", "pfm"],
             Format::Pcx => &["pcx"],
+            Format::Dds => &["dds"],
             Format::Qoi => &["qoi"],
             Format::OpenExr => &["exr"],
             Format::Hdr => &["hdr"],
@@ -169,6 +178,7 @@ impl Format {
             Format::Ico => "image/x-icon",
             Format::Pnm => "image/x-portable-anymap",
             Format::Pcx => "image/x-pcx",
+            Format::Dds => "image/vnd-ms.dds",
             Format::Qoi => "image/qoi",
             Format::OpenExr => "image/x-exr",
             Format::Hdr => "image/vnd.radiance",
@@ -218,6 +228,7 @@ pub fn caps(format: Format) -> FormatCaps {
         Format::Ico => FormatCaps { layouts: &[L::Rgba], ..base },
         Format::Pnm => FormatCaps { depths: &[S::U8, S::U16, S::F32], layouts: ALL_LAYOUTS, ..base },
         Format::Pcx => FormatCaps { read: true, write: false, layouts: &[L::Rgb], alpha: false, ..base },
+        Format::Dds => FormatCaps { read: true, write: false, layouts: RGB_GRAY, ..base },
         Format::Qoi => base,
         Format::OpenExr => FormatCaps { depths: &[S::F16, S::F32], layouts: RGB_GRAY, ..base },
         Format::Hdr => FormatCaps { depths: &[S::F32], layouts: &[L::Rgb], alpha: false, lossy: true, ..base },
@@ -250,6 +261,9 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     }
     if b.starts_with(b"qoif") {
         return Some(Format::Qoi);
+    }
+    if b.starts_with(b"DDS ") {
+        return Some(Format::Dds);
     }
     if b.starts_with(&[0x76, 0x2F, 0x31, 0x01]) {
         return Some(Format::OpenExr);
