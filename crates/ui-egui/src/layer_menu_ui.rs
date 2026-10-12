@@ -222,23 +222,23 @@ fn color_menu(app: &crate::PhotocraftApp, ui: &mut egui::Ui, l: &Layer, on_set: 
 pub(crate) fn color_choices(app: &crate::PhotocraftApp, ui: &mut egui::Ui, l: &Layer, on_set: bool, actions: &mut Vec<(String, Value)>) {
     let current = common_color(app, l, on_set);
     crate::widgets::menu_scroll(ui, |ui| {
-            ui.set_min_width(170.0);
-            for color in LabelColor::ALL {
-                if color == LabelColor::Red {
-                    ui.separator();
-                }
-                if color_button(ui, color, current == Some(color)).clicked() {
-                    let params = if on_set {
-                        json!({"color": color.id()})
-                    } else {
-                        actions.push(("layer.select".into(), json!({"layer": l.id.0})));
-                        json!({"layer": l.id.0, "color": color.id()})
-                    };
-                    actions.push(("layer.setLabelColor".into(), params));
-                    ui.close();
-                }
+        ui.set_min_width(170.0);
+        for color in LabelColor::ALL {
+            if color == LabelColor::Red {
+                ui.separator();
             }
-        });
+            if color_button(ui, color, current == Some(color)).clicked() {
+                let params = if on_set {
+                    json!({"color": color.id()})
+                } else {
+                    actions.push(("layer.select".into(), json!({"layer": l.id.0})));
+                    json!({"layer": l.id.0, "color": color.id()})
+                };
+                actions.push(("layer.setLabelColor".into(), params));
+                ui.close();
+            }
+        }
+    });
 }
 
 fn color_button(ui: &mut egui::Ui, color: LabelColor, checked: bool) -> egui::Response {
