@@ -2,7 +2,7 @@
 
 **Stage: alpha** · next: beta, ~30 points (ready for real work ~45% → ~75%, with reliable PSD) and ~1,100–1,800 h away
 
-> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** minor (toolbox count 56 of 68, 12 missing) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** minor (toolbox count corrected to 67 of 68: only Art History Brush missing; breadth ~78%) · **Target:** Adobe Photoshop 2026
 
 PhotoCraft's one-page summary of how close it is to Adobe Photoshop 2026 (27.11.0, measured from
 the installed app on 2026-10-10) at version 0.6.0. Detail: [target-app parity](docs/target-app-parity.md)
@@ -19,7 +19,7 @@ About 80% of the work parallelizes.
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth** | **~76%** | partly measured: menus 628/628, tools 56/68, panels 30/35, formats 13+4 of 31 |
+| **Feature breadth** | **~78%** | partly measured: menus 628/628, tools 67/68, panels 30/35, formats 13+4 of 31 |
 | **Ready for real work** | **~45%** (40–50%) | estimated: weighted by dimension below |
 | Mainstream practitioner | ~43% (38–48%) | estimated: weekly areas of a typical pro, with discounts ([method](docs/target-app-parity.md#mainstream-practitioner-43)) |
 | Essentials user | ~61% (55–67%) | estimated: core features only ([method](docs/target-app-parity.md#essentials-user-61)) |
@@ -50,7 +50,7 @@ four are partial in depth, none blocked.
 
 | Dimension | % ready | Hours to full | Doc |
 |---|---:|---:|---|
-| Features (depth) | 55% (breadth 76%) | 600–1,000 | [target-app-parity](docs/target-app-parity.md#feature-areas) |
+| Features (depth) | 55% (breadth 78%) | 600–1,000 | [target-app-parity](docs/target-app-parity.md#feature-areas) |
 | UI/UX fidelity (tools, handles, modifiers, brush feel, panels) | 40% | 350–600 | [ui-parity](docs/ui-parity.md), [brush-parity](docs/brush-parity.md), [context-menu-parity](docs/context-menu-parity.md) |
 | File formats | 60% (presence ~80%) | 300–500 | [file-format-parity](docs/file-format-parity.md) |
 | Hardware (GPU, pen, displays) | 50% | 80–150 | [hardware-parity](docs/hardware-parity.md) |
@@ -114,7 +114,7 @@ Also shipped: Traditional Chinese, Russian, Ukrainian, Czech, Polish, Greek, Dut
 | 2 | Performance budgets: the 22 over-budget scenarios and the 150-layer GPU crash | 200–350 h |
 | 3 | User bug backlog to under 100 open | 250–400 h |
 | 4 | Brush and transform feel (brush-parity, ui-parity rows) | 160–290 h |
-| 5 | The 12 missing tools | 60–100 h |
+| 5 | Art History Brush, the one missing tool (open PR #1610) | 2–9 h |
 
 Detail and the next releases: [docs/roadmap.md](docs/roadmap.md).
 
@@ -135,6 +135,7 @@ Detail and the next releases: [docs/roadmap.md](docs/roadmap.md).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Toolbox count corrected to 67 of 68 from the `Tool` enum and `TOOL_SECTIONS`: Color Replacement, Add/Delete Anchor Point, Red Eye and Frame were already on the toolbar; only Art History Brush is missing. Breadth ~76% → ~78% |
 | 2026-10-11 | minor | Toolbox count 56 of 68 (12 missing) with the Convert Point tool (#3204) |
 | 2026-10-10 | minor | Readiness by audience with hours per tier |
 | 2026-10-10 | minor | Mainstream-practitioner and essentials-user numbers added |

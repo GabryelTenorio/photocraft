@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (`~` held with the Brush or Pencil erases with its brush; Clear painting mode) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Color Replacement is a toolbar tool; `~` held with the Brush or Pencil erases with its brush; Clear painting mode) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -91,12 +91,12 @@ tablets against Photoshop side by side.
 | Mixer Brush (Wet, Load, Mix, Flow, Sample All Layers) | partial | "incomplete" (#2247) |
 | Clone Stamp (opacity, flow, aligned, sample, overlay) | partial | Clone Source W/H link and Alt target cursor (TOOL-213-8) |
 | Pattern Stamp (aligned, impressionist) | done | |
-| History Brush | done | Art History Brush missing |
+| History Brush | done | Art History Brush missing (open PR #1610) |
 | Spot Healing, Healing | partial | grain not matched on flat colour (#2104), "horrible in general" (#1092), stops responding after switching (#1751) |
 | Blur, Sharpen, Smudge (premultiplied, Sample All Layers, spacing) | done | BUG-207-2/3, #2171 |
 | Dodge, Burn, Sponge | done | |
 | Background Eraser, Magic Eraser | done | |
-| Color Replacement | missing as a tool | engine command exists |
+| Color Replacement (Mode, Sampling, Limits, Tolerance, Anti-alias) | done | B flyout, live preview (TOOL-1045-1) |
 | Quick Selection (brush-driven) | done | |
 
 ## Presets
@@ -112,5 +112,6 @@ tablets against Photoshop side by side.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Color Replacement marked done: it is in the Brush flyout (TOOL-1045-1) |
 | 2026-10-10 | major | First version, from a source audit and the open issues |
 | 2026-10-11 | minor | `~` held with the Brush or Pencil erases with that tool's brush, and Clear joins their Mode menus (#3439) |
