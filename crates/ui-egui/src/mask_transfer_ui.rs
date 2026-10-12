@@ -131,6 +131,21 @@ pub(crate) fn clear_drag(ctx: &egui::Context) {
     ctx.data_mut(|d| d.remove::<Drag>(drag_key()));
 }
 
+/// Paint once after the rows, including when the source was scrolled out of view.
+pub(crate) fn drag_feedback(ctx: &egui::Context, doc: &Document) {
+    let Some((document, source)) = ctx.data(|d| d.get_temp::<Drag>(drag_key())) else { return };
+    if document != doc.id.0 || doc.layer(source).is_none_or(|layer| layer.mask.is_none()) {
+        clear_drag(ctx);
+        return;
+    }
+    if let Some(pointer) = ctx.input(|i| i.pointer.interact_pos()) {
+        crate::layer_transfer::ghost(ctx, pointer, tl!("Layer Mask"));
+        if ctx.input(|i| i.modifiers.alt) {
+            ctx.set_cursor_icon(egui::CursorIcon::Copy);
+        }
+    }
+}
+
 /// Starts only when the press originated on a pixel-mask thumbnail. A row/name drag remains a layer drag.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn drag_row(
@@ -156,12 +171,7 @@ pub(crate) fn drag_row(
     }
     let Some(pointer) = ctx.input(|i| i.pointer.interact_pos()) else { return };
     let copy = ctx.input(|i| i.modifiers.alt);
-    if source == layer.id {
-        crate::layer_transfer::ghost(ctx, pointer, tl!("Layer Mask"));
-        if copy {
-            ctx.set_cursor_icon(egui::CursorIcon::Copy);
-        }
-    } else if row.contains(pointer) && !doc.effective_locks(layer.id).all {
+    if source != layer.id && row.contains(pointer) && !doc.effective_locks(layer.id).all {
         let t = Tokens::get(ctx);
         ui.painter().rect_stroke(row.shrink(1.0), t.radius_sm, Stroke::new(2.0, t.accent), StrokeKind::Inside);
         if ctx.input(|i| i.pointer.any_released()) {

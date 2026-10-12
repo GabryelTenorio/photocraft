@@ -1945,6 +1945,7 @@
 	Show only crosshair while painting	칠하는 동안 십자선만 표시
 	Show slice numbers	분할 영역 번호 표시
 	Show tooltips	도구 설명 표시
+	Enable animations	애니메이션 사용
 	Show highlight on rollover	롤오버 시 강조 표시
 	Show transformation values	변형 값 표시
 	Slice color	분할 영역 색상
@@ -2185,6 +2186,8 @@ cameraRaw	Color	색상
 	Patch Tool	패치 도구
 	Patch:	패치:
 	Lasso around an area, then drag the selection	올가미로 영역을 둘러싼 다음 선택 영역을 드래그하세요
+	Transform On Drop	놓을 때 변형
+	Scale or rotate the moved area, then press {key}	이동한 영역의 크기를 조절하거나 회전한 다음 {key} 키를 누르세요
 	Now drag the selection onto another area	이제 선택 영역을 다른 영역으로 드래그하세요
 
 # Warp grid presets merged on main in #388.
@@ -3180,6 +3183,9 @@ cameraData	Lens	렌즈
 	Smudge	손가락
 	Dodge	닷지
 	Burn	번
+	Amount:	양:
+	Protect:	보호:
+	Protect skin tones	피부톤 보호
 # Select and Mask view modes (#1754)
 	Onion Skin	어니언 스킨
 	Marching Ants	점선 윤곽
@@ -3210,3 +3216,6 @@ cameraData	Lens	렌즈
 	Fill with {mode}-neutral color (black)	{mode} 중립 색상으로 채우기(검정)
 	Fill with {mode}-neutral color (50% gray)	{mode} 중립 색상으로 채우기(50% 회색)
 	(No neutral color exists for {mode} mode.)	({mode} 모드에는 중립 색상이 없습니다.)
+	Apply mask to layer before removing?	제거하기 전에 마스크를 레이어에 적용하시겠습니까?
+	The layer or its mask changed. Drag the mask onto the Trash again.	레이어 또는 마스크가 변경되었습니다. 마스크를 휴지통으로 다시 드래그하세요.
+	Delete the vector mask?	벡터 마스크를 삭제하시겠습니까?

@@ -1985,6 +1985,7 @@
 	Show only crosshair while painting	繪圖時僅顯示十字線
 	Show slice numbers	顯示切片編號
 	Show tooltips	顯示工具提示
+	Enable animations	啟用動畫
 	Show highlight on rollover	滑鼠懸停時顯示醒目提示
 	Show bounding box when dragging layer	拖曳圖層時顯示邊界框
 	System title bar	系統標題列
@@ -2218,6 +2219,8 @@ cameraRaw	Blending	混合
 	Patch Tool	修補工具
 	Patch:	修補：
 	Lasso around an area, then drag the selection	用套索圈出區域，然後拖曳選取範圍
+	Transform On Drop	放下時變形
+	Scale or rotate the moved area, then press {key}	縮放或旋轉移動的區域，然後按 {key}
 	Now drag the selection onto another area	現在將選取範圍拖曳到另一個區域
 	Edit Type	編輯文字
 
@@ -2579,6 +2582,9 @@ cameraData	Lens	鏡頭
 	Dodge	加亮
 	Burn	加深
 	Sponge	海綿
+	Amount:	總量：
+	Protect:	保護：
+	Protect skin tones	保護膚色
 # Select and Mask view modes (#1754)
 	Onion Skin	洋蔥皮
 	Marching Ants	螞蟻線
@@ -2615,3 +2621,6 @@ cameraData	Lens	鏡頭
 	Fill with {mode}-neutral color (black)	使用{mode}中性色填滿（黑色）
 	Fill with {mode}-neutral color (50% gray)	使用{mode}中性色填滿（50% 灰色）
 	(No neutral color exists for {mode} mode.)	（{mode}模式沒有中性色。）
+	Apply mask to layer before removing?	移除之前將遮色片套用到圖層嗎？
+	The layer or its mask changed. Drag the mask onto the Trash again.	圖層或其遮色片已變更。請再次將遮色片拖曳到垃圾桶。
+	Delete the vector mask?	要刪除向量遮色片嗎？

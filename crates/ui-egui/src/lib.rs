@@ -24,6 +24,7 @@ pub mod analysis_ui;
 pub mod anchor_tools;
 pub mod artboard_tool;
 pub mod artboard_ui;
+mod blend_keys;
 pub(crate) mod blend_preview;
 mod brand;
 pub mod brush_panel;
@@ -32,6 +33,7 @@ pub mod brush_preview;
 pub mod brush_resize;
 pub mod brush_sections;
 pub mod brushes_tab;
+mod cam_transform;
 mod camera_raw_detail_ui;
 mod camera_raw_preview_ui;
 mod camera_raw_scope_ui;
@@ -39,6 +41,7 @@ pub mod camera_raw_ui;
 pub mod canvas;
 mod canvas_popup;
 pub mod canvas_tool_menu;
+pub mod cas_transform;
 pub mod channel_view;
 pub mod channels_panel;
 pub mod chrome_ui;
@@ -100,12 +103,13 @@ pub mod layer_row_ui;
 pub mod layer_style;
 mod layer_transfer;
 pub mod layer_tree_ui;
+mod layout_keys;
 pub mod links;
 pub mod liquify_ui;
 pub mod magnetic_lasso_ui;
 mod mask_props_ui;
 pub mod mask_thumbs_ui;
-mod mask_transfer_ui;
+pub mod mask_trash_prompt;
 pub mod menu_catalog;
 pub mod menu_nav;
 pub mod menus;
@@ -201,6 +205,9 @@ pub mod work_area;
 pub mod workspace_ui;
 pub mod zoom_levels;
 pub mod zoom_tool;
+
+// Session-wide mask clipboard and transfer prompts.
+mod mask_transfer_ui;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
@@ -862,6 +869,9 @@ impl PhotocraftApp {
         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
             return result;
         }
+        if let Some(result) = mask_trash_prompt::intercept(self, id, &params) {
+            return result;
+        }
         // Automation input also gates every step a command runs on its behalf (`actions.play`).
         let gate = if self.automation_input && self.session.authorize.is_none() { self.services.automation_authorize } else { None };
         if gate.is_some() {
@@ -1002,6 +1012,7 @@ impl PhotocraftApp {
 
     pub fn sync_views(&mut self) {
         type_transform::cancel_stale(self);
+        crate::cam_transform::cancel_stale(self);
         crate::lasso_ui::cancel_stale(self);
         crate::crop_ui::cancel_stale(self);
         let ids: Vec<DocId> = self.session.documents().iter().map(|d| d.doc.id).collect();
@@ -1614,6 +1625,11 @@ impl eframe::App for PhotocraftApp {
         // Each painting tool keeps its own brush (#218), so switch the active tool's brush in
         // before anything this frame reads it (the cursor, the options bar, a stroke).
         paint_mouse::sync_tool_brush(self);
+        // A unit typed into a value field (`1in` in a px field) converts at the active document's
+        // resolution, as in Photoshop.
+        let ppi = self.session.prefs().units_and_rulers.point_size.per_inch();
+        let dpi = self.session.active().map_or(72.0, |d| f64::from(d.doc.resolution_dpi.max(1.0)));
+        crate::widgets::set_field_resolution(&ctx, dpi, ppi);
         // View › Screen Mode › Full Screen Mode: only the image, on black (F or Esc returns).
         screen_picker::show(&ctx);
         if screen_picker::busy(&ctx) && screen_picker::showing(&ctx) {
