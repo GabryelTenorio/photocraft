@@ -906,6 +906,16 @@ impl PhotocraftMcp {
     }
 
     #[tool(
+        description = "Bridge mode: liveness of the live app's frame loop (logic/drawn counters and ages), answered by the transport even when no frames are drawn — the probe to call when other tools time out."
+    )]
+    async fn health(&self) -> Result<CallToolResult, McpError> {
+        match self.bridge_client() {
+            Some(b) => to_result(b.call_read("health", json!({})).await),
+            None => bridge_only("health"),
+        }
+    }
+
+    #[tool(
         description = "Bridge mode: send pointer events (document coordinates) to the active tool; with a Color Picker open they sample the image into it instead."
     )]
     async fn ui_pointer(&self, Parameters(p): Parameters<PointerParams>) -> Result<CallToolResult, McpError> {

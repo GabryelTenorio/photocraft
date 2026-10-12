@@ -218,7 +218,7 @@ use photocraft_doc::{DocId, Document};
 use photocraft_engine::Session;
 use serde_json::{Value, json};
 
-pub use control::{ControlRequest, ControlResponse};
+pub use control::{ControlRequest, ControlResponse, ControlWatch};
 pub use file_dialog::{FileDialogAnswer, FileDialogFn, FileDialogReply, FileDialogRequest};
 pub use file_open::OsEvent;
 pub use state::{Tool, UiState};
@@ -522,6 +522,9 @@ pub struct PhotocraftApp {
     /// The first digit of a two-digit opacity typed on the number keys (`opacity_keys`, #352).
     pub(crate) opacity_keys: opacity_keys::Pending,
     control_rx: Option<Receiver<ControlRequest>>,
+    /// Liveness counters and snapshot-getter replies the transport threads read while the
+    /// frame loop is wedged (no compositor frame callbacks).
+    watch: Option<std::sync::Arc<control::ControlWatch>>,
     pending_screenshots: Vec<(u64, Option<String>, Sender<ControlResponse>)>,
     /// Screenshots not yet requested from the viewport: (token, earliest time in ms, frames seen).
     queued_screenshots: Vec<(u64, f64, u32)>,
@@ -725,6 +728,7 @@ impl PhotocraftApp {
             caps_lock: false,
             opacity_keys: None,
             control_rx: None,
+            watch: None,
             pending_screenshots: Vec::new(),
             queued_screenshots: Vec::new(),
             input_waiters: Vec::new(),
@@ -868,6 +872,12 @@ impl PhotocraftApp {
     /// Attach a control channel (requests arrive from a transport thread: TCP, stdin, tests).
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
         self.control_rx = Some(rx);
+        self
+    }
+
+    /// Attach the liveness/snapshot watch the transport threads read.
+    pub fn with_watch(mut self, watch: std::sync::Arc<control::ControlWatch>) -> Self {
+        self.watch = Some(watch);
         self
     }
 
@@ -1440,11 +1450,18 @@ impl PhotocraftApp {
         while let Ok(req) = rx.try_recv() {
             let reply = req.reply.clone();
             if req.deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-                let _ = reply.send(serde_json::json!({"ok": false, "error": control::timeout_error()}));
+                let _ = reply.send(control::timeout_reply());
                 continue;
             }
             match control::handle(self, ctx, &req) {
                 control::Outcome::Done(v) => {
+                    // Keep the last reply of a snapshot getter for serving while wedged.
+                    if let Some(key) = control::snapshot_key(&req.method, &req.params)
+                        && v.get("ok").and_then(Value::as_bool) == Some(true)
+                        && let Some(w) = self.watch.as_ref()
+                    {
+                        w.note_snapshot(&key, &v);
+                    }
                     let _ = reply.send(v);
                 }
                 control::Outcome::AfterInput => self.input_waiters.push(reply),
@@ -1515,6 +1532,9 @@ impl eframe::App for PhotocraftApp {
             self.fonts_ready = true;
         }
         self.frame += 1;
+        if let Some(w) = self.watch.as_ref() {
+            w.note_logic();
+        }
         let now = ctx.input(|i| i.time);
         let dt = (now - self.last_frame_time) as f32;
         if dt > 0.0 {
@@ -1713,6 +1733,9 @@ impl eframe::App for PhotocraftApp {
             ctx.set_cursor_icon(egui::CursorIcon::Wait);
         }
         self.perf.frame(gpu_canvas::now_ms() - t0);
+        if let Some(w) = self.watch.as_ref() {
+            w.note_drawn();
+        }
         // Synthetic input is injected one press/release step per frame: keep frames coming until
         // the queue is empty, then release control replies waiting on it.
         if !self.synthetic.is_empty() {
