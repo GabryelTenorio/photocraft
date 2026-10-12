@@ -26,11 +26,13 @@ contextual, command-ID and plural translations; missing entries fall back to Eng
 | Ελληνικά | `el` | one / other |
 | Nederlands | `nl` | one / other |
 | Tiếng Việt | `vi` | one form |
+| Türkçe | `tr` | one form |
 
 Languages registered with `complete_menus` cover the current menu labels, `tl!` literals, blend
 mode names, and generated preference labels; tests enforce that coverage. Vietnamese (`vi`) is
 selectable, resolves regional tags such as `vi-VN`, and covers all current stable localization
-keys. `complete_menus` remains false while generated/dynamic long-tail labels are still under
+keys. Turkish (`tr`) is selectable and resolves `tr-TR`; its catalog is in progress, so
+untranslated keys show English and it is not yet registered with `complete_menus`. `complete_menus` remains false while generated/dynamic long-tail labels are still under
 review. This does not include every engine error or status message: those remain English, as do
 automation command IDs and user-provided document, layer and preset names.
 
