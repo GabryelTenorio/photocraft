@@ -748,6 +748,12 @@ impl StrokeRenderer {
         self.generator.wants_time()
     }
 
+    /// The string between the brush and the pointer while smoothing lags (see
+    /// [`Smoother::string`](crate::dynamics::Smoother::string)).
+    pub fn smoothing_string(&self) -> Option<([f64; 2], [f64; 2])> {
+        self.generator.smoothing_string()
+    }
+
     /// Feed input points (any chunking gives the same result).
     pub fn push(&mut self, pts: &[StrokePoint]) {
         self.generator.push(pts, &mut self.dab_buf, &mut self.dual_buf);
@@ -758,6 +764,15 @@ impl StrokeRenderer {
     pub fn finish(&mut self) {
         self.generator.finish(&mut self.dab_buf, &mut self.dual_buf);
         self.raster_pending();
+    }
+
+    /// The primary dabs finishing the stroke now would add, without finishing it: for live
+    /// previews of sequential-dab tools, which run each dab themselves (see [`tail_preview`](Self::tail_preview)).
+    pub fn tail_dabs(&self) -> Vec<Dab> {
+        let mut generator = self.generator.clone();
+        let (mut dabs, mut duals) = (Vec::new(), Vec::new());
+        generator.finish(&mut dabs, &mut duals);
+        dabs
     }
 
     /// What finishing the stroke now would add (the smoothing catch-up tail to the last point, or
@@ -1037,3 +1052,7 @@ pub fn render_stroke(
     r.finish();
     r.composite(&pre, target, selection, lock_transparency, true)
 }
+
+#[cfg(test)]
+#[path = "render_reference.rs"]
+mod reference;
