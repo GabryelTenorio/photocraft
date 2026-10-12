@@ -49,6 +49,10 @@ fn scratch_doc(doc: &Document) -> Document {
     copies.icc_profile = doc.icc_profile.clone();
     copies.resolution_dpi = doc.resolution_dpi;
     copies.patterns = doc.patterns.clone();
+    // A PSD-embedded linked smart object's bytes live in the document's `lnk2`/`lnk3`/`lnkD` global
+    // blocks, addressed by the source's uuid; carry them so a cross-document paste can still open
+    // the object (#3584).
+    copies.metadata.psd_global_blocks = doc.metadata.psd_global_blocks.iter().filter(|(_, k, _)| matches!(k, b"lnk2" | b"lnk3" | b"lnkD")).cloned().collect();
     copies
 }
 
@@ -340,8 +344,18 @@ fn paste_layers(s: &mut Session, layers: &Document, dx: i32, dy: i32) -> Result<
     crate::layer_copy_cmds::adapt_copies(s, &mut copies, &d.doc)?;
     crate::layer_copy_cmds::translate_copies(&mut copies, dx, dy);
     let patterns: Vec<_> = copies.patterns.iter().filter(|pat| !d.doc.patterns.iter().any(|q| q.id == pat.id)).cloned().collect();
+    // A copied smart object may name a PSD-embedded linked file; land its `lnk` block too (#3584).
+    let linked: Vec<_> = copies
+        .metadata
+        .psd_global_blocks
+        .iter()
+        .filter(|(_, k, _)| matches!(k, b"lnk2" | b"lnk3" | b"lnkD"))
+        .filter(|(_, k, data)| !d.doc.metadata.psd_global_blocks.iter().any(|(_, dk, dd)| dk == k && dd == data))
+        .cloned()
+        .collect();
     let id = s.edit("Paste", |doc, active| {
         doc.patterns.extend(patterns);
+        doc.metadata.psd_global_blocks.extend(linked);
         for l in copies.layers {
             *active = Some(doc.insert_above(*active, l));
         }
@@ -1627,6 +1641,34 @@ mod tests {
         let LayerContent::Smart(sm) = active_content(&s) else { panic!("the paste is a smart object") };
         assert_eq!(sm.cache.map(|c| c.format().sample), Some(s.active().unwrap().doc.depth), "converted to 16 bits");
         assert_eq!(active_bounds(&s), Rect::new(10, 10, 50, 30), "on the canvas: in place");
+    }
+
+    /// #3584: a PSD-embedded linked smart object (its bytes in the document's `lnk2` block, its
+    /// source a uuid) can still be opened after Copy + Paste into another document.
+    #[test]
+    fn paste_keeps_a_psd_embedded_smart_object_openable() {
+        use std::sync::Arc;
+        let mut s = session();
+        s.execute("layer.smartObjects.convertToSmartObject", json!({})).unwrap();
+        let outer = s.active().unwrap().active_layer.unwrap();
+        s.edit("embedded linked source", |doc, _| {
+            let LayerContent::Smart(sm) = &mut doc.layer_mut(outer).ok_or(EngineError::NoDocument)?.content else {
+                return Err(EngineError::Other("not a smart object".into()));
+            };
+            sm.source = photocraft_doc::SmartSource::Linked { path: "uuid-1".into() };
+            let linked = photocraft_io::linked::LinkedFile { uuid: "uuid-1".into(), file_name: "in.png".into(), bytes: vec![1, 2, 3, 4] };
+            doc.metadata.psd_global_blocks.push((*b"8BIM", *b"lnk2", Arc::new(photocraft_io::linked::encode_linked_file(&linked))));
+            Ok(())
+        })
+        .unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        s.execute("file.new", json!({"width": 40, "height": 30})).unwrap();
+        s.execute("edit.paste", json!({})).unwrap();
+        let LayerContent::Smart(sm) = active_content(&s) else { panic!("the paste is a smart object") };
+        assert!(
+            crate::smart_cmds::source_bytes(&s.active().unwrap().doc.metadata, &sm.source).is_some(),
+            "the pasted PSD-embedded linked source must resolve (#3584)"
+        );
     }
 
     /// Type and shape layers copy their rendered pixels too; groups and adjustments have none.
