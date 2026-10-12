@@ -26,9 +26,13 @@ fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// One recorded action. `steps` is the `[[id, params], …]` shape `file.automate.batch` and
 /// droplets already accept.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Action {
     pub name: String,
     #[serde(default)]
@@ -36,15 +40,34 @@ pub struct Action {
     /// Indices of steps excluded from playback (unchecked in the Actions panel).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub disabled: BTreeSet<usize>,
+    /// The action's own checkbox. Playing a set skips actions that are off when
+    /// `honorEnabled` is set. A direct `actions.play` still runs the action.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Dialog toggle per step, parallel to `steps`. Missing entries are off.
+    /// Playback still uses the recorded parameters; the flag tells the panel to open the dialog.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_dialog: Vec<bool>,
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Self { name: String::new(), steps: Vec::new(), disabled: BTreeSet::new(), enabled: true, step_dialog: Vec::new() }
+    }
 }
 
 impl Action {
     pub fn new(name: impl Into<String>, steps: Vec<(String, Value)>) -> Self {
-        Self { name: name.into(), steps, disabled: BTreeSet::new() }
+        Self { name: name.into(), steps, ..Self::default() }
     }
 
     pub fn step_enabled(&self, step: usize) -> bool {
         !self.disabled.contains(&step)
+    }
+
+    /// The dialog toggle for `step`. A missing entry is off.
+    pub fn step_dialog_on(&self, step: usize) -> bool {
+        self.step_dialog.get(step).copied().unwrap_or(false)
     }
 
     /// The steps playback runs, with their indices in `steps`.
@@ -58,7 +81,19 @@ impl Action {
 pub struct ActionsFile {
     pub version: u32,
     pub actions: Vec<Action>,
+    /// Named folders, in panel order. Older files omit this.
+    #[serde(default)]
+    pub sets: Vec<String>,
+    /// Folder of each action, parallel to `actions`. Empty string means ungrouped.
+    #[serde(default)]
+    pub folders: Vec<String>,
 }
+
+/// The panel label for actions that are not in a folder, once the list has named sets.
+pub const UNGROUPED: &str = "Ungrouped Actions";
+
+const MAX_SET_CHARS: usize = 256;
+const MAX_SETS: usize = 64;
 
 /// Actions list and the recording / playback flags. Only `list` is persisted.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -77,12 +112,67 @@ pub struct ActionState {
     /// Bumped whenever `list` changes, so the preset store can skip unchanged writes.
     #[serde(skip)]
     pub rev: u64,
+    /// Named folders, in panel order. Empty folders stay so a set can exist before it has an action.
+    #[serde(default)]
+    pub sets: Vec<String>,
+    /// Folder name for each action, parallel to `list`. Empty string means ungrouped.
+    #[serde(default)]
+    pub folders: Vec<String>,
+    /// Playback Options: `accelerated`, `step`, or `pause`. Empty means accelerated.
+    #[serde(default)]
+    pub playback_mode: String,
+    /// Seconds between steps when `playback_mode` is `pause`.
+    #[serde(default)]
+    pub pause_seconds: f64,
 }
 
 impl ActionState {
     pub(crate) fn touch(&mut self) {
         self.rev = self.rev.saturating_add(1);
     }
+
+    /// Folder of action `index`. A missing entry is ungrouped.
+    pub fn folder(&self, index: usize) -> &str {
+        self.folders.get(index).map(String::as_str).unwrap_or("")
+    }
+
+    /// `accelerated`, `step`, or `pause`. Anything else, including a missing value, is accelerated.
+    pub fn playback_mode(&self) -> &str {
+        match self.playback_mode.as_str() {
+            "step" | "pause" => self.playback_mode.as_str(),
+            _ => "accelerated",
+        }
+    }
+
+    /// Pause between steps. Zero or a non-finite value is one second, and the cap is 60.
+    pub fn pause_seconds(&self) -> f64 {
+        if self.pause_seconds.is_finite() && self.pause_seconds > 0.0 { self.pause_seconds.min(60.0) } else { 1.0 }
+    }
+
+    /// Keep `folders` the same length as `list`. New entries are ungrouped.
+    pub(crate) fn align_folders(&mut self) {
+        if self.folders.len() < self.list.len() {
+            self.folders.resize(self.list.len(), String::new());
+        } else if self.folders.len() > self.list.len() {
+            self.folders.truncate(self.list.len());
+        }
+    }
+}
+
+/// Add `name` to the folder list when it is not already there.
+pub(crate) fn ensure_set(state: &mut ActionState, name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Ok(());
+    }
+    if name.chars().count() > MAX_SET_CHARS {
+        return Err(bad("actions.newSet", format!("folder name must be at most {MAX_SET_CHARS} characters")));
+    }
+    if state.sets.iter().any(|n| n == name) {
+        return Ok(());
+    }
+    state.sets.push(name.to_string());
+    state.touch();
+    Ok(())
 }
 
 /// Replay commands and named action calls, excluding edits to the action definitions and the
@@ -210,16 +300,31 @@ fn from_step(p: &Value, len: usize) -> Result<usize> {
 }
 
 fn list(s: &mut Session, _p: &Value) -> Result<Value> {
-    let actions: Vec<Value> = s.actions.list.iter().map(|a| json!({"name": a.name, "steps": a.steps.len()})).collect();
+    s.actions.align_folders();
+    let actions: Vec<Value> = s
+        .actions
+        .list
+        .iter()
+        .enumerate()
+        .map(|(i, a)| json!({"name": a.name, "steps": a.steps.len(), "enabled": a.enabled, "set": s.actions.folder(i)}))
+        .collect();
     let recording = s.actions.recording.and_then(|(_, i)| s.actions.list.get(i).map(|a| a.name.clone()));
-    Ok(json!({"actions": actions, "recording": recording}))
+    Ok(json!({
+        "actions": actions,
+        "sets": s.actions.sets,
+        "recording": recording,
+        "playback": s.actions.playback_mode(),
+        "pauseSeconds": s.actions.pause_seconds(),
+    }))
 }
 
 fn get(s: &mut Session, p: &Value) -> Result<Value> {
     let idx = resolve(&s.actions.list, p, "actions.get")?;
+    s.actions.align_folders();
     let action = &s.actions.list[idx];
     let steps: Vec<Value> = action.steps.iter().map(|(id, params)| json!([id, params])).collect();
-    Ok(json!({"name": action.name, "steps": steps, "disabled": action.disabled}))
+    let dialogs: Vec<usize> = (0..action.steps.len()).filter(|i| action.step_dialog_on(*i)).collect();
+    Ok(json!({"name": action.name, "steps": steps, "disabled": action.disabled, "enabled": action.enabled, "set": s.actions.folder(idx), "dialogs": dialogs}))
 }
 
 fn record(s: &mut Session, p: &Value) -> Result<Value> {
@@ -246,6 +351,7 @@ fn record(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(bad("actions.record", "an action with this name already exists"));
         }
         s.actions.list.push(Action::new(name, Vec::new()));
+        s.actions.align_folders();
         s.actions.touch();
         s.actions.list.len() - 1
     };
@@ -285,10 +391,17 @@ fn stop(s: &mut Session, _p: &Value) -> Result<Value> {
     Ok(json!({"action": action.name, "steps": action.steps.len()}))
 }
 
-fn run_recorded(s: &mut Session, action: &Action, from: usize) -> (u64, Option<Value>) {
+fn run_recorded(s: &mut Session, action: &Action, from: usize, limit: Option<usize>) -> (u64, Option<Value>, Vec<usize>) {
     let mut ran = 0u64;
     let mut failed = None;
+    let mut dialogs = Vec::new();
     for (i, (id, params)) in action.enabled_steps().skip_while(|(i, _)| *i < from) {
+        if limit.is_some_and(|n| ran >= n as u64) {
+            break;
+        }
+        if action.step_dialog_on(i) {
+            dialogs.push(i);
+        }
         if let Some(auth) = s.authorize
             && let Err(e) = auth(id, params)
         {
@@ -309,7 +422,7 @@ fn run_recorded(s: &mut Session, action: &Action, from: usize) -> (u64, Option<V
             }
         }
     }
-    (ran, failed)
+    (ran, failed, dialogs)
 }
 
 /// Suspend recording while a called action executes. Keep its commands in the journal
@@ -348,15 +461,41 @@ pub fn nested_failure(id: &str, value: &Value) -> Option<String> {
     })
 }
 
+fn play_count(p: &Value) -> Result<Option<usize>> {
+    let Some(v) = p.get("count") else { return Ok(None) };
+    if v.is_null() {
+        return Ok(None);
+    }
+    let Some(n) = v.as_u64().and_then(|n| usize::try_from(n).ok()) else {
+        return Err(bad("actions.play", "\"count\" must be a non-negative integer"));
+    };
+    if n > 10_000 {
+        return Err(bad("actions.play", "\"count\" is too large"));
+    }
+    Ok(Some(n))
+}
+
 fn play(s: &mut Session, p: &Value) -> Result<Value> {
     let (action, from) = playback_plan(s, p)?;
+    let limit = play_count(p)?;
+    // A set's Play skips an action whose checkbox is off. A direct play does not.
+    if p.get("honorEnabled").and_then(Value::as_bool) == Some(true) && !action.enabled {
+        return Ok(json!({"action": action.name, "ran": 0, "skipped": true}));
+    }
     let recording = begin_playback(s, &action)?;
-    let (ran, failed) = run_recorded(s, &action, from);
+    let (ran, failed, dialogs) = run_recorded(s, &action, from, limit);
     finish_playback(s, recording, &action, from);
-    Ok(match failed {
+    let mut out = match failed {
         Some(f) => json!({"action": action.name, "ran": ran, "failed": f}),
         None => json!({"action": action.name, "ran": ran}),
-    })
+    };
+    if !dialogs.is_empty() {
+        out["dialogs"] = json!(dialogs);
+    }
+    if s.actions.playback_mode() == "pause" {
+        out["pauseSeconds"] = json!(s.actions.pause_seconds());
+    }
+    Ok(out)
 }
 
 fn not_playing(s: &Session, cmd: &str) -> Result<()> {
@@ -384,6 +523,14 @@ fn move_item(s: &mut Session, p: &Value) -> Result<Value> {
             flush_recording(s)?;
         }
         let action = &mut s.actions.list[idx];
+        let n = action.steps.len();
+        if action.step_dialog.len() < n {
+            action.step_dialog.resize(n, false);
+        } else if action.step_dialog.len() > n {
+            action.step_dialog.truncate(n);
+        }
+        let dialog = action.step_dialog.remove(step);
+        action.step_dialog.insert(to, dialog);
         let moved = action.steps.remove(step);
         action.steps.insert(to, moved);
         action.disabled = action.disabled.iter().map(|&i| moved_index(i, step, to)).collect();
@@ -394,9 +541,12 @@ fn move_item(s: &mut Session, p: &Value) -> Result<Value> {
         if to >= s.actions.list.len() {
             return Err(bad("actions.move", "destination is out of range"));
         }
+        s.actions.align_folders();
         let moved = s.actions.list.remove(idx);
+        let folder = if idx < s.actions.folders.len() { s.actions.folders.remove(idx) } else { String::new() };
         let result = json!({"action": moved.name, "index": to});
         s.actions.list.insert(to, moved);
+        s.actions.folders.insert(to.min(s.actions.folders.len()), folder);
         if let Some((_, recording)) = s.actions.recording.as_mut() {
             *recording = moved_index(*recording, idx, to);
         }
@@ -434,6 +584,9 @@ fn delete(s: &mut Session, p: &Value) -> Result<Value> {
         }
         let action = &mut s.actions.list[idx];
         action.steps.remove(step);
+        if step < action.step_dialog.len() {
+            action.step_dialog.remove(step);
+        }
         action.disabled = action.disabled.iter().filter(|&&i| i != step).map(|&i| if i > step { i - 1 } else { i }).collect();
         let result = json!({"action": action.name, "deletedStep": step, "steps": action.steps.len()});
         s.actions.touch();
@@ -442,7 +595,11 @@ fn delete(s: &mut Session, p: &Value) -> Result<Value> {
     if s.actions.recording.is_some() {
         return Err(bad("actions.delete", "stop recording before deleting an action"));
     }
+    s.actions.align_folders();
     let name = s.actions.list.remove(idx).name;
+    if idx < s.actions.folders.len() {
+        s.actions.folders.remove(idx);
+    }
     s.actions.touch();
     Ok(json!({"deleted": name}))
 }
@@ -527,6 +684,190 @@ fn rename(s: &mut Session, p: &Value) -> Result<Value> {
         });
     }
     Ok(json!({"action": name, "index": idx}))
+}
+
+fn folder_name(p: &Value, cmd: &str) -> Result<String> {
+    match p.get("set") {
+        None | Some(Value::Null) => Ok(String::new()),
+        Some(Value::String(n)) if n.chars().count() > MAX_SET_CHARS => Err(bad(cmd, format!("folder name must be at most {MAX_SET_CHARS} characters"))),
+        Some(Value::String(n)) => Ok(n.clone()),
+        Some(_) => Err(bad(cmd, "\"set\" must be a string")),
+    }
+}
+
+fn new_set(s: &mut Session, p: &Value) -> Result<Value> {
+    not_playing(s, "actions.newSet")?;
+    let name = match p.get("name") {
+        None | Some(Value::Null) => {
+            let mut n = s.actions.sets.len().saturating_add(1);
+            while s.actions.sets.iter().any(|a| a == &format!("Set {n}")) {
+                n = n.checked_add(1).ok_or_else(|| bad("actions.newSet", "cannot allocate a unique folder name"))?;
+            }
+            format!("Set {n}")
+        }
+        Some(Value::String(n)) if n.is_empty() => return Err(bad("actions.newSet", "folder name is empty")),
+        Some(Value::String(n)) => n.clone(),
+        Some(_) => return Err(bad("actions.newSet", "\"name\" must be a string")),
+    };
+    if name.chars().count() > MAX_SET_CHARS {
+        return Err(bad("actions.newSet", format!("folder name must be at most {MAX_SET_CHARS} characters")));
+    }
+    if s.actions.sets.iter().any(|a| a == &name) {
+        return Err(bad("actions.newSet", "a folder with this name already exists"));
+    }
+    if s.actions.sets.len() >= MAX_SETS {
+        return Err(bad("actions.newSet", format!("at most {MAX_SETS} folders")));
+    }
+    ensure_set(&mut s.actions, &name)?;
+    Ok(json!({"set": name}))
+}
+
+fn delete_set(s: &mut Session, p: &Value) -> Result<Value> {
+    not_playing(s, "actions.deleteSet")?;
+    let name = match p.get("name").or_else(|| p.get("set")) {
+        Some(Value::String(n)) if !n.is_empty() => n.clone(),
+        Some(Value::String(_)) => return Err(bad("actions.deleteSet", "folder name is empty")),
+        _ => return Err(bad("actions.deleteSet", "needs \"name\"")),
+    };
+    s.actions.align_folders();
+    if !s.actions.sets.iter().any(|n| n == &name) && !s.actions.folders.iter().any(|n| n == &name) {
+        return Err(bad("actions.deleteSet", format!("no folder named `{name}`")));
+    }
+    s.actions.sets.retain(|n| n != &name);
+    for folder in &mut s.actions.folders {
+        if folder == &name {
+            folder.clear();
+        }
+    }
+    s.actions.touch();
+    Ok(json!({"deleted": name}))
+}
+
+fn set_folder(s: &mut Session, p: &Value) -> Result<Value> {
+    not_playing(s, "actions.setFolder")?;
+    let idx = resolve(&s.actions.list, p, "actions.setFolder")?;
+    if p.get("set").is_none() {
+        return Err(bad("actions.setFolder", "needs \"set\" (a folder name, or \"\" for ungrouped)"));
+    }
+    let set = folder_name(p, "actions.setFolder")?;
+    if !set.is_empty() && !s.actions.sets.iter().any(|n| n == &set) && s.actions.sets.len() >= MAX_SETS {
+        return Err(bad("actions.setFolder", format!("at most {MAX_SETS} folders")));
+    }
+    if !set.is_empty() {
+        ensure_set(&mut s.actions, &set)?;
+    }
+    s.actions.align_folders();
+    s.actions.folders[idx] = set.clone();
+    let name = s.actions.list[idx].name.clone();
+    s.actions.touch();
+    Ok(json!({"action": name, "set": set}))
+}
+
+fn set_enabled(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "actions.setEnabled";
+    not_playing(s, cmd)?;
+    let on = match p.get("enabled").or_else(|| p.get("on")) {
+        Some(Value::Bool(v)) => *v,
+        _ => return Err(bad(cmd, "needs \"enabled\" (true or false)")),
+    };
+    if let Some(set) = p.get("set").and_then(Value::as_str) {
+        if set.is_empty() {
+            return Err(bad(cmd, "folder name is empty"));
+        }
+        s.actions.align_folders();
+        let idxs: Vec<usize> = (0..s.actions.list.len()).filter(|i| s.actions.folder(*i) == set).collect();
+        if idxs.is_empty() && !s.actions.sets.iter().any(|n| n == set) {
+            return Err(bad(cmd, format!("no folder named `{set}`")));
+        }
+        for i in &idxs {
+            apply_enabled(&mut s.actions.list[*i], on);
+        }
+        s.actions.touch();
+        return Ok(json!({"set": set, "enabled": on, "actions": idxs.len()}));
+    }
+    let idx = resolve(&s.actions.list, p, cmd)?;
+    if let Some(step) = p.get("step") {
+        let step = step.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad(cmd, "step must be a non-negative integer"))?;
+        let action = &mut s.actions.list[idx];
+        if step >= action.steps.len() {
+            return Err(bad(cmd, "step is out of range"));
+        }
+        if on {
+            action.disabled.remove(&step);
+        } else {
+            action.disabled.insert(step);
+        }
+        action.enabled = action.steps.is_empty() || (0..action.steps.len()).any(|i| action.step_enabled(i));
+        let name = action.name.clone();
+        s.actions.touch();
+        return Ok(json!({"action": name, "step": step, "enabled": on}));
+    }
+    // The action checkbox is its own gate for set playback. Step checkboxes stay as they are,
+    // so a direct play still runs the steps that are on.
+    let action = &mut s.actions.list[idx];
+    action.enabled = on;
+    let name = action.name.clone();
+    s.actions.touch();
+    Ok(json!({"action": name, "enabled": on}))
+}
+
+fn set_dialog(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "actions.setDialog";
+    not_playing(s, cmd)?;
+    let on = match p.get("dialog").or_else(|| p.get("on")) {
+        Some(Value::Bool(v)) => *v,
+        _ => return Err(bad(cmd, "needs \"dialog\" (true or false)")),
+    };
+    let idx = resolve(&s.actions.list, p, cmd)?;
+    let action = &mut s.actions.list[idx];
+    if action.step_dialog.len() < action.steps.len() {
+        action.step_dialog.resize(action.steps.len(), false);
+    }
+    if let Some(step) = p.get("step") {
+        let step = step.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad(cmd, "step must be a non-negative integer"))?;
+        let Some(flag) = action.step_dialog.get_mut(step) else {
+            return Err(bad(cmd, "step is out of range"));
+        };
+        *flag = on;
+        let name = action.name.clone();
+        s.actions.touch();
+        return Ok(json!({"action": name, "step": step, "dialog": on}));
+    }
+    for flag in &mut action.step_dialog {
+        *flag = on;
+    }
+    let name = action.name.clone();
+    s.actions.touch();
+    Ok(json!({"action": name, "dialog": on}))
+}
+
+fn set_playback(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "actions.setPlayback";
+    let mode = match p.get("mode").and_then(Value::as_str) {
+        Some(mode) if matches!(mode, "accelerated" | "step" | "pause") => mode.to_string(),
+        Some(_) => return Err(bad(cmd, "mode must be accelerated, step, or pause")),
+        None => return Err(bad(cmd, "needs \"mode\"")),
+    };
+    if let Some(seconds) = p.get("seconds") {
+        let n = seconds.as_f64().filter(|n| n.is_finite() && *n > 0.0 && *n <= 60.0);
+        let Some(n) = n else {
+            return Err(bad(cmd, "\"seconds\" must be a number from just above 0 to 60"));
+        };
+        s.actions.pause_seconds = n;
+    } else if s.actions.pause_seconds <= 0.0 || !s.actions.pause_seconds.is_finite() {
+        s.actions.pause_seconds = 1.0;
+    }
+    s.actions.playback_mode = mode;
+    Ok(json!({"playback": s.actions.playback_mode(), "pauseSeconds": s.actions.pause_seconds()}))
+}
+
+fn apply_enabled(action: &mut Action, on: bool) {
+    if on {
+        action.disabled.clear();
+    } else {
+        action.disabled = (0..action.steps.len()).collect();
+    }
+    action.enabled = on;
 }
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -621,6 +962,66 @@ pub fn specs() -> Vec<CommandSpec> {
             run: rename,
             journal: false,
         },
+        CommandSpec {
+            id: "actions.newSet",
+            label: "New Set",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"name":str?} → {set}. Creates an empty Actions folder. The default name is "Set N". At most 64 folders, each at most 256 characters."##,
+            enabled: always,
+            run: new_set,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.deleteSet",
+            label: "Delete Set",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"name":str} → {deleted}. Removes the folder. Its actions stay in the list, ungrouped."##,
+            enabled: always,
+            run: delete_set,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.setFolder",
+            label: "Set Action Folder",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"action":name|index, "set":str} → {action, set}. "" moves the action out of every folder. A new name creates the folder."##,
+            enabled: always,
+            run: set_folder,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.setEnabled",
+            label: "Set Action Checkbox",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"enabled":bool, "set":name} or {"action":name|index, "step":index?, "enabled":bool} → {enabled, ...}. The action checkbox, one step, or every action in a folder."##,
+            enabled: always,
+            run: set_enabled,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.setDialog",
+            label: "Set Action Dialog",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"action":name|index, "step":index?, "dialog":bool} → {action, dialog}. The dialog toggle for one step, or every step. Playback still uses the recorded parameters and reports the steps whose dialog is on."##,
+            enabled: always,
+            run: set_dialog,
+            journal: false,
+        },
+        CommandSpec {
+            id: "actions.setPlayback",
+            label: "Playback Options",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"mode":"accelerated"|"step"|"pause", "seconds":number?} → {playback, pauseSeconds}. Step and pause play one step at a time when the panel passes count 1. Pause names the seconds to wait between steps (default 1, at most 60)."##,
+            enabled: always,
+            run: set_playback,
+            journal: false,
+        },
     ]
 }
 
@@ -679,11 +1080,19 @@ mod tests {
     #[test]
     fn rename_keeps_calls_and_function_key_and_rejects_bad_names() {
         let mut s = Session::new();
-        s.actions.list.push(Action { name: "Action 1".into(), steps: vec![("layer.new.layer".into(), json!({}))], disabled: Default::default() });
+        s.actions.list.push(Action {
+            name: "Action 1".into(),
+            steps: vec![("layer.new.layer".into(), json!({}))],
+            disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
+        });
         s.actions.list.push(Action {
             name: "Caller".into(),
             steps: vec![("actions.play".into(), json!({"action": "Action 1"}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
         });
         s.edit_prefs(|p| p.shortcuts.insert(format!("{PLAY_SHORTCUT_PREFIX}Action 1"), "F2".into()));
         assert_eq!(s.execute("actions.rename", json!({"action": 0, "name": "Sepia"})).unwrap()["action"], "Sepia");
@@ -950,7 +1359,13 @@ mod tests {
     #[test]
     fn play_refuses_recursion() {
         let mut s = Session::new();
-        s.actions.list.push(Action { name: "Loop".into(), steps: vec![("actions.play".into(), json!({"action": "Loop"}))], disabled: Default::default() });
+        s.actions.list.push(Action {
+            name: "Loop".into(),
+            steps: vec![("actions.play".into(), json!({"action": "Loop"}))],
+            disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
+        });
         let r = s.execute("actions.play", json!({"action": "Loop"})).unwrap();
         assert_eq!(r["ran"], 0);
         assert_eq!(r["failed"]["id"], "actions.play");
@@ -969,6 +1384,8 @@ mod tests {
             name: "Open".into(),
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "Open"})).unwrap();
         assert_eq!(r["ran"], 0);
@@ -1046,6 +1463,8 @@ mod tests {
             name: "Child".into(),
             steps: vec![("layer.new.layer".into(), json!({"name": "Child layer"}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
         });
         s.execute("actions.record", json!({"name": "Parent"})).unwrap();
         s.execute("layer.new.layer", json!({"name": "Before"})).unwrap();
@@ -1075,8 +1494,16 @@ mod tests {
             name: "A".into(),
             steps: vec![("actions.play".into(), json!({"action": "B"})), ("file.new".into(), json!({"width": 2,"height": 2}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
         });
-        s.actions.list.push(Action { name: "B".into(), steps: vec![("actions.play".into(), json!({"action": "A"}))], disabled: Default::default() });
+        s.actions.list.push(Action {
+            name: "B".into(),
+            steps: vec![("actions.play".into(), json!({"action": "A"}))],
+            disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
+        });
         let r = s.execute("actions.play", json!({"action": "A"})).unwrap();
         assert!(r["failed"]["error"].as_str().unwrap().contains("recursive"));
         assert!(s.documents().is_empty());
@@ -1092,6 +1519,8 @@ mod tests {
                 name: format!("N{i}"),
                 steps: if i < 16 { vec![("actions.play".into(), json!({"action":format!("N{}", i + 1)}))] } else { vec![] },
                 disabled: Default::default(),
+                step_dialog: Vec::new(),
+                enabled: true,
             });
         }
         let r = s.execute("actions.play", json!({"action": "N0"})).unwrap();
@@ -1136,7 +1565,7 @@ mod tests {
     #[test]
     fn new_names_do_not_collide_with_named_calls() {
         let mut s = Session::new();
-        s.actions.list.push(Action { name: "Action 2".into(), steps: vec![], disabled: Default::default() });
+        s.actions.list.push(Action { name: "Action 2".into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
         assert_eq!(s.execute("actions.record", json!({})).unwrap()["action"], "Action 3");
         s.execute("actions.stop", json!({})).unwrap();
         assert!(s.execute("actions.record", json!({"name":"Action 2"})).is_err());
@@ -1148,7 +1577,7 @@ mod tests {
         let mut s = Session::new();
         s.execute("file.new", json!({"width":4,"height":4})).unwrap();
         for name in ["A", "B", "C"] {
-            s.actions.list.push(Action { name: name.into(), steps: vec![], disabled: Default::default() });
+            s.actions.list.push(Action { name: name.into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
         }
         s.execute("actions.record", json!({"action":"B"})).unwrap();
         s.execute("layer.new.layer", json!({"name":"before"})).unwrap();
@@ -1263,5 +1692,127 @@ mod tests {
         // The first document is untouched.
         let first = &s.documents()[0].doc;
         assert_eq!((first.size.width, first.size.height), (48, 48), "the recording document keeps its own crop");
+    }
+
+    #[test]
+    fn sets_group_actions_and_survive_move_and_delete() {
+        let mut s = Session::new();
+        s.execute("actions.newSet", json!({})).unwrap();
+        s.execute("actions.newSet", json!({"name": "Print"})).unwrap();
+        let err = s.execute("actions.newSet", json!({"name": "Print"})).unwrap_err();
+        assert!(err.to_string().contains("already exists"), "{err}");
+        assert!(s.execute("actions.newSet", json!({"name": ""})).is_err());
+        assert!(s.execute("actions.newSet", json!({"name": 1})).is_err());
+        assert!(s.execute("actions.deleteSet", json!({})).is_err());
+        s.execute("actions.record", json!({"name": "Crop"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("actions.record", json!({"name": "Label"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("actions.setFolder", json!({"action": "Crop", "set": "Print"})).unwrap();
+        s.execute("actions.setFolder", json!({"action": 1, "set": "Print"})).unwrap();
+        let listed = s.execute("actions.list", json!({})).unwrap();
+        assert_eq!(listed["actions"][0]["set"], "Print");
+        assert_eq!(listed["actions"][1]["set"], "Print");
+        assert!(listed["sets"].as_array().unwrap().iter().any(|v| v == "Print"));
+        s.execute("actions.move", json!({"action": 1, "to": 0})).unwrap();
+        assert_eq!(s.actions.folder(0), "Print");
+        assert_eq!(s.actions.list[0].name, "Label");
+        s.execute("actions.delete", json!({"action": "Label"})).unwrap();
+        assert_eq!(s.actions.list.len(), 1);
+        assert_eq!(s.actions.folders.len(), 1);
+        assert_eq!(s.actions.folder(0), "Print");
+        s.execute("actions.deleteSet", json!({"name": "Print"})).unwrap();
+        assert!(s.actions.sets.iter().all(|n| n != "Print"));
+        assert_eq!(s.actions.folder(0), "");
+        assert_eq!(s.actions.list[0].name, "Crop");
+        assert!(s.execute("actions.setFolder", json!({"action": 3, "set": "X"})).is_err());
+        assert!(s.execute("actions.setFolder", json!({"action": "Crop"})).is_err());
+    }
+
+    #[test]
+    fn action_checkbox_skips_playback_only_when_asked() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("actions.record", json!({"name": "Layer"})).unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("actions.setEnabled", json!({"action": "Layer", "enabled": false})).unwrap();
+        assert!(!s.actions.list[0].enabled);
+        assert!(s.actions.list[0].disabled.is_empty(), "the action checkbox leaves step checkboxes alone");
+        let before = s.active().unwrap().doc.layers.len();
+        let skipped = s.execute("actions.play", json!({"action": "Layer", "honorEnabled": true})).unwrap();
+        assert_eq!(skipped["skipped"], true);
+        assert_eq!(skipped["ran"], 0);
+        assert_eq!(s.active().unwrap().doc.layers.len(), before, "an unchecked action does not run");
+        let ran = s.execute("actions.play", json!({"action": "Layer"})).unwrap();
+        assert!(ran.get("skipped").is_none(), "{ran}");
+        assert!(ran["ran"].as_u64().unwrap() >= 1, "{ran}");
+        assert_eq!(s.active().unwrap().doc.layers.len(), before + 1);
+        s.execute("actions.setEnabled", json!({"action": "Layer", "enabled": true})).unwrap();
+        assert!(s.actions.list[0].enabled);
+        assert!(s.actions.list[0].disabled.is_empty());
+        s.execute("actions.setEnabled", json!({"action": "Layer", "step": 0, "enabled": false})).unwrap();
+        assert!(s.actions.list[0].disabled.contains(&0));
+        assert!(s.execute("actions.setEnabled", json!({"action": "Layer"})).is_err());
+        assert!(s.execute("actions.setEnabled", json!({"action": "Layer", "enabled": "yes"})).is_err());
+        assert!(s.execute("actions.setEnabled", json!({"action": "Layer", "step": 9, "enabled": true})).is_err());
+        assert!(s.execute("actions.setEnabled", json!({"set": "Missing", "enabled": true})).is_err());
+    }
+
+    #[test]
+    fn set_checkbox_toggles_every_action_in_the_folder() {
+        let mut s = Session::new();
+        s.execute("actions.record", json!({"name": "A"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("actions.record", json!({"name": "B"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        s.execute("actions.setFolder", json!({"action": "A", "set": "Shop"})).unwrap();
+        s.execute("actions.setFolder", json!({"action": "B", "set": "Shop"})).unwrap();
+        // Give A a step so turning the set off has a step to uncheck.
+        s.actions.list[0].steps.push(("layer.new.layer".into(), json!({})));
+        let off = s.execute("actions.setEnabled", json!({"set": "Shop", "enabled": false})).unwrap();
+        assert_eq!(off["actions"], 2);
+        assert!(!s.actions.list[0].enabled);
+        assert!(!s.actions.list[1].enabled);
+        assert!(s.actions.list[0].disabled.contains(&0));
+        s.execute("actions.setEnabled", json!({"set": "Shop", "enabled": true})).unwrap();
+        assert!(s.actions.list[0].enabled && s.actions.list[0].disabled.is_empty());
+        assert!(s.actions.list[1].enabled);
+    }
+
+    #[test]
+    fn dialog_toggles_follow_move_and_delete_and_playback_can_run_one_step() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let step = |name: &str| ("layer.new.layer".to_string(), json!({"name": name}));
+        s.actions.list.push(Action::new("Three", vec![step("A"), step("B"), step("C")]));
+        s.execute("actions.setDialog", json!({"action": "Three", "step": 1, "dialog": true})).unwrap();
+        assert!(s.execute("actions.setDialog", json!({"action": "Three"})).is_err());
+        assert!(s.execute("actions.setDialog", json!({"action": "Three", "step": 9, "dialog": true})).is_err());
+        assert!(s.execute("actions.setDialog", json!({"action": "Three", "dialog": "yes"})).is_err());
+        s.execute("actions.move", json!({"action": 0, "step": 1, "to": 0})).unwrap();
+        assert!(s.actions.list[0].step_dialog_on(0), "the dialog flag moves with the step");
+        assert!(!s.actions.list[0].step_dialog_on(1));
+        s.execute("actions.delete", json!({"action": 0, "step": 0})).unwrap();
+        assert!(!s.actions.list[0].step_dialog_on(0));
+        assert_eq!(s.execute("actions.get", json!({"action": 0})).unwrap()["dialogs"], json!([]));
+
+        s.execute("actions.setDialog", json!({"action": 0, "dialog": true})).unwrap();
+        assert!(s.actions.list[0].step_dialog.iter().all(|on| *on));
+        let before = s.active().unwrap().doc.layers.len();
+        s.execute("actions.setPlayback", json!({"mode": "step"})).unwrap();
+        assert!(s.execute("actions.setPlayback", json!({"mode": "fast"})).is_err());
+        assert!(s.execute("actions.setPlayback", json!({})).is_err());
+        assert!(s.execute("actions.setPlayback", json!({"mode": "pause", "seconds": 0})).is_err());
+        s.execute("actions.setPlayback", json!({"mode": "pause", "seconds": 2})).unwrap();
+        let one = s.execute("actions.play", json!({"action": 0, "count": 1})).unwrap();
+        assert_eq!(one["ran"], 1);
+        assert_eq!(one["pauseSeconds"], 2.0);
+        assert_eq!(one["dialogs"], json!([0]));
+        assert_eq!(s.active().unwrap().doc.layers.len(), before + 1);
+        assert!(s.execute("actions.play", json!({"action": 0, "count": -1})).is_err());
+        let listed = s.execute("actions.list", json!({})).unwrap();
+        assert_eq!(listed["playback"], "pause");
+        assert_eq!(listed["pauseSeconds"], 2.0);
     }
 }

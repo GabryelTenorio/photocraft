@@ -2516,6 +2516,8 @@ mod tests {
                 name: "Linked contents".into(),
                 steps: vec![(command.into(), json!({"layer": smart.0}))],
                 disabled: Default::default(),
+                step_dialog: Vec::new(),
+                enabled: true,
             }];
             let r = call(&mut app, &ctx, "engine.execute", json!({"command": "actions.play", "params": {"action": "Linked contents"}}));
             assert_eq!(r["ok"], true, "{r}");
@@ -2546,6 +2548,8 @@ mod tests {
             name: "Open".into(),
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
         });
         let ctx = egui::Context::default();
         let r = call(&mut app, &ctx, "engine.execute", json!({"command": "actions.play", "params": {"action": "Open"}}));
@@ -2565,6 +2569,8 @@ mod tests {
             name: "Open".into(),
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
+            step_dialog: Vec::new(),
+            enabled: true,
         });
         app.automation_input = true;
         let r = app.run("actions.play", json!({"action": "Open"})).unwrap();
