@@ -9,7 +9,7 @@ pub const MODULE: Module = Module {
     menu_ids: &["window.panel.navigator"],
     siblings: &["histogram", "info"],
     size: Size::new(210.0, 140.0, 80.0),
-    fills: false,
+    fills: true,
     body: crate::panels::navigator,
     menu: None,
 };

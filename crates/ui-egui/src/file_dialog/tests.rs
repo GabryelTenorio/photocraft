@@ -188,6 +188,18 @@ fn filtered_picker_requests_only_the_given_extensions() {
 }
 
 #[test]
+fn scripts_browse_lists_only_script_files() {
+    let (mut app, open, _) = app();
+    menus::invoke(&mut app, &egui::Context::default(), "file.scripts.browse", json!({})).unwrap();
+    app.poll_file_dialog(&egui::Context::default(), None);
+    assert!(matches!(
+        open.borrow().first().map(|(r, _)| r),
+        Some(FileDialogRequest::Open { multiple: false, extensions: Some(exts), .. })
+            if exts.iter().map(String::as_str).collect::<Vec<_>>() == ["psjs", "ccjs", "jsx", "js", "jsxbin", "json", "txt"]
+    ));
+}
+
+#[test]
 fn last_used_dir_takes_the_most_recent_parent() {
     assert_eq!(last_used_dir(&[]), None);
     assert_eq!(last_used_dir(&["/pics/cat.psd".into()]), Some("/pics".into()));
@@ -280,6 +292,12 @@ fn save_and_export_dialogs_start_beside_the_document() {
     }
 }
 
+/// The path `pick_save` suggests for `name` in `dir` on this platform: it joins with `Path::join`,
+/// which uses `\` on Windows, so the expected values must be built the same way (#2745).
+fn joined(dir: &str, name: &str) -> std::path::PathBuf {
+    std::path::Path::new(dir).join(name)
+}
+
 /// #1826: after the user navigates a save or export dialog elsewhere, the document's next dialog
 /// starts there. Save As of a saved document still suggests its own path; other documents and
 /// closed documents are unaffected.
@@ -296,18 +314,18 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
     // An export starts beside the document; the user saves it under /renders instead.
     app.pick_save("result.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), std::path::PathBuf::from("/proj/result.png"));
+    assert_eq!(suggested(&open), joined("/proj", "result.png"));
     answer(&open, Some(FileDialogAnswer::SaveTo("/renders/result.png".into())));
     app.poll_file_dialog(&ctx, None);
     // The next export starts in /renders; Save As still offers the document's own path.
     app.pick_save("again.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), std::path::PathBuf::from("/renders/again.png"));
+    assert_eq!(suggested(&open), joined("/renders", "again.png"));
     answer(&open, None);
     app.poll_file_dialog(&ctx, None);
     menus::invoke(&mut app, &ctx, "file.saveAs", json!({})).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), std::path::PathBuf::from("/proj/original.psd"));
+    assert_eq!(suggested(&open), joined("/proj", "original.psd"));
     answer(&open, None);
     app.poll_file_dialog(&ctx, None);
     // A cancelled dialog and an explicit directory change nothing.
@@ -318,7 +336,7 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
     app.poll_file_dialog(&ctx, None);
     app.pick_save("third.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), std::path::PathBuf::from("/renders/third.png"));
+    assert_eq!(suggested(&open), joined("/renders", "third.png"));
     answer(&open, None);
     app.poll_file_dialog(&ctx, None);
     // Another document has its own memory: untitled, it starts wherever the shell defaults.
@@ -336,7 +354,7 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
     app.session.set_active(0);
     app.pick_save("swap.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), std::path::PathBuf::from("/renders/swap.png"));
+    assert_eq!(suggested(&open), joined("/renders", "swap.png"));
     app.session.set_active(1);
     answer(&open, Some(FileDialogAnswer::SaveTo("/moved/swap.png".into())));
     app.poll_file_dialog(&ctx, None);
@@ -346,7 +364,7 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
     app.run("file.close", json!({"document": 1})).unwrap();
     app.pick_save("last.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), std::path::PathBuf::from("/moved/last.png"));
+    assert_eq!(suggested(&open), joined("/moved", "last.png"));
     assert!(!app.save_dirs.contains_key(&second));
     answer(&open, None);
     app.poll_file_dialog(&ctx, None);
@@ -567,4 +585,79 @@ fn convert_to_linked_asks_where_to_write_the_contents() {
     for id in ids {
         assert_eq!(smart_source(&app, id), photocraft_doc::SmartSource::Linked { path: path.clone() });
     }
+}
+
+#[test]
+fn quick_export_selected_layers_writes_separate_pngs_with_one_prompt() {
+    let (mut app, open, written) = app();
+    app.run("layer.new.layer", json!({"name": "Same/name"})).unwrap();
+    app.run("paint.bucket", json!({"x": 0, "y": 0, "color": "#ff0000"})).unwrap();
+    app.run("layer.new.layer", json!({"name": "Same/name"})).unwrap();
+    app.run("paint.bucket", json!({"x": 0, "y": 0, "color": "#00ff00"})).unwrap();
+    app.run("select.allLayers", json!({})).unwrap();
+    let selected = app.session.active().unwrap().selected_layers();
+    let before = app.session.active().unwrap().doc.clone();
+    let sources = Rc::new(RefCell::new(Vec::new()));
+    let capture = sources.clone();
+    app.services.export = Some(Box::new(move |doc, path, _| {
+        assert_eq!(doc.layers.len(), 1, "each PNG must contain just its source layer");
+        let png = photocraft_io::export(doc, path, &Default::default()).unwrap();
+        assert!(png.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        capture.borrow_mut().push(doc.name.clone());
+        Ok((png.bytes, Vec::new()))
+    }));
+    let ctx = egui::Context::default();
+    assert!(!crate::layer_menu_ui::single_layer_only("layer.quickExportAsPng"));
+    menus::invoke(&mut app, &ctx, "layer.quickExportAsPng", Value::Null).unwrap();
+    app.poll_file_dialog(&ctx, None);
+    assert_eq!(open.borrow().len(), 1, "one destination for the entire selection");
+    // Selection changes while choosing a destination must not change the captured sources.
+    app.run("layer.select", json!({"layer": selected[0].0})).unwrap();
+    answer(&open, Some(FileDialogAnswer::SaveTo("selected.png".into())));
+    app.poll_file_dialog(&ctx, None);
+    assert_eq!(written.borrow().len(), selected.len());
+    assert_eq!(sources.borrow().len(), selected.len());
+    assert_eq!(written.borrow()[0], "selected.png");
+    assert_eq!(written.borrow()[1], "selected-2-Same_name.png");
+    assert_eq!(selected.len(), 2, "Select All Layers leaves the locked Background out");
+    assert_eq!(app.session.active().unwrap().doc, before);
+    assert!(!app.ui.status_error, "{}", app.ui.status);
+}
+
+#[test]
+fn cancelling_multi_layer_quick_export_writes_nothing() {
+    let (mut app, open, written) = app();
+    for color in ["#ff0000", "#00ff00"] {
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("paint.bucket", json!({"x": 0, "y": 0, "color": color})).unwrap();
+    }
+    app.run("select.allLayers", json!({})).unwrap();
+    let ctx = egui::Context::default();
+    menus::invoke(&mut app, &ctx, "layer.quickExportAsPng", Value::Null).unwrap();
+    app.poll_file_dialog(&ctx, None);
+    answer(&open, None);
+    app.poll_file_dialog(&ctx, None);
+    assert!(written.borrow().is_empty());
+}
+
+/// #3354: a system with no dialog backend answers `Unavailable`; the message reaches the status
+/// bar as an error, where a cancelled dialog stays silent.
+#[test]
+fn an_unavailable_dialog_is_reported_and_a_cancelled_one_is_not() {
+    let ctx = egui::Context::default();
+    let (mut app, open, _) = app();
+    menus::invoke(&mut app, &ctx, "file.save", json!({})).unwrap();
+    app.poll_file_dialog(&ctx, None);
+    answer(&open, None);
+    app.poll_file_dialog(&ctx, None);
+    assert!(!app.ui.status_error, "Cancel is the user's choice");
+    assert!(!app.file_dialog_open());
+
+    menus::invoke(&mut app, &ctx, "file.save", json!({})).unwrap();
+    app.poll_file_dialog(&ctx, None);
+    answer(&open, Some(FileDialogAnswer::Unavailable("No file dialog can open".into())));
+    app.poll_file_dialog(&ctx, None);
+    assert!(app.ui.status_error);
+    assert_eq!(app.ui.status, "No file dialog can open");
+    assert!(!app.file_dialog_open(), "the pending dialog is over");
 }

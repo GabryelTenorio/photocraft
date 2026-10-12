@@ -77,7 +77,7 @@ impl Pane {
     }
 
     /// The stored (or default) height, sanitised.
-    fn height(&self) -> f32 {
+    pub(crate) fn height(&self) -> f32 {
         match self.height {
             Some(h) if h.is_finite() => h.clamp(self.min_height(), MAX_HEIGHT),
             _ => self.default_height(),
@@ -160,15 +160,11 @@ impl DockLayout {
     }
 
     /// Switching between Pro and Studio: an untouched Color preset group takes the theme's tab
-    /// order (Photoshop leads with Color, Studio with Swatches), keeping the front tab the
-    /// order's first when it was.
+    /// order (Photoshop leads with Color, Studio with Swatches), keeping the selected module.
     pub fn follow_theme(&mut self, pro: bool) {
         let (from, to) = (group_tabs("color", !pro), group_tabs("color", pro));
         for s in &mut self.panes {
             if s.tabs.iter().map(String::as_str).eq(from.iter().copied()) {
-                if from.first().is_some_and(|f| s.active == *f) {
-                    s.active = to.first().map(|t| (*t).to_owned()).unwrap_or_default();
-                }
                 s.tabs = to.iter().map(|t| (*t).to_owned()).collect();
             }
         }
@@ -517,7 +513,7 @@ impl DockLayout {
 
 /// The current theme is a Pro (Photoshop) one.
 pub fn is_pro(app: &PhotocraftApp) -> bool {
-    matches!(app.ui.theme, crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium)
+    app.ui.theme.is_pro()
 }
 
 /// Show module `id` (Window › <panel>, the icon rail, the picker).
@@ -595,7 +591,7 @@ pub fn strip_height(pro: bool) -> f32 {
 }
 
 /// Draw one module's body in `ui`, bounded to the height it has (scrolling unless it fills).
-fn module_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, m: &Module, salt: &str) {
+pub(crate) fn module_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, m: &Module, salt: &str) {
     let inner = ui.available_height().max(0.0);
     if Tokens::get(ui.ctx()).pro && m.id == "color" {
         ui.data_mut(|d| d.insert_temp(crate::panels::color_field_fill_id(), inner));
@@ -647,6 +643,11 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 module_body(app, ui, m, pane.key());
             }
         });
+        for (index, response) in &resp.responses {
+            if let Some(module) = mods.get(*index) {
+                crate::panel_docking::legacy_tab(app, &mut child, module.id, response);
+            }
+        }
         strips.push(StripRects {
             pane: i,
             tabs: resp.tabs.iter().filter_map(|(k, r)| mods.get(*k).map(|m| (m.id.to_owned(), *r))).collect(),
@@ -676,7 +677,7 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         if resp.close.as_ref().is_some_and(|r| r.clicked()) {
             actions.push(Action::ClosePane(i));
         }
-        if !locked {
+        if !locked && app.ui.docking.is_none() {
             if resp.strip.dragged() {
                 moving = Some(i);
             }
@@ -704,6 +705,9 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             if let Some(extra) = front_module.and_then(|m| m.menu) {
                 extra(app, ui);
                 ui.separator();
+            }
+            if let Some(module) = front_module {
+                crate::panel_docking::legacy_menu(app, ui, module.id);
             }
             ui.menu_button(tl!("Add Tab"), |ui| picker_list(app, ui, egui::Id::new(("dock-add-tab", i)), Some(i)));
             ui.separator();
@@ -739,7 +743,7 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                 ui.painter().line_segment([gap.left_center(), gap.right_center()], Stroke::new(2.0, t.accent.gamma_multiply(0.7)));
             }
-            if sresp.dragged() {
+            if sresp.dragged() && !locked && app.ui.docking.is_none() {
                 app.ui.dock.resize(&heights, i, sresp.drag_delta().y);
             }
         }
@@ -801,6 +805,9 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     ui.advance_cursor_after_rect(area);
     // Applied after drawing, most index-sensitive last.
     for a in actions {
+        if app.ui.docking.is_some() || (locked && !matches!(a, Action::Select(..) | Action::ToggleCollapse(..))) {
+            continue;
+        }
         let dock = &mut app.ui.dock;
         match a {
             Action::Select(i, id) => {
@@ -859,11 +866,12 @@ fn tab_slot(strips: &[StripRects], panes: &[Pane], k: usize, p: egui::Pos2) -> O
         return None;
     }
     let tabs = &panes.get(k)?.tabs;
-    let index = |id: &str| tabs.iter().position(|t| t == id);
-    match shown.iter().find(|(_, r)| r.center().x >= p.x) {
-        Some((id, _)) => index(id),
-        None => shown.last().and_then(|(id, _)| index(id)).map(|i| i + 1),
-    }
+    let indices: Vec<_> = shown.iter().enumerate().map(|(index, (_, rect))| (index, *rect)).collect();
+    let slot = crate::tab_strip::drop_slot(&indices, row, p)?;
+    shown
+        .get(slot)
+        .and_then(|(id, _)| tabs.iter().position(|tab| tab == id))
+        .or_else(|| shown.last().and_then(|(id, _)| tabs.iter().position(|tab| tab == id)).map(|index| index + 1))
 }
 
 /// Where a tab dragged to `p` lands: a pane's tab strip, or its upper body, joins it; the
@@ -945,7 +953,14 @@ pub fn picker_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, search_id: egui::
                 ui.checkbox(&mut on, *title)
             });
             if row.inner.changed() || (enter && k == 0) {
-                if app.ui.dock.visible(m.id) && !(enter && k == 0) {
+                if app.ui.docking.is_some() {
+                    let anchor = into.and_then(|i| app.ui.dock.panes.get(i)).map(|pane| pane.front().to_owned());
+                    let closing = app.ui.dock.visible(m.id) && !(enter && k == 0);
+                    let result = crate::panel_docking::picker_change(app, m.id, anchor.as_deref(), closing);
+                    if let Err(error) = result {
+                        app.ui.status = error;
+                    }
+                } else if app.ui.dock.visible(m.id) && !(enter && k == 0) {
                     app.ui.dock.close(m.id);
                 } else if let Some(i) = into.filter(|i| *i < app.ui.dock.panes.len()) {
                     app.ui.dock.drop_tab_or_add(m.id, i);
@@ -1053,7 +1068,7 @@ pub fn flyout(app: &mut PhotocraftApp, ctx: &egui::Context, rail: Rect) {
 
 /// What `prefs.panelLayout` holds: the live layout and open panels.
 fn snapshot(app: &PhotocraftApp) -> Value {
-    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open})
+    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
 }
 
 /// Remember the layout in the preferences once the user lets go of the mouse (Workspace ›
@@ -1088,7 +1103,15 @@ pub fn restore(app: &mut PhotocraftApp) {
 /// flags) is migrated. Missing or invalid dock parts are left alone; old layouts without Timeline
 /// visibility restore it closed.
 pub fn apply(app: &mut PhotocraftApp, v: &Value) {
-    if let Some(p) = v.get("panels").and_then(|p| serde_json::from_value(p.clone()).ok()) {
+    app.ui.docking_collapsed = v.get("dockingCollapsed").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.docking_reveal = None;
+    app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
+    app.ui.docking_hidden = v.get("dockingHidden").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.docking = v.get("docking").and_then(|d| serde_json::from_value(d.clone()).ok()).filter(crate::panel_docking::valid);
+    if let Some(mut p) = v.get("panels").and_then(|p| serde_json::from_value::<crate::state::Panels>(p.clone()).ok()) {
+        // The embedding host owns these flags, including for layouts that serialize them.
+        p.menu_bar = app.ui.panels.menu_bar;
+        p.rail = app.ui.panels.rail;
         app.ui.panels = p;
     }
     let pro = is_pro(app);
@@ -1104,6 +1127,7 @@ pub fn apply(app: &mut PhotocraftApp, v: &Value) {
         }
         _ => {}
     }
+    crate::panel_docking::sync_visibility(app);
     app.ui.timeline.open = v.get("timelineOpen").and_then(Value::as_bool).unwrap_or(false);
     if !app.ui.timeline.open {
         app.ui.timeline.playing = false;
@@ -1116,7 +1140,16 @@ pub fn apply(app: &mut PhotocraftApp, v: &Value) {
 /// new layout (`None` when no key concerns the dock); nothing is applied, so a rejected call
 /// changes nothing.
 pub fn layout_from_control(app: &PhotocraftApp, panels: Option<&Value>, dock_tabs: Option<&Value>, dock: Option<&Value>) -> Result<Option<DockLayout>, String> {
-    let pro = is_pro(app);
+    layout_from_control_for_theme(app, panels, dock_tabs, dock, is_pro(app))
+}
+
+pub(crate) fn layout_from_control_for_theme(
+    app: &PhotocraftApp,
+    panels: Option<&Value>,
+    dock_tabs: Option<&Value>,
+    dock: Option<&Value>,
+    pro: bool,
+) -> Result<Option<DockLayout>, String> {
     let flags: Vec<(&str, bool)> = match panels.and_then(Value::as_object) {
         Some(p) => GROUPS
             .iter()
@@ -1151,7 +1184,9 @@ pub fn layout_from_control(app: &PhotocraftApp, panels: Option<&Value>, dock_tab
             out = serde_json::from_value(d.clone()).map_err(|e| format!("dock: {e}"))?;
             out.sanitize();
         } else {
-            if let Some(k) = o.keys().find(|k| !matches!(k.as_str(), "order" | "heights" | "collapsed" | "hiddenTabs")) {
+            if let Some(k) =
+                o.keys().find(|k| !matches!(k.as_str(), "order" | "heights" | "collapsed" | "hiddenTabs" | "hidden_tabs" | "tabOrder" | "tab_order"))
+            {
                 return Err(format!("unknown dock field `{k}`"));
             }
             // A pre-module layout keeps what shows and which tabs are in front.
@@ -1176,6 +1211,9 @@ pub fn layout_from_control(app: &PhotocraftApp, panels: Option<&Value>, dock_tab
         }
     }
     for (_, id) in fronts {
+        if app.ui.docking.is_some() && !out.visible(id) {
+            return Err("cannot select a tab in a hidden group".into());
+        }
         if let Some(s) = out.pane_of(id).and_then(|i| out.panes.get_mut(i)) {
             s.active = id.to_owned();
         }
@@ -1220,7 +1258,10 @@ pub fn from_legacy(v: &Value, pro: bool) -> DockLayout {
     }
     let heights: BTreeMap<String, f32> = dock.and_then(|d| d.get("heights")).and_then(|h| serde_json::from_value(h.clone()).ok()).unwrap_or_default();
     let collapsed: Vec<String> = dock.and_then(|d| d.get("collapsed")).and_then(|c| serde_json::from_value(c.clone()).ok()).unwrap_or_default();
-    let hidden: BTreeMap<String, Vec<String>> = dock.and_then(|d| d.get("hiddenTabs")).and_then(|h| serde_json::from_value(h.clone()).ok()).unwrap_or_default();
+    let hidden: BTreeMap<String, Vec<String>> =
+        dock.and_then(|d| d.get("hiddenTabs").or_else(|| d.get("hidden_tabs"))).and_then(|h| serde_json::from_value(h.clone()).ok()).unwrap_or_default();
+    let tab_order: BTreeMap<String, Vec<String>> =
+        dock.and_then(|d| d.get("tabOrder").or_else(|| d.get("tab_order"))).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
     let mut out = DockLayout { panes: Vec::new(), rail: false, flyout: None };
     for g in order.into_iter().filter(|g| shown(g)) {
         let all = group_tabs(g, pro);
@@ -1230,7 +1271,20 @@ pub fn from_legacy(v: &Value, pro: bool) -> DockLayout {
         if kept.is_empty() {
             continue;
         }
-        let mut s = Pane::new(&kept);
+        let mut sorted = Vec::new();
+        for title in tab_order.get(g).into_iter().flatten() {
+            if let Some(id) = kept.iter().copied().find(|id| modules::get(id).is_some_and(|m| m.title == title || m.id == title))
+                && !sorted.contains(&id)
+            {
+                sorted.push(id);
+            }
+        }
+        for id in &kept {
+            if !sorted.contains(id) {
+                sorted.push(id);
+            }
+        }
+        let mut s = Pane::new(&sorted);
         if let Some(front) = tabs.and_then(|t| t.get(g)).and_then(Value::as_u64).and_then(|k| all.get(usize::try_from(k).ok()?)).filter(|id| kept.contains(id))
         {
             s.active = (*front).to_owned();
@@ -1246,3 +1300,14 @@ pub fn from_legacy(v: &Value, pro: bool) -> DockLayout {
 #[cfg(test)]
 #[path = "dock_tests.rs"]
 mod tests;
+
+/// Legacy inspection shape; selections are resolved by module identity in the new layout.
+pub(crate) fn legacy_tabs(app: &PhotocraftApp) -> Value {
+    let mut tabs = serde_json::Map::new();
+    for group in GROUPS {
+        let ids = group_tabs(group, is_pro(app));
+        let active = ids.iter().find_map(|id| app.ui.dock.pane_of(id)).and_then(|index| app.ui.dock.panes.get(index)).map(|pane| pane.front());
+        tabs.insert(group.to_owned(), json!(active.and_then(|id| ids.iter().position(|candidate| *candidate == id)).unwrap_or(0)));
+    }
+    Value::Object(tabs)
+}

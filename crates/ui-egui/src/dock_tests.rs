@@ -199,8 +199,8 @@ fn show_brings_back_a_whole_group_in_its_place_and_hide_closes_a_pane() {
 fn the_color_group_follows_the_theme_until_changed() {
     let mut l = DockLayout::essentials(true);
     l.follow_theme(false);
-    assert_eq!(l, DockLayout::essentials(false));
-    assert!(l.is_front("swatches"));
+    assert_eq!(l.panes[0].tabs, DockLayout::essentials(false).panes[0].tabs);
+    assert!(l.is_front("color"));
     l.follow_theme(true);
     assert_eq!(l, DockLayout::essentials(true));
     // Rearranged by the user: left alone.
@@ -338,7 +338,7 @@ fn click(h: &mut Harness<'static, PhotocraftApp>, p: Pos2, button: PointerButton
 }
 
 fn is_pro(theme: ThemeKind) -> bool {
-    matches!(theme, ThemeKind::Pro | ThemeKind::ProMedium)
+    theme.is_pro()
 }
 
 #[test]
@@ -670,6 +670,35 @@ fn dragging_a_tab_between_two_tabs_inserts_it_there() {
 }
 
 #[test]
+fn dragging_a_tab_onto_another_group_moves_only_that_panel() {
+    let (app, _, _) = app_with_layers();
+    let mut h = harness(app, vec2(1200.0, 900.0), ThemeKind::ProMedium);
+    let source = tab_rect(&h, "swatches").center();
+    let destination = tab_rect(&h, "layers").center();
+    drag(&mut h, source, destination);
+    let moved = tabs(&h.state().ui.dock, "swatches");
+    assert!(moved.contains(&"layers".to_owned()), "the dragged tab joined Layers: {moved:?}");
+    assert!(!moved.contains(&"color".to_owned()), "Color stayed in its group: {moved:?}");
+    assert!(h.state().ui.dock.visible("color"));
+}
+
+/// The strip shows reordered tabs by position; the drop moves the panel that was dragged, not
+/// the one at that position in the default order.
+#[test]
+fn dragging_a_reordered_tab_onto_another_group_moves_that_panel() {
+    let (mut app, _, _) = app_with_layers();
+    app.ui.dock.drop_tab("gradients", Drop::Insert(0, 0));
+    let mut h = harness(app, vec2(1200.0, 900.0), ThemeKind::ProMedium);
+    let source = tab_rect(&h, "gradients").center();
+    let destination = tab_rect(&h, "layers").center();
+    drag(&mut h, source, destination);
+    let moved = tabs(&h.state().ui.dock, "gradients");
+    assert!(moved.contains(&"layers".to_owned()), "the dragged tab joined Layers: {moved:?}");
+    assert!(!moved.contains(&"color".to_owned()), "Color stayed in its group: {moved:?}");
+    assert!(h.state().ui.dock.visible("color"));
+}
+
+#[test]
 fn tiny_windows_do_not_panic() {
     for theme in [ThemeKind::ProMedium, ThemeKind::Studio] {
         for (w, ht) in [(40.0, 30.0), (300.0, 80.0), (600.0, 200.0), (2000.0, 120.0)] {
@@ -823,7 +852,7 @@ fn panel_tab_context_menu_closes_one_tab_or_its_pane() {
         assert_eq!(fronts(&h.state().ui.dock), ["color", "properties", "layers"], "{theme:?}");
         // Close Tab Group takes the whole pane.
         right_click_tab(&mut h, "properties");
-        h.get_by_label("Close Tab Group").click();
+        h.query_all_by_label("Close Tab Group").find(|node| node.rect().width() > node.rect().height() + 4.0).unwrap().click();
         h.run_steps(3);
         assert!(!h.state().ui.dock.visible("properties") && !h.state().ui.dock.visible("adjustments"), "{theme:?}");
     }
@@ -879,7 +908,7 @@ fn studio_rail_flyouts_and_the_panel_picker() {
     h.run_steps(3);
     h.event(egui::Event::Text("hist".into()));
     h.run_steps(3);
-    assert!(h.query_by_label("Swatches").is_none(), "the search filters the list");
+    assert!(h.query_by_role_and_label(egui::accesskit::Role::CheckBox, "Swatches").is_none(), "the search filters the list");
     h.get_by_label("History").click();
     h.run_steps(3);
     assert!(h.state().ui.dock.is_front("history"));
@@ -1204,7 +1233,7 @@ fn studio_rail_icons_have_a_context_menu() {
     assert!(!h.state().ui.dock.visible("layers"));
     let p = icon(&h, "Properties");
     click(&mut h, p, PointerButton::Secondary);
-    h.get_by_label("Close Tab Group").click();
+    h.query_all_by_label("Close Tab Group").find(|node| node.rect().width() > node.rect().height() + 4.0).unwrap().click();
     h.run_steps(3);
     assert!(!h.state().ui.dock.visible("properties") && !h.state().ui.dock.visible("adjustments"));
     let front = h.state().ui.dock.panes[0].front().to_owned();
@@ -1291,5 +1320,61 @@ fn short_layer_panes_keep_the_footer_inside() {
         let footer = h.get_by_label("Create a new layer").rect();
         assert!(footer.top() >= pane.top() && footer.bottom() <= pane.bottom() + 0.5, "{theme:?}: footer {footer:?} outside pane {pane:?}");
         assert!(footer.height() >= 25.0, "{theme:?}: footer clipped: {footer:?}");
+    }
+}
+
+#[test]
+fn legacy_tab_order_migrates_without_changing_the_selected_panel() {
+    let layout = from_legacy(&json!({"dockTabs":{"color":1},"dock":{"tabOrder":{"color":["Gradients","Color","Swatches","bogus","Gradients"]}}}), true);
+    assert_eq!(tabs(&layout, "color"), ["gradients", "color", "swatches", "patterns"]);
+    assert!(layout.is_front("swatches"));
+}
+
+#[test]
+fn navigator_preview_fills_its_group_and_keeps_aspect() {
+    assert!(crate::modules::get("navigator").unwrap().fills, "the Navigator tab lays itself out");
+    assert!(!crate::modules::get("histogram").unwrap().fills && !crate::modules::get("info").unwrap().fills, "Histogram and Info still scroll");
+    for theme in [ThemeKind::ProMedium, ThemeKind::Studio] {
+        let mut sizes = Vec::new();
+        for tall in [150.0, 260.0, 420.0] {
+            let mut h = Harness::builder().with_size(vec2(1200.0, 1100.0)).with_max_steps(64).build_eframe(move |cc| {
+                PhotocraftApp::setup_context(&cc.egui_ctx, theme);
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+                app.ui.theme = theme;
+                app.ui.dock.show("navigator");
+                let index = app.ui.dock.pane_of("navigator").unwrap();
+                app.ui.dock.panes[index].height = Some(tall);
+                app.run("file.new", json!({"width": 200, "height": 300})).unwrap();
+                app.sync_views();
+                app
+            });
+            h.run_steps(8);
+            let group = rect_of(&h, "navigator");
+            let preview = crate::panels::last_navigator_preview(&h.ctx).unwrap_or_else(|| panic!("{theme:?} {tall}: no preview drawn"));
+            assert!((group.height() - tall).abs() < 1.0, "{theme:?}: group {group:?} requested {tall} layout {:?}", h.state().ui.dock);
+            assert!(group.contains_rect(preview), "{theme:?} {tall}: preview {preview:?} outside {group:?}");
+            assert!((preview.width() / preview.height() - 2.0 / 3.0).abs() < 0.02, "{theme:?} {tall}: aspect {preview:?}");
+            // The zoom controls stay inside the group, below the preview.
+            let controls = crate::panels::last_navigator_controls(&h.ctx).unwrap_or_else(|| panic!("{theme:?} {tall}: no controls"));
+            assert!(controls.top() >= preview.bottom() && controls.bottom() <= group.bottom() + 0.5, "{theme:?} {tall}: {controls:?} {preview:?} {group:?}");
+            sizes.push(preview);
+        }
+        // A portrait document grows with every extra point of height the group gets.
+        for pair in sizes.windows(2) {
+            assert!(pair[1].height() > pair[0].height() + 80.0, "{theme:?}: {sizes:?}");
+        }
+    }
+}
+
+#[test]
+fn theme_switch_keeps_the_selected_module() {
+    for theme in ThemeKind::ALL {
+        for panel in ["color", "swatches", "gradients", "patterns"] {
+            let (mut app, _, _) = app_with_layers();
+            app.ui.dock.show(panel);
+            let ctx = egui::Context::default();
+            app.apply_theme(&ctx, theme);
+            assert!(app.ui.dock.is_front(panel), "{theme:?}: {panel}");
+        }
     }
 }

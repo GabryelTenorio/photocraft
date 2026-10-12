@@ -628,6 +628,27 @@ pub fn layer_bounds(layer: &Layer, canvas: Rect) -> Rect {
     }
 }
 
+/// Where a layer's effects take their shape from: [`layer_bounds`], except that a group's
+/// children count with their own effects (a child's outside stroke shapes the group's drop
+/// shadow and must not be cut off at the child's pixels, #3274).
+pub fn effect_source_bounds(layer: &Layer, canvas: Rect) -> Rect {
+    match &layer.content {
+        LayerContent::Group(g) if g.artboard.is_none() && !advanced::shapeless(layer) => g.children.iter().filter(|c| c.visible).fold(Rect::EMPTY, |acc, c| {
+            let m = if effects::has_effects(c) { effects::margin(c) } else { 0 };
+            let b = effect_source_bounds(c, canvas);
+            let b = if b.is_empty() { b } else { b.inflate(m) };
+            if b.is_empty() {
+                acc
+            } else if acc.is_empty() {
+                b
+            } else {
+                acc.union(&b)
+            }
+        }),
+        _ => layer_bounds(layer, canvas),
+    }
+}
+
 /// The path a shape layer's effects are shaped by: its fill path. Photoshop builds a filled
 /// shape's layer effects from its vector outline, not from its pixels: a stroke runs along the
 /// whole path even where a gradient fill fades out (psd-tools stroke-effects). `None` for other
@@ -740,10 +761,10 @@ fn render_content(layer: &Layer, rect: Rect, cx: &Ctx) -> Option<Buffer> {
                 match gradient_fill::render_cmyk_fill(f, native_rect, frame, cx.depth) {
                     Some(s) if matches!(f, Fill::Solid(_)) => Buffer::filled(rect, s.rgba(0, 0)),
                     Some(s) => surface_to_buffer(&s, rect),
-                    None => render_fill(f, rect, frame, cx.patterns),
+                    None => render_fill(f, rect, frame, cx.patterns, adjustment_quantum(cx.depth)),
                 }
             }
-            _ => render_fill(f, rect, fill_frame(layer, cx.canvas), cx.patterns),
+            _ => render_fill(f, rect, fill_frame(layer, cx.canvas), cx.patterns, adjustment_quantum(cx.depth)),
         },
         LayerContent::Adjustment(_) => return None,
         _ => match layer.surface() {
@@ -823,17 +844,19 @@ pub fn fill_frame(layer: &Layer, canvas: Rect) -> Rect {
 /// compositor does) but without applying the masks: the pixels a PSD fill layer stores.
 pub fn render_fill_content(layer: &Layer, f: &Fill, canvas: Rect, patterns: &[Pattern]) -> Buffer {
     let prepared = pattern::PreparedPatterns::new(patterns, pattern::PREPARED_PATTERN_BYTES);
-    render_fill(f, canvas, fill_frame(layer, canvas), &prepared)
+    render_fill(f, canvas, fill_frame(layer, canvas), &prepared, None)
 }
 
-fn render_fill(f: &Fill, rect: Rect, canvas: Rect, patterns: &pattern::PreparedPatterns<'_>) -> Buffer {
+/// `quantum`: the document depth's levels, which a dithered gradient is rounded to
+/// ([`gradient_fill::render_quantized`]); `None` keeps it in float.
+fn render_fill(f: &Fill, rect: Rect, canvas: Rect, patterns: &pattern::PreparedPatterns<'_>, quantum: Option<f32>) -> Buffer {
     match f {
         Fill::Solid(c) => {
             let rgb = c.to_rgb();
             Buffer::filled(rect, [rgb[0], rgb[1], rgb[2], c.alpha])
         }
         // Gradient geometry relative to the layer's frame, independent of the render rect.
-        Fill::Gradient { .. } => Buffer { rect, px: gradient_fill::render(f, rect, canvas) },
+        Fill::Gradient { .. } => Buffer { rect, px: gradient_fill::render_quantized(f, rect, canvas, quantum) },
         // Laid out from the layer's frame when linked; transparent if the pattern is missing.
         Fill::Pattern { name, scale, id, angle, link, phase } => match patterns.get(id, name) {
             Some(tile) => Buffer { rect, px: pattern::render(&tile, &pattern::Placement::new(canvas, *link, *phase, *scale, *angle), rect) },
@@ -849,9 +872,10 @@ fn render_fill(f: &Fill, rect: Rect, canvas: Rect, patterns: &pattern::PreparedP
 fn empty_in(layer: &Layer, rect: Rect) -> bool {
     if effects::has_effects(layer) {
         // Effects reach at most `margin` beyond the layer's pixels (when it is transparent
-        // outside them): render tiles away from a small text layer skip it entirely.
+        // outside them; a group's from its children with their effects): render tiles away from a
+        // small text layer skip it entirely.
         let canvas = Rect::new(i32::MIN / 4, i32::MIN / 4, i32::MAX / 4, i32::MAX / 4);
-        let bounds = shapeless_stroke_bounds(layer).unwrap_or_else(|| layer_bounds(layer, canvas));
+        let bounds = shapeless_stroke_bounds(layer).unwrap_or_else(|| effect_source_bounds(layer, canvas));
         return transparent_outside(layer) && bounds.inflate(effects::margin(layer)).intersect(&rect).is_empty();
     }
     match &layer.content {
@@ -1451,7 +1475,7 @@ fn fx_cache() -> &'static std::sync::Mutex<FxCache> {
 /// (or anything else rendering children over a wider area) gets the whole region.
 fn effect_region(layer: &Layer, rect: Rect, cx: &Ctx) -> (Rect, bool) {
     let m = effects::margin(layer);
-    let region = layer_bounds(layer, cx.canvas).inflate(m).intersect(&cx.canvas.inflate(m));
+    let region = effect_source_bounds(layer, cx.canvas).inflate(m).intersect(&cx.canvas.inflate(m));
     let clip = *cx.fx_clip.lock().unwrap_or_else(|e| e.into_inner());
     match clip {
         Some(c) if c.contains_rect(&rect) && advanced::shapeless(layer) && effects::maps_are_local(layer) => {

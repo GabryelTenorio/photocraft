@@ -9,7 +9,7 @@ pub const MODULE: Module = Module {
     menu_ids: &["window.panel.actions"],
     siblings: &["history", "layerComps"],
     size: Size::new(200.0, 130.0, 80.0),
-    fills: false,
+    fills: true,
     body: crate::actions::panel,
     menu: None,
 };
