@@ -251,7 +251,7 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
             } else if resp.hovered() {
                 ui.painter().rect_filled(r, t.radius_sm, t.hover);
             }
-            let mut x = r.left() + 6.0;
+            let x = r.left() + 6.0;
             if *has_box && let Some(flag) = section_flag(b, i) {
                 let br = egui::Rect::from_center_size(egui::pos2(x + 6.0, r.center().y), vec2(13.0, 13.0));
                 let box_resp = ui.interact(br, ui.id().with(("brush-sec-box", i)), Sense::click());
@@ -273,10 +273,8 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                 } else if resp.clicked() && !on_lock {
                     *flag = true;
                 }
-                x += 20.0;
-            } else if i > 0 {
-                x += 20.0;
             }
+            let x = x + 20.0;
             let color = if sel { t.text } else { t.text_dim };
             let font = if i == 0 { theme::semibold(12.0) } else { theme::medium(12.0) };
             let mut job = egui::text::LayoutJob::simple_singleline(tl!(name).to_string(), font, color);
