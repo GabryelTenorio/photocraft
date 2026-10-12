@@ -500,6 +500,9 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
                 crate::panel_docking::legacy_tab(app, &mut child, panel, response);
             }
         }
+        if let Some(panel) = tabs.get(sel) {
+            crate::panel_docking::legacy_group(app, &mut child, panel, &resp.strip);
+        }
         strips.push(StripRects {
             group: g,
             area: Rect::from_min_max(pos2(rect.left(), resp.menu.rect.top()), pos2(resp.menu.rect.left(), resp.menu.rect.bottom())),
@@ -743,7 +746,7 @@ fn resize(layout: &mut DockLayout, heights: &[(Group, f32)], i: usize, dy: f32) 
 
 /// What `prefs.panelLayout` holds: the live layout and open panels.
 fn snapshot(app: &PhotocraftApp) -> Value {
-    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
+    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockRegions": app.ui.dock_regions, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
 }
 
 /// Remember the layout in the preferences once the user lets go of the mouse (Workspace ›
@@ -775,6 +778,11 @@ pub fn restore(app: &mut PhotocraftApp) {
 /// layouts without Timeline visibility restore it closed.
 pub fn apply(app: &mut PhotocraftApp, v: &Value) {
     app.ui.docking_collapsed = v.get("dockingCollapsed").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.dock_regions = v
+        .get("dockRegions")
+        .and_then(|value| serde_json::from_value::<crate::workspace_dock::DockRegions>(value.clone()).ok())
+        .filter(crate::workspace_dock::DockRegions::valid)
+        .unwrap_or_default();
     app.ui.docking_reveal = None;
     app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
     app.ui.docking_hidden = v.get("dockingHidden").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();

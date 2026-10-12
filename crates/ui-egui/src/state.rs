@@ -1153,6 +1153,9 @@ pub struct UiState {
     /// Authoritative custom panel membership and placement; legacy fields are compatibility projections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docking: Option<craft_ui::docking::Layout<String>>,
+    /// Region membership and sizes around the canvas; old workspaces default to the right dock.
+    #[serde(default)]
+    pub dock_regions: crate::workspace_dock::DockRegions,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub docking_hidden: std::collections::BTreeMap<String, craft_ui::docking::Location<String>>,
     /// Invalidates in-flight gestures when a workspace is replaced.
@@ -1280,6 +1283,7 @@ impl Default for UiState {
             dock_tabs: DockTabs::default(),
             dock: Default::default(),
             docking: None,
+            dock_regions: Default::default(),
             docking_hidden: Default::default(),
             docking_generation: 0,
             docking_collapsed: Vec::new(),

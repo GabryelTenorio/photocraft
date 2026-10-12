@@ -530,8 +530,13 @@ layer names. Selection is captured before opening the dialog; an unselected laye
 ## Shared panel docking
 
 Panel arrangements support tab grouping and reordering, horizontal and vertical splits,
-and movable, resizable floating groups inside the application window. Drag a panel tab,
-or use its context menu. Floating groups remain within the application viewport.
+and movable, resizable floating groups inside the application window. Drag a panel tab
+to move one panel, or a header grip to move the whole group. Drop on a tab strip to join,
+on a group edge to split, or at an edge of the workspace to dock left, right, top or
+bottom. Top/bottom regions span the workspace width; left/right regions share the middle
+band with the protected document canvas. Accent previews show the destination. Floating
+groups remain within the application viewport; separate desktop windows are not supported.
+Escape, focus loss and workspace replacement cancel unfinished docking gestures.
 
 The shared layout begins with the existing workspace on the first docking operation.
 Workspace saves retain its groups, active tabs, split sizes, floating geometry, and the
@@ -541,8 +546,11 @@ positions of hidden panels. Resetting a built-in workspace restores its default 
   `zone` is `tab` (default), `center`, `left`, `right`, `top`, or `bottom`; `before` reorders
   tabs by panel ID. The destination must already be visible.
 - `window.panel.float {panel, x?, y?, width?, height?}` detaches a panel.
-- `window.panel.dock {panel, anchor?, zone?, before?}` returns a panel to its previous
-  dock placement when possible, or to the supplied destination.
+- `window.panel.dock {panel, anchor?, zone?, before?, side?}` returns a panel to its previous
+  dock placement when possible, or to the supplied destination. `side` is `left`, `right`,
+  `top` or `bottom` and creates an independent group on that side. `window.panel.move`
+  also accepts `side`. A side destination cannot be combined with `anchor`, `before`
+  or `zone`; omit it when joining/splitting an existing group.
 - `window.panel.activate {panel}` reveals and selects a panel, restoring its saved
   position when possible. `window.panel.close {panel}` hides it.
 
@@ -579,3 +587,24 @@ dock target. The panel menu and icon rail remain
 available in custom workspaces. `window.panel.<id> {show:true}` always reveals, selects
 and expands the panel, including when another tab is selected. Workspace snapshots
 retain custom collapse settings and Timeline visibility.
+
+### Four-sided panel workspaces
+
+`window.panel.group {panel, operation:"float", x?, y?, width?, height?}` detaches
+all tabs in the current group while retaining their order and active tab.
+`window.panel.group {panel, operation:"dock", side:"left|right|top|bottom"}` docks
+the whole group on a workspace side. `operation:"move"` also accepts `side`.
+Without a side, group `dock` accepts an existing panel `anchor`, or uses its remembered
+side. Group Up/Down operate within the current dock region.
+
+`window.panel.layout {side:"left|right|top|bottom", size:points}` changes a region's
+preferred width (left/right) or height (top/bottom), between 80 and 4096 logical points.
+The renderer constrains actual sizes to the available space and panel/canvas minima.
+Existing `ResizeSplit` paths continue to address the canonical panel tree in `docking`;
+synthetic region dividers are addressed by `side`, not by tree path.
+
+`ui.inspect` exposes `dockRegions`: `enabled`, `sides` (panel ID to side), and `sizes`
+(left/right widths, top/bottom heights). `docking` retains the shared panel tree and
+floating groups. Region membership stays with floating/hidden panels for restoration.
+Workspace saves and Remember Workspace Changes persist both values. Old workspaces
+without `dockRegions` keep their existing right dock; Reset Workspace restores defaults.

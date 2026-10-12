@@ -59,7 +59,9 @@ fn harness(app: PhotocraftApp, size: egui::Vec2) -> Harness<'static, PhotocraftA
                 return;
             }
             crate::panels::right_dock(app, ui);
-            egui::CentralPanel::default().show(ui, |_| {});
+            if !app.ui.dock_regions.enabled {
+                egui::CentralPanel::default().show(ui, |_| {});
+            }
         },
         app,
     );
@@ -658,4 +660,292 @@ fn native_tab_reorder_stays_native_until_drag_crosses_the_strip() {
     let layers = tabs.iter().position(|(_, label)| *label == "Layers").unwrap();
     let channels = tabs.iter().position(|(_, label)| *label == "Channels").unwrap();
     assert!(channels < layers, "upstream native reorder remains effective");
+}
+
+fn tab_rect(h: &Harness<'static, PhotocraftApp>, id: &str) -> egui::Rect {
+    h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("tab", &id.to_owned()))).unwrap().rect
+}
+
+fn canvas_region(h: &Harness<'static, PhotocraftApp>) -> egui::Rect {
+    h.ctx.data(|data| data.get_temp(egui::Id::new("photocraft-workspace-canvas"))).unwrap()
+}
+
+#[test]
+fn four_regions_surround_a_protected_canvas_and_release_empty_sides() {
+    let mut app = app();
+    for (panel, side) in [("color", "left"), ("properties", "top"), ("history", "bottom"), ("layers", "right")] {
+        app.run("window.panel.dock", json!({"panel":panel,"side":side})).unwrap();
+    }
+    let rendered = app.ui.dock_regions.render(app.ui.docking.as_ref().unwrap());
+    rendered.layout.validate().unwrap();
+    assert_eq!(rendered.layout.panels().iter().filter(|id| id.as_str() == CANVAS).count(), 1);
+    let mut h = harness(app, vec2(1440.0, 1000.0));
+    let canvas = canvas_region(&h);
+    assert!(tab_rect(&h, "color").right() < canvas.left());
+    assert!(tab_rect(&h, "layers").left() > canvas.right());
+    assert!(tab_rect(&h, "properties").bottom() < canvas.top());
+    assert!(tab_rect(&h, "history").top() > canvas.bottom());
+    h.state_mut().run("window.panel.float", json!({"panel":"color"})).unwrap();
+    h.run_steps(3);
+    assert!(canvas_region(&h).left() < canvas.left());
+    assert!(!h.state().ui.docking.as_ref().unwrap().contains(&CANVAS.to_owned()));
+}
+
+#[test]
+fn group_float_and_side_dock_preserve_members_order_selection_and_panel_return_side() {
+    let mut app = app();
+    app.run("window.panel.activate", json!({"panel":"channels"})).unwrap();
+    app.run("window.panel.group", json!({"panel":"channels","operation":"dock","side":"left"})).unwrap();
+    let members = group_members(app.ui.docking.as_ref().unwrap(), "channels");
+    assert_eq!(members, ["layers", "channels", "paths"]);
+    app.run("window.panel.group", json!({"panel":"channels","operation":"float","x":40,"y":60})).unwrap();
+    let floating = app.ui.docking.as_ref().unwrap().floating.last().unwrap();
+    assert_eq!(floating.panels, members);
+    assert_eq!(floating.panels[floating.active], "channels");
+    app.run("window.panel.group", json!({"panel":"channels","operation":"dock","side":"bottom"})).unwrap();
+    assert_eq!(group_members(app.ui.docking.as_ref().unwrap(), "channels"), members);
+    for id in &members {
+        assert_eq!(app.ui.dock_regions.side(id), DockSide::Bottom);
+    }
+    app.run("window.panel.float", json!({"panel":"channels"})).unwrap();
+    app.run("window.panel.dock", json!({"panel":"channels"})).unwrap();
+    assert_eq!(app.ui.dock_regions.side("channels"), DockSide::Bottom);
+    assert!(panel_active(app.ui.docking.as_ref().unwrap(), "channels"));
+}
+
+#[test]
+fn cross_region_tab_and_group_moves_follow_destination_side_and_split_paths_resize_real_tree() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+    app.run("window.panel.move", json!({"panel":"properties","anchor":"color","zone":"bottom"})).unwrap();
+    app.run("window.panel.group", json!({"panel":"layers","operation":"move","anchor":"color"})).unwrap();
+    for id in ["properties", "layers", "channels", "paths"] {
+        assert_eq!(app.ui.dock_regions.side(id), DockSide::Left);
+    }
+    let rendered = app.ui.dock_regions.render(app.ui.docking.as_ref().unwrap());
+    for target in rendered.splits.values() {
+        if let SplitTarget::Tree(path) = target {
+            app.run("window.panel.layout", json!({"action":Action::<String>::ResizeSplit {path:path.clone(),size:SplitSize::Ratio(0.4)}})).unwrap();
+        }
+    }
+    assert!(valid(app.ui.docking.as_ref().unwrap()));
+    assert!(app.ui.dock_regions.render(app.ui.docking.as_ref().unwrap()).layout.validate().is_ok());
+    app.run("window.panel.close", json!({"panel":"properties"})).unwrap();
+    app.run("window.panel.layout", json!({"action":Action::<String>::Open {panel:"properties".into(),anchor:Some("swatches".into())}})).unwrap();
+    assert_eq!(app.ui.dock_regions.side("properties"), DockSide::Right);
+}
+
+#[test]
+fn regions_persist_migrate_reset_and_restore_hidden_panels() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+    app.run("window.panel.close", json!({"panel":"color"})).unwrap();
+    app.run("window.panel.layout", json!({"side":"left","size":350})).unwrap();
+    let ctx = egui::Context::default();
+    crate::menus::invoke(&mut app, &ctx, "window.workspace.newWorkspace", json!({"name":"Four sides"})).unwrap();
+    let saved = app.session.prefs().workspaces.get("Four sides").unwrap().clone();
+    let expected = app.ui.dock_regions.clone();
+    crate::dock::apply(&mut app, &saved);
+    assert_eq!(app.ui.dock_regions, expected);
+    app.run("window.panel.activate", json!({"panel":"color"})).unwrap();
+    assert_eq!(app.ui.dock_regions.side("color"), DockSide::Left);
+    assert!(app.ui.docking.as_ref().unwrap().contains(&"color".into()));
+    app.session.prefs.edit(|p| p.workspace.remember_workspace_changes = true);
+    crate::dock::persist(&mut app, &ctx);
+    assert_eq!(app.session.prefs().panel_layout["dockRegions"], serde_json::to_value(&app.ui.dock_regions).unwrap());
+    let old = json!({"docking":app.ui.docking});
+    crate::dock::apply(&mut app, &old);
+    assert!(!app.ui.dock_regions.enabled);
+    assert!(app.ui.docking.is_some());
+    let corrupt = json!({"docking":app.ui.docking,"dockRegions":{"enabled":true,"sizes":[-1,1,1,1]}});
+    crate::dock::apply(&mut app, &corrupt);
+    assert!(!app.ui.dock_regions.enabled);
+    crate::menus::invoke(&mut app, &ctx, "window.workspace.essentials", json!({})).unwrap();
+    assert!(!app.ui.dock_regions.enabled);
+    assert!(app.ui.docking.is_none());
+}
+
+#[test]
+fn invalid_region_and_group_requests_and_locked_workspace_are_atomic() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+    let before = serde_json::to_value(&app.ui).unwrap();
+    for (id, params) in [
+        ("window.panel.dock", json!({"panel":"color","side":"center"})),
+        ("window.panel.dock", json!({"panel":"color","side":4})),
+        ("window.panel.dock", json!({"panel":"unknown","side":"left"})),
+        ("window.panel.move", json!({"panel":"color","side":"left","anchor":"layers"})),
+        ("window.panel.group", json!({"panel":"color","operation":"close","side":"left"})),
+        ("window.panel.group", json!({"panel":"color","operation":"float","width":-1})),
+        ("window.panel.layout", json!({"side":"left","size":"bad"})),
+        ("window.panel.layout", json!({"side":"left","size":1e100})),
+        ("window.panel.layout", json!({"side":"left","size":0})),
+    ] {
+        assert!(app.run(id, params).is_err());
+        assert_eq!(serde_json::to_value(&app.ui).unwrap(), before);
+    }
+    app.session.prefs.edit(|p| p.workspace_locked = true);
+    for (id, params) in [
+        ("window.panel.dock", json!({"panel":"color","side":"right"})),
+        ("window.panel.group", json!({"panel":"color","operation":"float"})),
+        ("window.panel.layout", json!({"side":"left","size":350})),
+    ] {
+        assert!(app.run(id, params).is_err());
+        assert_eq!(serde_json::to_value(&app.ui).unwrap(), before);
+    }
+}
+
+#[test]
+fn pointer_tab_and_docked_group_drags_can_create_regions_and_float_whole_groups() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+    let mut h = harness(app, vec2(1440.0, 1000.0));
+    let from = tab_rect(&h, "layers").center();
+    drag(&mut h, from, egui::pos2(500.0, 12.0));
+    assert_eq!(h.state().ui.dock_regions.side("layers"), DockSide::Top);
+    assert_ne!(h.state().ui.dock_regions.side("channels"), DockSide::Top);
+    h.state_mut().run("window.panel.move", json!({"panel":"channels","anchor":"layers"})).unwrap();
+    h.run_steps(3);
+    let grip = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("dock-group-grip", &"channels".to_owned()))).unwrap().rect.center();
+    let to = canvas_region(&h).center();
+    drag(&mut h, grip, to);
+    let layout = h.state().ui.docking.as_ref().unwrap();
+    assert!(layout.floating.iter().any(|g| g.panels.contains(&"layers".into()) && g.panels.contains(&"channels".into())));
+}
+
+#[test]
+fn region_drag_escape_and_focus_loss_preserve_the_workspace() {
+    for (escape, whole_group) in [(true, false), (false, false), (true, true), (false, true)] {
+        let mut app = app();
+        app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+        let mut h = harness(app, vec2(1280.0, 800.0));
+        let before = h.state().ui.docking.clone();
+        let regions = h.state().ui.dock_regions.clone();
+        let from = if whole_group {
+            h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("dock-group-grip", &"layers".to_owned()))).unwrap().rect.center()
+        } else {
+            tab_rect(&h, "layers").center()
+        };
+        h.event(Event::PointerMoved(from));
+        h.run_steps(1);
+        h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+        let to = egui::pos2(300.0, 12.0);
+        h.event(Event::PointerMoved(to));
+        h.run_steps(2);
+        if escape {
+            h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+        } else {
+            h.input_mut().focused = false;
+        }
+        h.run_steps(1);
+        h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.run_steps(2);
+        assert_eq!(h.state().ui.docking, before);
+        assert_eq!(h.state().ui.dock_regions, regions);
+    }
+}
+
+#[test]
+fn regional_layout_keeps_canvas_and_floating_headers_reachable_at_small_sizes() {
+    let mut app = app();
+    for (panel, side) in [("color", "left"), ("properties", "top"), ("history", "bottom")] {
+        app.run("window.panel.dock", json!({"panel":panel,"side":side})).unwrap();
+    }
+    app.run("window.panel.float", json!({"panel":"swatches","x":900,"y":700})).unwrap();
+    let h = harness(app, vec2(640.0, 480.0));
+    let canvas = canvas_region(&h);
+    assert!(canvas.is_finite() && canvas.width() > 0.0 && canvas.height() > 0.0);
+    let floating = h.ctx.memory(|memory| memory.area_rect(egui::Id::new("photocraft-panel-docking").with(("floating", &"swatches".to_owned())))).unwrap();
+    assert!(floating.left() >= 0.0 && floating.top() >= 0.0 && floating.right() <= 640.0 && floating.top() < 480.0);
+}
+
+#[test]
+fn capture_regional_docking_visual_fixtures() {
+    let Some(directory) = std::env::var_os("PHOTOCRAFT_REGIONAL_DOCK_FIXTURES").map(std::path::PathBuf::from) else { return };
+    std::fs::create_dir_all(&directory).unwrap();
+    for theme in crate::theme::ThemeKind::ALL {
+        for (width, height, scale) in [(800.0, 700.0, 1.0), (1440.0, 1000.0, 1.5)] {
+            let mut app = app();
+            app.run("file.new", json!({"width":600,"height":400})).unwrap();
+            for (panel, side) in [("color", "left"), ("properties", "top"), ("history", "bottom")] {
+                app.run("window.panel.dock", json!({"panel":panel,"side":side})).unwrap();
+            }
+            app.run("window.panel.float", json!({"panel":"swatches","x":300,"y":360,"width":270,"height":240})).unwrap();
+            let mut ready = false;
+            let mut h = Harness::builder().with_size(vec2(width, height)).with_pixels_per_point(scale).wgpu().build_ui_state(
+                move |ui, app: &mut PhotocraftApp| {
+                    if !ready {
+                        PhotocraftApp::setup_context(ui.ctx(), theme);
+                        app.ui.theme = theme;
+                        ready = true;
+                        return;
+                    }
+                    crate::panels::title_bar(app, ui);
+                    crate::panels::options_bar(app, ui);
+                    crate::panels::status_bar(app, ui);
+                    crate::panels::toolbar(app, ui);
+                    crate::panels::right_dock(app, ui);
+                },
+                app,
+            );
+            h.input_mut().max_texture_side = Some(8192);
+            h.run_steps(5);
+            assert!(canvas_region(&h).is_finite());
+            h.render().unwrap().save(directory.join(format!("regional-{}-{width}-{scale}x.png", theme.id()))).unwrap();
+        }
+    }
+}
+
+#[test]
+fn region_dividers_resize_through_commands_and_group_up_down_stay_on_their_side() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+    let mut h = harness(app, vec2(1280.0, 800.0));
+    let rendered = h.state().ui.dock_regions.render(h.state().ui.docking.as_ref().unwrap());
+    let left_path = rendered.splits.iter().find(|(_, target)| matches!(target, SplitTarget::Region(DockSide::Left))).unwrap().0;
+    let divider = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("split", left_path))).unwrap().rect.center();
+    let width = canvas_region(&h).left();
+    drag(&mut h, divider, divider + vec2(40.0, 0.0));
+    assert!(canvas_region(&h).left() > width + 20.0);
+    assert!(h.state().ui.dock_regions.sizes[0] > 300.0);
+    let before = h.state().ui.docking.clone();
+    assert!(h.state_mut().run("window.panel.group", json!({"panel":"color","operation":"up"})).is_err());
+    assert_eq!(h.state().ui.docking, before);
+}
+
+#[test]
+fn legacy_group_header_can_float_all_tabs_without_first_customizing() {
+    let mut h = harness(app(), vec2(1280.0, 800.0));
+    let layers = h.query_all_by_label("Layers").find(|node| node.rect().height() <= 45.0).unwrap().rect();
+    // Empty strip space between the last tab and menu belongs to the native group header.
+    let from = egui::pos2(1230.0, layers.center().y);
+    drag(&mut h, from, egui::pos2(500.0, 300.0));
+    let layout = h.state().ui.docking.as_ref().expect("header drag promotes the legacy dock");
+    assert!(layout.floating.iter().any(|g| g.panels == ["layers", "channels", "paths"]));
+}
+
+#[test]
+fn floating_group_grip_can_dock_at_a_workspace_edge_and_canvas_edge() {
+    for workspace_edge in [true, false] {
+        let mut app = app();
+        app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+        app.run("window.panel.activate", json!({"panel":"channels"})).unwrap();
+        app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":400,"y":300})).unwrap();
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let from = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("move-group", Some(&"layers".to_owned())))).unwrap().rect.center();
+        let to = if workspace_edge {
+            egui::pos2(500.0, 12.0)
+        } else {
+            let canvas = canvas_region(&h);
+            egui::pos2(canvas.center().x, canvas.bottom() - 8.0)
+        };
+        drag(&mut h, from, to);
+        let expected = if workspace_edge { DockSide::Top } else { DockSide::Bottom };
+        for id in ["layers", "channels", "paths"] {
+            assert_eq!(h.state().ui.dock_regions.side(id), expected);
+        }
+        assert!(h.state().ui.docking.as_ref().unwrap().floating.is_empty());
+        assert!(panel_active(h.state().ui.docking.as_ref().unwrap(), "channels"));
+    }
 }

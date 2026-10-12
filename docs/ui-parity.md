@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (History snapshots) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (four-sided in-app panel docking and whole-group dragging) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -192,8 +192,8 @@ Paragraph; the rest open as in-app floating windows.
 
 | Behaviour | Status | Evidence |
 |---|---|---|
-| Panel groups float and tear off into OS windows | missing | UI-217-5, #1828, #1213 |
-| Drag panels to reorder and regroup | partial | #2272, #2305 |
+| Panel groups float and tear off into OS windows | partial | In-app floating/resizable groups and four-side docking implemented (2026-10-12); OS-window tear-off remains missing (UI-217-5, #1828, #1213) |
+| Drag panels to reorder and regroup | done | Individual tabs and header grips move panels/groups; tab merges, splits, four-side docking, cancellation, locking and saved layouts (`panel_docking_tests.rs`, 2026-10-12); #2272, #2305 |
 | Docked resize pushes the neighbour | partial | #2573 |
 | Color panel wheel and RGB/HSB/CMYK/Lab sliders | missing | UI-217-17, #2569 |
 | Window size and dock width remembered | done | UI-217-2 |
@@ -209,6 +209,7 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | four-sided in-app panel docking and whole-group dragging |
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |

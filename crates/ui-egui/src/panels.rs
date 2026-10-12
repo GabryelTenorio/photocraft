@@ -1572,7 +1572,8 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Even legacy destinations must discard gestures captured by an earlier workspace.
-    let customized = crate::panel_docking::show(app, ui);
+    let workspace = app.ui.dock_regions.enabled && app.ui.docking.is_some();
+    let customized = workspace || crate::panel_docking::show(app, ui);
     let t = Tokens::get(ui.ctx());
     let p = app.ui.panels.clone();
     if t.pro && !customized {
@@ -1615,6 +1616,9 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     if !t.pro && !customized {
         dock_panels(app, ui, &p, &t);
+    }
+    if workspace {
+        crate::panel_docking::show(app, ui);
     }
     crate::dock::persist(app, ui.ctx());
 }
