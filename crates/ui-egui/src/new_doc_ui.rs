@@ -1312,5 +1312,20 @@ mod tests {
             enter(&mut h);
             assert_eq!(created(&h), (256, 512, 72.0));
         }
+
+        #[test]
+        fn hovering_preset_tabs_shows_pointing_hand_not_text_cursor() {
+            let mut h = harness();
+            for tab in ["Recent", "Saved", "Photo", "Print", "Art & Illustration", "Web", "Mobile", "Film & Video"] {
+                let rect = h.get_by_label(tab).rect();
+                h.hover_at(rect.center());
+                h.run_steps(2);
+                assert_eq!(
+                    h.output().platform_output.cursor_icon,
+                    egui::CursorIcon::PointingHand,
+                    "hovering preset tab {tab:?} must show PointingHand instead of text caret"
+                );
+            }
+        }
     }
 }
