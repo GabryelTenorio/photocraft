@@ -1677,14 +1677,16 @@ fn gradient_rows(g: &Gradient) -> Vec<[f32; 4096]> {
     rows
 }
 
-/// Linear interpolation between LUT entries cannot preserve a discontinuity. Let the canvas
-/// use the CPU oracle for coincident stops, including opacity stops and unsorted fill ramps
-/// (which `gradient_fill::Ramp` sorts). Check only ramps we will sample: cached fills and
-/// disabled effects can still use the GPU.
+/// Linear interpolation between LUT entries cannot preserve a discontinuity or steep transitions
+/// narrower than a single LUT entry. Let the canvas use the CPU oracle for coincident or very close
+/// stops, including opacity stops and unsorted fill ramps (which `gradient_fill::Ramp` sorts).
+/// Check only ramps we will sample: cached fills and disabled effects can still use the GPU.
 fn check_gradient_stops<T>(stops: &[(f32, T)]) -> Result<(), Unsupported> {
     let mut positions: Vec<f32> = stops.iter().map(|s| s.0).collect();
     positions.sort_by(f32::total_cmp);
-    if positions.windows(2).any(|w| w[0] == w[1]) {
+    // When adjacent stops are closer than one LUT entry (1/4095), linear interpolation across
+    // the entry cannot preserve the steep transition within the 1/255 parity tolerance (#3053).
+    if positions.windows(2).any(|w| (w[1] - w[0]) < 1.0 / 4095.0) {
         return Err(Unsupported("coincident gradient stops (composited on the CPU)".into()));
     }
     Ok(())
