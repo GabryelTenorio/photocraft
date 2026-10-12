@@ -1124,13 +1124,18 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let members = if whole { group_members(layout, &panel) } else { vec![panel.clone()] };
         let eligible: Vec<_> = request.targets.iter().filter(|target| !whole || !members.contains(&target.anchor)).cloned().collect();
         let proposal = resolve_drop(&panel, request.pointer, &eligible);
-        let edge = crate::workspace_dock::edge_at(self.workspace_rect, request.pointer);
+        let same_group_strip =
+            !whole && proposal.as_ref().is_some_and(|proposal| proposal.insertion.is_some() && group_members(layout, &panel).contains(&proposal.anchor));
+        // A strip reorder remains a reorder even when its header touches a dock edge.
+        let edge = (!same_group_strip).then(|| crate::workspace_dock::edge_at(self.workspace_rect, request.pointer)).flatten();
         let mut insertion = None;
         let operation = if let Some(side) = edge {
             Some((if whole { "window.panel.group" } else { "window.panel.dock" }, json!({"panel":panel,"operation":"dock","side":side})))
         } else if let Some(proposal) = proposal {
             if proposal.noop {
-                return Some(DropFeedback::default());
+                let feedback = DropFeedback { preview: None, insertion: proposal.insertion };
+                ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), feedback.clone()));
+                return Some(feedback);
             }
             insertion = proposal.insertion;
             if proposal.anchor == CANVAS {
@@ -1181,7 +1186,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let Some(rect) = rect else {
             return Some(DropFeedback::default());
         };
-        let feedback = DropFeedback { preview: Some(rect), insertion };
+        let feedback = DropFeedback { preview: (!same_group_strip).then_some(rect), insertion };
         ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), feedback.clone()));
         if request.released {
             *self.pending_drop = Some(candidate);

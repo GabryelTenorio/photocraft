@@ -871,7 +871,7 @@ fn capture_regional_docking_visual_fixtures() {
             for (panel, side) in [("color", "left"), ("properties", "top"), ("history", "bottom")] {
                 app.run("window.panel.dock", json!({"panel":panel,"side":side})).unwrap();
             }
-            app.run("window.panel.float", json!({"panel":"swatches","x":300,"y":360,"width":270,"height":240})).unwrap();
+            app.run("window.panel.float", json!({"panel":"swatches","x":80,"y":360,"width":270,"height":240})).unwrap();
             let mut ready = false;
             let mut h = Harness::builder().with_size(vec2(width, height)).with_pixels_per_point(scale).wgpu().build_ui_state(
                 move |ui, app: &mut PhotocraftApp| {
@@ -893,6 +893,10 @@ fn capture_regional_docking_visual_fixtures() {
             h.run_steps(5);
             assert!(canvas_region(&h).is_finite());
             h.render().unwrap().save(directory.join(format!("regional-{}-{width}-{scale}x.png", theme.id()))).unwrap();
+            let tab = tab_rect(&h, "layers");
+            hold_drag(&mut h, tab.center(), egui::pos2(tab.left() + 3.0, tab.center().y));
+            assert_insertion_only(&h, "layers");
+            h.render().unwrap().save(directory.join(format!("insertion-{}-{width}-{scale}x.png", theme.id()))).unwrap();
         }
     }
 }
@@ -1001,8 +1005,8 @@ fn pointer_edge_previews_match_final_group_bounds_for_all_sides_and_sizes() {
                 };
                 let workspace: egui::Rect = h.ctx.data(|data| data.get_temp(egui::Id::new("photocraft-panel-docking").with("workspace-rect"))).unwrap();
                 let to = match side {
-                    DockSide::Left => egui::pos2(workspace.left() + 10.0, workspace.center().y),
-                    DockSide::Right => egui::pos2(workspace.right() - 10.0, workspace.center().y),
+                    DockSide::Left => egui::pos2(workspace.left() + 10.0, workspace.bottom() - 30.0),
+                    DockSide::Right => egui::pos2(workspace.right() - 10.0, workspace.bottom() - 30.0),
                     DockSide::Top => egui::pos2(workspace.center().x, workspace.top() + 10.0),
                     DockSide::Bottom => egui::pos2(workspace.center().x, workspace.bottom() - 10.0),
                 };
@@ -1042,6 +1046,7 @@ fn split_canvas_join_float_and_source_cleanup_previews_match_final_bounds() {
             "join" => tab_rect(&h, "color").center(),
             "canvas" => egui::pos2(canvas.center().x, canvas.bottom() - 30.0),
             "float" => canvas.center(),
+            "cleanup" => egui::pos2(canvas.right() - 30.0, canvas.center().y),
             _ => egui::pos2(500.0, 10.0),
         };
         hold_drag(&mut h, from, to);
@@ -1050,7 +1055,7 @@ fn split_canvas_join_float_and_source_cleanup_previews_match_final_bounds() {
 }
 
 #[test]
-fn unchanged_tab_insertions_have_no_preview_and_leave_order_unchanged() {
+fn unchanged_tab_insertions_show_only_a_bounded_line_and_leave_order_unchanged() {
     for panel in ["layers", "channels", "paths"] {
         for after_midpoint in [false, true] {
             let mut app = app();
@@ -1061,7 +1066,8 @@ fn unchanged_tab_insertions_have_no_preview_and_leave_order_unchanged() {
             let to = egui::pos2(if after_midpoint { rect.right() - 3.0 } else { rect.left() + 3.0 }, rect.center().y);
             let before = h.state().ui.docking.clone();
             hold_drag(&mut h, from, to);
-            assert!(drop_preview(&h).is_none_or(|feedback| feedback.preview.is_none() && feedback.insertion.is_none()));
+            assert_insertion_only(&h, panel);
+            capture_insertion(&mut h, &format!("unchanged-{panel}-{after_midpoint}"));
             h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
             h.run_steps(3);
             // Clicking may select a different tab; its membership and order must stay fixed.
@@ -1086,4 +1092,136 @@ fn first_regional_drop_from_legacy_custom_dock_accounts_for_the_icon_rail() {
         release_and_compare_preview(&mut h, to, "layers");
         assert_eq!(h.state().ui.dock_regions.side("layers"), DockSide::Top);
     }
+}
+
+fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
+    let feedback = drop_preview(h).expect("tab-strip feedback");
+    assert!(feedback.preview.is_none(), "same-group reorder must not highlight the group");
+    let marker = feedback.insertion.expect("insertion marker even at unchanged slots");
+    assert!(rendered_group(h, panel).contains_rect(marker), "marker {marker:?} outside group");
+    let tab = tab_rect(h, panel);
+    assert!(marker.top() >= tab.top() - 0.1 && marker.bottom() <= tab.bottom() + 0.1);
+    assert!(marker.width() > 0.0 && marker.width() <= 2.01);
+}
+fn capture_insertion(h: &mut Harness<'static, PhotocraftApp>, name: &str) {
+    if let Some(directory) = std::env::var_os("PHOTOCRAFT_DOCK_PREVIEW_FIXTURES").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&directory).unwrap();
+        h.render().unwrap().save(directory.join(format!("{name}.png"))).unwrap();
+    }
+}
+
+#[test]
+fn same_group_reorders_have_only_lines_in_both_directions_and_floating_groups() {
+    for size in [vec2(1440.0, 1000.0), vec2(700.0, 500.0)] {
+        for floating in [false, true] {
+            for forward in [false, true] {
+                let mut app = app();
+                app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+                if floating {
+                    app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":300,"y":200,"width":240,"height":300})).unwrap();
+                }
+                let mut h = harness(app, size);
+                let panel = if forward { "layers" } else { "paths" };
+                let target = tab_rect(&h, if forward { "paths" } else { "layers" });
+                let to = egui::pos2(if forward { target.right() - 3.0 } else { target.left() + 3.0 }, target.center().y);
+                let from = tab_rect(&h, panel).center();
+                hold_drag(&mut h, from, to);
+                assert_insertion_only(&h, panel);
+                capture_insertion(&mut h, &format!("reorder-{}-{floating}-{forward}", size.x));
+                h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+                h.run_steps(3);
+                let order = group_members(h.state().ui.docking.as_ref().unwrap(), panel);
+                assert_eq!(order, if forward { vec!["channels", "paths", "layers"] } else { vec!["paths", "layers", "channels"] });
+            }
+        }
+    }
+}
+
+#[test]
+fn singleton_strip_reorder_wins_over_workspace_edge() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"layers","side":"top"})).unwrap();
+    let mut h = harness(app, vec2(700.0, 500.0));
+    let tab = tab_rect(&h, "layers");
+    let to = egui::pos2(tab.left() + 3.0, tab.center().y);
+    let before = h.state().ui.docking.clone();
+    hold_drag(&mut h, tab.center(), to);
+    assert_insertion_only(&h, "layers");
+    capture_insertion(&mut h, "singleton-top-edge");
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(h.state().ui.docking, before);
+}
+
+#[test]
+fn floating_top_border_and_blank_header_move_the_whole_group() {
+    for locked in [false, true] {
+        for hit in ["move-group-border", "move-group-header"] {
+            let mut app = app();
+            app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":300,"y":200,"width":500,"height":300})).unwrap();
+            app.session.prefs.edit(|prefs| prefs.workspace_locked = locked);
+            let mut h = harness(app, vec2(1440.0, 1000.0));
+            let before = rendered_group(&h, "layers");
+            let from = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with((hit, Some(&"layers".to_owned())))).unwrap().rect.center();
+            let to = from + vec2(80.0, 60.0);
+            drag(&mut h, from, to);
+            let after = rendered_group(&h, "layers");
+            assert!((after.min - before.min - if locked { egui::Vec2::ZERO } else { vec2(80.0, 60.0) }).length() <= 1.5, "{hit}: {before:?} -> {after:?}");
+            assert_eq!(group_members(h.state().ui.docking.as_ref().unwrap(), "layers"), ["layers", "channels", "paths"]);
+            capture_insertion(&mut h, &format!("{hit}-{locked}"));
+        }
+    }
+}
+
+#[test]
+fn floating_edges_and_corners_resize_without_detaching_tabs() {
+    for locked in [false, true] {
+        for (hit, delta) in [
+            ("resize", vec2(40.0, 50.0)),
+            ("resize-left", vec2(-40.0, 0.0)),
+            ("resize-right", vec2(40.0, 0.0)),
+            ("resize-bottom", vec2(0.0, 50.0)),
+            ("resize-bottom-left", vec2(-40.0, 50.0)),
+        ] {
+            let mut app = app();
+            app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":300,"y":200,"width":400,"height":300})).unwrap();
+            app.session.prefs.edit(|prefs| prefs.workspace_locked = locked);
+            let mut h = harness(app, vec2(1440.0, 1000.0));
+            let before = rendered_group(&h, "layers");
+            let from = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("floating", &"layers".to_owned())).with(hit)).unwrap().rect.center();
+            drag(&mut h, from, from + delta);
+            let after = rendered_group(&h, "layers");
+            assert!((after.width() - before.width() - if locked { 0.0 } else { delta.x.abs() }).abs() <= 1.5, "{hit}: {before:?} -> {after:?}");
+            assert!((after.height() - before.height() - if locked { 0.0 } else { delta.y.abs() }).abs() <= 1.5, "{hit}: {before:?} -> {after:?}");
+            assert_eq!(group_members(h.state().ui.docking.as_ref().unwrap(), "layers"), ["layers", "channels", "paths"]);
+            assert!((after.top() - before.top()).abs() <= 1.5);
+            if delta.x < 0.0 {
+                assert!((after.right() - before.right()).abs() <= 1.5);
+            } else {
+                assert!((after.left() - before.left()).abs() <= 1.5);
+            }
+            capture_insertion(&mut h, &format!("{hit}-{locked}"));
+        }
+    }
+}
+
+#[test]
+fn unchanged_first_slot_in_an_overflowing_float_preserves_hidden_tab_order() {
+    let mut app = app();
+    for panel in ["color", "properties", "swatches", "history", "navigator"] {
+        app.run("window.panel.move", json!({"panel":panel,"anchor":"layers"})).unwrap();
+    }
+    app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":250,"y":100,"width":220,"height":300})).unwrap();
+    app.run("window.panel.activate", json!({"panel":"layers"})).unwrap();
+    let mut h = harness(app, vec2(700.0, 500.0));
+    let before = group_members(h.state().ui.docking.as_ref().unwrap(), "layers");
+    let tab = tab_rect(&h, "layers");
+    let to = egui::pos2(tab.left() + 3.0, tab.center().y);
+    hold_drag(&mut h, tab.center(), to);
+    assert_insertion_only(&h, "layers");
+    capture_insertion(&mut h, "overflow-first-slot");
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(group_members(h.state().ui.docking.as_ref().unwrap(), "layers"), before);
+    assert_eq!(h.state().ui.docking.as_ref().unwrap().floating.len(), 1);
 }

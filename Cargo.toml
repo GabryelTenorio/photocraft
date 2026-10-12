@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.95"
 
 [workspace.dependencies]
-craft-ui = { git = "https://github.com/Zenodeon/craft-libs", rev = "58db435578c1358b9b8e1c6c56b5af29cd216a4f", features = ["serde"] }
+craft-ui = { git = "https://github.com/Zenodeon/craft-libs", rev = "2a182d7e606676abe3fd96653a901a8a1d0489bb", features = ["serde"] }
 # internal
 photocraft-geom = { path = "crates/geom" }
 photocraft-color = { path = "crates/color" }

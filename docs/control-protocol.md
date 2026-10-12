@@ -611,6 +611,10 @@ without `dockRegions` keep their existing right dock; Reset Workspace restores d
 
 Dock previews measure the validated candidate arrangement using the renderer's sizing
 rules, including saved dock sizes, panel/canvas minimums and space released by the source.
-Workspace-edge destinations take precedence over group destinations; canvas-edge drops
-preview the corresponding workspace-side dock. Unchanged tab insertion slots show no
-highlight or insertion line, and release preserves their position.
+Workspace-edge destinations take precedence over group destinations, except when reordering
+inside the source group's tab strip; canvas-edge drops preview the corresponding workspace-side
+dock. Same-group tab-strip destinations show only an insertion line, including unchanged
+positions, with the marker contained inside the visible strip. Unchanged releases preserve
+position. Floating groups move from the grip, empty header or top border; their left, right
+and bottom edges and both bottom corners resize within panel and viewport limits. Workspace
+locking blocks both movement and resizing.
