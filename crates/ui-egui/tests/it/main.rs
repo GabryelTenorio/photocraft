@@ -6,6 +6,7 @@ mod support;
 
 mod adjust_preview_gpu;
 mod arbitrary_rotation_preview;
+mod batch_export_options;
 mod camera_raw_histogram;
 mod camera_raw_localization;
 mod camera_raw_scope;

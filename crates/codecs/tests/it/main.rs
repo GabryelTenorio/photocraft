@@ -16,6 +16,7 @@ mod limits;
 mod malformed;
 mod metadata;
 mod orientation;
+mod pcx;
 mod png_jpeg;
 mod resolution;
 mod roundtrip;

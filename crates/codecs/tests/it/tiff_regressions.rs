@@ -1,4 +1,4 @@
-mod common;
+use crate::common;
 
 use common::tiffgen::*;
 use photocraft_codecs::{Image, decode, exif_orientation, upright_exif};
