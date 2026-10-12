@@ -1110,6 +1110,24 @@ mod tests {
         assert_eq!(workspace.read_font_files_with("fonts", FontFileLimits { max_total_bytes: 30, ..limits }).unwrap().len(), 3);
     }
 
+    /// `fonts/outside-dir` and `fonts/escape.ttf` link out of the read root: a folder walk skips
+    /// them, and named directly they are refused before anything is read. No error names a host
+    /// path.
+    fn assert_font_links_refused(base: &Path, workspace: &AuthorizedWorkspace) {
+        let host = base.to_string_lossy().into_owned();
+        let files = workspace.read_font_files("fonts").unwrap();
+        assert!(files.contains(&read_ok("own.ttf", b"own")), "{files:?}");
+        for (name, read) in &files {
+            assert!(read.as_deref() != Ok(&b"outside"[..]), "{name} was read through a link: {files:?}");
+            assert!(read.as_ref().err().is_none_or(|why| !why.contains(&host)), "{name}: {files:?}");
+        }
+        for path in ["fonts/outside-dir", "fonts/escape.ttf"] {
+            let error = workspace.read_font_files(path).unwrap_err().to_string();
+            assert!(error.contains(&format!("automation read `{path}` failed")) && error.contains("outside of the filesystem"), "{path}: {error}");
+            assert!(!error.contains(&host), "{path}: {error}");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn font_folders_cannot_follow_links_out_of_the_root() {
@@ -1118,11 +1136,7 @@ mod tests {
         write_file(&inside.join("fonts/own.ttf"), b"own");
         std::os::unix::fs::symlink(&outside, inside.join("fonts/outside-dir")).unwrap();
         std::os::unix::fs::symlink(outside.join("secret.ttf"), inside.join("fonts/escape.ttf")).unwrap();
-        let files = workspace.read_font_files("fonts").unwrap();
-        assert!(files.iter().all(|(_, read)| read.as_deref() != Ok(&b"outside"[..])), "{files:?}");
-        assert!(files.contains(&read_ok("own.ttf", b"own")), "{files:?}");
-        assert!(workspace.read_font_files("fonts/outside-dir").is_err());
-        assert!(workspace.read_font_files("fonts/escape.ttf").unwrap().iter().all(|(_, read)| read.is_err()));
+        assert_font_links_refused(inside.parent().unwrap(), &workspace);
     }
 
     #[cfg(windows)]
@@ -1131,11 +1145,11 @@ mod tests {
         let (inside, outside, workspace) = roots("font-windows-links");
         write_file(&outside.join("secret.ttf"), b"outside");
         write_file(&inside.join("fonts/own.ttf"), b"own");
+        // Creating links needs Developer Mode or elevation; without it there is nothing to test.
         if std::os::windows::fs::symlink_dir(&outside, inside.join("fonts/outside-dir")).is_err() {
             return;
         }
-        let files = workspace.read_font_files("fonts").unwrap();
-        assert!(files.iter().all(|(_, read)| read.as_deref() != Ok(&b"outside"[..])), "{files:?}");
-        assert!(workspace.read_font_files("fonts/outside-dir").is_err());
+        std::os::windows::fs::symlink_file(outside.join("secret.ttf"), inside.join("fonts/escape.ttf")).unwrap();
+        assert_font_links_refused(inside.parent().unwrap(), &workspace);
     }
 }
