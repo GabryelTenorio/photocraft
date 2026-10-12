@@ -472,14 +472,19 @@ fn box_mean(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
         out
     });
     let mut out = vec![0.0f32; w * h];
-    for (b, band) in bands.iter().enumerate() {
-        let (x0, x1) = (b * BAND, ((b + 1) * BAND).min(w));
-        let bw = x1 - x0;
-        for y in 0..h {
-            out[y * w + x0..y * w + x1].copy_from_slice(&band[y * bw..(y + 1) * bw]);
+    par_rows(&mut out, w, 1, |y, row| {
+        for (b, band) in bands.iter().enumerate() {
+            let (x0, x1) = (b * BAND, ((b + 1) * BAND).min(w));
+            let bw = x1 - x0;
+            row[x0..x1].copy_from_slice(&band[y * bw..(y + 1) * bw]);
         }
-    }
+    });
     out
+}
+
+/// `f(i)` for every index of a `n`-long plane, in parallel.
+fn plane(n: usize, f: impl Fn(usize) -> f32 + Sync + Send) -> Vec<f32> {
+    crate::photo_util::par_map(n, f)
 }
 
 /// Approximate Gaussian (three box passes).
@@ -503,28 +508,33 @@ fn guided_fast(i: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> 
         return guided(i, p, w, h, r, eps);
     }
     let (sw, sh) = (w.div_ceil(s), h.div_ceil(s));
+    // Each output row sums its `s` input rows, adding in the same order as one pass would.
     let down = |v: &[f32]| -> Vec<f32> {
         let mut o = vec![0.0f32; sw * sh];
-        let mut c = vec![0.0f32; sw * sh];
-        for y in 0..h {
-            for x in 0..w {
-                let k = (y / s) * sw + x / s;
-                o[k] += v[y * w + x];
-                c[k] += 1.0;
+        par_rows(&mut o, sw, 1, |sy, row| {
+            let mut c = vec![0.0f32; sw];
+            for y in sy * s..((sy + 1) * s).min(h) {
+                for (x, val) in v[y * w..(y + 1) * w].iter().enumerate() {
+                    row[x / s] += *val;
+                    c[x / s] += 1.0;
+                }
             }
-        }
-        o.iter().zip(&c).map(|(a, b)| a / b.max(1.0)).collect()
+            for (a, b) in row.iter_mut().zip(&c) {
+                *a /= b.max(1.0);
+            }
+        });
+        o
     };
     let (si, sp) = (down(i), down(p));
     let rs = (r / s).max(1);
     let mi = box_mean(&si, sw, sh, rs);
     let mp = box_mean(&sp, sw, sh, rs);
-    let ip: Vec<f32> = si.iter().zip(&sp).map(|(a, b)| a * b).collect();
-    let ii: Vec<f32> = si.iter().map(|a| a * a).collect();
+    let ip = plane(sw * sh, |k| si[k] * sp[k]);
+    let ii = plane(sw * sh, |k| si[k] * si[k]);
     let mip = box_mean(&ip, sw, sh, rs);
     let mii = box_mean(&ii, sw, sh, rs);
-    let a: Vec<f32> = (0..sw * sh).map(|k| (mip[k] - mi[k] * mp[k]) / (mii[k] - mi[k] * mi[k] + eps)).collect();
-    let b: Vec<f32> = (0..sw * sh).map(|k| mp[k] - a[k] * mi[k]).collect();
+    let a = plane(sw * sh, |k| (mip[k] - mi[k] * mp[k]) / (mii[k] - mi[k] * mi[k] + eps));
+    let b = plane(sw * sh, |k| mp[k] - a[k] * mi[k]);
     let (ma, mb) = (box_mean(&a, sw, sh, rs), box_mean(&b, sw, sh, rs));
     let mut out = vec![0.0f32; w * h];
     let sf = s as f32;
@@ -542,17 +552,23 @@ fn guided_fast(i: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> 
 
 /// Guided filter of `p` guided by `i` (He et al. 2010).
 fn guided(i: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> Vec<f32> {
+    // Guided by itself (`i` is `p`), the means of `p` and `i·p` are those of `i` and `i·i`.
+    let same = std::ptr::eq(i, p);
     let mi = box_mean(i, w, h, r);
-    let mp = box_mean(p, w, h, r);
-    let ip: Vec<f32> = i.iter().zip(p).map(|(a, b)| a * b).collect();
-    let ii: Vec<f32> = i.iter().map(|a| a * a).collect();
-    let mip = box_mean(&ip, w, h, r);
+    let ii = plane(w * h, |k| i[k] * i[k]);
     let mii = box_mean(&ii, w, h, r);
-    let a: Vec<f32> = (0..w * h).map(|k| (mip[k] - mi[k] * mp[k]) / (mii[k] - mi[k] * mi[k] + eps)).collect();
-    let b: Vec<f32> = (0..w * h).map(|k| mp[k] - a[k] * mi[k]).collect();
+    let (mp, mip) = if same {
+        (None, None)
+    } else {
+        let ip = plane(w * h, |k| i[k] * p[k]);
+        (Some(box_mean(p, w, h, r)), Some(box_mean(&ip, w, h, r)))
+    };
+    let (mp, mip) = (mp.as_deref().unwrap_or(&mi), mip.as_deref().unwrap_or(&mii));
+    let a = plane(w * h, |k| (mip[k] - mi[k] * mp[k]) / (mii[k] - mi[k] * mi[k] + eps));
+    let b = plane(w * h, |k| mp[k] - a[k] * mi[k]);
     let ma = box_mean(&a, w, h, r);
     let mb = box_mean(&b, w, h, r);
-    (0..w * h).map(|k| ma[k] * i[k] + mb[k]).collect()
+    plane(w * h, |k| ma[k] * i[k] + mb[k])
 }
 
 /// Monotone cubic (Fritsch–Carlson) through `pts` (x ascending, 0..=1), evaluated into a LUT.
@@ -1389,7 +1405,8 @@ fn max_filter(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
 fn defringe(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, ps: f32) {
     let strongest = p.defringe_purple_amount.max(p.defringe_green_amount) / 20.0;
     let r = ((1.0 + 4.0 * strongest) * ps).round().clamp(1.0, 8.0) as usize;
-    let y: Vec<f32> = px.iter().map(|q| luma([q[0], q[1], q[2]]).clamp(0.0, 1.0)).collect();
+    let src: &[[f32; 4]] = px;
+    let y = plane(w * h, |i| luma([src[i][0], src[i][1], src[i][2]]).clamp(0.0, 1.0));
     let grad = crate::photo_util::par_map(w * h, |i| {
         let (x, yy) = (i % w, i / w);
         let gx = (y[yy * w + (x + 1).min(w - 1)] - y[yy * w + x.saturating_sub(1)]) * 0.5;
@@ -1645,20 +1662,23 @@ fn dehaze(px: &mut [[f32; 4]], w: usize, h: usize, amount: f32) {
     // Transmission on a ≤ 768 px proxy, upsampled.
     let k = w.max(h).div_ceil(768).max(1);
     let (sw, sh) = (w.div_ceil(k), h.div_ceil(k));
+    // Each row of cells sums its `k` rows of pixels, adding in the same order as one pass would.
     let mut small = vec![[0.0f32; 3]; sw * sh];
-    let mut cnt = vec![0f32; sw * sh];
-    for y in 0..h {
-        for x in 0..w {
-            let i = (y / k) * sw + x / k;
-            for c in 0..3 {
-                small[i][c] += px[y * w + x][c].clamp(0.0, 1.0);
+    let src: &[[f32; 4]] = px;
+    par_rows(&mut small, sw, 1, |cy, cells| {
+        let mut cnt = vec![0f32; sw];
+        for y in cy * k..((cy + 1) * k).min(h) {
+            for (x, q) in src[y * w..(y + 1) * w].iter().enumerate() {
+                for c in 0..3 {
+                    cells[x / k][c] += q[c].clamp(0.0, 1.0);
+                }
+                cnt[x / k] += 1.0;
             }
-            cnt[i] += 1.0;
         }
-    }
-    for (s, c) in small.iter_mut().zip(&cnt) {
-        *s = s.map(|v| v / c.max(1.0));
-    }
+        for (s, c) in cells.iter_mut().zip(&cnt) {
+            *s = s.map(|v| v / c.max(1.0));
+        }
+    });
     let r = (sw.max(sh) / 60).max(2);
     let min_filter = |v: &[f32]| -> Vec<f32> {
         let mut a = vec![0.0f32; sw * sh];
@@ -1708,9 +1728,10 @@ fn dehaze(px: &mut [[f32; 4]], w: usize, h: usize, amount: f32) {
 
 fn detail(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, ps: f32) {
     // Work in Y + chroma (BT.709 luma, B−Y, R−Y).
-    let mut y: Vec<f32> = px.iter().map(|q| luma([q[0], q[1], q[2]])).collect();
-    let mut cb: Vec<f32> = px.iter().zip(&y).map(|(q, l)| q[2] - l).collect();
-    let mut cr: Vec<f32> = px.iter().zip(&y).map(|(q, l)| q[0] - l).collect();
+    let src: &[[f32; 4]] = px;
+    let mut y = plane(w * h, |i| luma([src[i][0], src[i][1], src[i][2]]));
+    let mut cb = plane(w * h, |i| src[i][2] - y[i]);
+    let mut cr = plane(w * h, |i| src[i][0] - y[i]);
     if p.noise_luminance > 0.0 {
         let n = p.noise_luminance / 100.0;
         let r = ((1.0 + 3.0 * n) * ps).round().max(1.0) as usize;
@@ -1720,12 +1741,15 @@ fn detail(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, ps: f32) {
         // scale keeps it. Restore that difference (all of it at 100) on top of the kept detail.
         let restore = (p.noise_luminance_contrast > 0.0).then(|| gauss(&y, w, h, (r as f32 * 0.5).max(0.5)));
         let k_con = p.noise_luminance_contrast / 100.0 * (1.0 - keep);
-        for i in 0..w * h {
-            y[i] = smooth[i] + (y[i] - smooth[i]) * keep;
-            if let Some(g) = &restore {
-                y[i] += k_con * (g[i] - smooth[i]);
+        par_rows(&mut y, w, 1, |row_y, row| {
+            for (x, v) in row.iter_mut().enumerate() {
+                let i = row_y * w + x;
+                *v = smooth[i] + (*v - smooth[i]) * keep;
+                if let Some(g) = &restore {
+                    *v += k_con * (g[i] - smooth[i]);
+                }
             }
-        }
+        });
     }
     if p.noise_color > 0.0 {
         // Smoothness widens the blur: ×0.5 at 0, ×1 at the default 50, ×1.5 at 100.
@@ -1733,10 +1757,13 @@ fn detail(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, ps: f32) {
         let sigma = (p.noise_color / 100.0 * 6.0 * ps * smoothness).max(0.3);
         let (bcb, bcr) = (gauss(&cb, w, h, sigma), gauss(&cr, w, h, sigma));
         let keep = p.noise_color_detail / 100.0 * 0.3;
-        for i in 0..w * h {
-            cb[i] = bcb[i] + (cb[i] - bcb[i]) * keep;
-            cr[i] = bcr[i] + (cr[i] - bcr[i]) * keep;
-        }
+        crate::photo_util::par_rows2(&mut cb, &mut cr, w, |row_y, b_row, r_row| {
+            for (x, (b, r)) in b_row.iter_mut().zip(r_row.iter_mut()).enumerate() {
+                let i = row_y * w + x;
+                *b = bcb[i] + (*b - bcb[i]) * keep;
+                *r = bcr[i] + (*r - bcr[i]) * keep;
+            }
+        });
     }
     if p.sharpen_amount > 0.0 {
         let sigma = (p.sharpen_radius.clamp(0.5, 3.0) * ps).max(0.3);
@@ -1754,23 +1781,29 @@ fn detail(px: &mut [[f32; 4]], w: usize, h: usize, p: &CameraRaw, ps: f32) {
         });
         let amt = p.sharpen_amount / 100.0 * 1.2;
         let det = p.sharpen_detail / 100.0;
-        for i in 0..w * h {
-            let hp = y[i] - blur[i];
-            // Low Detail damps large (halo-producing) differences.
-            let limit = 0.03 + det * 0.3;
-            let hp = hp.clamp(-limit, limit) * (0.5 + 0.5 * det);
-            let m = mask.as_ref().map_or(1.0, |m| m[i]);
-            y[i] += amt * hp * m;
+        par_rows(&mut y, w, 1, |row_y, row| {
+            for (x, v) in row.iter_mut().enumerate() {
+                let i = row_y * w + x;
+                let hp = *v - blur[i];
+                // Low Detail damps large (halo-producing) differences.
+                let limit = 0.03 + det * 0.3;
+                let hp = hp.clamp(-limit, limit) * (0.5 + 0.5 * det);
+                let m = mask.as_ref().map_or(1.0, |m| m[i]);
+                *v += amt * hp * m;
+            }
+        });
+    }
+    par_rows(px, w, 1, |row_y, row| {
+        for (x, q) in row.iter_mut().enumerate() {
+            let i = row_y * w + x;
+            let (l, b, r) = (y[i], cb[i], cr[i]);
+            let (rr, bb) = (r + l, b + l);
+            let g = (l - 0.2126 * rr - 0.0722 * bb) / 0.7152;
+            q[0] = rr;
+            q[1] = g;
+            q[2] = bb;
         }
-    }
-    for i in 0..w * h {
-        let (l, b, r) = (y[i], cb[i], cr[i]);
-        let (rr, bb) = (r + l, b + l);
-        let g = (l - 0.2126 * rr - 0.0722 * bb) / 0.7152;
-        px[i][0] = rr;
-        px[i][1] = g;
-        px[i][2] = bb;
-    }
+    });
 }
 
 /// Post-crop vignetting of the `w`-wide part `frame` places; `clamp` also clamps every pixel to
@@ -1890,6 +1923,20 @@ mod tests {
                 }
                 assert!(worst < 1e-6, "{p:?} float {float}: {worst} (reach {reach})");
             }
+        }
+    }
+
+    /// Guided by itself, the filter skips two box means and gives the same bits as the general
+    /// path.
+    #[test]
+    fn self_guided_filter_matches_the_general_path() {
+        let (w, h) = (97usize, 61usize);
+        let y: Vec<f32> = (0..w * h).map(|i| ((i % w) as f32 * 0.31).sin() * 0.4 + ((i / w) as f32 * 0.07).cos() * 0.3 + 0.5).collect();
+        let copy = y.clone();
+        for r in [1, 3, 8] {
+            let a = guided(&y, &y, w, h, r, 0.004);
+            let b = guided(&y, &copy, w, h, r, 0.004);
+            assert!(a.iter().zip(&b).all(|(a, b)| a.to_bits() == b.to_bits()), "radius {r}");
         }
     }
 

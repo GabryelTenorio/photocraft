@@ -69,6 +69,9 @@ struct Plane {
 
 /// Mirrors `i` into `0..n` (the edge sample is not repeated).
 fn mirror(i: isize, n: usize) -> usize {
+    if i >= 0 && (i as usize) < n {
+        return i as usize;
+    }
     let n = n as isize;
     if n == 1 {
         return 0;
@@ -100,6 +103,17 @@ fn blur_step(p: &Plane, step: usize) -> Plane {
         }
     });
     Plane { w: w2, h: h2, v: out }
+}
+
+/// [`up`]`(p, w, h)` at one pixel (`x`, `y`): the same taps over the same zero-filled samples,
+/// added in the same order, so the value is bit for bit [`up`]'s.
+fn up_at(p: &Plane, w: usize, h: usize, x: usize, y: usize) -> f32 {
+    let (kh, kw) = (p.h.min(h.div_ceil(2)), p.w.min(w.div_ceil(2)));
+    let z = |yy: usize, xx: usize| {
+        if yy.is_multiple_of(2) && xx.is_multiple_of(2) && yy / 2 < kh && xx / 2 < kw { p.v[(yy / 2) * p.w + xx / 2] * 4.0 } else { 0.0 }
+    };
+    let column = |xx: usize| -> f32 { (0..5).map(|k| TAPS[k] * z(mirror(y as isize + k as isize - 2, h), xx)).sum() };
+    (0..5).map(|k| TAPS[k] * column(mirror(x as isize + k as isize - 2, w))).sum()
 }
 
 /// The next coarser level.
@@ -143,6 +157,11 @@ fn gaussian(p: Plane, n: usize) -> Vec<Plane> {
 /// pyramids, the Laplacian levels and the reference weights are all linear in the remapped
 /// values, and the weights sum to 1). `base` is the identity's output (`u` rebuilt from its
 /// pyramid); `detail`, the change's, whose coarsest level is 0 (the coarsest level is kept).
+///
+/// A coefficient takes only the two (rarely three) references within a step of it, so each
+/// reference's Laplacian is computed only there, its coarse level brought up pixel by pixel
+/// ([`up_at`]); the references run in parallel and their shares are added in reference order,
+/// so the result is the same bits as computing every reference's whole Laplacian in turn.
 fn llf_parts(u: &Plane, change: impl Fn(f32, f32) -> f32 + Sync) -> (Plane, Plane) {
     let n = depth(u.w, u.h);
     let g = gaussian(u.clone(), n);
@@ -155,8 +174,31 @@ fn llf_parts(u: &Plane, change: impl Fn(f32, f32) -> f32 + Sync) -> (Plane, Plan
     }
     let refs = (((hi - lo) / REF_STEP).ceil() as usize + 1).clamp(2, 96);
     let step = (hi - lo) / (refs - 1) as f32;
-    let mut lap: Vec<Vec<f32>> = g[..n - 1].iter().map(|p| vec![0.0; p.v.len()]).collect();
-    for k in 0..refs {
+    let weight = |gl: f32, k: usize| (1.0 - (gl.clamp(lo, hi) - (lo + step * k as f32)).abs() / step).max(0.0);
+    // A coefficient takes only the references within a step of it (two, rarely three). For each
+    // level, each reference's coefficients: (index, slot, weight), the slot being the
+    // coefficient's count of earlier references, so they add up in reference order as before.
+    const SLOTS: usize = 3;
+    let mut wanted: Vec<Vec<Vec<(u32, u8, f32)>>> = vec![vec![Vec::new(); n - 1]; refs];
+    let mut slots: Vec<Vec<u8>> = Vec::with_capacity(n - 1);
+    for (l, gl) in g[..n - 1].iter().enumerate() {
+        let mut count = vec![0u8; gl.v.len()];
+        for (i, &v) in gl.v.iter().enumerate() {
+            let k0 = ((v.clamp(lo, hi) - lo) / step).floor() as isize;
+            for k in (k0 - 1).max(0)..=(k0 + 2).min(refs as isize - 1) {
+                let k = k as usize;
+                let wgt = weight(v, k);
+                if wgt > 0.0 && (count[i] as usize) < SLOTS {
+                    wanted[k][l].push((i as u32, count[i], wgt));
+                    count[i] += 1;
+                }
+            }
+        }
+        slots.push(count);
+    }
+    // Each reference's pyramid on its own (in parallel); its Laplacian coefficients only where
+    // they are wanted, the coarse level brought up at those pixels alone.
+    let parts: Vec<Vec<Vec<f32>>> = crate::photo_util::par_map(refs, |k| {
         let r = lo + step * k as f32;
         let mut m = u.clone();
         par_rows(&mut m.v, u.w, 1, |_, row| {
@@ -165,19 +207,39 @@ fn llf_parts(u: &Plane, change: impl Fn(f32, f32) -> f32 + Sync) -> (Plane, Plan
             }
         });
         let gr = gaussian(m, n);
-        for l in 0..n - 1 {
-            let coarse = up(&gr[l + 1], gr[l].w, gr[l].h);
-            let (gl, fine, lw) = (&g[l].v, &gr[l].v, g[l].w);
-            par_rows(&mut lap[l], lw, 1, |y, row| {
-                for (x, o) in row.iter_mut().enumerate() {
-                    let i = y * lw + x;
-                    let wgt = (1.0 - (gl[i].clamp(lo, hi) - r).abs() / step).max(0.0);
-                    if wgt > 0.0 {
-                        *o += wgt * (fine[i] - coarse.v[i]);
-                    }
-                }
-            });
+        (0..n - 1)
+            .map(|l| {
+                wanted[k][l]
+                    .iter()
+                    .map(|&(i, _, wgt)| {
+                        let (lw, lh) = (gr[l].w, gr[l].h);
+                        let i = i as usize;
+                        wgt * (gr[l].v[i] - up_at(&gr[l + 1], lw, lh, i % lw, i / lw))
+                    })
+                    .collect()
+            })
+            .collect()
+    });
+    let mut lap: Vec<Vec<f32>> = Vec::with_capacity(n - 1);
+    for l in 0..n - 1 {
+        let len = g[l].v.len();
+        let mut by_slot = vec![0.0f32; len * SLOTS];
+        for k in 0..refs {
+            for (&(i, slot, _), v) in wanted[k][l].iter().zip(&parts[k][l]) {
+                by_slot[i as usize * SLOTS + slot as usize] = *v;
+            }
         }
+        lap.push(
+            (0..len)
+                .map(|i| {
+                    let mut o = 0.0f32;
+                    for s in 0..slots[l][i] as usize {
+                        o += by_slot[i * SLOTS + s];
+                    }
+                    o
+                })
+                .collect(),
+        );
     }
     let rebuild = |coarsest: Plane, levels: &dyn Fn(usize) -> Vec<f32>| {
         let mut o = coarsest;
@@ -297,7 +359,8 @@ pub(crate) fn apply_with(px: &mut [[f32; 4]], w: usize, h: usize, shadows: f32, 
     let print = fingerprint(px, w, enc);
     if kept.print != print || kept.planes.is_none() {
         const FLOOR: f32 = 1.0 / 65536.0;
-        let u = Plane { w, h, v: px.iter().map(|q| (luma([0, 1, 2].map(|c| enc.decode(q[c]))).max(0.0) + FLOOR).log2()).collect() };
+        let src: &[[f32; 4]] = px;
+        let u = Plane { w, h, v: crate::photo_util::par_map(w * h, |i| (luma([0, 1, 2].map(|c| enc.decode(src[i][c]))).max(0.0) + FLOOR).log2()) };
         // The filter on a copy at most WORK_SIDE across (box-averaged in log).
         let f = w.max(h).div_ceil(WORK_SIDE).max(1);
         let small = if f == 1 { u.clone() } else { shrink(&u, f) };
@@ -326,7 +389,7 @@ pub(crate) fn apply_with(px: &mut [[f32; 4]], w: usize, h: usize, shadows: f32, 
     }
     // The change in log luminance, at full size.
     let change: Vec<f32> = if *f == 1 {
-        o.v.iter().zip(&u.v).map(|(a, b)| a - b).collect()
+        crate::photo_util::par_map(w * h, |i| o.v[i] - u.v[i])
     } else {
         let d: Vec<f32> = o.v.iter().zip(&small.v).map(|(a, b)| a - b).collect();
         guided_upsample(small, &d, u)
@@ -409,6 +472,22 @@ mod tests {
 
     fn grey(w: usize, h: usize, f: impl Fn(usize, usize) -> f32) -> Vec<[f32; 4]> {
         (0..w * h).map(|i| f(i % w, i / w)).map(|v| [v, v, v, 1.0]).collect()
+    }
+
+    /// The coarse level brought up at one pixel is bit for bit what the whole upsampling gives,
+    /// edges and odd sizes included.
+    #[test]
+    fn up_at_one_pixel_is_up() {
+        for (w, h) in [(9usize, 7usize), (8, 8), (13, 2), (2, 11), (31, 17)] {
+            let coarse =
+                Plane { w: w.div_ceil(2), h: h.div_ceil(2), v: (0..w.div_ceil(2) * h.div_ceil(2)).map(|i| ((i * 37 % 101) as f32 * 0.173).sin()).collect() };
+            let full = up(&coarse, w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    assert_eq!(up_at(&coarse, w, h, x, y).to_bits(), full.v[y * w + x].to_bits(), "{w}x{h} at {x},{y}");
+                }
+            }
+        }
     }
 
     #[test]
