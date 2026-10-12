@@ -1533,16 +1533,21 @@ mod tests {
         })
         .unwrap();
         s.execute("layer.setProps", json!({"layer": clipped.0, "clipped": true})).unwrap();
-        // A new layer between a clipping base and its clipped layer becomes their base.
+        // New Layer between a clipping base and its clipped layer joins the clipping mask, as in
+        // Photoshop: the clipped layer keeps its base and nothing changes on the canvas.
         s.execute("layer.select", json!({"layer": base.0})).unwrap();
         let shown = photocraft_compose::render(doc(&s), doc(&s).bounds());
-        s.execute("layer.new.layer", json!({})).unwrap();
-        assert_eq!(damage(&s), None);
-        assert_ne!(photocraft_compose::render(doc(&s), doc(&s).bounds()), shown);
+        let joined = LayerId(s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap());
+        assert!(doc(&s).layer(joined).unwrap().clipped);
+        assert_eq!(damage(&s), Some(Rect::EMPTY));
+        assert_eq!(photocraft_compose::render(doc(&s), doc(&s).bounds()), shown);
         s.execute("edit.undo", json!({})).unwrap();
-        assert_eq!(damage(&s), None);
-        s.execute("edit.redo", json!({})).unwrap();
-        assert_eq!(damage(&s), None);
+        // An unclipped layer there would become their base: that recomposites everything.
+        let before = doc(&s).clone();
+        let mut split = before.clone();
+        split.insert_above(Some(base), Layer::raster("new base", split.pixel_format()));
+        assert_eq!(step_damage(&before, &split), None);
+        assert_ne!(photocraft_compose::render(&split, split.bounds()), shown);
         // A step that adds a layer with pixels (Layer via Copy, paste…) is not inert either.
         let before = doc(&s).clone();
         let mut after = before.clone();
@@ -1991,7 +1996,9 @@ mod tests {
         assert!(s.execute("layer.groupLayers", json!({"layer": a.0})).is_err(), "one board is refused too");
         assert_eq!(doc(&s).layers.iter().map(|l| l.id).collect::<Vec<_>>(), before.layers.iter().map(|l| l.id).collect::<Vec<_>>());
         assert_eq!(doc(&s).artboards().len(), 2);
-        // A layer inside a board still groups, inside its board.
+        // A layer inside a board still groups, inside its board. (Made with no layer selected: a
+        // new layer with a board selected goes into that board, as in Photoshop.)
+        s.execute("select.deselectLayers", json!({})).unwrap();
         let inner = rect_layer(&mut s, Rect::new(0, 0, 5, 5));
         select_all(&mut s, &[inner]);
         let c = LayerId(s.execute("layer.new.artboardFromLayers", json!({})).unwrap()["layer"].as_u64().unwrap());

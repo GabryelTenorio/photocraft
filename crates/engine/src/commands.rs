@@ -280,7 +280,7 @@ fn new_adjustment(s: &mut Session, adj: Adjustment, p: &Value, cmd: &str) -> Res
     let id = s.edit(&label, |doc, active| {
         let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Adjustment(adj));
         mask_new_layer(doc, &mut l, p, cmd)?;
-        let id = doc.insert_above(*active, l);
+        let id = crate::layer_place::insert_new(doc, *active, l, crate::layer_place::Place::Auto);
         *active = Some(id);
         Ok(id)
     })?;
@@ -500,22 +500,36 @@ fn build() -> Vec<CommandSpec> {
             }
         ),
         // Layer
-        cmd!("layer.new.layer", "Layer…", ["Layer", "New"], Some("Cmd+Shift+N"), r##"{"name":str?}"##, has_doc, |s, p| {
-            let id = s.edit("New Layer", |doc, active| {
-                let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
-                let id = doc.insert_above(*active, Layer::raster(name, doc.pixel_format()));
-                *active = Some(id);
-                Ok(id)
-            })?;
-            crate::layer_multi_cmds::note_inert_insert(s, id);
-            Ok(json!({ "layer": id.0 }))
-        }),
+        cmd!(
+            "layer.new.layer",
+            "Layer…",
+            ["Layer", "New"],
+            Some("Cmd+Shift+N"),
+            r##"{"name":str?,"below":bool=false (under the active layer, as ⌘-click on the Layers panel's New Layer button)} (above the active layer, or the top layer inside it when it is an open group; clipped when it lands inside a clipping mask)"##,
+            has_doc,
+            |s, p| {
+                let below = match p.get("below").filter(|v| !v.is_null()) {
+                    None => false,
+                    Some(v) => v.as_bool().ok_or_else(|| bad("layer.new.layer", "`below` must be a boolean"))?,
+                };
+                let place = if below { crate::layer_place::Place::Below } else { crate::layer_place::Place::Auto };
+                let id = s.edit("New Layer", |doc, active| {
+                    let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
+                    let layer = Layer::raster(name, doc.pixel_format());
+                    let id = crate::layer_place::insert_new(doc, *active, layer, place);
+                    *active = Some(id);
+                    Ok(id)
+                })?;
+                crate::layer_multi_cmds::note_inert_insert(s, id);
+                Ok(json!({ "layer": id.0 }))
+            }
+        ),
         cmd!(
             "layer.new.group",
             "Group…",
             ["Layer", "New"],
             None,
-            r##"{"name":text?,"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":str="passThrough" (blend mode),"opacity":0..100=100 (percent),"below":bool=false (under the active layer, as ⌘-click on the Layers panel's New Group button)}"##,
+            r##"{"name":text?,"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":str="passThrough" (blend mode),"opacity":0..100=100 (percent),"below":bool=false (under the active layer, as ⌘-click on the Layers panel's New Group button)} (above the active layer, or inside it when it is an open group; clipped when it lands inside a clipping mask)"##,
             has_doc,
             |s, p| {
                 let opts = crate::group_options::GroupOptions::parse("layer.new.group", p)?;
@@ -523,29 +537,13 @@ fn build() -> Vec<CommandSpec> {
                     None => false,
                     Some(v) => v.as_bool().ok_or_else(|| bad("layer.new.group", "`below` must be a boolean"))?,
                 };
+                let place = if below { crate::layer_place::Place::Below } else { crate::layer_place::Place::Auto };
                 let id = s.edit("New Group", |doc, active| {
                     let name = opts.name.clone().unwrap_or_else(|| doc.next_layer_name("Group"));
                     let mut group = Layer::group(name, vec![]);
                     opts.apply(&mut group);
                     let bg = crate::background_cmds::background_id(doc);
-                    // Below only a layer that is in the document, and never under the Background.
-                    let under = (*active).filter(|a| below && Some(*a) != bg && doc.path_of(*a).is_some());
-                    let id = doc.insert_above(*active, group);
-                    if under.is_some() {
-                        doc.shift(id, -1);
-                    }
-                    // Like Photoshop, a group added inside a clipping mask joins it, so the layers
-                    // clipped above keep their base instead of clipping to the empty group.
-                    if let Some(path) = doc.path_of(id)
-                        && let Some((&k, parent)) = path.split_last()
-                    {
-                        let siblings = if parent.is_empty() { Some(doc.layers.as_slice()) } else { doc.layer_at(parent).and_then(Layer::children) };
-                        if siblings.and_then(|sib| sib.get(k + 1)).is_some_and(|above| above.clipped)
-                            && let Some(g) = doc.layer_at_mut(&path)
-                        {
-                            g.clipped = true;
-                        }
-                    }
+                    let id = crate::layer_place::insert_new(doc, *active, group, place);
                     crate::background_cmds::keep_background_at_bottom(bg, doc)?;
                     *active = Some(id);
                     Ok(id)
@@ -793,7 +791,7 @@ fn build() -> Vec<CommandSpec> {
                     let fill = Fill::Solid(Color::rgba(c[0], c[1], c[2], c[3])).in_mode(doc.mode);
                     let mut l = Layer::new(doc.next_layer_name("Color Fill"), LayerContent::Fill(fill));
                     mask_new_layer(doc, &mut l, p, "layer.newFillLayer.solidColor")?;
-                    let id = doc.insert_above(*active, l);
+                    let id = crate::layer_place::insert_new(doc, *active, l, crate::layer_place::Place::Auto);
                     *active = Some(id);
                     Ok(id)
                 })?;
@@ -824,7 +822,7 @@ fn build() -> Vec<CommandSpec> {
                     .in_mode(doc.mode);
                     let mut l = Layer::new(doc.next_layer_name("Gradient Fill"), LayerContent::Fill(fill));
                     mask_new_layer(doc, &mut l, p, "layer.newFillLayer.gradient")?;
-                    let id = doc.insert_above(*active, l);
+                    let id = crate::layer_place::insert_new(doc, *active, l, crate::layer_place::Place::Auto);
                     *active = Some(id);
                     Ok(id)
                 })?;
