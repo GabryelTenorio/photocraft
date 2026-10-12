@@ -638,6 +638,14 @@ or cancelling eases back. Release commits the measured candidate immediately whi
 transition finishes. The incoming accent highlight stays at the final destination. Controls
 remain disabled during settling, and ordinary panel resizing keeps its immediate response.
 
+When joining or splitting an existing panel group, its receiving tab strip stays at its
+authoritative position and width while only its content previews the resize. Existing tab
+slots, order and overflow stay fixed; insertion feedback and drop detection use those same
+slots. The themed strip paints above preview content, and strip hits win over coincident edge
+targets. Incoming tabs appear on commit; the strip then eases into its final position over
+150 ms. Cancellation keeps its original header while content returns. Other groups retain
+their existing preview animation; document tab strips and docking zone sizes are unchanged.
+
 Live layouts are presentation-only: authoritative drag targets remain stable, preview controls
 are disabled, and no temporary panel sizes, floating memory or document cameras are saved.
 Insertion lines follow the measured displayed strip for cross-group joins. Same-group reorder

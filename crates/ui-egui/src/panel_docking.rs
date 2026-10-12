@@ -1341,6 +1341,7 @@ struct LiveDockPreview {
     candidate: DockSnapshot,
     moving: Vec<String>,
     rearrange: bool,
+    receiver: Option<craft_ui::docking::DropTarget<String>>,
 }
 
 /// Legacy layouts can temporarily use the regional shell without migrating saved state.
@@ -1351,6 +1352,7 @@ pub(crate) fn workspace_presentation(app: &PhotocraftApp, ctx: &egui::Context) -
     let area = egui::Id::new("photocraft-panel-docking");
     if !app.session.prefs().workspace_locked
         && ctx.data(|data| data.get_temp::<u64>(area.with("generation"))) == Some(app.ui.docking_generation)
+        && ctx.data(|data| data.get_temp::<bool>(area.with("regional-presentation"))).unwrap_or(false)
         && craft_ui::docking::geometry_transition_active::<String>(ctx, area)
     {
         return true;
@@ -1507,6 +1509,13 @@ fn eligible_drag_targets(
 }
 
 impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
+    fn preview_tab_strip(&self, ctx: &egui::Context, panels: &[String]) -> Option<craft_ui::docking::DropTarget<String>> {
+        if self.app.session.prefs().workspace_locked {
+            return None;
+        }
+        live_preview(ctx, self.app.ui.docking_generation).and_then(|preview| preview.receiver)
+            .filter(|receiver| panels.contains(&receiver.anchor))
+    }
     fn preview_geometry_duration(&self) -> f32 {
         if self.app.session.prefs().workspace_locked { 0.0 } else { 0.15 }
     }
@@ -1693,8 +1702,9 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let same_group_strip =
             !whole && proposal.as_ref().is_some_and(|proposal| proposal.insertion.is_some() && group_members(layout, &panel).contains(&proposal.anchor));
         ctx.data_mut(|data| data.insert_temp(key.with("same-group-strip"), same_group_strip));
-        // A strip reorder remains a reorder even when its header touches a dock edge.
-        let edge = (!same_group_strip).then(|| crate::workspace_dock::edge_at(self.workspace_rect, request.pointer)).flatten();
+        // A visible receiving strip stays reachable even when it touches a dock edge.
+        let panel_strip = proposal.as_ref().is_some_and(|proposal| proposal.insertion.is_some());
+        let edge = (!panel_strip).then(|| crate::workspace_dock::edge_at(self.workspace_rect, request.pointer)).flatten();
         // Inset document targets remain reachable even where document/workspace edges coincide.
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, key.with("document-targets")));
         let canvas_target = eligible
@@ -1702,7 +1712,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             .rev()
             .find(|target| target.rect.contains(request.pointer))
             .filter(|target| crate::document_docking::is_canvas(&target.anchor));
-        let mut document_target = if same_group_strip {
+        let mut document_target = if panel_strip {
             None
         } else {
             canvas_target.and_then(|target| {
@@ -1721,7 +1731,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 };
                 let hit = egui::Rect::from_center_size(center, egui::vec2(20.0, 20.0)).intersect(target.rect);
                 let hovered = hit.contains(request.pointer);
-                if !request.released && !same_group_strip {
+                if !request.released && !panel_strip {
                     painter.rect(hit, 2.0, style.background, egui::Stroke::new(if hovered { 2.0 } else { 1.0 }, style.accent), egui::StrokeKind::Inside);
                     let mark = match side {
                         DockSide::Left => egui::Rect::from_min_size(hit.min, egui::vec2(5.0, hit.height())),
@@ -1731,11 +1741,27 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                     };
                     painter.rect_filled(mark, 0.0, style.accent);
                 }
-                if hovered && !same_group_strip {
+                if hovered && !panel_strip {
                     document_target = Some((crate::document_docking::canvas_host(&target.anchor), side));
                 }
             }
         }
+        let receiver = if edge.is_none() && document_target.is_none() {
+            proposal.as_ref().and_then(|proposal| {
+                eligible.iter().rev().find(|target| target.anchor == proposal.anchor || target.tabs.iter().any(|(panel, _)| panel == &proposal.anchor))
+                    .filter(|target| target.accepts_tabs && target.tab_strip.is_some())
+                    .and_then(|target| {
+                        let anchor = target.tabs.iter().find(|(panel, _)| !members.contains(panel)).map(|(panel, _)| panel.clone())?;
+                        let mut receiver = target.clone();
+                        if members.contains(&receiver.anchor) {
+                            receiver.anchor = anchor;
+                        }
+                        Some(receiver)
+                    })
+            })
+        } else {
+            None
+        };
         let mut insertion = None;
         let operation = if let Some(side) = edge {
             Some((if whole { "window.panel.group" } else { "window.panel.dock" }, json!({"panel":panel,"operation":"dock","side":side})))
@@ -1807,6 +1833,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 feedback: feedback.clone(),
                 candidate: candidate.clone(),
                 moving: members,
+                receiver,
                 rearrange: !same_group_strip && !matches!(id, "window.panel.float")
                     && params.get("operation").and_then(Value::as_str) != Some("float"),
             });
