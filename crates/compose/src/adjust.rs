@@ -48,12 +48,14 @@ impl Transfer {
     fn decode(self, v: f32) -> f32 {
         match self {
             Transfer::Srgb => photocraft_color::convert::srgb_to_linear(v.max(0.0)),
+            Transfer::Gamma(1.0) => v.max(0.0),
             Transfer::Gamma(g) => v.max(0.0).powf(g),
         }
     }
     fn encode(self, v: f32) -> f32 {
         match self {
             Transfer::Srgb => photocraft_color::convert::linear_to_srgb(v.max(0.0)),
+            Transfer::Gamma(1.0) => v.max(0.0),
             Transfer::Gamma(g) => v.max(0.0).powf(1.0 / g),
         }
     }
@@ -85,12 +87,16 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
         }
         Adjustment::Posterize { levels } => map_rgb(buf, |c| c.map(|v| posterize(v, *levels))),
         Adjustment::BrightnessContrast { brightness, contrast, legacy: true } => {
-            // Legacy: contrast scales around mid-grey, then brightness is added
-            // (fitted to Photoshop's rendering, exact on the corpus).
+            // Legacy: contrast scales around 128/255, with brightness added before it when
+            // contrast is raised and after it when contrast is lowered. Measured on Photoshop
+            // 27.11, brightness +40 with contrast +30 maps 128 to 185 (brightness first), while
+            // the corpus's brightness -23 with contrast -26 (psd-tools) needs contrast first;
+            // contrast 80 keeps 128 at 128 (a 0.5 pivot moved it to 130).
             let b = brightness / 255.0;
             let c = contrast.clamp(-100.0, 99.0);
             let k = if c >= 0.0 { 1.0 / (1.0 - c / 100.0) } else { 1.0 + c / 100.0 };
-            map_rgb(buf, |px| px.map(|v| ((v - 0.5) * k + 0.5 + b).clamp(0.0, 1.0)))
+            let (pre, post) = if c >= 0.0 { (b, 0.0) } else { (0.0, b) };
+            map_rgb(buf, |px| px.map(|v| ((v + pre - LEGACY_PIVOT) * k + LEGACY_PIVOT + post).clamp(0.0, 1.0)))
         }
         Adjustment::BrightnessContrast { brightness, contrast, .. } => {
             // Modern (CS3+) Brightness/Contrast, reverse-engineered from Photoshop ground truth
@@ -112,17 +118,39 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
             let m = 2f32.powf(*exposure);
             let g = gamma.max(0.01);
             let transfer = transfer.for_exposure();
+            let hdr = depth == Some(SampleType::F32);
             map_rgb(buf, |c| {
                 c.map(|v| {
-                    let lin = (transfer.decode(v) * m + offset).max(0.0).powf(1.0 / g);
+                    if hdr {
+                        // Float documents store linear samples. Photoshop's 32-bit merged
+                        // Exposure oracle also retains negative results with signed gamma.
+                        let lin = v * m + offset;
+                        return if g == 1.0 { lin } else { lin.signum() * lin.abs().powf(1.0 / g) };
+                    }
+                    let lin = (transfer.decode(v) * m + offset).max(0.0);
+                    let lin = if g == 1.0 { lin } else { lin.powf(1.0 / g) };
                     transfer.encode(lin).clamp(0.0, 1.0)
                 })
             })
         }
+        Adjustment::Levels { master, per_channel, space: ToneSpace::Rgb, .. } if depth == Some(SampleType::F32) => {
+            // A 0..1 lookup table cannot represent signed, unbounded float samples.
+            let master_identity = *master == LevelsChannel::default();
+            let channel_identity = per_channel.each_ref().map(|ch| *ch == LevelsChannel::default());
+            if !master_identity || channel_identity.iter().any(|&v| !v) {
+                map_rgb(buf, |c| {
+                    std::array::from_fn(|i| {
+                        let v = if channel_identity[i] { c[i] } else { levels_float(&per_channel[i], c[i]) };
+                        if master_identity { v } else { levels_float(master, v) }
+                    })
+                });
+            }
+        }
         Adjustment::Levels { space, .. } | Adjustment::Curves { space, .. } => {
             let luts = tone_luts_depth(adj, depth);
+            let identity = float_tone_identity(adj, depth);
             match space {
-                ToneSpace::Rgb => map_rgb(buf, |c| std::array::from_fn(|i| lut(&luts[i], c[i]))),
+                ToneSpace::Rgb => map_rgb(buf, |c| std::array::from_fn(|i| if identity[i] { c[i] } else { lut(&luts[i], c[i]) })),
                 ToneSpace::Cmyk | ToneSpace::Lab => map_rgb(buf, |c| tone_in_space(*space, &luts, c)),
             }
         }
@@ -218,6 +246,17 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
     }
 }
 
+/// Float RGB curve channels with no edit must preserve samples outside the LUT domain.
+/// Edited curves retain the existing spline/LUT behaviour until HDR extrapolation has an oracle.
+pub fn float_tone_identity(adj: &Adjustment, depth: Option<SampleType>) -> [bool; 3] {
+    match adj {
+        Adjustment::Curves { master, per_channel, space: ToneSpace::Rgb, .. } if depth == Some(SampleType::F32) => {
+            std::array::from_fn(|i| photocraft_doc::adjust::is_identity_curve(master) && photocraft_doc::adjust::is_identity_curve(&per_channel[i]))
+        }
+        _ => [false; 3],
+    }
+}
+
 /// Per-channel LUTs of a Levels or Curves adjustment: each channel's record first, then the
 /// master (composite) record, as Photoshop does (psd-tools levels_rgb.psd and curves_rgb.psd,
 /// #975). Four rows: the three `per_channel` channels then black
@@ -237,9 +276,9 @@ pub fn tone_luts_q(adj: &Adjustment, quantum: Option<f32>) -> [Vec<f32>; 4] {
             let row = |c: &LevelsChannel| (0..LUT_SIZE).map(|k| levels_q(m, levels_q(c, x(k), quantum), quantum)).collect();
             [row(&per_channel[0]), row(&per_channel[1]), row(&per_channel[2]), row(if *space == ToneSpace::Cmyk { black } else { &ident })]
         }
-        Adjustment::Curves { master, per_channel, space, black } => {
-            let m = if *space == ToneSpace::Lab { curve_lut(&[]) } else { curve_lut(master) };
-            let row = |c: &[CurvePoint]| curve_lut(c).iter().map(|&v| lut(&m, v)).collect();
+        Adjustment::Curves { master, per_channel, space, black, pencil } => {
+            let m = if *space == ToneSpace::Lab { curve_lut(&[]) } else { curve_lut_mode(master, *pencil) };
+            let row = |c: &[CurvePoint]| curve_lut_mode(c, *pencil).iter().map(|&v| lut(&m, v)).collect();
             [row(&per_channel[0]), row(&per_channel[1]), row(&per_channel[2]), row(if *space == ToneSpace::Cmyk { black } else { &[] })]
         }
         _ => std::array::from_fn(|_| (0..LUT_SIZE).map(x).collect()),
@@ -247,7 +286,8 @@ pub fn tone_luts_q(adj: &Adjustment, quantum: Option<f32>) -> [Vec<f32>; 4] {
 }
 
 /// [`tone_luts_q`] in a document of `depth` (`None`: unrounded). 32-bit Levels use
-/// [`levels_float`], sampled on 0..1 and kept in 0..1 like every adjustment result here.
+/// [`levels_float`], sampled on 0..1 and kept in 0..1 for LUT consumers. Float RGB rendering
+/// evaluates the formula directly instead, so samples and results outside that domain survive.
 pub fn tone_luts_depth(adj: &Adjustment, depth: Option<SampleType>) -> [Vec<f32>; 4] {
     match (adj, depth) {
         (Adjustment::Levels { master, per_channel, space: ToneSpace::Rgb, .. }, Some(SampleType::F32)) => {
@@ -303,12 +343,13 @@ pub fn hue_range_tables(ranges: &[HueRange; 6]) -> [Vec<f32>; 3] {
 }
 
 /// One Hue/Saturation evaluation: hue shift in degrees, saturation and lightness in -1..=1.
-/// Colorize sets the hue and saturation instead of shifting them.
+/// Colorize sets the hue and saturation instead of shifting them; at 0% it leaves only the
+/// lightness, as in Photoshop (#2326). Ticking Colorize in the dialog starts saturation at 25%.
 pub fn hue_saturation(c: [f32; 3], hue: f32, s: f32, l: f32, colorize: bool) -> [f32; 3] {
     let (mut hh, mut ss, ll) = rgb_to_hsl(c);
     if colorize {
         hh = hue.rem_euclid(360.0) / 360.0;
-        ss = s.abs().max(0.25);
+        ss = s.abs().min(1.0);
     } else {
         hh = (hh + hue / 360.0).rem_euclid(1.0);
         ss = (ss * (1.0 + s)).clamp(0.0, 1.0);
@@ -643,8 +684,41 @@ pub fn levels_q(ch: &LevelsChannel, v: f32, quantum: Option<f32>) -> f32 {
 /// the clipped curve).
 pub fn levels_float(ch: &LevelsChannel, v: f32) -> f32 {
     let t = (v - ch.in_black) / (ch.in_white - ch.in_black).max(1e-6);
-    let t = t.signum() * t.abs().powf(1.0 / ch.gamma.max(0.01));
+    let t = if ch.gamma == 1.0 { t } else { t.signum() * t.abs().powf(1.0 / ch.gamma.max(0.01)) };
     ch.out_black + t * (ch.out_white - ch.out_black)
+}
+
+/// The LUT of one Curves curve: [`curve_map_lut`] for a pencil-drawn map, else [`curve_lut`].
+pub fn curve_lut_mode(points: &[CurvePoint], pencil: bool) -> Vec<f32> {
+    if pencil { curve_map_lut(points) } else { curve_lut(points) }
+}
+
+/// A pencil-drawn Curves map (see [`photocraft_doc::adjust::curve_map`]): straight segments
+/// between its entries, constant outside the first/last, clamped to 0..=1, sampled into a LUT.
+pub fn curve_map_lut(points: &[CurvePoint]) -> Vec<f32> {
+    let mut pts: Vec<(f32, f32)> = points.iter().filter(|p| p.input.is_finite() && p.output.is_finite()).map(|p| (p.input, p.output)).collect();
+    pts.sort_by(|a, b| a.0.total_cmp(&b.0));
+    pts.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-6);
+    let ident = |k: usize| k as f32 / (LUT_SIZE - 1) as f32;
+    let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else { return (0..LUT_SIZE).map(ident).collect() };
+    let mut seg = 0;
+    (0..LUT_SIZE)
+        .map(|k| {
+            let xv = ident(k);
+            if xv <= first.0 {
+                return first.1.clamp(0.0, 1.0);
+            }
+            if xv >= last.0 {
+                return last.1.clamp(0.0, 1.0);
+            }
+            while pts.get(seg + 1).is_some_and(|p| p.0 < xv) {
+                seg += 1;
+            }
+            let (Some(&(x0, y0)), Some(&(x1, y1))) = (pts.get(seg), pts.get(seg + 1)) else { return last.1.clamp(0.0, 1.0) };
+            let t = if x1 > x0 { (xv - x0) / (x1 - x0) } else { 0.0 };
+            (y0 + (y1 - y0) * t).clamp(0.0, 1.0)
+        })
+        .collect()
 }
 
 /// Photoshop curve: a natural cubic spline through the points (it may
@@ -699,6 +773,41 @@ pub fn curve_lut(points: &[CurvePoint]) -> Vec<f32> {
             (y as f32).clamp(0.0, 1.0)
         })
         .collect()
+}
+
+/// A layer-style contour curve: [`curve_lut`], except that the curve bends sharply at corner
+/// points (`corners[i]` true; Photoshop's Contour Editor "Corner"): each run between corners is
+/// its own natural spline, so all-corner points make a polyline. Missing flags are smooth.
+pub fn contour_curve_lut(points: &[CurvePoint], corners: &[bool]) -> Vec<f32> {
+    let mut pts: Vec<(CurvePoint, bool)> = points.iter().enumerate().map(|(i, p)| (p.clone(), corners.get(i).copied().unwrap_or(false))).collect();
+    if !pts.iter().any(|p| p.1) {
+        return curve_lut(points);
+    }
+    pts.sort_by(|a, b| a.0.input.partial_cmp(&b.0.input).unwrap_or(std::cmp::Ordering::Equal));
+    pts.dedup_by(|a, b| (a.0.input - b.0.input).abs() < 1e-6);
+    let mut out: Vec<f32> = Vec::new();
+    let mut start = 0usize;
+    let last = pts.len().saturating_sub(1);
+    for i in 1..=last {
+        let corner = pts.get(i).is_some_and(|p| p.1);
+        if !(corner || i == last) {
+            continue;
+        }
+        let Some(seg) = pts.get(start..=i) else { break };
+        let from = seg.first().map_or(0.0, |p| p.0.input);
+        let lut = curve_lut(&seg.iter().map(|p| p.0.clone()).collect::<Vec<_>>());
+        if out.is_empty() {
+            out = lut;
+        } else {
+            for (k, (o, v)) in out.iter_mut().zip(lut).enumerate() {
+                if k as f32 / (LUT_SIZE - 1) as f32 >= from {
+                    *o = v;
+                }
+            }
+        }
+        start = i;
+    }
+    if out.is_empty() { curve_lut(points) } else { out }
 }
 
 fn gradient(stops: &[(f32, [f32; 3])], t: f32) -> [f32; 3] {
@@ -820,6 +929,32 @@ mod tone_tests {
         Buffer { rect, px }
     }
 
+    /// Photoshop 27.11, measured: Brightness/Contrast with Use Legacy on, over a gray ramp
+    /// (x = 0, 16, …, 240, 255), one row per (brightness, contrast).
+    #[test]
+    fn legacy_brightness_contrast_matches_photoshop() {
+        const X: [u8; 17] = [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 255];
+        let measured: [(f32, f32, [u8; 17]); 7] = [
+            (40.0, 0.0, [40, 56, 72, 88, 104, 120, 136, 152, 168, 184, 200, 216, 232, 248, 255, 255, 255]),
+            (-40.0, 0.0, [0, 0, 0, 8, 24, 40, 56, 72, 88, 104, 120, 136, 152, 168, 184, 200, 215]),
+            (0.0, 30.0, [0, 0, 0, 14, 37, 60, 82, 105, 128, 151, 174, 196, 219, 242, 255, 255, 255]),
+            (0.0, -30.0, [38, 49, 61, 72, 83, 94, 106, 117, 128, 139, 150, 162, 173, 184, 195, 207, 217]),
+            (40.0, 30.0, [3, 25, 48, 71, 94, 117, 139, 162, 185, 208, 231, 253, 255, 255, 255, 255, 255]),
+            (100.0, 0.0, [100, 116, 132, 148, 164, 180, 196, 212, 228, 244, 255, 255, 255, 255, 255, 255, 255]),
+            (0.0, 80.0, [0, 0, 0, 0, 0, 0, 0, 48, 128, 208, 255, 255, 255, 255, 255, 255, 255]),
+        ];
+        for (brightness, contrast, want) in measured {
+            let rect = Rect::new(0, 0, 17, 1);
+            let px = X.iter().map(|x| [f32::from(*x) / 255.0; 4]).map(|p| [p[0], p[1], p[2], 1.0]).collect();
+            let mut b = Buffer { rect, px };
+            apply(&Adjustment::BrightnessContrast { brightness, contrast, legacy: true }, &mut b);
+            for (i, (p, w)) in b.px.iter().zip(want).enumerate() {
+                let got = (p[0] * 255.0).round() as i32;
+                assert!((got - i32::from(w)).abs() <= 1, "b {brightness} c {contrast} at {}: {got} vs Photoshop {w}", X[i]);
+            }
+        }
+    }
+
     #[test]
     fn color_lookup_with_an_overflowing_stored_size_is_the_identity() {
         // A stored document's size is untrusted: (2²²)³ × 3 overflows, which once wrapped past
@@ -844,8 +979,13 @@ mod tone_tests {
             space: ToneSpace::Rgb,
             black: Default::default(),
         };
-        let curves =
-            Adjustment::Curves { master: line(0.0, 0.5), per_channel: std::array::from_fn(|_| line(0.5, 1.0)), space: ToneSpace::Rgb, black: Vec::new() };
+        let curves = Adjustment::Curves {
+            master: line(0.0, 0.5),
+            per_channel: std::array::from_fn(|_| line(0.5, 1.0)),
+            space: ToneSpace::Rgb,
+            black: Vec::new(),
+            pencil: false,
+        };
         for depth in [None, Some(SampleType::U8), Some(SampleType::U16), Some(SampleType::F32)] {
             let ll = tone_luts_depth(&levels, depth);
             let cl = tone_luts_depth(&curves, depth);
@@ -910,6 +1050,7 @@ mod tone_tests {
             per_channel: [line(0.0, 1.0), line(0.0, 1.0), line(0.0, 1.0)],
             space: ToneSpace::Cmyk,
             black: line(0.0, 0.5),
+            pencil: false,
         };
         let mut b = Buffer { rect: Rect::new(0, 0, 1, 1), px: vec![[0.8, 0.8, 0.8, 1.0]] };
         apply(&a, &mut b);
@@ -920,6 +1061,7 @@ mod tone_tests {
             per_channel: [line(0.2, 1.0), line(0.0, 1.0), line(0.0, 1.0)],
             space: ToneSpace::Lab,
             black: Vec::new(),
+            pencil: false,
         };
         let mut b = Buffer { rect: Rect::new(0, 0, 1, 1), px: vec![[0.2, 0.2, 0.2, 1.0]] };
         apply(&a, &mut b);
@@ -938,6 +1080,30 @@ mod tone_tests {
         assert!((red[0] - red[1]).abs() < 0.05, "red desaturated {red:?}");
         assert!((b.px[1][2] - 0.9).abs() < 1e-4 && (b.px[1][0] - 0.1).abs() < 1e-4, "blue untouched {:?}", b.px[1]);
         assert_eq!(b.px[2], [0.5, 0.5, 0.5, 1.0]);
+    }
+
+    #[test]
+    fn colorize_at_zero_saturation_is_grey() {
+        // Photoshop: Colorize at 0% saturation leaves no colour, only the pixel's lightness (#2326).
+        let px = vec![[0.9, 0.2, 0.1, 1.0], [0.1, 0.6, 0.8, 1.0], [0.5, 0.5, 0.5, 1.0]];
+        for depth in [None, Some(SampleType::U8), Some(SampleType::U16), Some(SampleType::F32)] {
+            for lightness in [0.0, 30.0, -30.0] {
+                let a = Adjustment::HueSaturation { hue: 200.0, saturation: 0.0, lightness, colorize: true, ranges: HueRange::defaults() };
+                let mut b = Buffer { rect: Rect::new(0, 0, 3, 1), px: px.clone() };
+                apply_depth(&a, &mut b, Transfer::Srgb, depth);
+                for p in &b.px {
+                    assert!((p[0] - p[1]).abs() < 1e-4 && (p[1] - p[2]).abs() < 1e-4, "{depth:?} lightness {lightness}: {p:?}");
+                }
+            }
+            // Low saturations still tint: the old 25% floor no longer hides them.
+            let tint = |saturation: f32| {
+                let a = Adjustment::HueSaturation { hue: 0.0, saturation, lightness: 0.0, colorize: true, ranges: HueRange::defaults() };
+                let mut b = Buffer { rect: Rect::new(0, 0, 1, 1), px: vec![[0.5, 0.5, 0.5, 1.0]] };
+                apply_depth(&a, &mut b, Transfer::Srgb, depth);
+                b.px[0][0] - b.px[0][2]
+            };
+            assert!(tint(10.0) > 0.05 && tint(10.0) < tint(25.0), "{depth:?}: 10% {} vs 25% {}", tint(10.0), tint(25.0));
+        }
     }
 
     #[test]
@@ -962,3 +1128,7 @@ mod tone_tests {
         assert!(a.px.iter().zip(&b.px).any(|(x, y)| x[0] != y[0]));
     }
 }
+
+/// Legacy Brightness/Contrast scales contrast around 128 of 255 (contrast 80 keeps 128 at 128,
+/// measured on Photoshop 27.11; a 0.5 pivot moved it to 130).
+pub const LEGACY_PIVOT: f32 = 128.0 / 255.0;

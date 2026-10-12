@@ -67,7 +67,9 @@ pub(crate) fn has_paintable(s: &Session) -> std::result::Result<(), String> {
 
 /// Surface a paint command writes to: the layer's pixels, or its mask with `"target":"mask"`.
 pub(crate) fn paint_surface<'a>(doc: &'a mut Document, id: LayerId, p: &Value) -> Result<&'a mut photocraft_raster::Surface> {
-    if !is_mask_target(p) {
+    if is_mask_target(p) {
+        check_all_unlocked(doc, id)?;
+    } else {
         check_pixels_unlocked(doc, id)?;
     }
     let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
@@ -76,6 +78,15 @@ pub(crate) fn paint_surface<'a>(doc: &'a mut Document, id: LayerId, p: &Value) -
     } else {
         l.surface_mut().ok_or_else(|| EngineError::Other("not a pixel layer".into()))
     }
+}
+
+fn check_all_unlocked(doc: &Document, id: LayerId) -> Result<()> {
+    let locks = doc.effective_locks(id);
+    let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+    if locks.all {
+        return Err(EngineError::Other(format!("Could not complete your request because the layer \"{}\" is locked", l.name)));
+    }
+    Ok(())
 }
 
 /// Refuse a layer whose pixels are locked (directly or through a group), with Photoshop's message.
@@ -104,6 +115,10 @@ fn has_selection(s: &Session) -> std::result::Result<(), String> {
 
 /// Image › Image Rotation by a right angle or a flip (pixels, vectors, guides, … all move).
 fn turn(s: &mut Session, label: &str, t: crate::canvas_geom::Turn) -> Result<Value> {
+    if let Some(d) = s.active() {
+        let a = t.affine(f64::from(d.doc.size.width), f64::from(d.doc.size.height));
+        s.set_sampler_map(a);
+    }
     s.edit(label, |doc, _| {
         crate::canvas_geom::turn_canvas(doc, t);
         Ok(())
@@ -393,13 +408,23 @@ fn build() -> Vec<CommandSpec> {
             "Fill…",
             ["Edit"],
             Some("Shift+F5"),
-            r##"{"contents":"foreground|background|color|contentAware|pattern|history|black|gray|white"="color","color":"#rrggbb|[r,g,b,a]"=foreground (contents=color),"pattern":id|name (contents=pattern),"scale":%=100,"angle":deg,"state":index? (contents=history; default the oldest state),"colorAdaptation":bool=true (contents=contentAware),"mode":"normal|multiply|…"="normal","opacity":0..100=100,"preserveTransparency":bool=false,"target":"pixels"|{"channel":i}|"quickMask"?}"##,
+            r##"{"contents":"foreground|background|color|contentAware|pattern|history|black|gray|white"="color","color":"#rrggbb|[r,g,b,a]"=foreground (contents=color),"pattern":id|name (contents=pattern),"scale":%=100,"angle":deg,"state":index? (contents=history; default the oldest state),"colorAdaptation":bool=true (contents=contentAware),"mode":"normal|multiply|…"="normal","opacity":0..100=100,"preserveTransparency":bool=false,"target":"pixels"|"mask"|"quickMask"|{"channel":i}?}"##,
             has_pixel_or_channel,
             crate::fill_cmds::fill
         ),
-        cmd!("edit.clear", "Clear", ["Edit"], Some("Delete"), "{}", has_pixel_layer, |s, p| {
-            let id = layer_param(s, p)?;
+        cmd!("edit.clear", "Clear", ["Edit"], Some("Delete"), "{} (a targeted channel or Quick Mask is cleared alone)", has_pixel_or_channel, |s, p| {
             let bg = s.tools.background;
+            // A targeted alpha channel or Quick Mask is filled instead (#2734).
+            if let Some(t) = crate::channel_cmds::targeted_channel(s) {
+                s.edit("Clear", |doc, _| crate::channel_cmds::clear_channel(doc, &t, bg))?;
+                return Ok(Value::Null);
+            }
+            let id = layer_param(s, p)?;
+            // A targeted colour channel clears that channel only (#2720).
+            if let Some(k) = crate::channel_cmds::targeted_color(s) {
+                s.edit("Clear", |doc, _| crate::channel_cmds::clear_color_channel(doc, id, k, bg))?;
+                return Ok(Value::Null);
+            }
             s.edit("Clear", |doc, _| {
                 let sel = doc.selection.clone();
                 let area = sel.as_ref().map(|m| m.content_bounds()).unwrap_or(doc.bounds());
@@ -442,60 +467,47 @@ fn build() -> Vec<CommandSpec> {
             "Rectangular Selection",
             [],
             None,
-            r##"{"x":i32,"y":i32,"width":u32,"height":u32,"mode":"replace|add|subtract|intersect"="replace","ellipse":bool=false,"antiAlias":bool=true,"feather":px=0}"##,
+            r##"{"x":i32,"y":i32,"width":u32,"height":u32,"mode":"replace|add|subtract|intersect"="replace","ellipse":bool=false,"line":"row|column"?,"antiAlias":bool=true,"feather":px=0}"##,
             has_doc,
             |s, p| {
                 let get = |k: &str| int_i32("select.rect", p, k).and_then(|v| v.ok_or_else(|| bad("select.rect", format!("missing `{k}`"))));
                 let r = Rect::from_xywh(get("x")?, get("y")?, get("width")?.max(0) as u32, get("height")?.max(0) as u32);
                 let mode = p.get("mode").and_then(Value::as_str).unwrap_or("replace").to_string();
                 let ellipse = p.get("ellipse").and_then(Value::as_bool).unwrap_or(false);
+                // The History step is named after the tool: the Single Row / Single Column
+                // Marquee send `line` (Photoshop).
+                let step = match p.get("line").and_then(Value::as_str) {
+                    Some("row") => "Single Row Marquee",
+                    Some("column") => "Single Column Marquee",
+                    Some(other) => return Err(bad("select.rect", format!("unknown `line` {other:?} (row|column)"))),
+                    None if ellipse => "Elliptical Marquee",
+                    None => "Rectangular Marquee",
+                };
                 // Options bar: anti-aliased ellipse edges (4x4 supersampled) and Feather (applied to the new shape only).
                 let aa = p.get("antiAlias").and_then(Value::as_bool).unwrap_or(true);
                 let feather = p.get("feather").and_then(Value::as_f64).unwrap_or(0.0).clamp(0.0, 1000.0) as f32;
-                s.edit(if ellipse { "Elliptical Marquee" } else { "Rectangular Marquee" }, |doc, _| {
+                s.edit(step, |doc, _| {
                     let area = doc.bounds();
                     // A marquee dragged past the canvas stops at its edge (Photoshop); the ellipse
                     // keeps the dragged shape and is only cut there.
-                    let cut = r.intersect(&area);
-                    let mut shape = Surface::new(photocraft_color::PixelFormat::GRAY8);
-                    if ellipse {
-                        let (cx, cy) = ((r.x0 + r.x1) as f32 / 2.0, (r.y0 + r.y1) as f32 / 2.0);
-                        let (rx, ry) = (r.width() as f32 / 2.0, r.height() as f32 / 2.0);
-                        let inside = |x: f32, y: f32| {
-                            let (dx, dy) = ((x - cx) / rx, (y - cy) / ry);
-                            dx * dx + dy * dy <= 1.0
-                        };
-                        for y in cut.y0..cut.y1 {
-                            for x in cut.x0..cut.x1 {
-                                let (fx, fy) = (x as f32, y as f32);
-                                let corners = [(fx, fy), (fx + 1.0, fy), (fx, fy + 1.0), (fx + 1.0, fy + 1.0)].iter().filter(|(a, b)| inside(*a, *b)).count();
-                                let cov = if !aa {
-                                    if inside(fx + 0.5, fy + 0.5) { 1.0 } else { 0.0 }
-                                } else if corners == 4 {
-                                    1.0
-                                } else {
-                                    let n = (0..16).filter(|i| inside(fx + ((i % 4) as f32 + 0.5) / 4.0, fy + ((i / 4) as f32 + 0.5) / 4.0)).count();
-                                    n as f32 / 16.0
-                                };
-                                if cov > 0.0 {
-                                    shape.write_pixel(x, y, &[cov]);
-                                }
-                            }
-                        }
+                    use photocraft_algo::selection as sel;
+                    let shape = if ellipse {
+                        sel::ellipse_surface(r, area, aa)
                     } else {
-                        shape.fill_rect(cut, &[1.0]);
-                    }
+                        let mut s = Surface::new(photocraft_color::PixelFormat::GRAY8);
+                        s.fill_rect(r.intersect(&area), &[1.0]);
+                        s
+                    };
                     if feather > 0.0 {
-                        use photocraft_algo::selection as sel;
                         let m = sel::feather(&sel::mask_from_surface(Some(&shape), area), area.width() as usize, area.height() as usize, feather);
                         doc.selection = sel::combine(doc.selection.as_ref(), &m, area, sel::SelectionMode::parse(&mode));
                         return Ok(());
                     }
                     let old = doc.selection.take();
                     let combined = match (mode.as_str(), old) {
-                        ("add", Some(o)) => combine(&o, &shape, area, |a, b| a.max(b)),
-                        ("subtract", Some(o)) => combine(&o, &shape, area, |a, b| a * (1.0 - b)),
-                        ("intersect", Some(o)) => combine(&o, &shape, area, |a, b| a.min(b)),
+                        ("add", Some(o)) => sel::combine_surfaces(&o, &shape, area, |a, b| a.max(b)),
+                        ("subtract", Some(o)) => sel::combine_surfaces(&o, &shape, area, |a, b| a * (1.0 - b)),
+                        ("intersect", Some(o)) => sel::combine_surfaces(&o, &shape, area, |a, b| a.min(b)),
                         // With no existing selection, neither operation can select new pixels.
                         ("subtract" | "intersect", None) => Surface::new(photocraft_color::PixelFormat::GRAY8),
                         _ => shape,
@@ -508,16 +520,15 @@ fn build() -> Vec<CommandSpec> {
             }
         ),
         // Layer
-        cmd!("layer.new.layer", "Layer…", ["Layer", "New"], Some("Cmd+Shift+N"), r##"{"name":str?}"##, has_doc, |s, p| {
-            let id = s.edit("New Layer", |doc, active| {
-                let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
-                let id = doc.insert_above(*active, Layer::raster(name, doc.pixel_format()));
-                *active = Some(id);
-                Ok(id)
-            })?;
-            crate::layer_multi_cmds::note_inert_insert(s, id);
-            Ok(json!({ "layer": id.0 }))
-        }),
+        cmd!(
+            "layer.new.layer",
+            "Layer…",
+            ["Layer", "New"],
+            Some("Cmd+Shift+N"),
+            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error)}"##,
+            has_doc,
+            crate::new_layer::run
+        ),
         cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
             let id = s.edit("New Group", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
@@ -547,9 +558,10 @@ fn build() -> Vec<CommandSpec> {
             |s, p| {
                 let in_place = p.get("inPlace").and_then(Value::as_bool).unwrap_or(false);
                 if crate::layer_multi_cmds::multi(s, p) {
-                    return crate::layer_multi_cmds::duplicate_selected(s, in_place);
+                    return crate::layer_multi_cmds::duplicate_selected(s, in_place, "Duplicate Layers");
                 }
                 let id = layer_param(s, p)?;
+                let before = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
                 let nid = s.edit("Duplicate Layer", |doc, active| {
                     let dup = layer_copy(doc, id)?;
                     let nid = doc.insert_above(Some(id), dup);
@@ -559,6 +571,7 @@ fn build() -> Vec<CommandSpec> {
                     *active = Some(nid);
                     Ok(nid)
                 })?;
+                crate::layer_multi_cmds::note_insert(s, &before);
                 Ok(json!({ "layer": nid.0 }))
             }
         ),
@@ -569,7 +582,9 @@ fn build() -> Vec<CommandSpec> {
             let id = layer_param(s, p)?;
             s.edit("Delete Layer", |doc, active| {
                 let neighbours = crate::layer_multi_cmds::deletion_neighbours(doc, id);
+                let before = crate::clip_group::Before::read(doc, &[id]);
                 doc.remove(id).ok_or(EngineError::NoLayer(id))?;
+                crate::clip_group::settle(doc, &[], &before, false);
                 if doc.layers.is_empty() {
                     return Err(EngineError::Other("a document must keep at least one layer".into()));
                 }
@@ -803,26 +818,37 @@ fn build() -> Vec<CommandSpec> {
                 Ok(json!({ "layer": id.0 }))
             }
         ),
-        cmd!("layer.setAdjustment", "Adjustment Properties", [], None, r##"{"layer":id?, …params of that adjustment kind}"##, has_layer, |s, p| {
-            let id = layer_param(s, p)?;
-            s.edit("Modify Adjustment", |doc, _| {
-                let mode = doc.mode;
-                let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
-                let LayerContent::Adjustment(adj) = &mut l.content else { return Err(EngineError::Other("not an adjustment layer".into())) };
-                if matches!(adj, Adjustment::Unsupported { .. }) {
-                    return Err(EngineError::Other("this adjustment can't be edited (kept as imported)".into()));
-                }
-                let kind = adjustment_kind(adj);
-                // No params resets to the defaults; otherwise params merge over the current values.
-                *adj = if crate::adjust_params::user_keys(p).is_empty() {
-                    crate::adjust_params::default_for(kind, mode)?
-                } else {
-                    crate::adjust_params::from_params(kind, p, Some(adj), mode)?
-                };
-                Ok(())
-            })?;
-            Ok(Value::Null)
-        }),
+        cmd!(
+            "layer.setAdjustment",
+            "Adjustment Properties",
+            [],
+            None,
+            r##"{"layer":id?, …params of that adjustment kind} (Levels, Curves: "eyedropper":{"point":"black|gray|white","at":[x,y],"size":1..101=1} or {"point",…,"color":[r,g,b] 0..1} = the Properties panel's Set Black/Neutral Gray/White Point, sampling the image below the layer, RGB and Grayscale (no gray) only)"##,
+            has_layer,
+            |s, p| {
+                let id = layer_param(s, p)?;
+                let eyedropped = crate::adjust_params::layer_eyedropper(s, id, p)?;
+                s.edit("Modify Adjustment", |doc, _| {
+                    let mode = doc.mode;
+                    let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+                    let LayerContent::Adjustment(adj) = &mut l.content else { return Err(EngineError::Other("not an adjustment layer".into())) };
+                    if matches!(adj, Adjustment::Unsupported { .. }) {
+                        return Err(EngineError::Other("this adjustment can't be edited (kept as imported)".into()));
+                    }
+                    let kind = adjustment_kind(adj);
+                    // No params resets to the defaults; otherwise params merge over the current values.
+                    *adj = if let Some(eyedropped) = eyedropped {
+                        eyedropped
+                    } else if crate::adjust_params::user_keys(p).is_empty() {
+                        crate::adjust_params::default_for(kind, mode)?
+                    } else {
+                        crate::adjust_params::from_params(kind, p, Some(adj), mode)?
+                    };
+                    Ok(())
+                })?;
+                Ok(Value::Null)
+            }
+        ),
         cmd!(
             "layer.moveTo",
             "Reorder Layer",
@@ -891,8 +917,13 @@ fn build() -> Vec<CommandSpec> {
             Ok(Value::Null)
         }),
         cmd!("tools.defaultColors", "Default Foreground and Background Colors", [], Some("D"), "{}", always, |s, _| {
-            s.tools.foreground = [0.0, 0.0, 0.0, 1.0];
-            s.tools.background = [1.0, 1.0, 1.0, 1.0];
+            if s.tools.mask_targeted {
+                s.tools.foreground = crate::ToolState::MASK_COLORS[0];
+                s.tools.background = crate::ToolState::MASK_COLORS[1];
+            } else {
+                s.tools.foreground = [0.0, 0.0, 0.0, 1.0];
+                s.tools.background = [1.0, 1.0, 1.0, 1.0];
+            }
             Ok(Value::Null)
         }),
         // Queries (not journaled)
@@ -1009,12 +1040,12 @@ fn build() -> Vec<CommandSpec> {
         (
             "levels",
             "Levels…",
-            r##"{"inBlack":0..253=0,"gamma":0.01..9.99=1,"inWhite":2..255=255,"outBlack":0..255=0,"outWhite":0..255=255,"red":json,"green":json,"blue":json} (top level = composite; per channel {"inBlack","gamma","inWhite","outBlack","outWhite"} under red/green/blue, gray, cyan/magenta/yellow/black or lightness/a/b)"##,
+            r##"{"inBlack":0..253=0,"gamma":0.01..9.99=1,"inWhite":2..255=255,"outBlack":0..255=0,"outWhite":0..255=255,"red":json,"green":json,"blue":json,"eyedropper":json} (top level = composite; per channel {"inBlack","gamma","inWhite","outBlack","outWhite"} under red/green/blue, gray, cyan/magenta/yellow/black or lightness/a/b; eyedropper = the dialog's Set Black/Neutral Gray/White Point picker {"point":"black|gray|white","at":[x,y],"size":1..101=1} or {"point",…,"color":[r,g,b] 0..1}: black/white set each channel's input black/white to the sample, gray each channel's gamma so the sample turns neutral at its luma; RGB and Grayscale (no gray) only, applied over the given levels)"##,
         ),
         (
             "curves",
             "Curves…",
-            r##"{"points":json,"red":json,"green":json,"blue":json,"eyedropper":json} (curves as [[in,out],…] in 0..255, 2..19 points: points = composite; red/green/blue, gray, cyan/magenta/yellow/black or lightness/a/b per channel; eyedropper = the dialog's Set Black/Neutral Gray/White Point picker {"point":"black|gray|white","at":[x,y]} or {"point",…,"color":[r,g,b] 0..1}, RGB and Grayscale (no gray) only, applied over the given curves)"##,
+            r##"{"points":json,"red":json,"green":json,"blue":json,"pencil":bool=false,"smooth":0..10=0,"eyedropper":json} (curves as [[in,out],…] in 0..255, 2..19 points: points = composite; red/green/blue, gray, cyan/magenta/yellow/black or lightness/a/b per channel; pencil = drawn curves (Draw to modify the curve): each curve is 256 output levels in 0..255 (point curves given are drawn in, and turning pencil off fits points to the drawing); smooth = Smooth passes over the drawn curves; eyedropper = the dialog's Set Black/Neutral Gray/White Point picker {"point":"black|gray|white","at":[x,y],"size":1..101=1} or {"point",…,"color":[r,g,b] 0..1}, RGB and Grayscale (no gray) only, applied over the given curves)"##,
         ),
         ("exposure", "Exposure…", r##"{"exposure":-20..20=0,"offset":-0.5..0.5=0,"gamma":0.01..9.99=1}"##),
         ("vibrance", "Vibrance…", r##"{"vibrance":-100..100=0,"saturation":-100..100=0}"##),
@@ -1070,7 +1101,7 @@ fn build() -> Vec<CommandSpec> {
             enabled: has_doc,
             run: |s, p| {
                 let kind = p.get("__kind").and_then(Value::as_str).unwrap_or("invert").to_string();
-                let eyedropped = if kind == "curves" { crate::adjust_params::curves_eyedropper_from_params(s, p)? } else { None };
+                let eyedropped = if matches!(kind.as_str(), "levels" | "curves") { crate::adjust_params::eyedropper_from_params(s, &kind, p)? } else { None };
                 let adj = match eyedropped {
                     Some(adj) => adj,
                     None => crate::adjust_params::from_params(&kind, p, None, doc_mode(s))?,
@@ -1096,7 +1127,17 @@ fn build() -> Vec<CommandSpec> {
             enabled: crate::adjust_cmds::has_adjustable,
             run: |s, p| {
                 let kind = p.get("__kind").and_then(Value::as_str).unwrap_or("invert").to_string();
-                let eyedropped = if kind == "curves" { crate::adjust_params::curves_eyedropper_from_params(s, p)? } else { None };
+                let eyedropped = if matches!(kind.as_str(), "levels" | "curves") { crate::adjust_params::eyedropper_from_params(s, &kind, p)? } else { None };
+                // A smart filter re-runs its params, so it records what an eyedropper resolved
+                // to, not the sample (#3127).
+                let recorded = eyedropped.as_ref().map(|adj| {
+                    let mut q = p.clone();
+                    if let (Value::Object(q), Value::Object(resolved)) = (&mut q, crate::adjust_params::to_params(adj)) {
+                        q.remove("eyedropper");
+                        q.extend(resolved);
+                    }
+                    q
+                });
                 let adj = match eyedropped {
                     Some(adj) => adj,
                     None => crate::adjust_params::from_params(&kind, p, None, doc_mode(s))?,
@@ -1104,7 +1145,7 @@ fn build() -> Vec<CommandSpec> {
                 let label = adj.label().to_string();
                 // A smart object records the adjustment as a smart filter (Photoshop), which
                 // re-runs from the source instead of baking into a copy of the pixels.
-                if crate::adjust_cmds::adjust_as_smart_filter(s, &kind, &label, p)? {
+                if crate::adjust_cmds::adjust_as_smart_filter(s, &kind, &label, recorded.as_ref().unwrap_or(p))? {
                     return Ok(Value::Null);
                 }
                 destructive_adjust(s, &label, adj, p)
@@ -1119,7 +1160,9 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::gallery_cmds::specs());
     v.extend(crate::gradient_fill_cmds::specs());
     v.extend(crate::solid_fill_cmds::specs());
+    v.extend(crate::pattern_fill_cmds::specs());
     v.extend(crate::type_cmds::specs());
+    v.extend(crate::type_mask_cmds::specs());
     v.extend(crate::transform_cmds::specs());
     v.extend(crate::float_cmds::specs());
     v.extend(crate::vector_cmds::specs());
@@ -1137,12 +1180,15 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::retouch_cmds::specs());
     v.extend(crate::redeye_cmds::specs());
     v.extend(crate::image_cmds::specs());
+    v.extend(crate::perspective_crop_cmds::specs());
     v.extend(crate::selection_cmds::specs());
     v.extend(crate::magnetic_cmds::specs());
     v.extend(crate::select_extra_cmds::specs());
     v.extend(crate::paint_cmds::specs());
     v.extend(crate::extra_cmds::specs());
+    v.extend(crate::background_cmds::specs());
     v.extend(crate::file_cmds::specs());
+    v.extend(crate::exr_cmds::specs());
     v.extend(crate::type_extra_cmds::specs());
     v.extend(crate::type_styles_cmds::specs());
     v.extend(crate::type_spell_cmds::specs());
@@ -1154,6 +1200,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::edit_menu_cmds::specs());
     v.extend(crate::fill_key_cmds::specs());
     v.extend(crate::sample_cmds::specs());
+    v.extend(crate::sampler_cmds::specs());
     v.extend(crate::brush_key_cmds::specs());
     v.extend(crate::stamp_cmds::specs());
     v.extend(crate::align_cmds::specs());
@@ -1182,6 +1229,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::web_cmds::specs());
     v.extend(crate::automate_cmds::specs());
     v.extend(crate::print_cmds::specs());
+    v.extend(crate::installed_profiles::specs());
     v.extend(crate::pick_cmds::specs());
     v.extend(crate::layer_nav_cmds::specs());
     v.extend(crate::frame_cmds::specs());
@@ -1191,6 +1239,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::video_cmds::specs());
     v.extend(crate::jobs::specs());
     v.extend(crate::wia_cmds::specs());
+    v.extend(crate::rasterize_style_cmds::specs());
     v.extend(crate::variables_cmds::specs());
     v.extend(crate::plugin_cmds::specs());
     v.extend(crate::group_view_cmds::specs());
@@ -1253,20 +1302,34 @@ pub fn adjustment_kind(a: &Adjustment) -> &'static str {
 fn arrange(s: &mut Session, p: &Value, delta: i32) -> Result<Value> {
     let id = layer_param(s, p)?;
     s.edit("Arrange", |doc, _| {
+        // The Background stays at the bottom: it doesn't move and nothing goes below it.
+        let bg = crate::background_cmds::background_id(doc);
+        if bg == Some(id) {
+            return Err(EngineError::Other("the Background layer can't be moved".into()));
+        }
         let steps = match delta {
             i32::MAX => 10_000,
             i32::MIN => -10_000,
             d => d,
         };
         let dir = steps.signum();
+        let before = crate::clip_group::Before::read(doc, &[id]);
         let mut moved = false;
         for _ in 0..steps.abs() {
             if !doc.shift(id, dir) {
                 break;
             }
+            if crate::background_cmds::keep_background_at_bottom(bg, doc).is_err() {
+                doc.shift(id, -dir);
+                break;
+            }
             moved = true;
         }
-        if moved { Ok(()) } else { Err(EngineError::Other("layer can't move further".into())) }
+        if !moved {
+            return Err(EngineError::Other("layer can't move further".into()));
+        }
+        crate::clip_group::settle(doc, &[id], &before, false);
+        Ok(())
     })?;
     Ok(Value::Null)
 }
@@ -1287,16 +1350,6 @@ fn set_mask(s: &mut Session, p: &Value, label: &str, mask: Option<LayerMask>) ->
     Ok(Value::Null)
 }
 
-fn combine(a: &Surface, b: &Surface, area: Rect, f: impl Fn(f32, f32) -> f32) -> Surface {
-    let ra = a.read_region(area);
-    let rb = b.read_region(area);
-    let data: Vec<f32> = ra.iter().zip(&rb).map(|(x, y)| f(*x, *y)).collect();
-    let mut out = Surface::new(photocraft_color::PixelFormat::GRAY8);
-    out.write_region(area, &data);
-    out.prune();
-    out
-}
-
 /// Move a layer's pixels, linked mask and type by whole pixels (vectors move via
 /// `vector_cmds::translate_vectors`).
 pub(crate) fn translate_layer(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
@@ -1314,7 +1367,18 @@ pub(crate) fn translate_layer(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
         LayerContent::Raster(s) => *s = translate_surface(s, dx, dy),
         LayerContent::Text(t) => {
             t.transform = photocraft_geom::Affine::translate(dx as f64, dy as f64).mul(&t.transform);
-            crate::type_cmds::refresh(doc, t);
+            // A whole-pixel move shifts the rendered text and its PSD position as they are.
+            // Re-rendering would replace Photoshop's rendering of imported type, and drop the
+            // text when its font is missing (artboard export, moving type with the Move tool).
+            let raw = t.psd_raw.as_deref().map(|r| photocraft_text::psd::translate_tysh(r, f64::from(dx), f64::from(dy)));
+            match (&mut t.cache, raw) {
+                (Some(c), Some(Some(r))) => {
+                    *c = translate_surface(c, dx, dy);
+                    t.psd_raw = Some(std::sync::Arc::new(r));
+                }
+                (Some(c), None) => *c = translate_surface(c, dx, dy),
+                _ => crate::type_cmds::refresh(doc, t),
+            }
         }
         LayerContent::Group(g) => {
             // Moving an artboard moves the board with its contents.

@@ -380,6 +380,40 @@ fn history_brush_restores_earlier_pixels() {
 }
 
 #[test]
+fn history_brush_reads_a_source_when_its_pixels_were_locked() {
+    // Given a white layer locked in history state 1, then unlocked and filled red.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 16, "height": 16, "depth": 8, "mode": "rgb", "background": "white"})).unwrap();
+    s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
+    s.execute("layer.lockLayers", json!({"pixels": false})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+
+    // When History Brush samples the locked historical pixels.
+    let result = s.execute("paint.historyBrush", json!({"points": [[8, 8]], "size": 4, "hardness": 100, "state": 1}));
+
+    // Then it paints white; the historical lock limits edits, not reads.
+    assert!(result.is_ok(), "{result:?}");
+    assert!(rgba(&s, 8, 8).iter().all(|v| *v > 0.99), "{:?}", rgba(&s, 8, 8));
+}
+
+#[test]
+fn history_brush_refuses_a_locked_destination_when_source_is_unlocked() {
+    // Given an unlocked white source and a red, currently locked destination.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 16, "height": 16, "depth": 8, "mode": "rgb", "background": "white"})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
+
+    // When History Brush samples the unlocked source and attempts to paint the locked destination.
+    let result = s.execute("paint.historyBrush", json!({"points": [[8, 8]], "size": 4, "hardness": 100, "state": 0}));
+
+    // Then the destination lock still rejects the edit and preserves red pixels.
+    assert!(result.is_err());
+    let pixel = rgba(&s, 8, 8);
+    assert!(pixel[0] > 0.99 && pixel[1] < 0.01, "{pixel:?}");
+}
+
+#[test]
 fn history_brush_errors_when_layer_is_new() {
     let mut s = session(20, 20, 8, "rgb");
     s.execute("layer.new.layer", json!({})).unwrap();
@@ -884,6 +918,32 @@ fn content_aware_move_moves_the_object_and_fills_its_place_at_all_depths() {
 }
 
 #[test]
+fn content_aware_move_transform_on_drop_scales_and_rotates_the_content() {
+    // A horizontal 16×6 bar in a 36×36 selection, dropped 80 px right and turned 90° with 125%
+    // width: it lands upright, 20 px tall, and the blend works around the turned content.
+    let bar = |x: i32, y: i32| if (20..36).contains(&x) && (30..36).contains(&y) { [0.05, 0.1, 0.9, 1.0] } else { texture(x, y) };
+    for depth in [8, 32] {
+        let mut s = session(160, 64, depth, "rgb");
+        paint_layer(&mut s, bar);
+        s.execute("select.rect", json!({"x": 10, "y": 15, "width": 36, "height": 36})).unwrap();
+        let r = s.execute("paint.contentAwareMove", json!({"offset": [80, 0], "rotate": 90, "scaleX": 125})).unwrap();
+        assert_eq!(r["transformed"], json!(true));
+        for (x, y) in [(108, 24), (108, 33), (108, 42), (106, 30)] {
+            assert!(is_object(rgba(&s, x, y)), "depth {depth}: the turned, stretched bar covers {x},{y}: {:?}", rgba(&s, x, y));
+        }
+        for (x, y) in [(101, 33), (115, 33)] {
+            assert!(!is_object(rgba(&s, x, y)), "depth {depth}: no unturned bar at {x},{y}");
+        }
+        assert!(!is_object(rgba(&s, 28, 33)), "depth {depth}: the old place is filled");
+        assert!(selected(&s, 108, 33) && !selected(&s, 28, 33), "depth {depth}: the selection followed");
+        // One step: undo brings the bar and the selection back.
+        s.execute("edit.undo", json!({})).unwrap();
+        assert!(is_object(rgba(&s, 28, 33)) && !is_object(rgba(&s, 108, 24)), "depth {depth}: undo");
+        assert!(selected(&s, 28, 33), "depth {depth}: undo restores the selection");
+    }
+}
+
+#[test]
 fn content_aware_extend_keeps_the_original() {
     let mut s = session(128, 64, 8, "rgb");
     paint_layer(&mut s, with_object(20, 26));
@@ -1020,10 +1080,21 @@ fn content_aware_move_fails_gracefully() {
         json!({"offset": [10, 0], "target": "mask"}),
         json!({"offset": [10, 0], "target": {"channel": 7}}),
         json!({"offset": [10, 0], "layer": 999}),
+        json!({"offset": [10, 0], "scaleX": 0}),
+        json!({"offset": [10, 0], "scaleY": 0.5}),
+        json!({"offset": [10, 0], "scaleX": 1e9}),
+        json!({"offset": [10, 0], "scaleX": "big"}),
+        json!({"offset": [10, 0], "rotate": 1e300}),
+        json!({"offset": [10, 0], "rotate": [45]}),
+        json!({"offset": [5000, 0], "scaleX": 200}),
+        json!({"offset": [0, 0], "scaleX": 100, "rotate": 360}),
     ] {
         assert!(s.execute("paint.contentAwareMove", p.clone()).is_err(), "{p}");
     }
     assert!(s.execute("paint.contentAwareMove", json!({"offset": [10, 0], "structure": 7.0, "color": null})).is_ok());
+    // Transform On Drop: scaling in place needs no drag; a big patch may reach past the edge.
+    assert!(s.execute("paint.contentAwareMove", json!({"offset": [0, 0], "scaleX": 150, "rotate": -30})).is_ok());
+    assert!(s.execute("paint.contentAwareMove", json!({"offset": [20, 0], "scaleX": -10000, "scaleY": 10000})).is_ok());
 }
 
 #[test]
@@ -1431,6 +1502,19 @@ fn remove_open_strokes_and_the_selection_limit_what_changes() {
 }
 
 #[test]
+fn remove_on_an_empty_layer_is_a_no_op_without_a_history_step() {
+    let mut s = square_session(8, "rgb");
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let past = s.active().unwrap().history.past_len();
+    let v = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16})).unwrap();
+    assert_eq!(v, json!({"changed": false}));
+    assert_eq!(s.active().unwrap().history.past_len(), past);
+    // With Sample All Layers on, the image below is there to remove from.
+    s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "sampleAllLayers": true})).unwrap();
+    assert_eq!(s.active().unwrap().history.past_len(), past + 1);
+}
+
+#[test]
 fn remove_thin_scratches_take_their_surroundings() {
     let mut s = session(80, 40, 16, "rgb");
     paint_layer(&mut s, |x, y| if y == 20 { [1.0, 1.0, 1.0, 1.0] } else { [x as f32 / 80.0, 0.4, 0.6, 1.0] });
@@ -1460,4 +1544,39 @@ fn remove_bad_params_are_errors() {
     assert!(err.contains("too large"), "{err}");
     let err = s.execute("paint.remove", json!({"points": [[48, 32]], "size": 3000})).unwrap_err().to_string();
     assert!(err.contains("nothing is left"), "{err}");
+}
+
+/// Flat (150, 120, 100) with Gaussian film grain of σ 12 levels (the #2104 test image).
+fn film_grain(x: i32, y: i32) -> [f32; 4] {
+    let u = |k: u32| {
+        let mut z = (x as u32).wrapping_mul(0x9E37_79B9) ^ (y as u32).wrapping_mul(0x85EB_CA6B) ^ k.wrapping_mul(0xC2B2_AE35);
+        z = (z ^ (z >> 16)).wrapping_mul(0x7FEB_352D);
+        z = (z ^ (z >> 15)).wrapping_mul(0x846C_A68B);
+        ((z ^ (z >> 16)) as f32 + 1.0) / (u32::MAX as f32 + 2.0)
+    };
+    let n = (-2.0 * u(1).ln()).sqrt() * (std::f32::consts::TAU * u(2)).cos() * 12.0;
+    [(150.0 + n) / 255.0, (120.0 + n) / 255.0, (100.0 + n) / 255.0, 1.0]
+}
+
+#[test]
+fn spot_healing_keeps_film_grain_through_overlapping_strokes() {
+    // #2104: on flat colour with grain the heal must carry the grain, not leave a smooth patch,
+    // and must not lose more with each overlapping stroke (each samples the ones before).
+    let red = |s: &Session, x0: i32, x1: i32, y0: i32, y1: i32| {
+        let v: Vec<f32> = (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).map(|(x, y)| rgba(s, x, y)[0] * 255.0).collect();
+        let m = v.iter().sum::<f32>() / v.len() as f32;
+        (m, (v.iter().map(|a| (a - m).powi(2)).sum::<f32>() / v.len() as f32).sqrt())
+    };
+    for (depth, kind) in [(8u64, "contentAware"), (8, "proximityMatch"), (8, "createTexture"), (16, "createTexture")] {
+        let mut s = session(400, 300, depth, "rgb");
+        paint_layer(&mut s, film_grain);
+        let (m0, sd0) = red(&s, 0, 100, 0, 100);
+        for i in 0..8 {
+            let y = 100 + 10 * i;
+            s.execute("paint.spotHealing", json!({"points": [[140, y], [260, y]], "size": 30, "hardness": 100, "type": kind})).unwrap();
+            let (m, sd) = red(&s, 150, 250, y - 4, y + 5);
+            assert!(sd > 0.8 * sd0 && sd < 1.25 * sd0, "{kind} depth {depth} stroke {}: grain {sd} vs {sd0} around", i + 1);
+            assert!((m - m0).abs() < 3.0, "{kind} depth {depth} stroke {}: mean {m} vs {m0}", i + 1);
+        }
+    }
 }
