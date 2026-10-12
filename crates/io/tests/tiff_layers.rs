@@ -544,10 +544,45 @@ fn transparent_tiff_without_channels_keeps_image_alpha() {
         let mut dec = tiff::decoder::Decoder::new(std::io::Cursor::new(r.bytes.as_slice())).unwrap();
         let extra = dec.get_tag_u16_vec(tiff::tags::Tag::ExtraSamples).unwrap();
         assert_eq!(extra, vec![2], "{layers}");
+        assert!(!r.warnings.iter().any(|w| w.contains("Save Transparency")), "{layers}: {:?}", r.warnings);
         if layers {
             assert_photoshop_layered_tiff(&r.bytes, false);
         }
     }
+}
+
+/// A flat TIFF that also stores an alpha or spot channel mattes the composite on white
+/// and drops image transparency. The export says so.
+#[test]
+fn flat_tiff_warns_when_extra_channels_matte_transparency() {
+    use photocraft_color::{Color, PixelFormat};
+    use photocraft_doc::{AlphaChannel, Layer};
+    use photocraft_geom::{Rect, Size};
+    use photocraft_raster::Surface;
+
+    let mut doc = Document::new("t", Size::new(4, 4), ColorMode::Rgb, SampleType::U8);
+    let fmt = doc.pixel_format();
+    let mut art = Surface::new(fmt);
+    // (0, 0) stays transparent. (1, 1) is half-red, so the matte is halfway to white.
+    art.fill_rect(Rect::new(1, 1, 1, 1), &photocraft_raster::from_rgba(&fmt, [1.0, 0.0, 0.0, 0.5]));
+    doc.layers.push(Layer::new("Art", LayerContent::Raster(art)));
+    let mut spot = AlphaChannel::new("Spot Color 1", Surface::new(PixelFormat::new(ColorMode::Grayscale, SampleType::U8, false)));
+    spot.spot = Some((Color::rgb(0.0, 1.0, 0.0), 1.0));
+    doc.channels.push(spot);
+
+    let r = export(&doc, "t.tif", &ExportOptions { tiff_layers: false, ..ExportOptions::default() }).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("composited over white") && w.contains("Save Transparency")), "{:?}", r.warnings);
+    let img = photocraft_codecs::decode(&r.bytes).unwrap();
+    assert!(!img.layout().has_alpha(), "{:?}", img.layout());
+    assert_eq!(img.meta.extra_samples.len(), 1);
+    let (_spp, _bps, extra, _rows, samples) = independent_samples(&r.bytes);
+    assert_eq!(extra, vec![0]);
+    // 4 samples per pixel: RGB + spot. (0, 0) was transparent and is now white.
+    assert_eq!(&samples[..3], &[255, 255, 255]);
+    // Half-red over white is about (255, 128, 128).
+    let at = (1 * 4 + 1) * 4;
+    let rgb = &samples[at..at + 3];
+    assert!(rgb[0] > 250 && (rgb[1] as i16 - 128).abs() <= 2 && (rgb[2] as i16 - 128).abs() <= 2, "{rgb:?}");
 }
 
 /// Tag 37724 walked as raw bytes (not through [`ImageSourceData`]).

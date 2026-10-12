@@ -20,7 +20,7 @@ use photocraft_psd::{ColorMode as PsdMode, Compression, Header, ImageData, Image
 use photocraft_raster::Surface;
 
 use crate::flat::{csample, encode_image, image_to_document, layout_for, single_layer, try_buffer};
-use crate::psd_export::{PsdExportOptions, document_to_psd_with};
+use crate::psd_export::PsdExportOptions;
 use crate::psd_import::psd_to_document;
 use crate::{ExportOptions, ExportResult, ImportResult, IoError};
 
@@ -201,11 +201,19 @@ fn interleave(planes: &[u8], w: u32, h: u32, channels: usize, color_channels: us
     Ok(out)
 }
 
+/// A layered TIFF export's progress once the layers and composite are converted, the layer
+/// block is assembled and the composite interleaved; the TIFF encoder does the rest (#3389).
+/// Measured on a 24 MP, 5-layer RGB/8 document: about 40 %, 70 % and 72 % of the time.
+const TIFF_MODEL_DONE: f32 = 0.4;
+const TIFF_LAYERS_DONE: f32 = 0.68;
+const TIFF_COMPOSITE_DONE: f32 = 0.72;
+
 /// Saves `doc` as a layered TIFF. Documents whose colour mode a TIFF cannot hold in our
-/// codec (Lab) are saved flat, with a warning.
-pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions) -> Result<ExportResult, IoError> {
+/// codec (Lab) are saved flat, with a warning. Reports progress through `ctl` (see
+/// [`crate::export_with`]).
+pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions, ctl: &photocraft_raster::Interrupt) -> Result<ExportResult, IoError> {
     if !layered_mode(doc) {
-        let mut r = crate::flat::export_flat(doc, Format::Tiff, opts)?;
+        let mut r = crate::flat::export_flat_with(doc, Format::Tiff, opts, ctl)?;
         if !doc.layers.is_empty() {
             r.warnings.push(format!("{:?} documents are saved as a flat TIFF: their layers are not kept", doc.pixel_format().mode));
         }
@@ -219,7 +227,9 @@ pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions) -> Result<Exp
     // straight RGBA, which is what a plain transparent TIFF already round-trips as.
     let user_channels = !doc.channels.is_empty() || doc.quick_mask.is_some();
     let psd_opts = PsdExportOptions { force_psb: opts.force_psb || big, merged_matte: user_channels, merged_compression: Compression::Raw };
-    let (file, w) = document_to_psd_with(doc, &psd_opts);
+    let (file, w) = crate::with_span(ctl, 0.0, TIFF_MODEL_DONE, |ctl| crate::psd_export::document_to_psd_interruptible(doc, &psd_opts, ctl));
+    // A cancelled conversion stops early with an incomplete model: never encode it.
+    ctl.check().map_err(|_| IoError::Cancelled)?;
     warnings.extend(w);
     let order = if codecs::tiff_writes_little_endian() { ByteOrder::Little } else { ByteOrder::Big };
     // Photoshop pairs alpha-name resources with samples past the colour channels and ignores
@@ -256,6 +266,8 @@ pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions) -> Result<Exp
         isd.global_blocks.push(photocraft_psd::TaggedBlock::new(*b"FMsk", FILTER_MASK_DEFAULT.to_vec()));
     }
     let (layers, w) = isd.to_bytes(order)?;
+    ctl.check().map_err(|_| IoError::Cancelled)?;
+    ctl.progress(TIFF_LAYERS_DONE);
     warnings.extend(w.into_iter().map(|w| format!("layer data: {w}")));
     // The profile and XMP are written as TIFF tags, not as resources. EXIF stays a resource
     // (1058): the TIFF codec has no EXIF directory, and the PSD importer reads it back from there.
@@ -302,6 +314,8 @@ pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions) -> Result<Exp
     let cmyk = fmt.mode == ColorMode::Cmyk;
     let data = interleave(&file.image_data.data, w, h, ifd_channels, cc, sample, cmyk)?;
     let extras = native_extra_planes(&file.image_data.data, w, h, channels, kept, sample)?;
+    ctl.check().map_err(|_| IoError::Cancelled)?;
+    ctl.progress(TIFF_COMPOSITE_DONE);
     let layout = layout_for(fmt.mode, write_alpha);
     let mut img = Image::from_raw(w, h, layout, sample, data)?;
     img.icc = doc.icc_profile.as_ref().map(|i| i.to_vec());
@@ -659,10 +673,18 @@ pub(crate) fn stamp_flat_channels(doc: &Document, img: &mut Image) -> Vec<String
     let quick_last = matches!((picked.last(), doc.quick_mask.as_ref()), (Some(p), Some(q)) if std::ptr::eq(*p, q));
     let color_channels = img.layout().color_channels();
     // Save Transparency off: the colour samples are the composite over white, and the
-    // alpha plane is not an extra sample (it would be named as the first spot).
-    if img.layout().has_alpha() && !matte_and_drop_alpha(img) {
-        warnings.push("extra channels were not written: the composite transparency could not be separated from them".into());
-        return warnings;
+    // alpha plane is not an extra sample (it would be named as the first spot). The
+    // composite transparency is gone after this; say so, because the user did not pick
+    // that option themselves.
+    if img.layout().has_alpha() {
+        if !matte_and_drop_alpha(img) {
+            warnings.push("extra channels were not written: the composite transparency could not be separated from them".into());
+            return warnings;
+        }
+        warnings.push(
+            "transparency composited over white; a TIFF with alpha or spot channels stores them as extra samples and drops image transparency (Save Transparency off)"
+                .into(),
+        );
     }
     let quick_id = if quick_last { u16::try_from(color_channels.saturating_add(picked.len()).saturating_sub(1)).ok() } else { None };
     let first_id = u32::try_from(color_channels).unwrap_or(u32::MAX);
@@ -685,7 +707,7 @@ fn channel_resources(existing: Option<&[u8]>, names: &[&str], channels: &[&Alpha
     });
     resources.push(ImageResource::new(1006, crate::psd_export::pascal_names_resource(names)));
     resources.push(ImageResource::new(1045, crate::psd_export::unicode_names_resource(names)));
-    resources.push(ImageResource::new(crate::channel_map::DISPLAY_INFO, crate::channel_map::display_info(channels)));
+    resources.push(ImageResource::new(crate::channel_map::DISPLAY_INFO, crate::channel_map::display_info(channels, false)));
     resources.push(ImageResource::new(crate::channel_map::ALPHA_IDENTIFIERS, crate::channel_map::alpha_identifiers_from(first_id, names.len())));
     if let Some(id) = quick_id {
         let mut data = id.to_be_bytes().to_vec();
@@ -737,9 +759,9 @@ pub(crate) fn channels_from_extras(doc: &mut Document, img: &Image) -> Vec<Strin
     {
         let slice = &mut doc.channels[start..];
         if let Some(r) = resources.iter().find(|r| r.id == crate::channel_map::DISPLAY_INFO) {
-            crate::channel_map::apply_display_info(&r.data, true, slice);
+            crate::channel_map::apply_display_info(&r.data, true, 0, slice);
         } else if let Some(r) = resources.iter().find(|r| r.id == crate::channel_map::DISPLAY_INFO_OLD) {
-            crate::channel_map::apply_display_info(&r.data, false, slice);
+            crate::channel_map::apply_display_info(&r.data, false, 0, slice);
         }
     }
     let first = img.layout().color_channels().saturating_add(usize::from(img.layout().has_alpha()));
