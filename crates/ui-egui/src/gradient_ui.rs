@@ -367,7 +367,7 @@ pub fn display_doc(app: &mut PhotocraftApp, idx: usize) -> Option<(Arc<Document>
     let st = app.session.active()?;
     let (doc, revision) = (st.doc.clone(), st.revision);
     let edit: Option<(LayerId, &'static str, Value)> = match &app.gradient.drag {
-        Some(Drag::Draw { from, to, redraw }) if live_mode(app) && dist(*from, *to) >= 1.0 => match redraw {
+        Some(Drag::Draw { from, to, redraw }) if live_mode(app) && dist(*from, *to) >= 0.5 => match redraw {
             Some(id) => Some((*id, cmds::SET, json!({"from": from, "to": to}))),
             None => Some((PREVIEW_LAYER, cmds::CREATE, create_params(app, *from, *to))),
         },
@@ -1264,6 +1264,37 @@ mod tests {
         assert_eq!(app.session.active().unwrap().doc.layers.len(), 1, "nothing committed yet");
         crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 140.0, y: 60.0 }, mods());
         assert!(display_doc(&mut app, 0).is_none());
+    }
+
+    #[test]
+    fn short_live_gradient_preview_commit_and_properties_keep_the_drag_length() {
+        let mut app = app_with_gradient("linear");
+        app.ui.views.resize(1, crate::state::View::default());
+        app.ui.views[0].zoom = 5.0;
+        let before = app.session.active().unwrap().history.past_len();
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 100.0, y: 60.0, pressure: 1.0 }, mods());
+        crate::canvas::tool_event(&mut app, ToolEvent::Move { x: 100.5, y: 60.0, pressure: 1.0 }, mods());
+        let (doc, _) = display_doc(&mut app, 0).unwrap();
+        let fill = match &doc.layer(PREVIEW_LAYER).unwrap().content {
+            LayerContent::Fill(f) => f,
+            _ => panic!("gradient preview"),
+        };
+        let (from, to) = gf::fill_handles(fill, doc.bounds()).unwrap();
+        assert!((from[0] - 100.0).abs() < 0.01 && (to[0] - 100.5).abs() < 0.01);
+        crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 100.5, y: 60.0 }, mods());
+        assert_eq!(app.session.active().unwrap().history.past_len(), before + 1);
+        let st = app.session.active().unwrap();
+        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap().clone();
+        let original = fill_of(&layer).unwrap().clone();
+        let ctx = egui::Context::default();
+        PhotocraftApp::setup_context(&ctx, Default::default());
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| properties(&mut app, ui, &layer));
+            out.textures_delta.clear();
+        }
+        let st = app.session.active().unwrap();
+        assert_eq!(fill_of(st.doc.layer(st.active_layer.unwrap()).unwrap()), Some(&original));
+        assert_eq!(st.history.past_len(), before + 1);
     }
 
     /// Regression: the options bar's gradient swatch could not open anything. In live mode it

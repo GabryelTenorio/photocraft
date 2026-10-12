@@ -316,17 +316,17 @@ fn commands_fail_gracefully() {
     s.execute(SET, json!({"scale": 1e30, "angle": 1e9, "offset": [1e4, -1e4]})).unwrap();
     let g = s.execute(GET, json!({})).unwrap();
     assert!(g["scale"].as_f64().unwrap().is_finite() && g["from"][0].as_f64().unwrap().is_finite());
-    // Scale stays within Photoshop's 10–150 %, also for a handle dragged far away.
+    // Scale retains the 150% upper bound, also for a handle dragged far away.
     assert!((g["scale"].as_f64().unwrap() - 150.0).abs() < 1e-3, "{g}");
     let g = s.execute(SET, json!({"from": [0, 0], "to": [1e6, 0]})).unwrap();
     assert!((g["scale"].as_f64().unwrap() - 150.0).abs() < 1e-3, "{g}");
     let g = s.execute(SET, json!({"scale": 1})).unwrap();
-    assert!((g["scale"].as_f64().unwrap() - 10.0).abs() < 1e-3, "{g}");
+    assert!((g["scale"].as_f64().unwrap() - 1.0).abs() < 1e-3, "{g}");
 }
 
-/// Dragging one handle past the scale range stops it; the other handle stays put (#1243).
+/// Dragging one handle closer follows the pointer; the other handle stays put (#1243).
 #[test]
-fn a_clamped_handle_drag_leaves_the_other_handle_alone() {
+fn a_short_handle_drag_leaves_the_other_handle_alone() {
     let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
     let close = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 1e-2 && (a[1] - b[1]).abs() < 1e-2;
     for style in STYLES {
@@ -336,9 +336,9 @@ fn a_clamped_handle_drag_leaves_the_other_handle_alone() {
             s.execute(CREATE, json!({"from": from, "to": to, "style": style})).unwrap();
             // End dragged almost onto the start: far below 10 %.
             let g = s.execute(SET, json!({"to": short})).unwrap();
-            assert!((g["scale"].as_f64().unwrap() - 10.0).abs() < 1e-3, "{style}: {g}");
+            assert!(close(pt(&g, "to"), short), "{style}: the dragged endpoint must follow the pointer: {g}");
             assert!(close(pt(&g, "from"), from), "{style}: start moved to {:?}", pt(&g, "from"));
-            // The end stops on the line towards the pointer.
+            // The end stays on the line towards the pointer.
             let e = pt(&g, "to");
             assert!((e[0] - from[0]) * (short[0] - from[0]) >= 0.0 && (e[1] - from[1]) * (short[1] - from[1]) >= 0.0, "{style}: {e:?}");
             // And the same for the start handle.
@@ -383,4 +383,90 @@ fn stop_rejects_huge_indices_without_panicking() {
     let Fill::Gradient { midpoints, .. } = active_fill(&s) else { panic!("not a gradient fill") };
     assert_eq!(midpoints, vec![0.25]);
     assert_eq!(s.active().unwrap().history.past_len(), h + 1);
+}
+
+/// #1243: the minimum drag length is measured in pixels, independent of canvas size or axis.
+#[test]
+fn short_live_gradient_handles_follow_the_pointer_on_every_axis_and_depth() {
+    let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
+    let close = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 0.01 && (a[1] - b[1]).abs() < 0.01;
+    for depth in [8, 16, 32] {
+        for style in STYLES {
+            for end in [[100.5, 100.0], [100.0, 100.5], [100.6, 100.8]] {
+                let mut s = Session::new();
+                s.execute("file.new", json!({"width": 6000, "height": 4000, "depth": depth, "background": "transparent"})).unwrap();
+                let from = [100.0, 100.0];
+                s.execute(CREATE, json!({"from": from, "to": end, "style": style, "dither": false})).unwrap();
+                let created = s.execute(GET, json!({})).unwrap();
+                assert!(close(pt(&created, "from"), from) && close(pt(&created, "to"), end), "{depth} {style}: {created}");
+                let original = active_fill(&s);
+                let h = s.active().unwrap().history.past_len();
+                let farther = [100.0 + (end[0] - 100.0) * 2.0, 100.0 + (end[1] - 100.0) * 2.0];
+                let edited = s.execute(SET, json!({"to": farther})).unwrap();
+                assert!(close(pt(&edited, "from"), from) && close(pt(&edited, "to"), farther), "{edited}");
+                assert_eq!(s.active().unwrap().history.past_len(), h + 1);
+                s.execute("edit.undo", json!({})).unwrap();
+                assert_eq!(active_fill(&s), original);
+                s.execute("edit.redo", json!({})).unwrap();
+                let edited = s.execute(GET, json!({})).unwrap();
+                assert!(close(pt(&edited, "to"), farther));
+                // Drag the start toward the end. The stationary endpoint remains fixed too.
+                let edited = s.execute(SET, json!({"from": end})).unwrap();
+                assert!(close(pt(&edited, "from"), end) && close(pt(&edited, "to"), farther), "{edited}");
+            }
+        }
+    }
+}
+
+/// Tiny live gradients stay editable after saving, rather than growing on reopen.
+#[test]
+fn short_live_gradients_keep_their_handles_through_pcraft_and_psd() {
+    for depth in [8, 16, 32] {
+        for style in STYLES {
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width": 600, "height": 400, "depth": depth, "background": "transparent"})).unwrap();
+            s.execute(CREATE, json!({"from": [100, 100], "to": [100.5, 100], "style": style, "dither": false})).unwrap();
+            let doc = &s.active().unwrap().doc;
+            for extension in ["pcraft", "psd"] {
+                let bytes = photocraft_io::export(doc, extension, &Default::default()).unwrap().bytes;
+                let reopened = photocraft_io::import(&format!("short.{extension}"), &bytes).unwrap().document;
+                let gradient = reopened
+                    .layers
+                    .iter()
+                    .find_map(|l| match &l.content {
+                        LayerContent::Fill(f @ Fill::Gradient { .. }) => Some(f),
+                        _ => None,
+                    })
+                    .unwrap();
+                let (from, to) = gf::fill_handles(gradient, reopened.bounds()).unwrap();
+                assert!((from[0] - 100.0).abs() < 0.01 && (to[0] - 100.5).abs() < 0.01, "{depth} {style} {extension}: {from:?} {to:?}");
+                assert!((from[1] - 100.0).abs() < 0.01 && (to[1] - 100.0).abs() < 0.01);
+            }
+        }
+    }
+}
+
+/// The half-pixel numerical guard must not displace the stationary handle.
+#[test]
+fn subpixel_minimum_keeps_the_stationary_gradient_endpoint_fixed() {
+    let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
+    let close = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 0.01 && (a[1] - b[1]).abs() < 0.01;
+    for style in STYLES {
+        for short in [[100.1, 100.0], [100.0, 100.1], [100.0, 100.0]] {
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width": 6000, "height": 4000, "background": "transparent"})).unwrap();
+            let start = [100.0, 100.0];
+            s.execute(CREATE, json!({"from": start, "to": short, "style": style})).unwrap();
+            let g = s.execute(GET, json!({})).unwrap();
+            assert!(close(pt(&g, "from"), start), "{style}: creation moved the starting point: {g}");
+            let end = pt(&g, "to");
+            assert!(((end[0] - start[0]).hypot(end[1] - start[1]) - 0.5).abs() < 0.01);
+            s.execute(SET, json!({"from": start, "to": [120, 100]})).unwrap();
+            let g = s.execute(SET, json!({"to": short})).unwrap();
+            assert!(close(pt(&g, "from"), start), "{style}: dragging end moved start: {g}");
+            s.execute(SET, json!({"from": [80, 100], "to": start})).unwrap();
+            let g = s.execute(SET, json!({"from": short})).unwrap();
+            assert!(close(pt(&g, "to"), start), "{style}: dragging start moved end: {g}");
+        }
+    }
 }

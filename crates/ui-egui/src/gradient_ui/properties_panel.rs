@@ -49,7 +49,7 @@ fn options(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
         if let Some(value) = numeric_row(ui, "angle", "Angle", angle, -180.0..=180.0, "°") {
             let _ = app.run(cmds::SET, json!({"layer": layer.id.0, "angle": value}));
         }
-        if let Some(value) = numeric_row(ui, "scale", "Scale", scale * 100.0, 10.0..=150.0, "%") {
+        if let Some(value) = numeric_row(ui, "scale", "Scale", scale * 100.0, (gf::MIN_SCALE * 100.0)..=150.0, "%") {
             let _ = app.run(cmds::SET, json!({"layer": layer.id.0, "scale": value}));
         }
         ui.horizontal_wrapped(|ui| {
@@ -88,13 +88,19 @@ fn numeric_row(ui: &mut egui::Ui, id: &str, name: &str, current: f32, range: std
             let label = row_label(ui, name);
             let key = ui.id().with("draft");
             let mut value = ui.data(|d| d.get_temp::<f32>(key)).unwrap_or(current);
-            let response = widgets::value_field(ui, &mut value, range, suffix, ui.available_width().min(88.0)).labelled_by(label.id);
+            let width = ui.available_width().min(88.0);
+            let response = if suffix == "%" && current.abs() < 0.1 {
+                widgets::value_field_prec(ui, &mut value, range, suffix, width, 7)
+            } else {
+                widgets::value_field(ui, &mut value, range, suffix, width)
+            }
+            .labelled_by(label.id);
             if response.dragged() || response.has_focus() {
                 ui.data_mut(|d| d.insert_temp(key, value));
                 return None;
             }
             ui.data_mut(|d| d.remove::<f32>(key));
-            (response.drag_stopped() || response.lost_focus() || response.changed()).then_some(value).filter(|v| (*v - current).abs() > 1e-3)
+            (response.drag_stopped() || response.lost_focus() || response.changed()).then_some(value).filter(|v| (*v - current).abs() > 1e-7)
         })
         .inner
     })

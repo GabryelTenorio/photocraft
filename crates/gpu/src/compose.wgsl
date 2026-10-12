@@ -740,9 +740,9 @@ fn gradient_t(d: vec2<i32>) -> f32 {
     let dy = f32(d.y) + 0.5 - cy;
     let along = dx * c - dy * s;
     let across = dx * s + dy * c;
-    let len = max(sqrt((c * w) * (c * w) + (s * h) * (s * h)), 1.0) * max(op.p0.y, 1e-3);
+    let len = max(sqrt((c * w) * (c * w) + (s * h) * (s * h)), 1.0) * max(op.p0.y, 1e-9);
     // effects::gradient_t: Linear / Reflected span the bounds' chord along the angle.
-    let chord = max(min(w / max(abs(c), 1e-6), h / max(abs(s), 1e-6)), 1.0) * max(op.p0.y, 1e-3);
+    let chord = max(min(w / max(abs(c), 1e-6), h / max(abs(s), 1e-6)), 1.0) * max(op.p0.y, 1e-9);
     // Linear / Reflected sample the pixel's top-left corner (effects::gradient_t).
     let corner = 0.5 * (c - s);
     var t: f32;

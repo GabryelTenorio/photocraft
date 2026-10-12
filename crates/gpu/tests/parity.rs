@@ -2272,3 +2272,25 @@ fn the_focused_view_stays_resident_after_a_full_refresh() {
         assert!(worst_diff(&cpu.px, &out).0 <= TOL);
     }
 }
+
+/// #1243: scales smaller than 0.1% retain the same geometry in both compositors,
+/// including paged rendering and all document sample depths.
+#[test]
+fn short_live_gradients_match_cpu_at_every_depth() {
+    let Some(mut g) = gpu() else { return };
+    for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+        for style in [GradientStyle::Linear, GradientStyle::Radial, GradientStyle::Angle, GradientStyle::Reflected, GradientStyle::Diamond] {
+            for to in [[100.5, 100.0], [100.0, 100.5], [100.6, 100.8]] {
+                let mut d = Document::new("short gradient", Size::new(6000, 4000), ColorMode::Rgb, depth);
+                let (angle, scale, offset) = photocraft_compose::gradient_fill::from_handles(style, [100.0, 100.0], to, d.bounds(), 0.0);
+                let mut fill = Fill::gradient(vec![(0.0, Color::rgb(0.0, 0.2, 0.7)), (1.0, Color::rgb(1.0, 0.3, 0.1))], angle, scale, style, false);
+                if let Fill::Gradient { offset: o, align, .. } = &mut fill {
+                    *o = offset;
+                    *align = false;
+                }
+                d.layers.push(Layer::new("short", LayerContent::Fill(fill)));
+                diff_rect(&mut g, &d, Rect::new(96, 96, 106, 106), &format!("{depth:?} {style:?} {to:?}")).unwrap();
+            }
+        }
+    }
+}

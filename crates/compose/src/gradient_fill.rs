@@ -14,6 +14,9 @@ use crate::effects::gradient_units;
 
 /// Smallest gradient length a handle drag produces (pixels), so the fill stays invertible.
 const MIN_LEN: f32 = 0.5;
+/// Numerical scale guard shared by handles and CPU layout. Even the largest supported
+/// document can express a half-pixel gradient; the GPU uses the same guard.
+pub const MIN_SCALE: f32 = 1e-9;
 
 /// A gradient fill's colour ramp, prepared for one render (colours converted once, while the
 /// document's CMYK profile is active).
@@ -209,7 +212,7 @@ pub fn handles(style: GradientStyle, angle: f32, scale: f32, offset: (f32, f32),
     let c = centre(offset, frame);
     let (s, co) = angle.to_radians().sin_cos();
     let dir = [co, -s];
-    let reach = unit_reach(style, angle, frame) * scale.max(1e-3);
+    let reach = unit_reach(style, angle, frame) * scale.max(MIN_SCALE);
     match style {
         GradientStyle::Linear => {
             let h = reach / 2.0;
@@ -272,6 +275,25 @@ mod tests {
         let noise = (photocraft_color::dither_noise(3, 7) - 0.5) / 255.0;
         for i in 0..4 {
             assert!((dithered[i] - expected[i] - noise).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn half_pixel_handles_and_cpu_samples_agree_on_large_frames() {
+        let frame = Rect::new(0, 0, 6000, 4000);
+        for style in STYLES {
+            for (from, to) in [([100.0, 100.0], [100.5, 100.0]), ([100.0, 100.0], [100.0, 100.5])] {
+                let (angle, scale, offset) = from_handles(style, from, to, frame, 0.0);
+                let (actual_from, actual_to) = handles(style, angle, scale, offset, frame);
+                for (a, b) in actual_from.into_iter().chain(actual_to).zip(from.into_iter().chain(to)) {
+                    assert!((a - b).abs() < 0.01, "{style:?}: {actual_from:?} {actual_to:?}");
+                }
+                if style != GradientStyle::Angle {
+                    let (x, y) = if matches!(style, GradientStyle::Linear | GradientStyle::Reflected) { (to[0] + 0.5, to[1] + 0.5) } else { (to[0], to[1]) };
+                    let t = crate::effects::gradient_t(style, angle, scale, false, offset, frame, x, y);
+                    assert!((t - 1.0).abs() < 0.01, "{style:?}: endpoint sample {t}");
+                }
+            }
         }
     }
 

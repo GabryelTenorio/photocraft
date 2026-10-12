@@ -1023,7 +1023,7 @@ pub fn gradient_t(style: GradientStyle, angle: f32, scale: f32, reverse: bool, o
     let along = dx * c - dy * s;
     let across = dx * s + dy * c;
     let (chord, len) = gradient_units(angle, w, h);
-    let (chord, len) = (chord * scale.max(1e-3), len * scale.max(1e-3));
+    let (chord, len) = (chord * scale.max(crate::gradient_fill::MIN_SCALE), len * scale.max(crate::gradient_fill::MIN_SCALE));
     // Linear / Reflected sample the pixel's top-left corner, half a pixel before its centre
     // (with the whole-pixel end points of `fill_layout`: layer_effects' overlay 5.8 → 1.8/255,
     // shape-fx2 2.8 → 1.1/255, gradient-fill.psd 1.9 → 0.5/255).
