@@ -769,7 +769,6 @@ pub fn psd_to_document_with(file: &PsdFile, ctl: &photocraft_raster::Interrupt) 
         {
             bottom.locks.position = true;
         }
-        doc.layers = cx.build(&tree, 0);
         // PhotoCraft's semantic roles are stored as a private `shmd` item on each layer.
         // Keep them in the document's namespaced metadata so the engine/UI sees them normally.
         let roles: Vec<_> = doc
