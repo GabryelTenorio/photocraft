@@ -2667,7 +2667,6 @@ cameraData	Lens	Objektiv
 	Brush Type	Typ štětce
 	Bulge	Vyboulení
 	Burlap	Pytlovina
-	Burn	Ztmavení
 	Calculations	Výpočty
 	Camera Calibration	Kalibrace fotoaparátu
 	Camera Raw	Camera Raw
@@ -2697,7 +2696,6 @@ cameraData	Lens	Objektiv
 	Clear Selection	Zrušit výběr
 	Clipping Path	Ořezová cesta
 	Clone	Klonovat
-	Clone Stamp	Klonovací razítko
 	Close Window	Zavřít okno
 	Clumped	Shlukované
 	Coarse Dots	Hrubé tečky
@@ -2794,7 +2792,6 @@ cameraData	Lens	Objektiv
 	Distribution	Rozložení
 	Documentation	Dokumentace
 	Documents	Dokumenty
-	Dodge	Zesvětlení
 	Dot	Tečka
 	Double Line	Dvojitá čára
 	Draft	Koncept
@@ -2935,7 +2932,6 @@ cameraData	Lens	Objektiv
 	Highlight Radius	Poloměr světel
 	Highlight Strength	Síla odlesku
 	Highlight Tone	Tón světel
-	History Brush	Štětec historie
 	Horizontal Only	Pouze vodorovně
 	Hotspot	Jádro světla
 	Hsb	HSB
@@ -3280,10 +3276,6 @@ cameraData	Lens	Objektiv
 	Spherize	Sférická deformace
 	Spin	Rotace
 	Spin Blur	Rotační rozostření
-	Sponge	Houba
-	Amount:	Míra:
-	Protect:	Chránit:
-	Protect skin tones	Chránit tóny pleti
 	Spot	Reflektor
 	Spot Color	Přímá barva
 	Spot Healing	Bodové retušování
@@ -3341,7 +3333,6 @@ cameraData	Lens	Objektiv
 	Tiny Lens	Drobné čočky
 	To Center	Ke středu
 	Tone Curve	Tónová křivka
-	Tool	Nástroj
 	Tool Options	Možnosti nástroje
 	Toolbars	Panely nástrojů
 	Torn Edges	Roztřepené okraje
@@ -3436,11 +3427,20 @@ cameraRaw	Vibrance	Živost
 cameraRaw	Whites	Bílé
 layerLabel	No Color	Žádná barva
 	Loading fonts…	Načítání písem…
+	Tool	Nástroj
 	Simulate Pressure	Simulovat přítlak
 	Background Eraser	Guma pozadí
+	Clone Stamp	Klonovací razítko
 	Healing Brush	Retušovací štětec
 	Spot Healing Brush	Bodový retušovací štětec
+	History Brush	Štětec historie
 	Smudge	Rozmazání
+	Dodge	Zesvětlení
+	Burn	Ztmavení
+	Sponge	Houba
+	Amount:	Míra:
+	Protect:	Chránit:
+	Protect skin tones	Chránit tóny pleti
 # Select and Mask view modes (#1754)
 	Onion Skin	Cibulová slupka
 	Marching Ants	Pochodující mravenci
