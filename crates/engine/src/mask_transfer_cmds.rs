@@ -47,6 +47,7 @@ fn flag(p: &Value, field: &str, default: bool, cmd: &str) -> Result<bool> {
     p.get(field).map_or(Ok(default), |v| v.as_bool().ok_or_else(|| bad(cmd, format!("`{field}` must be a boolean"))))
 }
 
+#[inline(never)]
 fn snapshot(s: &Session, id: LayerId) -> Result<MaskClip> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let mask = st.doc.layer(id).ok_or(EngineError::NoLayer(id))?.mask.clone().ok_or_else(|| EngineError::Other("the source layer has no pixel mask".into()))?;
@@ -69,6 +70,8 @@ fn copy(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"layer": id.0, "copied": true}))
 }
 
+// Keep the undoable edit shared by Paste and Transfer in size-constrained WASM builds.
+#[inline(never)]
 fn apply(s: &mut Session, p: &Value, cmd: &str, clip: MaskClip, target: LayerId, source: Option<LayerId>) -> Result<Value> {
     let replace = flag(p, "replace", false, cmd)?;
     check_unlocked(s, target)?;
