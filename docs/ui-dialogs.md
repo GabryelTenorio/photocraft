@@ -10,6 +10,7 @@ confirms when OK is enabled. Automation drives the same `fields` map as the UI (
 | Piece | Location | Role |
 |---|---|---|
 | Frame, routing, OK/Cancel/Esc, stacking | `crates/ui-egui/src/dialogs.rs` | Single hub for every `UiState::dialogs` entry |
+| Alt+Cancel → Reset (opt-in) | `crates/ui-egui/src/dialog_alt_reset.rs` | Relabels Cancel while Alt is held; dispatches per-marker `reset` |
 | Tab-through-fields | `crates/ui-egui/src/field_tab.rs` | Photoshop-style Tab / ⇧Tab (tests in same file) |
 | State | `crates/ui-egui/src/state.rs` | `Dialog`, `DialogKind`, `open_dialog` |
 | Button row | `crates/ui-egui/src/widgets.rs` | `dialog_buttons`, `focus_first_field`; `number_edit` registers for Tab |
@@ -84,6 +85,9 @@ actions with their marker already set.
 | `__filter` | Filter-schema body (`filter_dialog`); also set on adjustments for preview plumbing |
 | `__adjust` | Image › Adjustments editor kind (`adjust_dialog`) |
 | `__form` | Generic `view_cmds::form_body` |
+| `__formOrig` | Snapshot of non-`__` params at open; Alt+Reset restores it for `__form` dialogs |
+| `__variablesOrig` | Snapshot of `__variables` at open; Alt+Reset restores it |
+| `__altReset` | Set to `false` to opt a dialog out of Alt+Cancel → Reset |
 | `__export` | Export As |
 | `__sizing` | Image Size / Canvas Size |
 
@@ -155,8 +159,8 @@ Same hub entry as standalone pickers; `color_picker_ui::confirm` branches on ext
 14. **Open on first value:** `first_field_focused` + `widgets::focus_first_field` for value-first dialogs (most filters; Image/Canvas Size; not Select and Mask view keys).
 15. **Select-all on focus** when reached via Tab or field arrows (`field_tab::select_all`; see `value_field`, `new_doc_ui`).
 16. **Enter** confirms when OK is enabled (`can_ok`); exceptions must be explicit (`guide_layout_ui`, color picker).
-17. **Esc** on topmost dialog with no popup open → Cancel. **Click outside does not dismiss** (canvas may still pan/zoom via `free_pointer_over`, `pan_delta`, `free_press`).
-18. **Alt** in adjustment dialogs turns Cancel into **Reset** (dialog stays open).
+17. **Esc** on topmost dialog with no popup open → Cancel. **Click outside does not dismiss** (canvas may still pan/zoom via `free_pointer_over`, `pan_delta`, `free_press`). Esc ignores Alt (it does not become Reset).
+18. **Alt** turns Cancel into **Reset** when the dialog opts in via `dialog_alt_reset::supported` (dialog stays open). Opt-in markers: `__guideLayout`, `__fill`, `__variables`, `__colorPicker`, `__sizing`, `__adjust` (all kinds), `__filter`, `__form`. Each module implements its own `reset`; set `"__altReset": false` to disable.
 
 ### Canvas and preview
 
@@ -196,8 +200,9 @@ Same hub entry as standalone pickers; `color_picker_ui::confirm` branches on ext
 3. `body(app, ui, &mut fields)`—mutate `fields` only; use shared widgets.
 4. `confirm` / `cancel` arms in `dialogs.rs` (or delegate to module `confirm`).
 5. Tab: register every text/number field; use `value_field` / `number_edit` where possible.
-6. Tests: at least open + confirm or Tab sequence if non-trivial.
-7. If menu-visible: command already in engine; menu id opens dialog via existing menu wiring.
+6. **Alt+Reset (optional):** implement `reset` on the module and add an arm in `dialog_alt_reset` (same dispatch order as `dialogs::show`). Snapshot open values under a `__*Orig` key when Reset should restore “as opened” rather than factory defaults.
+7. Tests: at least open + confirm or Tab sequence if non-trivial; if Alt+Reset is supported, assert Reset restores fields and leaves the dialog open.
+8. If menu-visible: command already in engine; menu id opens dialog via existing menu wiring.
 
 ## Known gaps
 
@@ -211,3 +216,4 @@ Same hub entry as standalone pickers; `color_picker_ui::confirm` branches on ext
 |---|---|
 | 2026-10-11 | Initial doc from dialog codebase audit |
 | 2026-10-11 | Document all `DialogKind` values and `Command` routing markers |
+| 2026-10-11 | Alt+Cancel → Reset hub (`dialog_alt_reset`); opt-in markers |
