@@ -273,6 +273,17 @@ impl ColorState {
                 // working space.
                 let linear_hdr =
                     doc.depth == SampleType::F32 && (emb.same_colors(Builtin::LinearSrgb.profile()) || emb.same_colors(photocraft_cms::builtin::linear_gray()));
+                // A camera/input profile may support device → PCS without any PCS → device
+                // path. It can decode the photo, but it cannot be the destination for
+                // pasted layers or colours. Convert its pixels before adopting a working space.
+                if emb.pcs_to_device(self.settings.intent()).is_err() && emb.device_to_pcs(self.settings.intent()).is_ok() {
+                    let action = if convert_document(doc, &working, self.settings.intent(), self.settings.bpc).is_ok() {
+                        "converted"
+                    } else {
+                        "kept"
+                    };
+                    return merge(base, json!({"action": action, "inputOnly": true}));
+                }
                 if !mismatch || linear_hdr {
                     return merge(base, json!({"action": "kept"}));
                 }
@@ -1134,6 +1145,62 @@ mod tests {
 
     fn doc(s: &Session) -> &Document {
         &s.active().unwrap().doc
+    }
+
+    #[test]
+    fn input_only_camera_profile_is_converted_on_open() {
+        use photocraft_cms::profile::{Lut, LutKind};
+        use photocraft_cms::pipeline::Stage;
+        use photocraft_cms::ProfileClass;
+
+        // Like Apple's Wide Color Sharing Profile, this source has AToB but neither
+        // matrix/TRC nor BToA. Its pixels can be read but it cannot accept pasted RGB.
+        let mut input = Builtin::Srgb.profile().clone();
+        input.class = ProfileClass::Input;
+        input.description = "AToB-only camera input".into();
+        input.matrix = None;
+        input.trc = None;
+        input.a2b[0] = Some(Lut {
+            kind: LutKind::Ab,
+            inputs: 3,
+            outputs: 3,
+            stages: vec![Stage::Curves(vec![photocraft_cms::Curve::Identity; 3])],
+        });
+        let bytes = input.with_encoded_bytes().to_bytes();
+        let embedded = Profile::parse(&bytes).unwrap();
+        assert!(embedded.device_to_pcs(Intent::RelativeColorimetric).is_ok());
+        assert!(embedded.pcs_to_device(Intent::RelativeColorimetric).is_err());
+
+        for depth in SampleType::ALL {
+            for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+                let mut doc = Document::new("camera", photocraft_geom::Size::new(2, 2), ColorMode::Rgb, depth);
+                let mut surface = Surface::new(PixelFormat::new(ColorMode::Rgb, depth, true));
+                surface.fill_rect(Rect::new(0, 0, 2, 2), &[0.2, 0.4, 0.6, 1.0]);
+                doc.layers.push(Layer::new("Camera", LayerContent::Raster(surface)));
+                doc.icc_profile = Some(bytes.clone());
+
+                let mut settings = ColorState::default();
+                settings.settings.policy_rgb = policy;
+                let report = settings.open_policy(&mut doc, false);
+                assert_eq!(report["action"], "converted", "{depth:?} {policy:?}: {report}");
+                assert_eq!(report["inputOnly"], true);
+                let actual = document_profile(&doc);
+                assert!(actual.same_colors(Builtin::Srgb.profile()));
+                assert!(actual.pcs_to_device(Intent::RelativeColorimetric).is_ok());
+                assert_eq!(doc.layers[0].surface().unwrap().pixel(0, 0)[3], 1.0);
+
+                // The source ICC was used to transform pixels; it was not merely
+                // discarded or relabelled as sRGB.
+                let got = doc.layers[0].surface().unwrap().pixel(0, 0);
+                let t = Transform::new(&embedded, Builtin::Srgb.profile(), Intent::RelativeColorimetric, true).unwrap();
+                let mut expected = [0.0; 3];
+                t.eval(&[0.2, 0.4, 0.6], &mut expected);
+                let tolerance = if depth == SampleType::U8 { 0.025 } else { 0.005 };
+                for c in 0..3 {
+                    assert!((got[c] - expected[c].clamp(0.0, 1.0)).abs() < tolerance, "{depth:?} channel {c}: {got:?} vs {expected:?}");
+                }
+            }
+        }
     }
 
     #[test]
