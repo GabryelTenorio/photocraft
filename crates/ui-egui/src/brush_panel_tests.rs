@@ -16,8 +16,13 @@ fn last_journal(app: &PhotocraftApp) -> Option<(String, Value)> {
 fn sections_with_boxes_have_flags() {
     let mut b = BrushSettings::default();
     for (i, (_, has_box)) in SECTIONS.iter().enumerate() {
-        assert_eq!(section_flag(&mut b, i).is_some(), *has_box, "{i}");
+        assert_eq!(row_state(&b, i).is_some(), *has_box, "{i}");
     }
+    // Smoothing has no flag of its own: its box reads its amount (#4283).
+    assert!(section_flag(&mut b, 11).is_none());
+    assert_eq!(row_state(&b, 11), Some(false));
+    b.smoothing.amount = 0.1;
+    assert_eq!(row_state(&b, 11), Some(true));
     *section_flag(&mut b, 3).unwrap() = true;
     assert!(b.texture.enabled);
 }
@@ -732,6 +737,73 @@ fn f5_edits_the_default_brush_with_every_section() {
     h.key_press(egui::Key::F5);
     h.run_steps(2);
     assert!(!h.state().ui.panels.brush_settings);
+}
+
+/// Photoshop's checkbox-only rows (#4283): a click anywhere on one toggles its option, the
+/// selection stays on the current section, and no properties pane opens for them.
+#[test]
+fn checkbox_only_rows_toggle_without_selecting() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness(0, 1); // Shape Dynamics is the selected section
+    let brush = |h: &Harness<'static, PhotocraftApp>| h.state().session.tools.brush.clone();
+    let n = h.state().session.journal.len();
+    // Clicking the row toggles the option and journals one setBrush; the selection stays put.
+    h.get_by_label("Noise").click();
+    h.run_steps(3);
+    assert!(brush(&h).noise);
+    assert_eq!(h.state().ui.brush_section, 1, "the pane stays on Shape Dynamics");
+    assert_eq!(h.state().session.journal.len(), n + 1);
+    assert_eq!(last_journal(h.state()).unwrap().0, "tools.setBrush");
+    assert_eq!(last_journal(h.state()).unwrap().1["brush"], json!({"noise": true}));
+    h.get_by_label("Noise").click();
+    h.run_steps(3);
+    assert!(!brush(&h).noise);
+    // Smoothing has no bool of its own: the row toggles its amount between off and on (the
+    // default brush starts at Photoshop's 10 %).
+    let was = brush(&h).smoothing.amount;
+    assert!(was > 0.0, "the default brush smooths a little");
+    h.get_by_label("Smoothing").click();
+    h.run_steps(3);
+    assert_eq!(brush(&h).smoothing.amount, 0.0, "the row turned smoothing off");
+    h.get_by_label("Smoothing").click();
+    h.run_steps(3);
+    assert_eq!(brush(&h).smoothing.amount, was, "the row turned it back on");
+    // The rest of the group toggles the same way and never takes the selection.
+    for label in ["Wet Edges", "Build-up", "Protect Texture"] {
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert_eq!(h.state().ui.brush_section, 1, "{label} must not select a section");
+    }
+    let b = brush(&h);
+    assert!(b.wet_edges && b.build_up && b.protect_texture);
+    // A selectable section still shows its pane.
+    h.get_by_label("Transfer").click();
+    h.run_steps(3);
+    assert_eq!(h.state().ui.brush_section, 6);
+    // The group is marked by exactly one hairline in the list column: above Noise, none between
+    // the checkbox-only rows. (The header hairline spans the whole panel, the vline is vertical.)
+    let col = h.get_by_label("Noise").rect();
+    let mut group_lines = 0;
+    fn lines(shape: &egui::Shape, out: &mut Vec<[egui::Pos2; 2]>) {
+        match shape {
+            egui::Shape::LineSegment { points, .. } => out.push(*points),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| lines(s, out)),
+            _ => {}
+        }
+    }
+    let mut segs = Vec::new();
+    for shape in &h.output().shapes {
+        lines(&shape.shape, &mut segs);
+    }
+    for [p0, p1] in segs {
+        let horizontal = (p0.y - p1.y).abs() < 0.1;
+        let len = (p1.x - p0.x).abs();
+        let in_col = p0.x >= col.left() - 1.0 && p0.x <= col.right() + 1.0;
+        if horizontal && (100.0..200.0).contains(&len) && in_col {
+            group_lines += 1;
+        }
+    }
+    assert_eq!(group_lines, 1, "one hairline above the checkbox-only group, none between its rows");
 }
 
 #[test]

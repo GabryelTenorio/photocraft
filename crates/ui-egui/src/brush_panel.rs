@@ -1,7 +1,8 @@
 //! Window › Brush Settings (F5) and Window › Brushes: Photoshop's floating brush panel.
 //!
 //! Brush Settings: the section list with enable boxes on the left (clicking a name shows and turns
-//! on that section), the selected section's controls on the right (see [`crate::brush_sections`]),
+//! on that section; the checkbox-only rows toggle their option and never select), the selected
+//! section's controls on the right (see [`crate::brush_sections`]),
 //! and a live stroke preview strip below, rendered with the real brush engine and cached on the
 //! settings (it re-renders only when they change). Brushes: the presets in collapsible groups with
 //! tip thumbnails and stroke previews, a size slider and a search field.
@@ -41,9 +42,51 @@ pub const SECTIONS: [(&str, bool); 13] = [
     ("Noise", true),
     ("Wet Edges", true),
     ("Build-up", true),
-    ("Smoothing", false),
+    ("Smoothing", true),
     ("Protect Texture", true),
 ];
+
+/// Photoshop's checkbox-only rows (#4283): clicking anywhere on one toggles its option, it never
+/// selects a section or shows a properties pane, and no separator lines sit between them.
+pub const CHECKBOX_ONLY: [usize; 5] = [8, 9, 10, 11, 12];
+
+/// Whether section `i` is one of the checkbox-only rows (see [`CHECKBOX_ONLY`]).
+pub fn is_checkbox_only(i: usize) -> bool {
+    CHECKBOX_ONLY.contains(&i)
+}
+
+/// The enable state of a list row (None for Brush Tip Shape). Smoothing has no flag of its own:
+/// it reads as on while its amount is above zero.
+pub fn row_state(b: &BrushSettings, i: usize) -> Option<bool> {
+    Some(match i {
+        1 => b.shape_dynamics.enabled,
+        2 => b.scattering.enabled,
+        3 => b.texture.enabled,
+        4 => b.dual_brush.enabled,
+        5 => b.color_dynamics.enabled,
+        6 => b.transfer.enabled,
+        7 => b.pose.enabled,
+        8 => b.noise,
+        9 => b.wet_edges,
+        10 => b.build_up,
+        11 => b.smoothing.amount > 0.0,
+        12 => b.protect_texture,
+        _ => return None,
+    })
+}
+
+/// Toggle a checkbox-only row's option. Smoothing has no bool: off is amount 0, on is
+/// Photoshop's default 10 %.
+fn row_toggle(b: &mut BrushSettings, i: usize) {
+    match i {
+        8 => b.noise = !b.noise,
+        9 => b.wet_edges = !b.wet_edges,
+        10 => b.build_up = !b.build_up,
+        11 => b.smoothing.amount = if b.smoothing.amount > 0.0 { 0.0 } else { 0.1 },
+        12 => b.protect_texture = !b.protect_texture,
+        _ => {}
+    }
+}
 
 /// Panel width and the stroke strip's size.
 pub(crate) const WIDTH: f32 = 540.0;
@@ -235,31 +278,47 @@ pub(crate) fn full_uv() -> egui::Rect {
 
 /// The section list: enable boxes, names, locks, the selection. Clicking a name shows the section
 /// and turns it on (Photoshop); clicking a box only toggles it; the lock on the right keeps the
-/// section when another preset is picked.
+/// section when another preset is picked. The checkbox-only rows ([`CHECKBOX_ONLY`]) toggle with a
+/// click anywhere on the row and never take the selection (#4283).
 fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSettings) {
     let t = Tokens::get(ui.ctx());
     ui.vertical(|ui| {
         ui.set_width(150.0);
         ui.spacing_mut().item_spacing.y = 1.0;
         for (i, (name, has_box)) in SECTIONS.iter().enumerate() {
-            let sel = app.ui.brush_section == i;
+            let checkbox_only = is_checkbox_only(i);
+            if i == CHECKBOX_ONLY[0] {
+                // The checkbox-only rows are one group: a hairline above them, none between them.
+                ui.add_space(4.0);
+                widgets::hairline(ui);
+                ui.add_space(4.0);
+            }
+            let sel = !checkbox_only && app.ui.brush_section == i;
             let (r, resp) = ui.allocate_exact_size(vec2(150.0, 23.0), Sense::click());
             // Named for accessibility and for tests and agents that look sections up by name.
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, tl!(*name)));
+            if checkbox_only {
+                let checked = row_state(b, i).unwrap_or(false);
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, checked, tl!(*name)));
+            } else {
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, tl!(*name)));
+            }
             if sel {
                 ui.painter().rect_filled(r, t.radius_sm, t.accent_soft);
             } else if resp.hovered() {
                 ui.painter().rect_filled(r, t.radius_sm, t.hover);
             }
             let mut x = r.left() + 6.0;
-            if *has_box && let Some(flag) = section_flag(b, i) {
+            let on_lock = resp.interact_pointer_pos().is_some_and(|p| p.x > r.right() - 22.0);
+            if *has_box {
                 let br = egui::Rect::from_center_size(egui::pos2(x + 6.0, r.center().y), vec2(13.0, 13.0));
                 let box_resp = ui.interact(br, ui.id().with(("brush-sec-box", i)), Sense::click());
-                let checked = *flag;
-                box_resp.widget_info(|| {
-                    egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, checked, crate::i18n::fmt(tl!("Enable {name}"), &[("name", tl!(*name))]))
-                });
-                if *flag {
+                let checked = row_state(b, i).unwrap_or(false);
+                if !checkbox_only {
+                    box_resp.widget_info(|| {
+                        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, checked, crate::i18n::fmt(tl!("Enable {name}"), &[("name", tl!(*name))]))
+                    });
+                }
+                if checked {
                     ui.painter().rect_filled(br, 2.0, t.accent);
                     let (a, m, c) = (br.left_center() + vec2(3.0, 0.5), br.center_bottom() + vec2(-1.0, -3.5), br.right_top() + vec2(-3.0, 3.5));
                     ui.painter().line_segment([a, m], Stroke::new(1.6, Color32::WHITE));
@@ -267,11 +326,16 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                 } else {
                     ui.painter().rect_stroke(br, 2.0, Stroke::new(1.2, t.text_faint), egui::StrokeKind::Inside);
                 }
-                let on_lock = resp.interact_pointer_pos().is_some_and(|p| p.x > r.right() - 22.0);
-                if box_resp.clicked() {
-                    *flag = !*flag;
-                } else if resp.clicked() && !on_lock {
-                    *flag = true;
+                if checkbox_only {
+                    if box_resp.clicked() || (resp.clicked() && !on_lock) {
+                        row_toggle(b, i);
+                    }
+                } else if let Some(flag) = section_flag(b, i) {
+                    if box_resp.clicked() {
+                        *flag = !*flag;
+                    } else if resp.clicked() && !on_lock {
+                        *flag = true;
+                    }
                 }
                 x += 20.0;
             } else if i > 0 {
@@ -301,7 +365,7 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                     lock_clicked = true;
                 }
             }
-            if resp.clicked() && !lock_clicked {
+            if resp.clicked() && !lock_clicked && !checkbox_only {
                 app.ui.brush_section = i;
             }
             if i == 0 {
