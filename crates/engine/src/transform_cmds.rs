@@ -18,7 +18,15 @@ fn bad(msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: "edit.transform".into(), msg: msg.into() }
 }
 
-/// Document-space bounds a transform of `layer` starts from (what Free Transform frames).
+/// Layers a transform moves as a whole, even with a selection: groups, and the kinds that keep the
+/// transform instead of pixels (type, shapes, smart objects). Only pixel layers move just the
+/// selected pixels.
+pub fn moves_whole(layer: &Layer) -> bool {
+    matches!(layer.content, LayerContent::Group(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Smart(_))
+}
+
+/// Document-space bounds a transform of `layer` starts from (what Free Transform frames): the
+/// content within the selection, or all of it for a layer that [`moves_whole`] (#2630).
 /// Content scans are cached per tile: snapping asks for every layer's bounds per Move drag.
 pub fn transform_bounds(doc: &Document, layer: &Layer) -> Rect {
     let content = match &layer.content {
@@ -28,7 +36,7 @@ pub fn transform_bounds(doc: &Document, layer: &Layer) -> Rect {
     let content =
         if content.is_empty() { layer.mask.as_ref().map_or(Rect::EMPTY, |m| photocraft_compose::bounds::content_bounds(&m.surface)) } else { content };
     match &doc.selection {
-        Some(sel) if !layer.is_group() => content.intersect(&sel.content_bounds()),
+        Some(sel) if !moves_whole(layer) => content.intersect(&sel.content_bounds()),
         _ => content,
     }
 }
@@ -115,12 +123,23 @@ pub fn split_gray_selected(s: &Surface, sel: &Surface) -> Result<Option<(Surface
 /// [`warp_gray`] limited to a selection: only the selected values move (the vacated area reads as
 /// the default), as the selected pixels of the layer do.
 pub(crate) fn warp_gray_selected(s: &Surface, sel: &Surface, h: &Homography, interp: Interp) -> Result<Surface> {
-    let Some((lifted, mut out)) = split_gray_selected(s, sel)? else { return warp_gray(s, h, interp) };
+    move_gray_selected(s, sel, &|lifted, src| Ok(warp_surface(lifted, src, h, interp)?), &|s| warp_gray(s, h, interp))
+}
+
+/// [`warp_gray_selected`] with any geometric warp: `warp` moves the lifted grey + alpha values
+/// (given their bounds), `whole` moves `s` when it isn't a single grey channel.
+pub(crate) fn move_gray_selected(
+    s: &Surface,
+    sel: &Surface,
+    warp: &dyn Fn(&Surface, Rect) -> Result<Surface>,
+    whole: &dyn Fn(&Surface) -> Result<Surface>,
+) -> Result<Surface> {
+    let Some((lifted, mut out)) = split_gray_selected(s, sel)? else { return whole(s) };
     let src = lifted.content_bounds();
     if src.is_empty() {
         return Ok(out);
     }
-    let w = warp_surface(&lifted, src, h, interp)?;
+    let w = warp(&lifted, src)?;
     let b = w.content_bounds();
     if !b.is_empty() {
         let moved = crate::allocation::read_region(&w, b, "compositing transformed mask pixels")?;
@@ -182,10 +201,10 @@ pub(crate) fn group_locks(doc: &Document, id: LayerId) -> Locks {
 }
 
 /// The locks a transform of `l` meets: its own and `group`'s (those it inherits). The Background's
-/// position lock doesn't count: Photoshop turns it into a normal layer first ([`transform_layer`]).
-fn transform_locks(l: &Layer, group: Locks) -> Locks {
+/// position lock doesn't count: Photoshop turns it into a normal layer first.
+fn transform_locks(l: &Layer, group: Locks, background: bool) -> Locks {
     let mut own = l.locks;
-    if own.position && l.name == "Background" {
+    if background {
         own.position = false;
         own.transparency = false;
     }
@@ -198,35 +217,38 @@ fn transform_locks(l: &Layer, group: Locks) -> Locks {
 pub fn locked_for_transform(doc: &Document, id: LayerId) -> bool {
     let Some(l) = doc.layer(id) else { return false };
     // An explicit stack rather than recursion: documents can nest deeply.
-    let mut stack = vec![(l, group_locks(doc, id))];
-    while let Some((l, group)) = stack.pop() {
-        let locks = transform_locks(l, group);
+    let mut stack = vec![(l, group_locks(doc, id), doc.is_background(id))];
+    while let Some((l, group, background)) = stack.pop() {
+        let locks = transform_locks(l, group, background);
         if locks.position || locks.all {
             return true;
         }
         if let LayerContent::Group(g) = &l.content {
-            stack.extend(g.children.iter().map(|c| (c, locks)));
+            stack.extend(g.children.iter().map(|c| (c, locks, false)));
         }
     }
     false
 }
 
-/// `group` holds the locks `l` inherits from the groups around it ([`group_locks`]).
+/// `group` holds the locks `l` inherits from the groups around it ([`group_locks`]). A Background
+/// is turned into a normal layer by the caller first ([`crate::extra_cmds::background_to_layer`]).
 pub(crate) fn transform_layer(doc_sel: Option<&Surface>, group: Locks, l: &mut Layer, h: &Homography, affine: Option<Affine>, interp: Interp) -> Result<()> {
     crate::allocation::checkpoint("transforming pixels")?;
-    let locks = transform_locks(l, group);
-    // Photoshop turns the Background into a normal layer before transforming it.
-    if l.locks.position && l.name == "Background" {
-        l.locks.position = false;
-        l.locks.transparency = false;
-        l.name = "Layer 0".into();
-    }
+    let locks = transform_locks(l, group, false);
     if locks.position || locks.all {
         return Err(EngineError::Other(format!("layer \"{}\" is locked", l.name)));
     }
+    if h.is_identity() {
+        if let LayerContent::Group(g) = &mut l.content {
+            for c in g.children.iter_mut() {
+                transform_layer(None, locks, c, h, affine, interp)?;
+            }
+        }
+        return Ok(());
+    }
     // With a selection only the selected pixels move, and so only the same region of a linked
     // mask (#205). Groups, type, shapes and smart objects move whole.
-    let mask_sel = doc_sel.filter(|_| !matches!(l.content, LayerContent::Group(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Smart(_)));
+    let mask_sel = doc_sel.filter(|_| !moves_whole(l));
     match &mut l.content {
         LayerContent::Group(g) => {
             for c in g.children.iter_mut() {
@@ -239,12 +261,11 @@ pub(crate) fn transform_layer(doc_sel: Option<&Surface>, group: Locks, l: &mut L
             };
             t.transform = a.mul(&t.transform);
         }
-        LayerContent::Shape(sh) => {
-            let Some(a) = affine else {
-                return Err(EngineError::Other("Distort and Perspective need a rasterized shape (Layer › Rasterize › Shape)".into()));
-            };
-            crate::vector_cmds::transform_shape(sh, &a);
-        }
+        LayerContent::Shape(sh) => match affine {
+            Some(a) => crate::vector_cmds::transform_shape(sh, &a),
+            // Distort and Perspective map the path and keep the shape (#3009).
+            None => crate::vector_cmds::map_shape(sh, Some(h), None)?,
+        },
         LayerContent::Smart(sm) => {
             // Smart objects keep the transform and re-render from their source afterwards
             // (`refresh_text`), so repeated transforms don't degrade the pixels. Distort and
@@ -289,9 +310,11 @@ pub(crate) fn transform_layer(doc_sel: Option<&Surface>, group: Locks, l: &mut L
     }
     if let Some(vm) = l.vector_mask.as_mut()
         && vm.linked
-        && let Some(a) = affine
     {
-        vm.path = vm.path.transform(&a);
+        vm.path = match affine {
+            Some(a) => vm.path.transform(&a),
+            None => crate::vector_cmds::map_path(&vm.path, Some(h), None)?,
+        };
     }
     Ok(())
 }
@@ -383,7 +406,21 @@ fn quad_param(p: &Value) -> Option<[[f64; 2]; 4]> {
     Some(q)
 }
 
+/// `p`, with the Channels panel's targeted alpha channel or Quick Mask as its `"target"` when it
+/// names neither a target nor a layer (#2835).
+fn with_panel_target(s: &Session, p: &Value) -> Value {
+    let mut p = if p.is_object() { p.clone() } else { json!({}) };
+    if p.get("target").is_none()
+        && p.get("layer").is_none()
+        && let (Some(m), Some(Value::Object(t))) = (p.as_object_mut(), crate::channel_cmds::targeted_channel(s))
+    {
+        m.extend(t);
+    }
+    p
+}
+
 fn transform(s: &mut Session, p: &Value) -> Result<Value> {
+    let p = &with_panel_target(s, p);
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let id = match p.get("layer").and_then(Value::as_u64) {
         Some(v) => Some(LayerId(v)),
@@ -436,29 +473,35 @@ fn transform(s: &mut Session, p: &Value) -> Result<Value> {
         let sel = doc.selection.clone();
         if lone {
             // A targeted unlinked mask, alpha channel or Quick Mask transforms by itself.
-            let (surf, _) = crate::channel_cmds::target_surface(doc, id, p)?;
-            *surf = match &sel {
-                Some(sel) => warp_gray_selected(surf, sel, &h, interp)?,
-                None => warp_gray(surf, &h, interp)?,
-            };
-            if let Some(sel) = &doc.selection {
-                doc.selection = Some(warp_gray(sel, &h, Interp::Bilinear)?).filter(|s| !s.content_bounds().is_empty());
+            if !h.is_identity() {
+                let (surf, _) = crate::channel_cmds::target_surface(doc, id, p)?;
+                *surf = match &sel {
+                    Some(sel) => warp_gray_selected(surf, sel, &h, interp)?,
+                    None => warp_gray(surf, &h, interp)?,
+                };
+                if let Some(sel) = &doc.selection {
+                    doc.selection = Some(warp_gray(sel, &h, Interp::Bilinear)?).filter(|s| !s.content_bounds().is_empty());
+                }
             }
             return Ok(());
         }
         let id = id.ok_or_else(|| EngineError::Other("no active layer".into()))?;
         let is_group = doc.layer(id).is_some_and(Layer::is_group);
         let group = group_locks(doc, id);
+        // Photoshop turns the Background into a normal layer before transforming it.
+        crate::extra_cmds::background_to_layer(doc, id);
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
         transform_layer(if is_group { None } else { sel.as_ref() }, group, l, &h, affine, interp)?;
-        // Type layers re-render from their new transform.
-        let snapshot = doc.clone();
-        if let Some(l) = doc.layer_mut(id) {
-            refresh_text(&snapshot, l);
-        }
-        // The selection outline moves with the pixels.
-        if let Some(sel) = &doc.selection {
-            doc.selection = Some(warp_gray(sel, &h, Interp::Bilinear)?).filter(|s| !s.content_bounds().is_empty());
+        if !h.is_identity() {
+            // Type layers re-render from their new transform.
+            let snapshot = doc.clone();
+            if let Some(l) = doc.layer_mut(id) {
+                refresh_text(&snapshot, l);
+            }
+            // The selection outline moves with the pixels.
+            if let Some(sel) = &doc.selection {
+                doc.selection = Some(warp_gray(sel, &h, Interp::Bilinear)?).filter(|s| !s.content_bounds().is_empty());
+            }
         }
         Ok(())
     })?;
@@ -612,7 +655,24 @@ mod tests {
         assert_eq!(active_bounds(&s), Rect::new(40, 15, 80, 35));
         s.execute("edit.transform", json!({"matrix": [2, 0, 0, 2, -40, -15]})).unwrap();
         assert_eq!(active_bounds(&s), Rect::new(40, 15, 120, 55));
-        assert!(s.execute("edit.transform", json!({"quad": [[40, 15], [120, 15], [130, 55], [30, 55]]})).is_err());
+        // Distort maps the path and keeps a live shape (#3009): the rectangle's corners go to the quad.
+        let quad = [[40.0, 15.0], [120.0, 15.0], [130.0, 55.0], [30.0, 55.0]];
+        s.execute("edit.transform", json!({ "quad": quad })).unwrap();
+        let st = s.active().unwrap();
+        let LayerContent::Shape(sh) = &st.doc.layer(st.active_layer.unwrap()).unwrap().content else { panic!("still a shape layer") };
+        let mut anchors: Vec<[f64; 2]> = sh.path.subpaths[0].knots.iter().map(|k| [k.anchor.x, k.anchor.y]).collect();
+        let mut want = quad.to_vec();
+        anchors.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        want.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(anchors.iter().zip(&want).all(|(a, b)| (a[0] - b[0]).abs() < 1e-6 && (a[1] - b[1]).abs() < 1e-6), "{anchors:?}");
+        assert!(sh.live.is_none(), "the live rectangle is now a path");
+        assert_eq!(active_bounds(&s), Rect::new(30, 15, 130, 55));
+        // Warp bends the path too: the arc adds anchors along the curved edges.
+        s.execute("edit.transform.warp", json!({"style": "arc", "bend": 50})).unwrap();
+        let st = s.active().unwrap();
+        let LayerContent::Shape(sh) = &st.doc.layer(st.active_layer.unwrap()).unwrap().content else { panic!("still a shape layer") };
+        assert!(sh.path.subpaths[0].knots.len() > 4, "{}", sh.path.subpaths[0].knots.len());
+        assert!(!active_bounds(&s).is_empty());
     }
 
     #[test]
@@ -744,6 +804,36 @@ mod tests {
         assert_eq!(active_bounds(&s), Rect::new(10, 10, 30, 20), "layer untouched");
     }
 
+    /// The Channels panel targets an alpha channel: Edit › Transform › Flip Horizontal and a
+    /// 50% `edit.transform` (no `target` param) work on the channel, not the layer (BUG-207-4).
+    #[test]
+    fn transforms_follow_the_targeted_alpha_channel() {
+        let mut s = session();
+        s.execute("channel.new", json!({})).unwrap();
+        s.edit("paint channel", |doc, _| {
+            let ch = &mut doc.channels[0].surface;
+            ch.fill_rect(Rect::new(10, 10, 20, 20), &[1.0]);
+            ch.fill_rect(Rect::new(10, 10, 12, 20), &[0.5]);
+            Ok(())
+        })
+        .unwrap();
+        s.execute("channel.target", json!({"channel": 0})).unwrap();
+        let layer = |s: &Session| crate::active_layer_of(s).unwrap().surface().unwrap().read_region(Rect::new(0, 0, 100, 100));
+        let (pixels, past) = (layer(&s), s.active().unwrap().history.past_len());
+        s.execute("edit.transform.flipHorizontal", json!({})).unwrap();
+        // 8-bit channel: 0.5 is stored as 128/255.
+        let ch = |s: &Session, x, y| (s.active().unwrap().doc.channels[0].surface.sample_channel(x, y, 0) * 10.0).round() / 10.0;
+        assert_eq!((ch(&s, 19, 15), ch(&s, 10, 15)), (0.5, 1.0), "the channel flips within its frame");
+        assert!(layer(&s) == pixels, "the layer is untouched");
+        assert_eq!(s.active().unwrap().history.past_len(), past + 1, "one undo step");
+        s.execute("edit.transform", json!({"matrix": [0.5, 0, 0, 0.5, 0, 0], "interpolation": "nearest"})).unwrap();
+        assert_eq!((ch(&s, 7, 7), ch(&s, 15, 15)), (1.0, 0.0), "the channel scales to 50%");
+        assert!(layer(&s) == pixels, "the layer is untouched");
+        s.undo();
+        s.undo();
+        assert_eq!((ch(&s, 10, 15), ch(&s, 19, 15)), (0.5, 1.0));
+    }
+
     #[test]
     fn transform_targets_fail_gracefully() {
         let mut s = session();
@@ -767,5 +857,71 @@ mod tests {
         let mut sel = Surface::new(PixelFormat::GRAY8);
         sel.fill_rect(Rect::new(0, 0, 4, 4), &[1.0]);
         assert!(matches!(split_gray_selected(&s, &sel), Ok(None)));
+    }
+
+    /// #2630: type can't be partly transformed, so a selection doesn't narrow the frame: Free
+    /// Transform (and the frame-based presets) act on the whole type layer.
+    #[test]
+    fn a_selection_does_not_narrow_a_type_layers_frame() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 200, "height": 120})).unwrap();
+        s.execute("type.create", json!({"x": 20, "y": 60, "text": "Hello", "size": 36})).unwrap();
+        let whole = active_bounds(&s);
+        s.execute("select.rect", json!({"x": whole.x0, "y": whole.y0, "width": whole.width() / 2, "height": whole.height()})).unwrap();
+        let st = s.active().unwrap();
+        let l = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        assert_eq!(transform_bounds(&st.doc, l), whole, "the frame is the whole type layer");
+        // Corners of the frame moved 10 px right: a pure translation of the whole text.
+        let q = [[whole.x0 + 10, whole.y0], [whole.x1 + 10, whole.y0], [whole.x1 + 10, whole.y1], [whole.x0 + 10, whole.y1]];
+        s.execute("edit.transform", json!({"quad": q})).unwrap();
+        let moved = active_bounds(&s);
+        assert!(moved.x0.abs_diff(whole.x0 + 10) <= 1 && moved.width().abs_diff(whole.width()) <= 1, "{whole:?} -> {moved:?}");
+        // Rotate 180° turns it about its own centre, not the selection's.
+        s.execute("edit.transform.rotate180", json!({})).unwrap();
+        let turned = active_bounds(&s);
+        assert!(turned.x0.abs_diff(moved.x0) <= 2 && turned.x1.abs_diff(moved.x1) <= 2, "{moved:?} -> {turned:?}");
+        // A pixel layer still frames only the selected pixels.
+        let mut s = session();
+        s.execute("select.rect", json!({"x": 10, "y": 10, "width": 5, "height": 10})).unwrap();
+        let st = s.active().unwrap();
+        assert_eq!(transform_bounds(&st.doc, st.doc.layer(st.active_layer.unwrap()).unwrap()), Rect::new(10, 10, 15, 20));
+    }
+
+    #[test]
+    fn feathered_selection_identity_transform_preserves_pixels() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 16, "height": 16, "background": "transparent"})).unwrap();
+        s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+        s.execute("select.rect", json!({"x": 4, "y": 4, "width": 8, "height": 8})).unwrap();
+        s.execute("select.modify.feather", json!({"radius": 1})).unwrap();
+
+        let mut before_px = Vec::new();
+        for y in 0..16 {
+            for x in 0..16 {
+                before_px.push(s.execute("document.pixel", json!({"x": x, "y": y})).unwrap());
+            }
+        }
+
+        s.execute("edit.transform", json!({"matrix": [1, 0, 0, 1, 0, 0], "interpolation": "nearest"})).unwrap();
+
+        let mut after_px = Vec::new();
+        for y in 0..16 {
+            for x in 0..16 {
+                after_px.push(s.execute("document.pixel", json!({"x": x, "y": y})).unwrap());
+            }
+        }
+
+        assert_eq!(before_px, after_px, "feathered selection identity transform must preserve all pixels");
+        let p4_8 = s.execute("document.pixel", json!({"x": 4, "y": 8})).unwrap();
+        assert_eq!(p4_8, json!([1.0, 0.0, 0.0, 1.0]), "(4,8) must remain opaque red");
+
+        // Undo restores original document.
+        s.execute("edit.undo", json!({})).unwrap();
+        let undo_p4_8 = s.execute("document.pixel", json!({"x": 4, "y": 8})).unwrap();
+        assert_eq!(undo_p4_8, json!([1.0, 0.0, 0.0, 1.0]));
+
+        // Locked layer still refuses transform even if identity.
+        s.execute("layer.setProps", json!({"locks": {"position": true}})).unwrap();
+        assert!(s.execute("edit.transform", json!({"matrix": [1, 0, 0, 1, 0, 0]})).is_err(), "locked layer refuses identity transform");
     }
 }
