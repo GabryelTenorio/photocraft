@@ -19,8 +19,8 @@ On Windows with PhotoCraft 0.7.0, Intel graphics already start on DirectX 12. If
 1. Use PhotoCraft 0.7.0 or later. Older builds do not have the steps below.
 2. Start PhotoCraft again. Double-clicking its icon or a `.pcraft` file works. PhotoCraft notes that the last start did not finish and uses the next safer graphics mode this time:
    - A start on Vulkan is followed by one on DirectX 12.
-   - A start on DirectX 12 is followed by one on the CPU. The CPU mode is slower but does not depend on the graphics driver.
-3. If it started, nothing more to do. PhotoCraft remembers the mode that worked. You can see or reset it under **Preferences › Performance**.
+   - A start on DirectX 12 is followed by one on the CPU. The CPU mode does not depend on the graphics driver.
+3. If it started, nothing more to do. PhotoCraft remembers the mode that worked. You can see or reset it under **Edit › Preferences › Performance…** (on macOS, **PhotoCraft › Settings › Performance…**).
 
 If PhotoCraft still closes on every start, force DirectX 12 from PowerShell:
 
