@@ -80,6 +80,7 @@ pub mod file_open;
 pub mod file_ui;
 pub mod fill_ui;
 pub mod filter_dialog;
+mod filter_preview_ui;
 #[cfg(not(target_arch = "wasm32"))]
 mod filter_preview_worker;
 pub mod flick_pan;
@@ -1284,10 +1285,19 @@ impl PhotocraftApp {
 
     /// What a save writes by default under the preferences: File Handling › Image Previews
     /// decides whether a PSD/PSB gets its thumbnail. Ask When Saving has no Save As checkbox
-    /// here yet, so it saves the preview, as Photoshop's checkbox starts on.
+    /// here yet, so it saves the preview, as Photoshop's checkbox starts on. A JPEG or WebP
+    /// is written the way the active document's file was (its JPEG quality, a WebP lossy at
+    /// its quality or lossless), as Photoshop's Save and Save As options start there.
     pub(crate) fn save_settings(&self) -> ExportSettings {
         let previews = self.session.prefs().file_handling.image_previews != photocraft_engine::prefs::Ask::Never;
-        ExportSettings { image_previews: previews, ..ExportSettings::default() }
+        let mut settings = ExportSettings { image_previews: previews, ..ExportSettings::default() };
+        if let Some(st) = self.session.active() {
+            let e = &st.doc.file_encoding;
+            settings.jpeg_quality = e.jpeg_quality.map(|q| q.clamp(1, 100));
+            settings.webp_lossless = e.webp_lossless.unwrap_or(settings.webp_lossless);
+            settings.webp_quality = e.webp_quality.map(|q| q.min(100));
+        }
+        settings
     }
 
     /// Whether saving the active document to `path` writes a copy. `tiff_layers` is the TIFF
@@ -1542,7 +1552,7 @@ impl eframe::App for PhotocraftApp {
         self.collect_screenshots(ctx);
         self.issue_screenshots(ctx);
         prefs_ui::tick(self, ctx);
-        monitor_status::poll(self, ctx);
+        monitor_status::poll_frame(self, ctx, frame);
         // Control requests and persisted preferences can change the language in this frame.
         i18n::sync_context(ctx, &self.session.prefs().interface.language);
         type_tool::sync_font_names(ctx, self.session.prefs().type_.show_font_names_in_english);
@@ -1722,6 +1732,9 @@ impl eframe::App for PhotocraftApp {
                 let _ = w.send(serde_json::json!({"ok": true, "result": null}));
             }
         }
+        // A menu or dialog can start a filter after `jobs_ui::tick` ran in this frame. Keep
+        // polling it even when the platform would otherwise put the event loop to sleep.
+        jobs_ui::keep_polling(self, &ctx);
         // Menus and buttons in this frame may have asked for a file dialog.
         self.poll_file_dialog(&ctx, Some(frame));
     }

@@ -128,9 +128,11 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 + chips_height(t.pro, t.round_chips, t.round_chips && double)
                 + if t.pro { 8.0 + if double { bx } else { bx * 2.0 + 3.0 } } else { 0.0 }
                 + 6.0;
+            // As tall as the tools, so the colour chips sit right under them (Photoshop); a column
+            // taller than the window scrolls and keeps the chips at the bottom.
             egui::ScrollArea::vertical()
                 .id_salt("toolbar-columns")
-                .auto_shrink([false, false])
+                .auto_shrink([false, true])
                 .max_height((ui.available_height() - footer).max(0.0))
                 .min_scrolled_height(0.0)
                 .show(ui, |ui| {
@@ -1157,7 +1159,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         widgets::checkbox(ui, &mut app.ui.tool_options.contiguous, tl!("Contiguous"));
                         widgets::checkbox(ui, &mut app.ui.tool_options.sample_all_layers, tl!("All Layers"));
                     }
-                    Tool::Gradient if t.pro => {
+                    Tool::Gradient => {
                         // Live "Gradient" (a Gradient Fill layer) or "Classic gradient" (pixels).
                         let mut classic = app.ui.tool_options.gradient_classic;
                         if widgets::dropdown(ui, "gradient-mode", &mut classic, &[(false, "Gradient"), (true, "Classic gradient")], 118.0) {
@@ -1412,7 +1414,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             &[("commit", &crate::shortcuts::pretty("Enter"))],
                         ),
                     ),
-                    Tool::Gradient => hint(ui, tl!("Drag to draw a gradient")),
                     Tool::PaintBucket => hint(ui, tl!("Click to fill similar colours")),
                     // Retouching and smart-selection tools draw their bar in `retouch_ui::options_bar`.
                     _ => {}
@@ -1450,10 +1451,10 @@ fn label(ui: &mut egui::Ui, s: &str) {
 
 /// Photoshop's scrubby Opacity/Fill labels: drag horizontally to change the percentage without
 /// hitting the small number field. The unique drag ID coalesces every frame into one undo step.
-fn scrub_pct_label(ui: &mut egui::Ui, text: &str, percent: &mut f32) -> widgets::PopupFieldResponse {
-    let t = Tokens::get(ui.ctx());
-    let resp =
-        ui.add(egui::Label::new(RichText::new(text).color(t.text_dim)).sense(Sense::click_and_drag())).on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+fn scrub_pct_label(ui: &mut egui::Ui, text: &str, percent: &mut f32, max_w: f32) -> widgets::PopupFieldResponse {
+    // Elide to the room left in the row (full text on hover): a longer translation shrinks here
+    // instead of running over the fixed controls beside it (#3580).
+    let resp = widgets::elided_label_sensed(ui, text, max_w, Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
     let key = resp.id.with("percent-label-drag");
     if resp.drag_started() {
         let stamp = ui.ctx().cumulative_pass_nr();
@@ -2115,7 +2116,11 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     let mut o = l.opacity * 100.0;
                     let field = widgets::popup_value_field(ui, opacity_label, &mut o, 0.0..=100.0, "%", LAYER_PCT_W);
                     // On a narrow dock the (scrubby) label yields its room to the controls (#2309).
-                    let scrub = if show_opacity_label { scrub_pct_label(ui, opacity_label, &mut o) } else { widgets::PopupFieldResponse::default() };
+                    let scrub = if show_opacity_label {
+                        scrub_pct_label(ui, opacity_label, &mut o, ui.available_width())
+                    } else {
+                        widgets::PopupFieldResponse::default()
+                    };
                     if field.changed || scrub.changed {
                         actions.push(pct_action(l, "opacity", o, scrub.drag.or(field.drag)));
                     }
@@ -2126,7 +2131,9 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.add_space((theme::ROW_GAP - ui.spacing().item_spacing.y).max(0.0));
         ui.horizontal(|ui| {
             let lock_label = if t.pro { tl!("Lock:") } else { tl!("Lock") };
-            let fill_label = if t.pro { tl!("Fill:") } else { tl!("Fill") };
+            // Layer fill opacity (≠ Edit › Fill / path fill → Tô).
+            let lang = crate::i18n::current();
+            let fill_label = if t.pro { crate::i18n::tr_ctx(lang, "layers", "Fill:") } else { crate::i18n::tr_ctx(lang, "layers", "Fill") };
             // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
             // their tooltips) rather than let the Fill label run over the lock icons.
             let gap = ui.spacing().item_spacing.x;
@@ -2164,7 +2171,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut f = l.fill_opacity * 100.0;
                     let field = widgets::popup_value_field(ui, fill_label, &mut f, 0.0..=100.0, "%", LAYER_PCT_W);
-                    let scrub = scrub_pct_label(ui, fill_label, &mut f);
+                    let scrub = scrub_pct_label(ui, fill_label, &mut f, ui.available_width());
                     if field.changed || scrub.changed {
                         actions.push(pct_action(l, "fill", f, scrub.drag.or(field.drag)));
                     }
@@ -2545,6 +2552,14 @@ fn eye_sweep(ctx: &egui::Context, l: &Layer, row: Rect, eye: &egui::Response, ac
     ctx.data_mut(|d| d.insert_temp(id, sweep));
 }
 
+/// Marker in the clipped row's existing 12-point slot, beside its thumbnail.
+fn paint_clipping_indicator(painter: &egui::Painter, at: Pos2, color: Color32) {
+    let tip = at + vec2(5.0, 3.0);
+    let stroke = Stroke::new(1.0, color);
+    painter.add(egui::Shape::line(vec![at + vec2(9.0, -4.0), at + vec2(5.0, -4.0), tip], stroke));
+    painter.add(egui::Shape::line(vec![at + vec2(2.0, 0.0), tip, at + vec2(8.0, 0.0)], stroke));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn layer_row(
     app: &mut PhotocraftApp,
@@ -2621,6 +2636,10 @@ fn layer_row(
             actions.push(("layer.setProps".into(), json!({"layer": l.id.0, "visible": !l.visible})));
         }
     }
+    eye_resp.context_menu(|ui| {
+        crate::widgets::style_spectrum_popup_menu(ui);
+        crate::layer_menu_ui::color_choices(app, ui, l, row.multi && selected, actions);
+    });
     // Everything but the thumbnails, the indentation and the name, so a narrow panel squeezes
     // the indentation first, then the thumbnails (a layer with two masks has three).
     let others = 6.0
@@ -2633,7 +2652,7 @@ fn layer_row(
     x += 28.0 + crate::layer_row_ui::indent(depth, rect.width(), fixed);
     let toggled = crate::layer_tree_ui::disclosure(ui, rect, &mut x, l, actions);
     if l.clipped {
-        painter.text(pos2(x, rect.center().y), Align2::LEFT_CENTER, "↳", egui::FontId::proportional(13.0), t.text_faint);
+        paint_clipping_indicator(&painter, pos2(x, rect.center().y), t.text_faint);
         x += 12.0;
     }
     let thumb = Rect::from_min_size(pos2(x, rect.center().y - ts / 2.0), vec2(ts, ts));
@@ -2781,17 +2800,19 @@ fn layer_row(
     if let Some(done) = crate::layer_row_ui::rename_field(ui, l.id.0, edit_rect) {
         actions.push(done);
     }
-    // Right-click context menu.
-    resp.context_menu(|ui| {
-        crate::widgets::style_spectrum_popup_menu(ui);
-        // Right-clicking inside a multi-selection keeps it and acts on every selected layer.
-        let on_set = row.multi && selected;
-        if crate::layer_menu_ui::show(app, ui, l, on_set, actions)
-            && let Some(done) = crate::layer_row_ui::start_rename(ui.ctx(), l.id.0, &l.name)
-        {
-            actions.push(done);
-        }
-    });
+    // The visibility icon has its own color menu; elsewhere use the full layer menu.
+    if !eye_resp.secondary_clicked() && !eye_resp.context_menu_opened() {
+        resp.context_menu(|ui| {
+            crate::widgets::style_spectrum_popup_menu(ui);
+            // Right-clicking inside a multi-selection keeps it and acts on every selected layer.
+            let on_set = row.multi && selected;
+            if crate::layer_menu_ui::show(app, ui, l, on_set, actions)
+                && let Some(done) = crate::layer_row_ui::start_rename(ui.ctx(), l.id.0, &l.name)
+            {
+                actions.push(done);
+            }
+        });
+    }
     rect
 }
 
@@ -3168,7 +3189,7 @@ fn layer_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
         let _ = app.run("layer.setProps", json!({"layer": layer.id.0, "opacity": o / 100.0}));
     }
     let mut f = layer.fill_opacity * 100.0;
-    let r = widgets::slider_row(ui, tl!("Fill"), &mut f, 0.0..=100.0, "%", None);
+    let r = widgets::slider_row(ui, crate::i18n::tr_ctx(crate::i18n::current(), "layers", "Fill"), &mut f, 0.0..=100.0, "%", None);
     if r.drag_stopped() || (r.changed() && !r.dragged()) {
         let _ = app.run("layer.setProps", json!({"layer": layer.id.0, "fill": f / 100.0}));
     }
@@ -5202,6 +5223,10 @@ mod opacity_row_layout_tests {
 }
 
 #[cfg(test)]
+#[path = "clipping_indicator_tests.rs"]
+mod clipping_indicator_tests;
+
+#[cfg(test)]
 #[path = "mask_props_ui_tests.rs"]
 mod mask_properties_tests;
 
@@ -5217,8 +5242,12 @@ mod compact_visual_regressions {
     }
 
     fn toolbar_harness(kind: theme::ThemeKind, scale: f32) -> egui_kittest::Harness<'static, PhotocraftApp> {
+        toolbar_harness_sized(kind, scale, 360.0)
+    }
+
+    fn toolbar_harness_sized(kind: theme::ThemeKind, scale: f32, height: f32) -> egui_kittest::Harness<'static, PhotocraftApp> {
         let mut ready = false;
-        let mut harness = egui_kittest::Harness::builder().with_size(vec2(400.0, 360.0)).with_pixels_per_point(scale).build_ui_state(
+        let mut harness = egui_kittest::Harness::builder().with_size(vec2(400.0, height)).with_pixels_per_point(scale).build_ui_state(
             move |ui, app: &mut PhotocraftApp| {
                 if !ready {
                     egui_extras::install_image_loaders(ui.ctx());
@@ -5284,6 +5313,18 @@ mod compact_visual_regressions {
                 harness.run_steps(3);
                 assert_eq!(harness.state().ui.tool, Tool::Zoom, "Space must select the revealed tool");
             }
+        }
+    }
+
+    /// A window taller than the tools keeps the colour chips right under the last tool, as
+    /// Photoshop does, instead of at the bottom of the toolbar.
+    #[test]
+    fn tall_toolbar_keeps_the_colour_chips_under_the_tools() {
+        for kind in theme::ThemeKind::ALL {
+            let harness = toolbar_harness_sized(kind, 1.0, 1600.0);
+            let last = harness.get_by_label("Zoom Tool  (Z)").rect();
+            let swap = harness.get_by_label("Swap colours (X)").rect();
+            assert!(swap.top() - last.bottom() < 80.0, "{kind:?}: the chips {swap:?} sit far below the last tool {last:?}");
         }
     }
 
