@@ -30,6 +30,13 @@ pub fn effective(tool: Tool, mods: Modifiers) -> Option<Tool> {
     }
 }
 
+/// The anchor-tool hover in effect: Add / Delete Anchor Point (⌥ swaps them), or the idle Pen,
+/// which previews the anchor a click would add to an existing path (#4144). The Pen with ⌥ is
+/// Convert Point and with ⌘ is Direct Selection, so neither previews an add.
+fn hover_tool(app: &PhotocraftApp, mods: Modifiers) -> Option<Tool> {
+    effective(app.ui.tool, mods).or_else(|| (app.ui.tool == Tool::Pen && app.ui.pen.is_none() && !mods.command && !mods.alt).then_some(Tool::AddAnchorPoint))
+}
+
 /// What a click at `p` would edit with `tool`: the frontmost path under the pointer and the
 /// segment (Add) or anchor (Delete) hit on it. An anchor hit with Add, or a segment with Delete,
 /// edits nothing.
@@ -43,6 +50,38 @@ fn target(app: &PhotocraftApp, tool: Tool, p: [f64; 2]) -> Option<(PathRef, Path
     }
 }
 
+/// The segment the Add Anchor Point tool (or the idle Pen, #4144) would insert an anchor into under
+/// `p`: the frontmost path Direct Selection edits with a segment hit there, its `[subpath, knot]`
+/// and the curve parameter. None when no editable segment is under the pointer.
+pub(crate) fn add_target(app: &PhotocraftApp, p: [f64; 2]) -> Option<(PathRef, [usize; 2], f64)> {
+    match target(app, Tool::AddAnchorPoint, p)? {
+        (r, _, Hit::Segment([s, k], t)) => Some((r, [s, k], t)),
+        _ => None,
+    }
+}
+
+/// Insert an anchor into the segment under `p` on the frontmost path Direct Selection edits
+/// (`path.addAnchor`): one history step, the same edit the Add Anchor Point tool and the idle Pen's
+/// click-to-add on an existing (e.g. closed) path share (#4144). Returns whether the press hit a
+/// segment (so the caller consumes it).
+pub(crate) fn insert_anchor_at(app: &mut PhotocraftApp, p: [f64; 2]) -> bool {
+    let Some((r, [s, k], t)) = add_target(app, p) else { return false };
+    let mut params = serde_json::json!({"subpath": s, "knot": k, "t": t});
+    if let (Some(o), Some(target)) = (params.as_object_mut(), r.params().as_object()) {
+        o.extend(target.clone());
+    }
+    match app.run("path.addAnchor", params) {
+        // The anchors shift: a Direct Selection on this path would point at the wrong ones.
+        Ok(_) if app.ui.direct_selection.target == Some(r) => app.ui.direct_selection = DirectSelection { target: Some(r), ..Default::default() },
+        Ok(_) => {}
+        Err(e) => {
+            app.ui.status = e;
+            app.ui.status_error = true;
+        }
+    }
+    true
+}
+
 /// Canvas pointer events for the anchor tools; false when the current tool isn't one.
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool {
     let Some(tool) = effective(app.ui.tool, mods) else { return false };
@@ -53,31 +92,26 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool 
 }
 
 fn click(app: &mut PhotocraftApp, tool: Tool, p: [f64; 2]) {
-    let Some((r, _, hit)) = target(app, tool, p) else { return };
-    let (id, mut params) = match hit {
-        Hit::Segment([s, k], t) => ("path.addAnchor", serde_json::json!({"subpath": s, "knot": k, "t": t})),
-        Hit::Anchor([s, k]) => ("path.deleteAnchor", serde_json::json!({"subpath": s, "knot": k})),
-        Hit::Handle(..) => return,
-    };
-    // A hit right at a segment's end is an anchor (anchors win the hit test), so `t` is inside.
+    if tool == Tool::AddAnchorPoint {
+        insert_anchor_at(app, p);
+        return;
+    }
+    let Some((r, _, Hit::Anchor([s, k]))) = target(app, tool, p) else { return };
+    let mut params = serde_json::json!({"subpath": s, "knot": k});
     if let (Some(o), Some(t)) = (params.as_object_mut(), r.params().as_object()) {
         o.extend(t.clone());
     }
-    match app.run(id, params) {
-        // The anchors shift: a Direct Selection on this path would point at the wrong ones.
-        Ok(_) if app.ui.direct_selection.target == Some(r) => app.ui.direct_selection = DirectSelection { target: Some(r), ..Default::default() },
-        Ok(_) => {}
-        Err(e) => {
-            app.ui.status = e;
-            app.ui.status_error = true;
-        }
+    if let Err(e) = app.run("path.deleteAnchor", params) {
+        app.ui.status = e;
+        app.ui.status_error = true;
     }
 }
 
 /// The hover feedback over the Direct Selection overlay: Add highlights the segment under the
 /// pointer and shows the anchor a click would add; Delete highlights the anchor it would remove.
+/// The idle Pen shows the Add preview too: a click inserts an anchor into the segment (#4144).
 pub fn draw_hover(app: &PhotocraftApp, painter: &egui::Painter, to_scr: &dyn Fn([f64; 2]) -> Pos2, accent: Color32, mods: Modifiers) {
-    let (Some(tool), Some(p)) = (effective(app.ui.tool, mods), app.hover_doc) else { return };
+    let (Some(tool), Some(p)) = (hover_tool(app, mods), app.hover_doc) else { return };
     if mods.command {
         return;
     }

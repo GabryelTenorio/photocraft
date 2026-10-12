@@ -105,6 +105,11 @@ pub fn badge(app: &PhotocraftApp, tool: Tool, m: egui::Modifiers) -> Option<Badg
     if let Some(t) = crate::anchor_tools::effective(tool, m) {
         return (!m.command).then_some(if t == Tool::AddAnchorPoint { Badge::Add } else { Badge::Subtract });
     }
+    // The Pen over a segment of an existing path shows + too: a click inserts an anchor there
+    // (#4144). ⌘ is Direct Selection and ⌥ is Convert Point, which show no add.
+    if tool == Tool::Pen && !m.command && !m.alt && app.ui.pen.is_none() && app.hover_doc.is_some_and(|p| crate::anchor_tools::add_target(app, p).is_some()) {
+        return Some(Badge::Add);
+    }
     if !is_selection_tool(tool) {
         return None;
     }

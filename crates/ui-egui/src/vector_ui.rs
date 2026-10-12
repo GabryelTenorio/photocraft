@@ -188,8 +188,14 @@ fn pen_to_json(pen: &PenPath, closed: bool) -> Value {
 }
 
 /// Pen press: close on the first anchor, reshape the last anchor's outgoing handle,
-/// or add a new anchor (dragging a new anchor pulls symmetrical handles).
+/// or add a new anchor (dragging a new anchor pulls symmetrical handles). With no path being
+/// drawn, a press on an existing path's segment inserts an anchor into it (#4144).
 pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
+    // A click on an existing path's segment inserts an anchor there, as Photoshop's Pen does:
+    // the only way to add a point to a closed path (the same edit the Add Anchor Point tool does).
+    if app.ui.pen.as_ref().is_none_or(|p| p.knots.is_empty()) && crate::anchor_tools::insert_anchor_at(app, [x, y]) {
+        return;
+    }
     let tol = 6.0 / app.point_zoom().max(0.01) as f64;
     let pen = app.ui.pen.get_or_insert_with(PenPath::default);
     if let Some(first) = pen.knots.first().map(|k| k[0])
@@ -824,12 +830,10 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
     // View › Show › Target Path (under Extras) hides the paths; the Pen's path in progress stays.
     // Free Transform Path draws the path through its box instead (transform_tool).
     let paths = app.ui.view.shows(app.ui.view.show.target_path) && app.ui.transform.as_ref().is_none_or(|t| t.path.is_none());
-    if crate::direct_select::shows(app, painter.ctx().input(|i| i.modifiers)) {
+    let mods = painter.ctx().input(|i| i.modifiers);
+    if crate::direct_select::shows(app, mods) {
         // Direct Selection (or the Pen with ⌘/Ctrl held) draws the paths it edits (#790).
         crate::direct_select::draw_overlay(app, painter, &to_scr, accent, paths);
-        if paths {
-            crate::anchor_tools::draw_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
-        }
     } else if paths {
         if vector_tool {
             if let Some(wp) = &doc.work_path {
@@ -846,6 +850,11 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
         if let Some((_, p)) = targeted_vector_mask(app) {
             draw_path(&p, tool == Tool::PathSelection);
         }
+    }
+    // Add / Delete Anchor Point hover, and the idle Pen's preview of the anchor a click would
+    // add to an existing path (#4144).
+    if paths {
+        crate::anchor_tools::draw_hover(app, painter, &to_scr, accent, mods);
     }
     // Pen path in progress, with handles of the last knot and a rubber band to the pointer.
     if let Some(pen) = &app.ui.pen {
@@ -2312,6 +2321,10 @@ mod path_selection_tests;
 #[cfg(test)]
 #[path = "pen_draw_tests.rs"]
 mod pen_draw_tests;
+
+#[cfg(test)]
+#[path = "pen_add_anchor_tests.rs"]
+mod pen_add_anchor_tests;
 
 #[cfg(test)]
 #[path = "vector_paint_tests.rs"]
