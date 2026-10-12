@@ -98,7 +98,7 @@ impl Samples {
             }
             Self::U16(v) if sample == SampleType::U16 => {
                 let Some(pixel) = v.get(index..end) else { return false };
-                for (dst, value) in out.chunks_exact_mut(2).zip(pixel) {
+                for (dst, value) in out.as_chunks_mut::<2>().0.iter_mut().zip(pixel) {
                     dst.copy_from_slice(&value.to_ne_bytes());
                 }
             }
