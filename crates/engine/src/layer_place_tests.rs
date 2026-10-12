@@ -217,3 +217,82 @@ fn a_missing_or_stale_anchor_means_the_top_of_the_stack() {
     }
     assert!(matches!(d.layers.last().unwrap().content, LayerContent::Raster(_)));
 }
+
+/// A partly locked group (pixels, transparency or position) would lock a layer created in it, so
+/// Render and Vanishing Point could not draw into their new layer: it goes above the group.
+#[test]
+fn a_partly_locked_group_keeps_new_layers_out() {
+    for locks in [json!({"pixels": true}), json!({"transparency": true}), json!({"position": true})] {
+        let (mut s, _, b) = session();
+        select(&mut s, b);
+        let g = id(s.execute("layer.new.group", json!({})).unwrap());
+        s.execute("layer.setProps", json!({"layer": g.0, "locks": locks})).unwrap();
+        select(&mut s, g);
+        s.execute("filter.render.tree", json!({})).unwrap();
+        let l = id(s.execute("layer.new.layer", json!({})).unwrap());
+        assert!(children(&s, g).is_empty(), "{locks}");
+        assert!(top(&s).contains(&l));
+    }
+}
+
+/// An artboard takes a new layer whose content is centred on it, and a new empty layer; content
+/// placed elsewhere (Place and Paste centre on the canvas) stays at the top level instead of
+/// being clipped away by the board.
+#[test]
+fn an_artboard_takes_only_content_that_is_on_it() {
+    let (mut s, _, _) = session();
+    let board = id(s.execute("layer.new.artboard", json!({"rect": [0, 0, 8, 8]})).unwrap());
+    let mut d = doc(&s).clone();
+    let raster = |d: &Document, r: photocraft_geom::Rect| {
+        let mut l = Layer::raster("content", d.pixel_format());
+        l.surface_mut().unwrap().fill_rect(r, &[1.0, 0.0, 0.0, 1.0]);
+        l
+    };
+    let on = raster(&d, photocraft_geom::Rect::new(1, 1, 5, 5));
+    let on = insert_new(&mut d, Some(board), on, Place::Auto);
+    assert_eq!(d.artboard_of(on), Some(board));
+    let off = raster(&d, photocraft_geom::Rect::new(10, 10, 16, 16));
+    let off = insert_new(&mut d, Some(board), off, Place::Auto);
+    assert_eq!(d.artboard_of(off), None);
+    let root: Vec<LayerId> = d.layers.iter().map(|l| l.id).collect();
+    assert_eq!(root.iter().position(|x| *x == off), root.iter().position(|x| *x == board).map(|i| i + 1));
+}
+
+/// An artboard is never nested or clipped: a copied board goes beside the anchor's top-level
+/// layer, even after a first copy went into a group, and never joins a clipping mask.
+#[test]
+fn artboards_stay_at_the_top_level_and_unclipped() {
+    let (mut s, a, b) = session();
+    let board = id(s.execute("layer.new.artboard", json!({"rect": [0, 0, 8, 8]})).unwrap());
+    s.execute("layer.setProps", json!({"layer": b.0, "clipped": true})).unwrap();
+    let mut d = doc(&s).clone();
+    let copy = d.layer(board).unwrap().duplicate();
+    // On a clipping base: at the top level above its clipping mask (B keeps A as its base), not
+    // clipped.
+    let c = insert_new(&mut d, Some(a), copy.duplicate(), Place::Auto);
+    let root: Vec<LayerId> = d.layers.iter().map(|l| l.id).collect();
+    let at = |id: LayerId| root.iter().position(|x| *x == id).unwrap();
+    assert_eq!((at(b), at(c)), (at(a) + 1, at(a) + 2));
+    assert!(!d.layer(c).unwrap().clipped);
+    // After a layer that went into an open group: beside the group, not inside it.
+    let g = insert_new(&mut d, Some(a), Layer::group("open", vec![]), Place::Above);
+    let first = Layer::raster("first", d.pixel_format());
+    let first = insert_new(&mut d, Some(g), first, Place::Auto);
+    assert!(d.layer(g).unwrap().children().unwrap().iter().any(|l| l.id == first));
+    let second = insert_new(&mut d, Some(first), copy, Place::Above);
+    assert!(d.layers.iter().any(|l| l.id == second), "the board is not nested in the group");
+    assert_eq!(d.artboards().len(), 3);
+}
+
+/// A copied clipped layer pasted into an empty group has nothing below it to clip to.
+#[test]
+fn a_clipped_layer_with_nothing_below_is_released() {
+    let (s, _, b) = session();
+    let mut d = doc(&s).clone();
+    let g = insert_new(&mut d, Some(b), Layer::group("empty", vec![]), Place::Auto);
+    let mut l = Layer::raster("was clipped", d.pixel_format());
+    l.clipped = true;
+    let l = insert_new(&mut d, Some(g), l, Place::Auto);
+    assert!(d.layer(g).unwrap().children().unwrap().iter().any(|c| c.id == l));
+    assert!(!d.layer(l).unwrap().clipped);
+}

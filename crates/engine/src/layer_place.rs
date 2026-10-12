@@ -1,15 +1,16 @@
 //! Where a new layer goes, as in Photoshop. Above the active layer, or as the top layer inside the
-//! active group when that group is open (an artboard always takes it); with nothing active, at the
-//! top of the stack. A layer that lands inside a clipping mask joins it: it is clipped when the layer
+//! active group when that group is open (an artboard, open or closed, when the layer's content is
+//! on the board); with nothing active, at the top of the stack. A layer that lands inside a clipping mask joins it: it is clipped when the layer
 //! just above its slot is clipped, the rule Photoshop follows on every insert (#2203), so a new
 //! layer (or group) between a base and its clipped layers never becomes their (empty) base.
+//! Artboards are never nested or clipped: a new one goes to the top level.
 
 use photocraft_doc::{Document, Layer, LayerContent, LayerId, LayerPath, MAX_GROUP_DEPTH};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Place {
     /// New Layer, New Group, new adjustment, fill, type and shape layers, Paste…: inside the anchor
-    /// when it is an open group (or an artboard), else directly above it.
+    /// when it is an open, unlocked group (or an artboard the content is on), else directly above it.
     Auto,
     /// Directly above the anchor, never inside it: a layer made from another layer, or the second
     /// and later of several new layers.
@@ -24,6 +25,8 @@ pub enum Place {
 pub fn insertion_point(doc: &Document, anchor: Option<LayerId>, layer: &Layer, place: Place) -> (LayerPath, usize) {
     let root_top = (Vec::new(), doc.layers.len());
     let Some(path) = anchor.and_then(|a| doc.path_of(a)) else { return root_top };
+    // An artboard stays at the top level: beside the anchor's top-level layer.
+    let path = if layer.artboard().is_some() { path.get(..1).map(<[usize]>::to_vec).unwrap_or_default() } else { path };
     let (Some((&k, parent)), Some(target)) = (path.split_last(), doc.layer_at(&path)) else { return root_top };
     match place {
         Place::Auto if takes_new_layers(target, path.len(), layer) => (path.clone(), target.children().map_or(0, <[Layer]>::len)),
@@ -33,16 +36,26 @@ pub fn insertion_point(doc: &Document, anchor: Option<LayerId>, layer: &Layer, p
 }
 
 /// Inserts `layer` at its [`insertion_point`], clipped when it lands inside a clipping mask (a
-/// flag it already has is kept); returns its id. Never fails: a slot that can't be reached puts
+/// flag it already has is kept unless nothing is below it to clip to; an artboard is never
+/// clipped); returns its id. Never fails: a slot that can't be reached puts
 /// the layer on top of the stack.
 pub fn insert_new(doc: &mut Document, anchor: Option<LayerId>, mut layer: Layer, place: Place) -> LayerId {
     let id = layer.id;
     let (parent, index) = insertion_point(doc, anchor, &layer, place);
     let sib = if parent.is_empty() { Some(&mut doc.layers) } else { doc.layer_at_mut(&parent).and_then(Layer::children_mut) };
     if let Some(sib) = sib {
-        let index = index.min(sib.len());
-        if sib.get(index).is_some_and(|above| above.clipped) {
+        let mut index = index.min(sib.len());
+        if layer.artboard().is_some() {
+            // Past the clipped layers above the slot, so their clipping mask stays whole.
+            while sib.get(index).is_some_and(|above| above.clipped) {
+                index += 1;
+            }
+            layer.clipped = false;
+        } else if sib.get(index).is_some_and(|above| above.clipped) {
             layer.clipped = true;
+        } else if index == 0 {
+            // Nothing below to clip to (a copied clipped layer pasted into an empty group).
+            layer.clipped = false;
         }
         sib.insert(index, layer);
     } else {
@@ -52,11 +65,25 @@ pub fn insert_new(doc: &mut Document, anchor: Option<LayerId>, mut layer: Layer,
 }
 
 /// Does the group `target` at depth `depth` (its path length) take a new `layer` as its top
-/// child? An open group or an artboard does, unless it is fully locked (the layer would be born
-/// locked) or nesting would pass [`MAX_GROUP_DEPTH`]. Artboards stay at the top level.
+/// child? An open group or an artboard does, unless it is locked (the layer would be born locked:
+/// no painting, rendering or moving it) or nesting would pass [`MAX_GROUP_DEPTH`]. An artboard
+/// takes a layer with content only when that content is centred on the board, as callers place
+/// it for the canvas (Place, Paste, a Type or Shape click): elsewhere the board would clip it.
 fn takes_new_layers(target: &Layer, depth: usize, layer: &Layer) -> bool {
     let LayerContent::Group(g) = &target.content else { return false };
-    (g.expanded || g.artboard.is_some()) && !target.locks.all && layer.artboard().is_none() && depth + subtree_depth(layer) <= MAX_GROUP_DEPTH
+    let k = &target.locks;
+    let locked = k.all || k.pixels || k.transparency || k.position;
+    let on_board = |rect: photocraft_geom::Rect| {
+        crate::layer_multi_cmds::layer_bounds(layer).is_none_or(|b| {
+            let (cx, cy) = (b.x0 / 2 + b.x1 / 2, b.y0 / 2 + b.y1 / 2);
+            rect.contains(cx, cy)
+        })
+    };
+    let open = match &g.artboard {
+        Some(board) => on_board(board.rect),
+        None => g.expanded,
+    };
+    open && !locked && layer.artboard().is_none() && depth + subtree_depth(layer) <= MAX_GROUP_DEPTH
 }
 
 /// Group nesting inside `layer` itself: 0 for a layer or an empty group, as
