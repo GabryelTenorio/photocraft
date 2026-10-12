@@ -1,11 +1,11 @@
 //! ZSoft PCX (Paintbrush) reader: strictly bounded scanline RLE, 16/256-colour
 //! palettes and 8-bit three-plane RGB. Read-only: modern saves should use PNG.
 
+use crate::SampleType;
 use crate::error::CodecError;
 use crate::format::Format;
 use crate::image::{ChannelLayout, Image};
 use crate::options::Limits;
-use crate::SampleType;
 
 const HEADER: usize = 128;
 

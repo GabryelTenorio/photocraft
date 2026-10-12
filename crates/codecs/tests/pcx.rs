@@ -93,14 +93,8 @@ fn rejects_truncated_and_overshooting_rle_without_panicking() {
 fn refuses_headers_that_exceed_allocation_budget() {
     let mut b = header(8, 3, 3000, 3000, 3000);
     // The default decoder rejects the allocation before reading any scanline.
-    let opts = photocraft_codecs::DecodeOptions {
-        limits: photocraft_codecs::Limits { max_alloc: 1024, ..Default::default() },
-        ..Default::default()
-    };
-    assert!(matches!(
-        photocraft_codecs::decode_as_with(Format::Pcx, &b, &opts),
-        Err(CodecError::LimitExceeded(_))
-    ));
+    let opts = photocraft_codecs::DecodeOptions { limits: photocraft_codecs::Limits { max_alloc: 1024, ..Default::default() }, ..Default::default() };
+    assert!(matches!(photocraft_codecs::decode_as_with(Format::Pcx, &b, &opts), Err(CodecError::LimitExceeded(_))));
     b[2] = 0;
     assert_eq!(detect(&b), None, "unsupported uncompressed encoding");
 }
