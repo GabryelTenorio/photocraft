@@ -689,11 +689,12 @@ fn number_edit(
     let before = *value;
     let speed = if fine { 0.01 } else { 0.5 };
     let wrapping = wrap_drag && crate::scrub_wrap::active(ui);
+    let wrapped_drag = wrapping && ui.input(|i| i.pointer.primary_down());
     let mut resp = ui.add(
         egui::DragValue::new(value)
             .range(range.clone())
             // A warp is an absolute-position jump. The scoped scrub below removes that jump.
-            .speed(if wrapping { 0.0 } else { speed })
+            .speed(if wrapped_drag { 0.0 } else { speed })
             .custom_formatter(move |v, _| match decimals {
                 Some(d) => fmt_num_prec(v, d),
                 None if fine => fmt_num2(v),

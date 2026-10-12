@@ -158,4 +158,41 @@ fn fullscreen_status_zoom_keeps_typing_and_clears_a_pending_warp_on_release() {
     h.run_steps(3);
     assert_eq!(h.state().ui.views[0].zoom, 2.5);
     assert!(cursor_warp(&h).is_none());
+    h.get_by_role(egui::accesskit::Role::SpinButton).click();
+    h.run_steps(2);
+    h.key_press(egui::Key::ArrowUp);
+    h.run_steps(2);
+    assert!((h.state().ui.views[0].zoom - 2.51).abs() < 0.0001, "keep keyboard stepping in fullscreen");
+}
+
+#[test]
+fn fullscreen_status_zoom_preserves_shift_precision_and_recovers_from_the_minimum() {
+    let mut h = harness(ThemeKind::ProMedium);
+    fullscreen(&mut h, true);
+    let start = begin_zoom_drag(&mut h);
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::SHIFT));
+    let to = start + vec2(40.0, 0.0);
+    h.hover_at(to);
+    h.run_steps(1);
+    assert!((h.state().ui.views[0].zoom - 10.02).abs() < 0.005, "Shift reduces sensitivity by ten");
+    h.drop_at(to);
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run_steps(2);
+    h.state_mut().ui.views[0].zoom = 0.01;
+    h.run_steps(2);
+    let start = begin_zoom_drag(&mut h);
+    h.hover_at(pos2(0.5, start.y));
+    h.run_steps(1);
+    let target = cursor_warp(&h).expect("wrap");
+    let minimum = crate::zoom_levels::min(h.state().ui.views[0].doc_size);
+    assert_eq!(h.state().ui.views[0].zoom, minimum);
+    h.hover_at(target);
+    h.run_steps(1);
+    let next = target - vec2(100.0, 0.0);
+    h.hover_at(next);
+    h.run_steps(1);
+    assert_eq!(h.state().ui.views[0].zoom, minimum);
+    h.hover_at(next + vec2(20.0, 0.0));
+    h.run_steps(1);
+    assert!(h.state().ui.views[0].zoom > minimum, "reversing direction responds immediately after reaching a bound");
 }

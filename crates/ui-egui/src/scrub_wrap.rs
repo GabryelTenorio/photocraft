@@ -13,7 +13,7 @@ pub(crate) fn active(ui: &Ui) -> bool {
 }
 
 fn wrap_target(pos: Pos2, viewport: Rect) -> Option<Pos2> {
-    if !viewport.is_finite() || viewport.width() < 32.0 || !viewport.contains(pos) {
+    if !viewport.is_finite() || viewport.width() < 32.0 || !pos.is_finite() || pos.y < viewport.top() || pos.y > viewport.bottom() {
         return None;
     }
     if pos.x <= viewport.left() + 1.0 {
@@ -84,11 +84,11 @@ mod tests {
     }
 
     #[test]
-    fn warp_uses_logical_viewport_edges_and_ignores_positions_outside_it() {
+    fn warp_uses_logical_viewport_edges_even_when_motion_crosses_the_edge() {
         let rect = Rect::from_min_size(pos2(20.0, 30.0), vec2(800.0, 600.0));
         assert_eq!(wrap_target(pos2(20.5, 500.0), rect), Some(pos2(817.0, 500.0)));
         assert_eq!(wrap_target(pos2(819.5, 500.0), rect), Some(pos2(23.0, 500.0)));
-        assert_eq!(wrap_target(pos2(19.0, 500.0), rect), None);
+        assert_eq!(wrap_target(pos2(19.0, 500.0), rect), Some(pos2(817.0, 500.0)));
         assert_eq!(wrap_target(pos2(20.5, 631.0), rect), None);
         assert_eq!(wrap_target(rect.center(), rect), None);
         assert_eq!(wrap_target(pos2(0.5, 10.0), Rect::from_min_size(Pos2::ZERO, vec2(8.0, 20.0))), None);
