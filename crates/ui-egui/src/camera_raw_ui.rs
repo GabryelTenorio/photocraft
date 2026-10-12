@@ -64,6 +64,11 @@ pub struct CameraRawDialog {
     pub render_ms: f64,
     /// Set for the open-time dialog ([`Target::OpenRaw`]).
     raw_open: Option<RawOpen>,
+    /// Settings before each finished edit, so Ctrl+Z works inside the dialog (#4100).
+    undo: Vec<CameraRaw>,
+    redo: Vec<CameraRaw>,
+    /// Params at pointer-down. One drag is one undo step.
+    edit_origin: Option<CameraRaw>,
 }
 
 impl CameraRawDialog {
@@ -591,6 +596,9 @@ fn open_pixels(
         curve_rect: None,
         render_ms: 0.0,
         raw_open: None,
+        undo: Vec::new(),
+        redo: Vec::new(),
+        edit_origin: None,
     };
     d.render(ctx);
     app.camera_raw = Some(d);
@@ -629,8 +637,8 @@ pub fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Val
     for (key, value) in fields {
         match key.as_str() {
             "set" | "scope" | "view" => {}
-            "before" | "commit" | "cancel" if value.is_boolean() => {}
-            "before" | "commit" | "cancel" => return Some(Err(format!("Camera Raw {key} must be a boolean"))),
+            "before" | "commit" | "cancel" | "undo" | "redo" if value.is_boolean() => {}
+            "before" | "commit" | "cancel" | "undo" | "redo" => return Some(Err(format!("Camera Raw {key} must be a boolean"))),
             _ => return Some(Err(format!("unknown Camera Raw ui property {key}"))),
         }
     }
@@ -699,13 +707,22 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
     if d.params.point_curve != next_params.point_curve {
         d.curve_state = Default::default();
     }
-    d.dirty |= d.params != next_params;
-    d.params = next_params;
+    if d.params != next_params {
+        remember_edit(d);
+        d.dirty = true;
+        d.params = next_params;
+    }
     if let Some(b) = ui.get("before").and_then(Value::as_bool) {
         d.show_before = b;
     }
     if let Some(update) = scope_update {
         update.apply(d, &mut app.ui.camera_raw_scope);
+    }
+    if ui.get("undo").and_then(Value::as_bool) == Some(true) {
+        undo_edit(d);
+    }
+    if ui.get("redo").and_then(Value::as_bool) == Some(true) {
+        redo_edit(d);
     }
     if d.dirty {
         d.render(ctx);
@@ -724,6 +741,49 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
         return Some(commit(app));
     }
     Some(Ok(app.camera_raw.as_ref().map(|d| d.describe(&app.ui.camera_raw_scope, &app.ui.camera_raw_preview)).unwrap_or(Value::Null)))
+}
+
+const RAW_UNDO_LIMIT: usize = 40;
+
+fn remember_edit(d: &mut CameraRawDialog) {
+    if d.undo.len() == RAW_UNDO_LIMIT {
+        d.undo.remove(0);
+    }
+    d.undo.push(d.params.clone());
+    d.redo.clear();
+}
+
+fn undo_edit(d: &mut CameraRawDialog) -> bool {
+    let Some(prev) = d.undo.pop() else { return false };
+    d.redo.push(d.params.clone());
+    if d.params.point_curve != prev.point_curve {
+        d.curve_state = Default::default();
+    }
+    d.params = prev;
+    d.dirty = true;
+    d.edit_origin = None;
+    true
+}
+
+fn redo_edit(d: &mut CameraRawDialog) -> bool {
+    let Some(next) = d.redo.pop() else { return false };
+    d.undo.push(d.params.clone());
+    if d.params.point_curve != next.point_curve {
+        d.curve_state = Default::default();
+    }
+    d.params = next;
+    d.dirty = true;
+    d.edit_origin = None;
+    true
+}
+
+fn history_keys(d: &mut CameraRawDialog, ctx: &egui::Context) {
+    let cmd_shift = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+    if ctx.input_mut(|i| i.consume_key(cmd_shift, egui::Key::Z)) {
+        redo_edit(d);
+    } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z)) {
+        undo_edit(d);
+    }
 }
 
 fn commit(app: &mut PhotocraftApp) -> Result<Value, String> {
@@ -894,6 +954,11 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
     let mut action: Option<&str> = None;
     egui::Area::new(egui::Id::new("camera-raw-dialog")).order(egui::Order::Foreground).fixed_pos(screen.min).show(ctx, |ui| {
         let Some(d) = app.camera_raw.as_mut() else { return };
+        history_keys(d, ctx);
+        let pointer = ctx.input(|i| i.pointer.primary_down());
+        if pointer && d.edit_origin.is_none() {
+            d.edit_origin = Some(d.params.clone());
+        }
         if let Some(display) = &current_display
             && display.key != d.display.key
         {
@@ -1092,6 +1157,14 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
         fu.add_space(12.0);
         widgets::checkbox(&mut fu, &mut d.show_before, tl!("Before (Y)"));
         fu.label(egui::RichText::new(format!("{:.0} ms", d.render_ms)).color(t.text_faint));
+        if !ctx.input(|i| i.pointer.primary_down())
+            && let Some(origin) = d.edit_origin.take()
+            && origin != d.params
+        {
+            let edited = std::mem::replace(&mut d.params, origin);
+            remember_edit(d);
+            d.params = edited;
+        }
     });
     super::camera_raw_scope_ui::persist(app, ctx);
     if ctx.input(|i| i.key_pressed(egui::Key::Y))

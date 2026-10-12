@@ -460,7 +460,10 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let (fx, fy, fz) = locate(&mode, hsv, rgb, lab);
     // Colour field.
     let (field, resp) = ui.allocate_exact_size(vec2(FIELD, FIELD), Sense::click_and_drag());
-    ui.painter().add(grid_mesh(field, 32, |x, y| field_color(&mode, fz, x, y)));
+    let web_only = f.get("__webOnly").and_then(Value::as_bool).unwrap_or(false);
+    let show = |c: [f32; 3]| if web_only { c.map(|v| (v.clamp(0.0, 1.0) * 5.0).round() / 5.0) } else { c };
+    // Only Web Colors bands the field to the 216 web-safe colours, as in Photoshop (#4107).
+    ui.painter().add(grid_mesh(field, if web_only { 6 } else { 32 }, |x, y| show(field_color(&mode, fz, x, y))));
     ui.painter().rect_stroke(field, 0.0, Stroke::new(1.0, t.field_border), StrokeKind::Outside);
     let marker = pos2(field.left() + fx * field.width(), field.top() + fy * field.height());
     ui.painter().circle_stroke(marker, 5.0, Stroke::new(1.5, if hsv[2] > 0.6 && hsv[1] < 0.4 { Color32::BLACK } else { Color32::WHITE }));
@@ -477,7 +480,7 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     }
     // Component slider (hue runs 360° at the top to 0° at the bottom, like Photoshop).
     let (strip, sresp) = ui.allocate_exact_size(vec2(18.0, FIELD), Sense::click_and_drag());
-    ui.painter().add(grid_mesh(strip, 32, |_, y| slider_color(&mode, 1.0 - y, hsv, rgb, lab)));
+    ui.painter().add(grid_mesh(strip, if web_only { 6 } else { 32 }, |_, y| show(slider_color(&mode, 1.0 - y, hsv, rgb, lab))));
     let sy = strip.top() + (1.0 - fz) * strip.height();
     for (x, dir) in [(strip.left() - 1.0, 1.0f32), (strip.right() + 1.0, -1.0)] {
         let tri = vec![pos2(x, sy), pos2(x - 6.0 * dir, sy - 4.0), pos2(x - 6.0 * dir, sy + 4.0)];

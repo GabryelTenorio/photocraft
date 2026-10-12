@@ -3384,10 +3384,17 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         });
         if let Some((vertical, _)) = guide_hover {
             ui.ctx().set_cursor_icon(if vertical { egui::CursorIcon::ResizeHorizontal } else { egui::CursorIcon::ResizeVertical });
-        } else if let Some(c) =
-            response.hover_pos().and_then(|p| crate::transform_tool::cursor(app, xf.to_doc(p), ui.input(|i| i.modifiers.alt || i.modifiers.command)))
+        } else if let Some(p) = response.hover_pos()
+            && let Some(c) = crate::transform_tool::cursor(app, xf.to_doc(p), ui.input(|i| i.modifiers.alt || i.modifiers.command))
         {
             ui.ctx().set_cursor_icon(c);
+            // CursorIcon::None hides the pointer; the curved arrow has to be drawn or the
+            // rotate zone looks like a plain cursor (#4050).
+            let d = xf.to_doc(p);
+            if let Some(k) = crate::transform_tool::rotate_cursor_dir(app, d) {
+                let toward = xf.to_screen((d[0] + k[0] * 16.0) as f32, (d[1] + k[1] * 16.0) as f32) - p;
+                crate::crop_ui::draw_turn_cursor(&ctx, p, toward);
+            }
         } else if let Some(c) = response.hover_pos().and_then(|p| crate::cam_transform::cursor(app, &ctx, &xf, p)) {
             ui.ctx().set_cursor_icon(c);
         } else if let Some(c) = response.hover_pos().and_then(|p| transform_controls_rect(app, &xf).and_then(|r| transform_controls_cursor(r, p))) {
@@ -4769,10 +4776,16 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
             // Clear mode (`~` held, or chosen in the options bar) erases with the tool's own brush.
             let clear = crate::paint_mouse::clears(app, tool);
             let erase = std::mem::take(&mut app.secondary_erase) || tool == Tool::Eraser || clear;
+            // A 1 px pencil line depends on the pixels, not where inside the pixel the click
+            // landed (#4071). Snap both ends of the stroke to the aliased tip's grid.
+            let (x, y) = snap_aliased_tip(app, tool, x, y);
             // ⇧-click connects to the last endpoint, including its pen pressure (#2827), so
             // the renderer interpolates size and opacity across the segment.
             let active = app.session.active().map(|st| st.doc.id);
-            let from = app.last_stroke_end.filter(|(doc, _)| mods.shift && crate::stroke_constraint::connects(tool) && Some(*doc) == active).map(|(_, p)| p);
+            let from = app.last_stroke_end.filter(|(doc, _)| mods.shift && crate::stroke_constraint::connects(tool) && Some(*doc) == active).map(|(_, p)| {
+                let (sx, sy) = snap_aliased_tip(app, tool, p[0], p[1]);
+                [sx, sy, p[2]]
+            });
             let mut points = vec![[x, y, pressure as f64]];
             if let Some(p) = from {
                 points.insert(0, p);
@@ -5058,8 +5071,22 @@ fn commit_brush_stroke(app: &mut PhotocraftApp, d: &Drag) {
     }
 }
 
+/// Pencil (and a Pencil-mode Eraser) dabs sit on the pixel grid. Clicks anywhere inside one
+/// pixel must produce the same point, or a ⇧-click line changes with the sub-pixel position.
+fn snap_aliased_tip(app: &PhotocraftApp, tool: Tool, x: f64, y: f64) -> (f64, f64) {
+    let pencil = tool == Tool::Pencil || crate::eraser_ui::pencil_mode(app, tool);
+    if !pencil {
+        return (x, y);
+    }
+    let (cx, cy) = photocraft_engine::paint::grid_center(x, y, app.session.tools.brush.size);
+    (f64::from(cx), f64::from(cy))
+}
+
 pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
-    let end = d.points.last().copied().unwrap_or([d.start[0], d.start[1], 1.0]);
+    let mut end = d.points.last().copied().unwrap_or([d.start[0], d.start[1], 1.0]);
+    let (sx, sy) = snap_aliased_tip(app, d.tool, end[0], end[1]);
+    end[0] = sx;
+    end[1] = sy;
     if let Some(floating) = d.sel_move {
         finish_selection_drag(app, floating, d.start, [end[0], end[1]]);
         return;

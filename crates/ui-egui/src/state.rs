@@ -701,7 +701,8 @@ fn default_crop_resolution_unit() -> String {
 }
 
 fn default_move_target() -> String {
-    "layer".into()
+    // Photoshop's Move tool Auto-Select target starts on Group (#4056).
+    "group".into()
 }
 
 fn default_curve_fit() -> f32 {
