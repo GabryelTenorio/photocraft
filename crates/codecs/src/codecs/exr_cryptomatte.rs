@@ -12,7 +12,6 @@ use std::io::Cursor;
 
 use exr::meta::MetaData;
 use exr::meta::attribute::AttributeValue;
-use exr::prelude::{ReadChannels, ReadLayers, read};
 
 use crate::Format;
 use crate::error::CodecError;
@@ -206,7 +205,8 @@ pub(crate) fn decode(bytes: &[u8], layer_name: &str, limits: &Limits) -> Result<
         .iter()
         .find(|l| l.name.eq_ignore_ascii_case(layer_name))
         .ok_or_else(|| CodecError::unsupported(F, format!("no Cryptomatte layer named {layer_name}")))?;
-    let meta = MetaData::read_from_buffered(Cursor::new(bytes), false).map_err(|e| CodecError::malformed(F, e))?;
+    // Also caps all parts' declared sizes together, like every other flat decode.
+    let meta = super::exr::read_meta(bytes, limits)?;
     if meta.requirements.has_deep_data {
         return Err(CodecError::unsupported(F, "this file has deep parts; Cryptomatte decoding stays with flat files"));
     }
@@ -221,13 +221,7 @@ pub(crate) fn decode(bytes: &[u8], layer_name: &str, limits: &Limits) -> Result<
     let per_pixel = (layer.channels.len().max(1) as u64).saturating_mul(16).saturating_add(std::mem::size_of::<Vec<(f32, f32)>>() as u64);
     limits.check_bytes(w32, h32, per_pixel)?;
 
-    let image = read().no_deep_data().largest_resolution_level().all_channels().all_layers().all_attributes().from_buffered(Cursor::new(bytes)).map_err(
-        |e| match e {
-            exr::error::Error::NotSupported(m) => CodecError::unsupported(F, format!("not supported: {m}")),
-            e => CodecError::malformed(F, e),
-        },
-    )?;
-    let ex_layer = image.layer_data.get(layer.part).ok_or_else(|| CodecError::malformed(F, "the Cryptomatte part is missing"))?;
+    let ex_layer = super::exr::read_layer(bytes, layer.part)?;
 
     // Two (ID, coverage) ranks per set: rank `slot * 2 + stream.rank`.
     let ranks = layer.channels.len().saturating_mul(2);
