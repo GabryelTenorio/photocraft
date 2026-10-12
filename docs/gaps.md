@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G4: checkbox-only Brush Settings rows; stroke-quality and performance gaps unchanged) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G4: checkbox-only Brush Settings rows; stroke-quality and performance gaps unchanged; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -87,9 +87,18 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G11. Actions and scripting
-- **Missing:** document-independent action recording (AUTO-219-1), a full Actions panel with
-  step toggles and .atn import (AUTO-219-2), replay tests (AUTO-219-4), Batch recursion and
-  naming (AUTO-219-5), ExtendScript/UXP compatibility.
+- **Missing:** document-independent action recording (AUTO-219-1), Batch recursion and naming
+  (AUTO-219-5), ExtendScript/UXP compatibility. `.atn` steps outside the
+  mapped events (Place, Image Size in percent, paths, conditionals, Generative Fill…) load as
+  kept Photoshop steps that fail at playback by name.
+- **Done 2026-10-12:** Load/Save Actions `.atn` in the panel menu, `batch --actions set.atn`
+  and `actions.load`/`actions.save`; 105 Photoshop events map to commands both ways (Transform,
+  Apply Image, Save for Web, smart-object edits, Gradient Map, Quick Mask and polygon selections
+  since the third PR), Play and Stop steps included; layer steps replay by layer name in any
+  document. The panel groups actions
+  in set folders, has the dialog toggle column (playback pauses on the step's dialog and resumes
+  on OK) and Insert Stop…; `actions.insert`, `actions.dialog`, `actions.assignSet` for agents
+  (AUTO-219-2 done).
 - **Ahead of Photoshop:** CLI, MCP and the JSON control channel drive every command.
 - **Estimate:** 120–200 h. **Human:** whether to support a JavaScript scripting dialect at all
   (AGENTS.md forbids JS in the app).
@@ -229,6 +238,7 @@ what an agent can't finish alone.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-12 | minor | G4: checkbox-only Brush Settings rows preserve the open controls and Smoothing settings (#4283); no readiness percentage or estimate changed |
+| 2026-10-12 | minor | G11: Load/Save Actions `.atn` landed (AUTO-219-2 partial); remaining panel work listed |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
