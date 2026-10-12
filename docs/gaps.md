@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -68,8 +68,7 @@ what an agent can't finish alone.
 - **Missing:** Select and Mask workspace layout
   (TOOL-214-1, Refine Hair #2671; its view modes preview live since #1754, Refine Edge Brush #2972); Content-Aware Fill workspace with a paintable sampling area
   (TOOL-214-15); Vanishing Point plane editor (TOOL-214-14); Content-Aware Scale through the
-  transform box (TOOL-214-7); Puppet Warp mesh following the outline (TOOL-214-6); Content-Aware
-  Move's Transform On Drop (TOOL-213-4).
+  transform box (TOOL-214-7); Content-Aware Move's Transform On Drop (TOOL-213-4).
 - **Evidence:** scorecard rows above, all partial or missing.
 - **Impact:** these are the tools retouchers and compositors use daily; a slider dialog is not a
   substitute.
@@ -99,6 +98,10 @@ what an agent can't finish alone.
   sidecars, masking and calibration in the Camera Raw dialog, per-camera colour for non-DNG
   cameras, lens profiles.
 - **Evidence:** `crates/raw/src/lib.rs:219` (CR3), scorecard FILE-215-11/12, #50.
+- **Progress (2026-10-11):** on the embedded-JPEG rendering work in #2135, Camera Raw
+  tuning retains the fitted look and applies user gains afterwards. Three D5100 NEFs
+  establish a guarded 4928 × 3264 image area. This is an estimated rendering, not a
+  measured D5100 colour calibration; [validation](nikon-nef-development.md).
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
@@ -221,6 +224,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |

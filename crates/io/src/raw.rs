@@ -116,9 +116,11 @@ fn look_knots(t: &photocraft_raw::ToneCurve) -> Vec<[f32; 2]> {
 }
 
 /// The look a default open develops `bytes` with: fitted to the embedded JPEG when the file has
-/// no colour calibration and the fit clearly helps (as [`import_raw_with`] does), else `None`.
+/// no colour calibration, is not monochrome and the fit clearly helps (as [`import_raw_with`]
+/// does), else `None`. It is fitted at the camera's own white balance and exposure, so a
+/// re-develop's sliders are not fitted away.
 fn default_look(bytes: &[u8], sensor: &Sensor) -> Option<CameraLook> {
-    if !sensor.color.calibrations.is_empty() {
+    if !sensor.color.calibrations.is_empty() || sensor.is_monochrome() {
         return None;
     }
     fit_preview_look(bytes, sensor, &DevelopOptions { limits: limits(), ..Default::default() }).ok()
@@ -205,6 +207,7 @@ fn develop_fitted(bytes: &[u8], opts: &DevelopOptions) -> Result<photocraft_raw:
     let mut opts = Cow::Borrowed(opts);
     if opts.camera_look.is_none()
         && sensor.color.calibrations.is_empty()
+        && !sensor.is_monochrome()
         && let Ok(look) = fit_preview_look(bytes, &sensor, &opts)
     {
         opts.to_mut().camera_look = Some(look);
