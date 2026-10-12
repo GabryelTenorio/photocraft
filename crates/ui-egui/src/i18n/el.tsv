@@ -1841,6 +1841,7 @@
 	New Guide Layout…	Νέα διάταξη οδηγών…
 	New Guides From Shape	Νέοι οδηγοί από σχήμα
 	Merge Down	Συγχώνευση με το υποκείμενο επίπεδο
+	Merge Group	Συγχώνευση ομάδας
 	Stamp Visible	Συνένωση ορατών σε νέο επίπεδο
 	Select Layer Above	Επιλογή επάνω επιπέδου
 	Select Layer Below	Επιλογή κάτω επιπέδου
@@ -3891,3 +3892,6 @@ cameraRaw	Type	Τύπος
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks: οι πιο καθαρές ακμές και τα λιγότερα χρωματικά περιθώρια, η πιο αργή.
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	Παρεμβολή με διόρθωση κλίσης: ευκρινής και γρήγορη, με λίγα χρωματικά περιθώρια στις λεπτές λεπτομέρειες.
 	The fastest and the softest, with colour fringing on fine detail.	Η πιο γρήγορη και η πιο μαλακή, με χρωματικά περιθώρια στις λεπτές λεπτομέρειες.
+	Remove after each stroke	Αφαίρεση μετά από κάθε πινελιά
+	Apply the removal ({key})	Εφαρμογή της αφαίρεσης ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Πινελιές προς αφαίρεση: {n} (Enter εφαρμόζει, Esc ακυρώνει)

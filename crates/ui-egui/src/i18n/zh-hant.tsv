@@ -398,6 +398,7 @@
 	Select Linked Layers	選取連結的圖層
 	Merge Layers	合併圖層
 	Merge Down	向下合併圖層
+	Merge Group	合併群組
 	Merge Visible	合併可見圖層
 	Stamp Visible	蓋印可見圖層
 	Select Layer Above	選取上方圖層
@@ -2798,3 +2799,6 @@ cameraRaw	Type	類型
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks：邊緣最乾淨、色邊最少，速度最慢。
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	梯度校正插值：銳利且快速，細節處有些許色邊。
 	The fastest and the softest, with colour fringing on fine detail.	最快也最柔和，細節處有色邊。
+	Remove after each stroke	每次描邊後移除
+	Apply the removal ({key})	套用移除 ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描邊：{n}（Enter 套用，Esc 取消）

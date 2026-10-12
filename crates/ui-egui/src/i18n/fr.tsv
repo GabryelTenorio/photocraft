@@ -387,6 +387,7 @@
 	Select Linked Layers	Sélectionner les calques liés
 	Merge Layers	Fusionner les calques
 	Merge Down	Fusionner avec le calque inférieur
+	Merge Group	Fusionner le groupe
 	Merge Visible	Fusionner les calques visibles
 	Stamp Visible	Tamponner les calques visibles
 	Stamp Down	Tamponner sur le calque inférieur
@@ -3206,3 +3207,6 @@ cameraRaw	Type	Type
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks : les bords les plus nets et le moins de franges colorées ; le plus lent.
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	Interpolation corrigée par gradient : nette et rapide, avec quelques franges colorées sur les détails fins.
 	The fastest and the softest, with colour fringing on fine detail.	Le plus rapide et le plus doux, avec des franges colorées sur les détails fins.
+	Remove after each stroke	Supprimer après chaque trait
+	Apply the removal ({key})	Appliquer la suppression ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Traits à supprimer : {n} (Entrée applique, Échap annule)
