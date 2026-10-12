@@ -63,7 +63,7 @@ static char *i[] = {
 "abcd"
 };"#;
     let image = decode(xpm).unwrap();
-    assert_eq!(image.data(), &[211, 211, 211, 255, 0, 0, 139, 255, 173, 216, 230, 255, 0, 128, 0, 255]);
+    assert_eq!(image.data(), &[211, 211, 211, 255, 0, 0, 139, 255, 173, 216, 230, 255, 0, 255, 0, 255]);
 }
 
 #[test]
