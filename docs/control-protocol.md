@@ -608,3 +608,9 @@ synthetic region dividers are addressed by `side`, not by tree path.
 floating groups. Region membership stays with floating/hidden panels for restoration.
 Workspace saves and Remember Workspace Changes persist both values. Old workspaces
 without `dockRegions` keep their existing right dock; Reset Workspace restores defaults.
+
+Dock previews measure the validated candidate arrangement using the renderer's sizing
+rules, including saved dock sizes, panel/canvas minimums and space released by the source.
+Workspace-edge destinations take precedence over group destinations; canvas-edge drops
+preview the corresponding workspace-side dock. Unchanged tab insertion slots show no
+highlight or insertion line, and release preserves their position.

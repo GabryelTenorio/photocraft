@@ -949,3 +949,141 @@ fn floating_group_grip_can_dock_at_a_workspace_edge_and_canvas_edge() {
         assert!(panel_active(h.state().ui.docking.as_ref().unwrap(), "channels"));
     }
 }
+
+fn hold_drag(h: &mut Harness<'static, PhotocraftApp>, from: Pos2, to: Pos2) {
+    h.event(Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    for step in 1..=8 {
+        h.event(Event::PointerMoved(from.lerp(to, step as f32 / 8.0)));
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+}
+fn rendered_group(h: &Harness<'static, PhotocraftApp>, panel: &str) -> egui::Rect {
+    h.ctx.data(|data| data.get_temp(egui::Id::new("photocraft-panel-docking").with(("group-rect", panel.to_owned())))).unwrap()
+}
+fn drop_preview(h: &Harness<'static, PhotocraftApp>) -> Option<craft_ui::docking::DropFeedback> {
+    h.ctx.data(|data| data.get_temp(egui::Id::new("photocraft-panel-docking").with("resolved-preview")))
+}
+fn release_and_compare_preview(h: &mut Harness<'static, PhotocraftApp>, to: Pos2, panel: &str) {
+    let preview = drop_preview(h).and_then(|feedback| feedback.preview).expect("resolved destination preview");
+    let capture = std::env::var_os("PHOTOCRAFT_DOCK_PREVIEW_FIXTURES").map(std::path::PathBuf::from).map(|directory| {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        std::fs::create_dir_all(&directory).unwrap();
+        let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        h.render().unwrap().save(directory.join(format!("{id:02}-preview.png"))).unwrap();
+        (directory, id)
+    });
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(4);
+    let actual = rendered_group(h, panel);
+    if let Some((directory, id)) = capture {
+        h.render().unwrap().save(directory.join(format!("{id:02}-settled.png"))).unwrap();
+    }
+    assert!((actual.min - preview.min).length() <= 1.5 && (actual.max - preview.max).length() <= 1.5, "{panel}: preview={preview:?}, actual={actual:?}");
+}
+
+#[test]
+fn pointer_edge_previews_match_final_group_bounds_for_all_sides_and_sizes() {
+    for size in [vec2(1440.0, 1000.0), vec2(700.0, 500.0)] {
+        for side in DockSide::ALL {
+            for whole in [false, true] {
+                let mut app = app();
+                app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+                app.run("window.panel.layout", json!({"side":side,"size":340.0})).unwrap();
+                let mut h = harness(app, size);
+                let from = if whole {
+                    h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("dock-group-grip", &"layers".to_owned()))).unwrap().rect.center()
+                } else {
+                    tab_rect(&h, "layers").center()
+                };
+                let workspace: egui::Rect = h.ctx.data(|data| data.get_temp(egui::Id::new("photocraft-panel-docking").with("workspace-rect"))).unwrap();
+                let to = match side {
+                    DockSide::Left => egui::pos2(workspace.left() + 10.0, workspace.center().y),
+                    DockSide::Right => egui::pos2(workspace.right() - 10.0, workspace.center().y),
+                    DockSide::Top => egui::pos2(workspace.center().x, workspace.top() + 10.0),
+                    DockSide::Bottom => egui::pos2(workspace.center().x, workspace.bottom() - 10.0),
+                };
+                hold_drag(&mut h, from, to);
+                assert!(
+                    drop_preview(&h).and_then(|feedback| feedback.preview).is_some(),
+                    "missing preview: {size:?}/{side:?}/whole={whole}, from={from:?}, to={to:?}"
+                );
+                release_and_compare_preview(&mut h, to, "layers");
+                assert_eq!(h.state().ui.dock_regions.side("layers"), side);
+            }
+        }
+    }
+}
+
+#[test]
+fn split_canvas_join_float_and_source_cleanup_previews_match_final_bounds() {
+    for scenario in ["split", "canvas", "join", "float", "cleanup", "floating-group"] {
+        let mut app = app();
+        app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+        if scenario == "cleanup" {
+            app.run("window.panel.dock", json!({"panel":"layers","side":"top"})).unwrap();
+        }
+        if scenario == "floating-group" {
+            app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":450,"y":320})).unwrap();
+        }
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let from = if scenario == "floating-group" {
+            h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("move-group", Some(&"layers".to_owned())))).unwrap().rect.center()
+        } else {
+            tab_rect(&h, "layers").center()
+        };
+        let color = rendered_group(&h, "color");
+        let canvas = canvas_region(&h);
+        let to = match scenario {
+            "split" => egui::pos2(color.center().x, color.bottom() - 30.0),
+            "join" => tab_rect(&h, "color").center(),
+            "canvas" => egui::pos2(canvas.center().x, canvas.bottom() - 30.0),
+            "float" => canvas.center(),
+            _ => egui::pos2(500.0, 10.0),
+        };
+        hold_drag(&mut h, from, to);
+        release_and_compare_preview(&mut h, to, "layers");
+    }
+}
+
+#[test]
+fn unchanged_tab_insertions_have_no_preview_and_leave_order_unchanged() {
+    for panel in ["layers", "channels", "paths"] {
+        for after_midpoint in [false, true] {
+            let mut app = app();
+            app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+            let mut h = harness(app, vec2(1440.0, 1000.0));
+            let rect = tab_rect(&h, panel);
+            let from = rect.center();
+            let to = egui::pos2(if after_midpoint { rect.right() - 3.0 } else { rect.left() + 3.0 }, rect.center().y);
+            let before = h.state().ui.docking.clone();
+            hold_drag(&mut h, from, to);
+            assert!(drop_preview(&h).is_none_or(|feedback| feedback.preview.is_none() && feedback.insertion.is_none()));
+            h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+            h.run_steps(3);
+            // Clicking may select a different tab; its membership and order must stay fixed.
+            assert_eq!(group_members(h.state().ui.docking.as_ref().unwrap(), panel), group_members(before.as_ref().unwrap(), panel));
+            assert!(h.state().ui.docking.as_ref().unwrap().floating.is_empty());
+        }
+    }
+}
+
+#[test]
+fn first_regional_drop_from_legacy_custom_dock_accounts_for_the_icon_rail() {
+    for theme in [crate::theme::ThemeKind::ProMedium, crate::theme::ThemeKind::Studio] {
+        let mut app = app();
+        app.ui.theme = theme;
+        app.run("window.panel.float", json!({"panel":"properties","x":400,"y":300})).unwrap();
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        PhotocraftApp::setup_context(&h.ctx, theme);
+        h.run_steps(3);
+        let from = tab_rect(&h, "layers").center();
+        let to = egui::pos2(500.0, 12.0);
+        hold_drag(&mut h, from, to);
+        release_and_compare_preview(&mut h, to, "layers");
+        assert_eq!(h.state().ui.dock_regions.side("layers"), DockSide::Top);
+    }
+}

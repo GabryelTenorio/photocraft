@@ -1582,7 +1582,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Narrow icon rail, unless an embedding app hides it: shows, expands or collapses panel groups.
     if p.rail {
         let (rw, rb) = if t.pro { (36.0, 28.0) } else { (44.0, 32.0) };
-        crate::direction::end_panel("rail")
+        let rail = crate::direction::end_panel("rail")
             .resizable(false)
             .exact_size(rw)
             .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(4, 8)))
@@ -1613,6 +1613,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     }
                 }
             });
+        ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("photocraft-icon-rail-width"), rail.response.rect.width()));
     }
     if !t.pro && !customized {
         dock_panels(app, ui, &p, &t);

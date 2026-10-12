@@ -178,7 +178,7 @@ fn project(node: &Node<String>, regions: &DockRegions, side: DockSide, path: &mu
 }
 
 /// Edge destinations have a small, deterministic hit band. Corners choose the closest edge.
-pub(crate) fn edge_at(rect: egui::Rect, pointer: egui::Pos2) -> Option<(DockSide, egui::Rect)> {
+pub(crate) fn edge_at(rect: egui::Rect, pointer: egui::Pos2) -> Option<DockSide> {
     if !rect.is_finite() || !pointer.is_finite() || !rect.contains(pointer) || rect.width() <= 0.0 || rect.height() <= 0.0 {
         return None;
     }
@@ -193,12 +193,5 @@ pub(crate) fn edge_at(rect: egui::Rect, pointer: egui::Pos2) -> Option<(DockSide
     if distance > 24.0 {
         return None;
     }
-    let mut preview = rect;
-    match side {
-        DockSide::Left => preview.max.x = rect.left() + rect.width().min(290.0) * 0.5,
-        DockSide::Right => preview.min.x = rect.right() - rect.width().min(290.0) * 0.5,
-        DockSide::Top => preview.max.y = rect.top() + rect.height().min(220.0) * 0.5,
-        DockSide::Bottom => preview.min.y = rect.bottom() - rect.height().min(220.0) * 0.5,
-    }
-    Some((side, preview))
+    Some(side)
 }
