@@ -2808,7 +2808,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     let middle = ui.input(|i| i.pointer.middle_down());
     let tool = match temporary {
         Some(t) => t.tool(),
-        None if middle => Tool::Hand,
+        None if middle || app.stylus.finger_down() => Tool::Hand,
         None => app.ui.tool,
     };
     // ⌘ held: this frame's gestures go to the Move tool (`PhotocraftApp::active_tool`). The Hand

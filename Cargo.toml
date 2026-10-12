@@ -58,6 +58,10 @@ rayon = "1"
 criterion = { version = "0.5", default-features = false }
 getrandom = "0.3"
 
+# winit with the Android pen/finger tool type (see patches/README.md).
+[patch.crates-io]
+winit = { path = "patches/winit" }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

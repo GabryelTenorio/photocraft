@@ -30,6 +30,17 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 
+/// Android (`patches/winit`) sets this bit in `egui::TouchId` when it reported the tool type; with
+/// [`TOOL_PEN`] / [`TOOL_ERASER`] it marks a stylus contact, without either a finger. Elsewhere
+/// touch ids carry no flags and every contact counts as it always did.
+pub const TOOL_KNOWN: u64 = 1 << 40;
+pub const TOOL_PEN: u64 = 1 << 32;
+pub const TOOL_ERASER: u64 = 1 << 33;
+
+fn is_finger(id: egui::TouchId) -> bool {
+    id.0 & TOOL_KNOWN != 0 && id.0 & (TOOL_PEN | TOOL_ERASER) == 0
+}
+
 /// One stylus reading. Tilt is in degrees (-90..90, W3C Pointer Events convention), rotation in
 /// degrees 0..360.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -120,6 +131,10 @@ pub struct Stylus {
     pub(crate) tool_before_eraser: Option<crate::state::Tool>,
     /// Force of the touch/pen contact currently down (egui `Event::Touch`).
     touch: Option<f32>,
+    /// Finger contacts down (Android only): they pan and zoom the view, never paint.
+    fingers: std::collections::HashSet<u64>,
+    /// Fingers that lifted this frame: still fingers for this frame's release, gone next frame.
+    fingers_lifted: Vec<u64>,
     /// The contact ended this frame: keep its force for this frame's last tool events, clear next frame.
     lifted: bool,
     /// This frame's pen samples, oldest first (the feed's queue and the touch forces).
@@ -152,6 +167,8 @@ impl Default for Stylus {
             end: None,
             tool_before_eraser: None,
             touch: None,
+            fingers: Default::default(),
+            fingers_lifted: Vec::new(),
             lifted: false,
             frame: Vec::new(),
             prev: None,
@@ -180,13 +197,23 @@ impl Stylus {
         if std::mem::take(&mut self.lifted) {
             self.touch = None;
         }
+        for id in self.fingers_lifted.drain(..) {
+            self.fingers.remove(&id);
+        }
         if let Some(last) = self.frame.last() {
             self.prev = Some(*last);
         }
         self.frame = self.feed.drain();
         self.current = None;
         for e in events {
-            if let egui::Event::Touch { phase, force, .. } = e {
+            if let egui::Event::Touch { phase, force, id, .. } = e {
+                if is_finger(*id) {
+                    match phase {
+                        egui::TouchPhase::Start | egui::TouchPhase::Move => drop(self.fingers.insert(id.0)),
+                        egui::TouchPhase::End | egui::TouchPhase::Cancel => self.fingers_lifted.push(id.0),
+                    }
+                    continue;
+                }
                 match phase {
                     egui::TouchPhase::Start | egui::TouchPhase::Move => {
                         if let Some(f) = force.filter(|f| f.is_finite()) {
@@ -205,6 +232,11 @@ impl Stylus {
             self.frame.retain(|s| s.pressure > 0.0);
         }
         self.peak = self.frame.iter().fold(self.peak, |m, s| m.max(s.pressure));
+    }
+
+    /// A finger is in contact and no pen is (palm rejection): the canvas pans instead of painting.
+    pub fn finger_down(&self) -> bool {
+        !self.fingers.is_empty() && self.touch.is_none()
     }
 
     /// The pen's current sample. When the pen touched during this frame but has lifted since
@@ -508,6 +540,29 @@ mod tests {
     }
 
     #[test]
+fn android_fingers_pan_and_the_pen_paints() {
+    let contact = |id: u64, phase, force| egui::Event::Touch {
+        device_id: egui::TouchDeviceId(0),
+        id: egui::TouchId(id),
+        phase,
+        pos: egui::Pos2::ZERO,
+        force: Some(force),
+    };
+    let mut s = Stylus::default();
+    s.update(&[contact(TOOL_KNOWN, egui::TouchPhase::Start, 0.4)]);
+    assert!(s.finger_down() && s.sample().is_none(), "a finger never gives pen pressure");
+    s.update(&[contact(TOOL_KNOWN, egui::TouchPhase::End, 0.0)]);
+    assert!(s.finger_down(), "still a finger for the release frame");
+    s.update(&[]);
+    assert!(!s.finger_down());
+    s.update(&[contact(TOOL_KNOWN | TOOL_PEN | 1, egui::TouchPhase::Start, 0.7)]);
+    assert!(!s.finger_down() && s.sample().is_some_and(|p| p.pressure == 0.7));
+    // A palm landing while the pen is down is ignored.
+    s.update(&[contact(TOOL_KNOWN | 2, egui::TouchPhase::Start, 0.9)]);
+    assert!(!s.finger_down());
+}
+
+#[test]
     fn touch_force_drives_pressure_until_lift() {
         let mut s = Stylus::default();
         s.update(&[touch(egui::TouchPhase::Start, Some(0.25))]);
