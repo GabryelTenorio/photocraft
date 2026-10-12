@@ -2,7 +2,7 @@
 //!
 //! Usage: `photocraft [--control <port>] [--control-token <64-hex> |
 //! --control-token-file <path>] [--automation-read-root <dir>]
-//! [--automation-write-root <dir>] [--safe-gpu] [--in-window-menus] [files…]`
+//! [--automation-write-root <dir>] [--heartbeat-file <path>] [--safe-gpu] [--in-window-menus] [files…]`
 //!
 //! `--safe-gpu` starts with the CPU renderer (no GPU canvas; a software adapter for the window
 //! where the platform has one) for this launch, e.g. after a graphics driver crash. A start that
@@ -31,6 +31,7 @@ mod crash_guard;
 mod cursor;
 mod file_dialog_probe;
 mod gpu_startup;
+mod heartbeat;
 #[cfg(target_os = "macos")]
 mod mac_menu;
 #[cfg(target_os = "macos")]
@@ -169,6 +170,7 @@ fn main() -> eframe::Result {
     let mut control_token_file = None;
     let mut automation_read_root = std::env::var_os("PHOTOCRAFT_AUTOMATION_READ_ROOT").map(std::path::PathBuf::from);
     let mut automation_write_root = std::env::var_os("PHOTOCRAFT_AUTOMATION_WRITE_ROOT").map(std::path::PathBuf::from);
+    let mut heartbeat_file = std::env::var_os("PHOTOCRAFT_HEARTBEAT_FILE").map(std::path::PathBuf::from);
     let mut files = Vec::new();
     // Arguments that are not valid Unicode (issue #1108): a file manager can hand over a Latin-1
     // file name on Linux, and `std::env::args()` would panic before any window opened. Paths are
@@ -194,6 +196,10 @@ fn main() -> eframe::Result {
             Some("--control-token-file") => control_token_file = args.next().map(std::path::PathBuf::from),
             Some("--automation-read-root") => automation_read_root = args.next().map(std::path::PathBuf::from),
             Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
+            Some("--heartbeat-file") => match args.next().map(std::path::PathBuf::from) {
+                Some(path) if !path.as_os_str().is_empty() => heartbeat_file = Some(path),
+                _ => control_arg_errors.push("--heartbeat-file: missing path value (expected `--heartbeat-file <path>`)".to_string()),
+            },
             Some("--safe-gpu") => safe_gpu = true,
             Some("--in-window-menus") => in_window_menus = true,
             Some("--version") => {
@@ -453,6 +459,10 @@ fn main() -> eframe::Result {
                 let rx = control_server::start(port, token, cc.egui_ctx.clone());
                 app = app.with_control(rx);
             }
+            if let Some(path) = heartbeat_file.clone() {
+                let mut hb = heartbeat::Heartbeat::new(path);
+                app.services.heartbeat = Some(Box::new(move |ctx| hb.tick(ctx)));
+            }
             #[cfg(target_os = "macos")]
             {
                 app.services.os_events = Some(apple_events.connect(&cc.egui_ctx));
@@ -631,5 +641,37 @@ mod tests {
             assert_eq!(super::native_options(true).viewport.decorations, Some(false));
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn heartbeat_file_arg_parsing() {
+        let mut errors = Vec::new();
+        let mut path = None;
+        let args = vec![std::ffi::OsString::from("--heartbeat-file")];
+        let mut it = args.into_iter();
+        if let Some(a) = it.next()
+            && a == "--heartbeat-file"
+        {
+            match it.next().map(std::path::PathBuf::from) {
+                Some(p) if !p.as_os_str().is_empty() => path = Some(p),
+                _ => errors.push("--heartbeat-file: missing path value (expected `--heartbeat-file <path>`)".to_string()),
+            }
+        }
+        assert_eq!(path, None);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("--heartbeat-file"));
+
+        let valid_args = vec![std::ffi::OsString::from("--heartbeat-file"), std::ffi::OsString::from("/tmp/hb")];
+        let mut it = valid_args.into_iter();
+        let mut valid_path = None;
+        if let Some(a) = it.next()
+            && a == "--heartbeat-file"
+        {
+            match it.next().map(std::path::PathBuf::from) {
+                Some(p) if !p.as_os_str().is_empty() => valid_path = Some(p),
+                _ => errors.push("--heartbeat-file: missing path value".to_string()),
+            }
+        }
+        assert_eq!(valid_path, Some(std::path::PathBuf::from("/tmp/hb")));
     }
 }

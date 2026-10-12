@@ -353,6 +353,8 @@ pub type CapsLockFn = Box<dyn FnMut() -> bool>;
 /// Keeps an undecorated window's OS frame from offsetting its content and pointer (#2246).
 /// Called once per frame; `None` when the window is decorated or the platform needs no fixing.
 pub type WindowFrameFn = Box<dyn FnMut()>;
+/// Periodically touched while the event loop runs (--heartbeat-file, #3661).
+pub type HeartbeatFn = Box<dyn FnMut(&egui::Context)>;
 
 /// Platform services injected by the app binary (file dialogs, codecs), keeping this crate free of
 /// I/O dependencies.
@@ -443,6 +445,8 @@ pub struct Services {
     /// while AppKit's run loop is still going crashes or hangs Touch Bar Macs (#1575, #1458).
     /// Without one, eframe closes the window and the app ends with it.
     pub quit: Option<QuitFn>,
+    /// Periodically touched while the event loop runs (--heartbeat-file, #3661).
+    pub heartbeat: Option<HeartbeatFn>,
 }
 
 /// A document histogram being computed off the UI thread: (document, revision, receiver of
@@ -1493,6 +1497,9 @@ impl PhotocraftApp {
 
 impl eframe::App for PhotocraftApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if let Some(heartbeat) = &mut self.services.heartbeat {
+            heartbeat(ctx);
+        }
         i18n::set_current(i18n::Lang::from_pref(&self.session.prefs().interface.language));
         // Caps Lock state read from the OS once per frame (see `Services::caps_lock`): the canvas
         // cursor block needs it before the frame renders. `None` (Wayland/web) keeps `false`.
