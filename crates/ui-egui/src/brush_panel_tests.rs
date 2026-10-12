@@ -961,3 +961,33 @@ fn hand_tool_offers_scale_buttons_and_requests_the_right_view() {
     assert!(h.state().ui.views[0].fill_pending);
     assert!(!h.state().ui.views[0].fit_pending);
 }
+
+#[test]
+fn checkbox_only_rows_toggle_without_changing_selected_section() {
+    use egui_kittest::kittest::Queryable;
+
+    let mut h = harness(0, 1);
+    assert_eq!(h.state().ui.brush_section, 1);
+    assert!(!h.state().session.tools.brush.noise);
+    assert!(!h.state().session.tools.brush.wet_edges);
+    assert!(!h.state().session.tools.brush.build_up);
+    assert_eq!(h.state().session.tools.brush.smoothing.amount, 0.1);
+    assert!(!h.state().session.tools.brush.protect_texture);
+
+    for name in ["Noise", "Wet Edges", "Build-up", "Smoothing", "Protect Texture"] {
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        assert_eq!(h.state().ui.brush_section, 1, "clicking {name} must keep the selected section");
+    }
+    let b = &h.state().session.tools.brush;
+    assert!(b.noise && b.wet_edges && b.build_up && b.smoothing.amount == 0.0 && b.protect_texture);
+
+    // Clicking the row again toggles it back without changing the selected section.
+    for name in ["Noise", "Wet Edges", "Build-up", "Smoothing", "Protect Texture"] {
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        assert_eq!(h.state().ui.brush_section, 1, "clicking {name} again must keep the selected section");
+    }
+    let b = &h.state().session.tools.brush;
+    assert!(!b.noise && !b.wet_edges && !b.build_up && b.smoothing.amount > 0.0 && !b.protect_texture);
+}
