@@ -3395,3 +3395,6 @@ cameraRaw	Type	유형
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks: 가장 깨끗한 가장자리와 가장 적은 색 번짐, 가장 느림.
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	기울기 보정 보간: 선명하고 빠르지만 미세한 디테일에 약간의 색 번짐이 있음.
 	The fastest and the softest, with colour fringing on fine detail.	가장 빠르고 가장 부드러우며, 미세한 디테일에 색 번짐이 있음.
+	Remove after each stroke	획마다 제거
+	Apply the removal ({key})	제거 적용 ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	제거할 획: {n} (Enter 적용, Esc 취소)
