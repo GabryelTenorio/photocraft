@@ -1,9 +1,9 @@
 use super::*;
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 use egui::{Event, Modifiers, PointerButton, pos2};
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 use egui_kittest::Harness;
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 use serde_json::json;
 
 fn alpha(image: &CustomCursorImage, x: u16, y: u16) -> u8 {
@@ -48,6 +48,16 @@ fn precise_and_tip_centre_crosshairs_have_distinct_hotspots() {
     assert!(alpha(&solid, solid.hotspot[0], solid.hotspot[1]) > 230);
 }
 
+/// Off Windows a tip stays within what X servers and hardware cursor planes take (256 px); a
+/// larger one falls back to the painted outline. Windows takes far larger cursors.
+#[test]
+fn cursor_bitmaps_stay_within_the_platform_limit() {
+    let fits = |radius: f32| rasterize(Shape::Circle { radius, centre: false }, 1.0).map(|i| i.size[0]);
+    assert!(fits(100.0).is_some_and(|side| side <= 255));
+    assert_eq!(fits(200.0).is_some(), cfg!(target_os = "windows"));
+    assert!(fits(200.0).is_none_or(|side| side <= 2048));
+}
+
 #[test]
 fn hostile_sizes_are_rejected_before_allocating() {
     for radius in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.0, f32::MAX, 2048.0] {
@@ -59,6 +69,88 @@ fn hostile_sizes_are_rejected_before_allocating() {
     for (length, gap) in [(1.0, 2.0), (8.0, -1.0), (f32::NAN, 0.0), (8.0, f32::NAN)] {
         assert!(rasterize(Shape::Crosshair { length, gap }, 1.0).is_none());
     }
+}
+
+#[test]
+fn hand_bitmaps_are_outlined_hands_around_a_centred_hotspot_at_each_dpi() {
+    for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+        let open = rasterize(Shape::Hand { closed: false }, scale).unwrap();
+        let fist = rasterize(Shape::Hand { closed: true }, scale).unwrap();
+        for image in [&open, &fist] {
+            let [x, y] = image.hotspot;
+            assert_eq!(image.size, [2 * x + 1, 2 * y + 1]);
+            assert_eq!(image.rgba.len(), usize::from(image.size[0]).pow(2) * 4);
+            assert!(image.size[0] <= (34.0 * scale) as u16, "no bigger than a stock cursor at {scale}: {:?}", image.size);
+            assert!(alpha(image, x, y) > 230, "the hotspot is on the hand, not in a hole");
+            assert_eq!(alpha(image, 0, 0), 0, "nothing at the corners");
+            let pixels = image.rgba.as_chunks::<4>().0;
+            assert!(pixels.iter().any(|p| p[3] > 230 && p[0] > 230), "a white hand");
+            assert!(pixels.iter().any(|p| p[3] > 100 && p[0] < 25), "with a black outline, readable on white");
+        }
+        assert_ne!(open.rgba, fist.rgba, "the fist is a different picture");
+    }
+}
+
+#[test]
+fn hand_bitmap_is_a_straight_rgba_silhouette_outlined_outside_the_hand() {
+    let image = rasterize(Shape::Hand { closed: false }, 1.0).unwrap();
+    let side = usize::from(image.size[0]);
+    let px = |x: usize, y: usize| <[u8; 4]>::try_from(&image.rgba[(y * side + x) * 4..][..4]).unwrap();
+    let mid = side / 2;
+    // Walking left from the hotspot along the middle finger: white fill, then the dark outline,
+    // then nothing, never the other way round.
+    let mut seen = Vec::new();
+    for x in (0..=mid).rev() {
+        let [r, _, _, a] = px(x, mid - 4);
+        let kind = if a < 20 {
+            'n'
+        } else if r > 200 {
+            'w'
+        } else {
+            'd'
+        };
+        if seen.last() != Some(&kind) {
+            seen.push(kind);
+        }
+    }
+    assert_eq!(seen.first(), Some(&'w'));
+    assert_eq!(seen.last(), Some(&'n'));
+    let first_dark = seen.iter().position(|k| *k == 'd').expect("an outline");
+    let first_none = seen.iter().position(|k| *k == 'n').unwrap();
+    assert!(first_dark < first_none, "outline between fill and background: {seen:?}");
+}
+
+#[test]
+fn hostile_scales_get_no_hand_bitmap() {
+    for scale in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.0, f32::MAX, 500.0] {
+        assert!(rasterize(Shape::Hand { closed: false }, scale).is_none(), "{scale}");
+        assert!(rasterize(Shape::Hand { closed: true }, scale).is_none(), "{scale}");
+    }
+}
+
+#[test]
+fn the_hand_is_a_bitmap_only_where_the_os_has_none() {
+    let ctx = egui::Context::default();
+    ctx.add_plugin(CursorLifecycle);
+    for closed in [false, true] {
+        let native = frame(&ctx, |ui| {
+            let icon = hand_with(ui.ctx(), closed, false);
+            ui.ctx().set_cursor_icon(icon);
+        });
+        assert_eq!(native.platform_output.cursor_icon, if closed { CursorIcon::Grabbing } else { CursorIcon::Grab });
+        assert!(native.platform_output.cursor_image.is_none(), "macOS and the Linux themes draw their own hands");
+
+        let bitmap = frame(&ctx, |ui| {
+            let icon = hand_with(ui.ctx(), closed, true);
+            ui.ctx().set_cursor_icon(icon);
+        });
+        let image = bitmap.platform_output.cursor_image.expect("Windows has no stock hand");
+        assert_eq!(image.rgba, rasterize(Shape::Hand { closed }, 1.0).unwrap().rgba);
+        assert_eq!(bitmap.platform_output.cursor_icon, CursorIcon::Crosshair, "visible fallback if the OS rejects a bitmap");
+    }
+    let open = hand_with(&ctx, false, true);
+    let fist = hand_with(&ctx, true, true);
+    assert_eq!((open, fist), (CursorIcon::None, CursorIcon::None));
 }
 
 #[test]
@@ -98,7 +190,7 @@ fn lifecycle_clears_sticky_images_and_respects_later_widgets() {
 }
 
 #[test]
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 fn ordinary_brush_cursor_is_not_part_of_the_canvas_draw_list() {
     let ctx = egui::Context::default();
     ctx.add_plugin(CursorLifecycle);
@@ -128,8 +220,12 @@ fn write_cursor_preview() {
         (Shape::Circle { radius: 20.0, centre: true }, 2.0),
         (Shape::Crosshair { length: 8.0, gap: 2.0 }, 2.0),
         (Shape::Crosshair { length: 6.0, gap: 0.0 }, 2.0),
+        (Shape::Hand { closed: false }, 1.0),
+        (Shape::Hand { closed: true }, 1.0),
+        (Shape::Hand { closed: false }, 1.5),
+        (Shape::Hand { closed: true }, 2.0),
     ];
-    let (width, height) = (600_usize, 500_usize);
+    let (width, height) = (600_usize, cases.len() * 100);
     let mut rgba = vec![255; width * height * 4];
     for (col, background) in [0_u8, 128, 255].into_iter().enumerate() {
         for y in 0..height {
@@ -157,7 +253,7 @@ fn write_cursor_preview() {
     std::fs::write(path, png).unwrap();
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 fn harness() -> Harness<'static, crate::PhotocraftApp> {
     let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
     app.run("file.new", json!({"width": 200, "height": 200})).unwrap();
@@ -186,7 +282,7 @@ fn harness() -> Harness<'static, crate::PhotocraftApp> {
 }
 
 #[test]
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 fn brush_hover_uses_an_os_bitmap_that_survives_motion_but_not_tool_or_panel_changes() {
     let mut h = harness();
     let initial = h.output().platform_output.cursor_image.clone().expect("brush hover must reach the OS, not the painter");
@@ -203,10 +299,18 @@ fn brush_hover_uses_an_os_bitmap_that_survives_motion_but_not_tool_or_panel_chan
     h.run_steps(2);
     assert!(h.output().platform_output.cursor_image.is_some());
 
+    // Windows has no stock hand (winit maps `Grab` to the move cursor), so the Hand gets the open
+    // hand as a bitmap too (#2196); macOS and the Linux themes draw their own.
     h.state_mut().ui.tool = crate::Tool::Hand;
     h.run_steps(2);
-    assert!(h.output().platform_output.cursor_image.is_none());
-    assert_eq!(h.output().platform_output.cursor_icon, CursorIcon::Grab);
+    let hand = h.output().platform_output.cursor_image.clone();
+    if cfg!(target_os = "windows") {
+        let hand = hand.expect("the Hand's open hand reaches the OS as a bitmap");
+        assert_eq!(hand.rgba, rasterize(Shape::Hand { closed: false }, h.ctx.pixels_per_point()).unwrap().rgba);
+    } else {
+        assert!(hand.is_none(), "the OS draws the hand");
+        assert_eq!(h.output().platform_output.cursor_icon, CursorIcon::Grab);
+    }
 
     h.state_mut().ui.tool = crate::Tool::Brush;
     h.state_mut().run("prefs.set", json!({"path": "cursors.painting", "value": "standard"})).unwrap();
@@ -216,7 +320,7 @@ fn brush_hover_uses_an_os_bitmap_that_survives_motion_but_not_tool_or_panel_chan
 }
 
 #[test]
-#[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 fn painting_preference_and_zoom_change_the_native_cursor_without_changing_pointer_input() {
     let mut h = harness();
     let image = h.output().platform_output.cursor_image.clone().unwrap();

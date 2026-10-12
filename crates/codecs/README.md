@@ -44,6 +44,7 @@ let out = encode(&img, Format::Tiff, &EncodeOptions::default())?;
 | QOI | yes | yes | U8 | RGB, RGBA | yes | no | no | no | no | no | no | `image` |
 | OpenEXR | yes | yes | F16, F32 | Y, YA, RGB, RGBA | yes | no | no | no | no | no | no | `exr` |
 | Radiance HDR | yes | yes | F32 | RGB | no | no | no | no | no | no | yes (RGBE) | `image` |
+| FITS | yes | yes | U8, U16, F32 | Gray, RGB | no | no | no | no | no | yes (header cards) | no | built in |
 | AVIF | **no** | only with feature `avif` | U8 | RGB, RGBA | yes | no | no | no | no | no | yes | `image` + `ravif` |
 | HEIF/HEIC | with feature `heif` | **no** | U8, U16 (10/12-bit decodes to U16) | RGB, RGBA | yes (auxiliary alpha) | yes (`colr` prof) | yes | yes | no | no | n/a | `heic-rs` |
 
@@ -61,6 +62,14 @@ the encode plan, and `fidelity_warnings` reports the conversion when it loses in
 the same.
 
 ## Documented asymmetries and limitations
+
+* **FITS.** The image in the primary HDU, or the first `IMAGE` extension, is read; `NAXIS3 = 3`
+  opens as RGB and any other plane count opens the first plane with `DecodeWarning::MorePages`.
+  Rows follow `ROWORDER` (bottom-up by default, as Siril and DS9 do). Physical values that fit
+  stay exact as U8/U16 (a camera's `BITPIX = 16`, `BZERO = 32768`); the rest become F32, taken as
+  normalised when at most 2 and scaled by 65535 (or the maximum) otherwise. Header cards are
+  kept as text (`HIERARCH` for long names). Tile-compressed (fpack) files are refused with
+  `CodecError::Unsupported`; Bayer mosaics open undebayered.
 
 * **Camera raw files** (DNG, CR2, NEF, ARW… which are TIFF-structured) are recognised and refused
   with `CodecError::Unsupported`: they are sensor data, not flat images. `photocraft-raw` decodes
@@ -160,6 +169,12 @@ the same.
   * Reads at full resolution, from the data window.
   * Channel names are matched by suffix, so `layer.R` counts as `R`.
   * Subsampled channels are unsupported.
+  * Cryptomatte layers (specification 1.2, as written by Arnold, V-Ray, Redshift, Mantra/Karma
+    and Cycles) are listed and decoded structurally: `cryptomatte_layers` reads the header
+    attributes, channels and embedded manifest without pixels, `decode_cryptomatte` returns the
+    per-pixel (ID, coverage) pairs, and `cryptomatte_id`/`cryptomatte_key`/`cryptomatte_preview_color`
+    hash names to IDs the way the reference implementation does (official test vectors in the
+    test suite).
   * Deep data (scanlines or single-level tiles, compressed NONE, RLE or ZIPS) opens as a flat
     image: each pixel's samples are composited into one, with
     `DecodeWarning::DeepFlattened` because per-pixel depth is not kept. Deep ZIP (16-line
