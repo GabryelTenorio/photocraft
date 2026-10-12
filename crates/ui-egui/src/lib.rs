@@ -1485,6 +1485,59 @@ impl PhotocraftApp {
     }
 }
 
+/// What Auto-Show Hidden Panels is bringing back this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Peek {
+    toolbar: bool,
+    dock: bool,
+}
+
+/// The strip the toolbar occupied when it last drew, for the edge hover below.
+fn toolbar_strip_id() -> egui::Id {
+    egui::Id::new("toolbar-strip")
+}
+
+/// The strip the panel dock occupied when it last drew.
+fn dock_strip_id() -> egui::Id {
+    egui::Id::new("dock-strip")
+}
+
+/// Auto-Show Hidden Panels (Preferences ▸ Workspace ▸ Auto-show hidden panels): with the
+/// panels hidden (Window ▸ Show/Hide Panels, Tab), the pointer at the window's outer edge — or
+/// over what that hover already revealed — brings the toolbar and the panel dock back for as
+/// long as the pointer stays, as in Photoshop. The canvas moves aside for the frame.
+fn auto_show_peek(app: &PhotocraftApp, ctx: &egui::Context) -> Peek {
+    let mut peek = Peek::default();
+    if !app.session.prefs().workspace.auto_show_hidden_panels {
+        return peek;
+    }
+    let Some(p) = ctx.input(|i| i.pointer.latest_pos()) else { return peek };
+    const ZONE: f32 = 18.0;
+    let win = ctx.content_rect();
+    let rtl = crate::direction::is_rtl();
+    let over = |id: egui::Id| ctx.data(|d| d.get_temp::<egui::Rect>(id)).is_some_and(|r| r.expand(2.0).contains(p));
+    if !app.ui.panels.toolbar {
+        let edge = if rtl { win.right() } else { win.left() };
+        peek.toolbar = (p.x - edge).abs() <= ZONE || over(toolbar_strip_id());
+    }
+    if !app.ui.panels.dock {
+        let edge = if rtl { win.left() } else { win.right() };
+        peek.dock = (p.x - edge).abs() <= ZONE || over(dock_strip_id());
+    }
+    peek
+}
+
+/// Records the strip a start (`toolbar`) or end (`dock`) panel occupied, so the next frame's
+/// edge hover can keep it revealed while the pointer is over the panel it just brought back.
+fn record_panel_strip(ctx: &egui::Context, id: egui::Id, before: egui::Rect, after: egui::Rect, start: bool) {
+    let w = (before.width() - after.width()).clamp(0.0, before.width());
+    let x = if start != crate::direction::is_rtl() { before.left() } else { before.right() - w };
+    let rect = egui::Rect::from_min_size(egui::pos2(x, before.top()), egui::vec2(w, before.height()));
+    ctx.data_mut(|d| {
+        d.insert_temp(id, rect);
+    });
+}
+
 impl eframe::App for PhotocraftApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         i18n::set_current(i18n::Lang::from_pref(&self.session.prefs().interface.language));
@@ -1644,11 +1697,18 @@ impl eframe::App for PhotocraftApp {
         if chrome && self.ui.panels.status_bar {
             panels::status_bar(self, ui);
         }
-        if chrome && self.ui.panels.toolbar {
+        // Auto-Show Hidden Panels: the pointer at the window edge brings the hidden toolbar and
+        // dock back for a frame (see `auto_show_peek`).
+        let peek = auto_show_peek(self, &ctx);
+        if chrome && (self.ui.panels.toolbar || peek.toolbar) {
+            let before = ui.available_rect_before_wrap();
             panels::toolbar(self, ui);
+            record_panel_strip(&ctx, toolbar_strip_id(), before, ui.available_rect_before_wrap(), true);
         }
-        if chrome && self.ui.panels.dock {
+        if chrome && (self.ui.panels.dock || peek.dock) {
+            let before = ui.available_rect_before_wrap();
             panels::right_dock(self, ui);
+            record_panel_strip(&ctx, dock_strip_id(), before, ui.available_rect_before_wrap(), false);
         }
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
@@ -2243,6 +2303,9 @@ mod mask_thumb_refresh_tests;
 
 #[cfg(test)]
 mod new_doc_remember_tests;
+
+#[cfg(test)]
+mod hidden_panels_tests;
 
 #[cfg(test)]
 mod hidden_layer_tests;
