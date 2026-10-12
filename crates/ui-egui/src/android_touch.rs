@@ -16,6 +16,12 @@ use egui::{Context, Theme, vec2};
 /// does not multiply input coordinates by Android's physical pixel density.
 pub fn configure_touch_ui(ctx: &Context) {
     ctx.set_zoom_factor(1.0);
+    // Permit small S Pen contact drift without classifying a tap as a drag.
+    // egui measures this distance in logical points, not physical pixels.
+    ctx.options_mut(|options| {
+        options.input_options.max_click_dist =
+            options.input_options.max_click_dist.max(24.0);
+    });
     for theme in [Theme::Light, Theme::Dark] {
         ctx.style_mut_of(theme, |style| {
             style.spacing.interact_size.y = style.spacing.interact_size.y.max(48.0);
