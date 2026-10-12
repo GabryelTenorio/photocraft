@@ -38,7 +38,7 @@ pub struct PsdStyleSheets {
 }
 
 fn k_of(dpi: f32) -> f32 {
-    72.0 / if dpi > 0.0 { dpi } else { 72.0 }
+    72.0 / if dpi.is_finite() && dpi > 0.0 { dpi } else { 72.0 }
 }
 
 fn names(set: Option<&E>) -> Vec<String> {
@@ -48,7 +48,7 @@ fn names(set: Option<&E>) -> Vec<String> {
 /// Index a run's sheet dictionary refers to (`Parent` index, else `Name`), skipping `normal`.
 fn reference(sheet: Option<&E>, set_names: &[String], normal: usize) -> Option<usize> {
     let s = sheet?;
-    let i = s.get("Parent").and_then(E::as_i64).map(|i| i as usize).or_else(|| {
+    let i = s.get("Parent").and_then(E::as_i64).and_then(|i| usize::try_from(i).ok()).or_else(|| {
         let n = s.get("Name").and_then(E::as_str)?;
         set_names.iter().position(|x| x == n)
     })?;
@@ -78,8 +78,8 @@ pub fn read_style_sheets(tysh: &[u8], dpi: f32) -> Option<PsdStyleSheets> {
     let fonts: Vec<String> = names(res.get("FontSet"));
     let sset = res.get("StyleSheetSet").and_then(E::as_array).unwrap_or(&[]);
     let pset = res.get("ParagraphSheetSet").and_then(E::as_array).unwrap_or(&[]);
-    let normal_c = res.get("TheNormalStyleSheet").and_then(E::as_i64).unwrap_or(0) as usize;
-    let normal_p = res.get("TheNormalParagraphSheet").and_then(E::as_i64).unwrap_or(0) as usize;
+    let normal_c = res.get("TheNormalStyleSheet").and_then(E::as_i64).and_then(|i| usize::try_from(i).ok()).unwrap_or(0);
+    let normal_p = res.get("TheNormalParagraphSheet").and_then(E::as_i64).and_then(|i| usize::try_from(i).ok()).unwrap_or(0);
     let empty = E::dict();
     let base_data = sset.get(normal_c).and_then(|s| s.get("StyleSheetData"));
     let normal_char = char_style(None, base_data.unwrap_or(&empty), &fonts, k);
@@ -100,7 +100,7 @@ pub fn read_style_sheets(tysh: &[u8], dpi: f32) -> Option<PsdStyleSheets> {
         }
         let name = s.get("Name").and_then(E::as_str).unwrap_or("").to_string();
         let props = s.get("Properties").unwrap_or(&empty);
-        let dss = s.get("DefaultStyleSheet").and_then(E::as_i64).map(|i| i as usize).filter(|i| *i != normal_c);
+        let dss = s.get("DefaultStyleSheet").and_then(E::as_i64).and_then(|i| usize::try_from(i).ok()).filter(|i| *i != normal_c);
         let cs = dss.and_then(|d| sset.get(d)).map(|d| char_style(base_data, d.get("StyleSheetData").unwrap_or(&empty), &fonts, k));
         out.para_sheets.push((i, name, para_style(base_props, props, k), cs));
     }
@@ -144,8 +144,8 @@ pub fn write_style_sheets(tysh: &[u8], layer: &TextLayer, styles: &TextStyles, d
     for key in ["ResourceDict", "DocumentResources"] {
         let Some(rd) = e.get_mut(key) else { continue };
         let mut fonts = names(rd.get("FontSet"));
-        let normal_c = rd.get("TheNormalStyleSheet").and_then(E::as_i64).unwrap_or(0) as usize;
-        let normal_p = rd.get("TheNormalParagraphSheet").and_then(E::as_i64).unwrap_or(0) as usize;
+        let normal_c = rd.get("TheNormalStyleSheet").and_then(E::as_i64).and_then(|i| usize::try_from(i).ok()).unwrap_or(0);
+        let normal_p = rd.get("TheNormalParagraphSheet").and_then(E::as_i64).and_then(|i| usize::try_from(i).ok()).unwrap_or(0);
         let keep_c = rd.get("StyleSheetSet").and_then(E::as_array).and_then(|a| a.get(normal_c).or(a.first())).cloned();
         let keep_p = rd.get("ParagraphSheetSet").and_then(E::as_array).and_then(|a| a.get(normal_p).or(a.first())).cloned();
         let mut font_index = |s: &CharStyle| {
@@ -301,5 +301,17 @@ mod tests {
         assert!(read_style_sheets(&[0u8; 60], 72.0).is_none());
         assert!(!has_named_sheets(b"junk"));
         assert!(write_style_sheets(&[1, 2, 3], &TextLayer::default(), &TextStyles::default(), 72.0).is_none());
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+
+    #[test]
+    fn negative_parent_falls_back_to_name() {
+        let sheet = crate::engine_data::parse(b"<< /Parent -1 /Name (Emphasis) >>").unwrap();
+        let names = vec!["Normal".to_string(), "Emphasis".to_string()];
+        assert_eq!(reference(Some(&sheet), &names, 0), Some(1));
     }
 }
