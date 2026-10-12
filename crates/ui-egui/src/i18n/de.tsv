@@ -2246,6 +2246,9 @@
 	5 x 5	5 x 5
 	Camera Raw Filter ({layer})	Camera-Raw-Filter ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Öffnen ({n})
+	Remove from Filmstrip	Aus Filmstreifen entfernen
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Aus Filmstreifen entfernen: Das Foto wird nicht geöffnet; die Datei bleibt auf dem Datenträger
 	Edit Type	Text bearbeiten
 	Grid:	Raster:
 	Highlight Clipping Warning (O)	Lichter-Abschneidewarnung (O)

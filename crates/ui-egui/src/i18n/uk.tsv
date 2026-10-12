@@ -2442,6 +2442,9 @@ cameraRaw	Light	Світло
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Фільтр Camera Raw ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Відкрити ({n})
+	Remove from Filmstrip	Прибрати зі стрічки кадрів
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Прибрати зі стрічки кадрів: фото не відкриється; файл залишиться на диску
 	Aqua	Аквамариновий
 cameraRaw	Amount	Величина
 cameraRaw	Blacks	Чорні тони

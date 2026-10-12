@@ -35,6 +35,7 @@ pub mod brush_resize;
 pub mod brush_sections;
 pub mod brushes_tab;
 mod cam_transform;
+mod camera_raw_batch;
 mod camera_raw_detail_ui;
 mod camera_raw_panels;
 mod camera_raw_preview_ui;
@@ -622,8 +623,12 @@ pub struct PhotocraftApp {
     /// A raw file just opened interactively, waiting for the open-time Camera Raw dialog (shown
     /// on the next frame, which has the egui context).
     pub(crate) pending_raw_open: Option<camera_raw_ui::RawOpen>,
-    /// The open-time re-develop (or its Camera Raw step) running in the background.
-    pub(crate) raw_redevelop: Option<camera_raw_ui::Redevelop>,
+    /// The open-time re-develops (or their Camera Raw steps) running in the background.
+    pub(crate) raw_redevelop: Vec<camera_raw_ui::Redevelop>,
+    /// Several raws opening together: the open-time dialog's filmstrip (camera_raw_batch).
+    pub(crate) raw_batch: Option<camera_raw_batch::RawBatch>,
+    /// Filmstrip photos to develop after Open, one at a time (camera_raw_batch::pump).
+    pub(crate) raw_queue: camera_raw_batch::RawQueue,
     /// Filter › Adaptive Wide Angle dialog (wide_angle_ui).
     pub(crate) wide_angle: Option<wide_angle_ui::WideAngleDialog>,
     /// Signature of the image we last put on the OS clipboard (to tell ours from other apps').
@@ -788,7 +793,9 @@ impl PhotocraftApp {
             gradient: Default::default(),
             camera_raw: None,
             pending_raw_open: None,
-            raw_redevelop: None,
+            raw_redevelop: Vec::new(),
+            raw_batch: None,
+            raw_queue: Default::default(),
             wide_angle: None,
             tone_hist: None,
             doc_hist: None,
@@ -1562,7 +1569,8 @@ impl eframe::App for PhotocraftApp {
         }
         let arrived: Vec<(String, Vec<u8>)> =
             self.services.inbox.as_ref().map(|q| std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()))).unwrap_or_default();
-        for (name, bytes) in arrived {
+        // Several raws among them share one Camera Raw dialog with a filmstrip.
+        for (name, bytes) in camera_raw_batch::take_contents(self, arrived) {
             if let Err(e) = self.open_bytes(&name, &bytes) {
                 self.open_failed(&name, &e);
             }

@@ -2227,6 +2227,9 @@
 	5 x 5	5 x 5
 	Camera Raw Filter ({layer})	Camera Raw-filter ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Openen ({n})
+	Remove from Filmstrip	Verwijderen uit filmstrip
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Verwijderen uit filmstrip: de foto wordt niet geopend; het bestand blijft op de schijf
 	Edit Type	Tekst bewerken
 	Grid:	Raster:
 	Highlight Clipping Warning (O)	Waarschuwing afsnijden hooglichten (O)

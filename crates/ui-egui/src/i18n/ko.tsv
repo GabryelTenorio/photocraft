@@ -2159,6 +2159,9 @@
 cameraRaw	Light	밝게
 	Camera Raw Filter ({layer})	Camera Raw 필터 ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	열기 ({n})
+	Remove from Filmstrip	필름 스트립에서 제거
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	필름 스트립에서 제거: 사진은 열리지 않으며 파일은 디스크에 그대로 남습니다
 cameraRaw	Lights	밝은 중간 영역
 cameraRaw	Blending	혼합
 cameraRaw	Blacks	검정 계열

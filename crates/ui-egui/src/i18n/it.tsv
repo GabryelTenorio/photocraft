@@ -2283,6 +2283,9 @@ cameraRaw	Light	Luce
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Filtro Camera Raw ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Apri ({n})
+	Remove from Filmstrip	Rimuovi dal provino
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Rimuovi dal provino: la foto non viene aperta; il file resta sul disco
 cameraRaw	Lights	Toni chiari
 cameraRaw	Darks	Toni scuri
 cameraRaw	Red	Rossi

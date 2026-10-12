@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G14: several raws in one Camera Raw dialog with a filmstrip; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -102,6 +102,9 @@ what an agent can't finish alone.
   tuning retains the fitted look and applies user gains afterwards. Three D5100 NEFs
   establish a guarded 4928 × 3264 image area. This is an estimated rendering, not a
   measured D5100 colour calibration; [validation](nikon-nef-development.md).
+- **Progress (2026-10-12):** several raws opened together share one open-time Camera Raw
+  dialog with a filmstrip (per-photo settings, multi-select editing, remove, Open the
+  selection); only the photo shown is developed. Counts and the estimate are unchanged.
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
@@ -224,6 +227,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | G14: several raws open in one Camera Raw dialog with a filmstrip; G14 remains open |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |

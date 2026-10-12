@@ -2276,6 +2276,9 @@ cameraRaw	Light	Luz
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Filtro de Camera Raw ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Abrir ({n})
+	Remove from Filmstrip	Quitar de la tira de película
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Quitar de la tira de película: la foto no se abre; el archivo se queda en el disco
 cameraRaw	Lights	Claros
 cameraRaw	Darks	Oscuros
 cameraRaw	Red	Rojos

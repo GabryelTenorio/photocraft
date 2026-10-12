@@ -120,7 +120,10 @@ pub struct CameraRawDialog {
     pub(crate) raw_open: Option<RawOpen>,
     /// The open-time dialog's camera tone curve: Shadows / Highlights act on the raw data there,
     /// in linear light before this curve, and the preview undoes it to show the same.
-    raw_curve: Option<std::sync::Arc<photocraft_io::raw::RawPreview>>,
+    pub(crate) raw_curve: Option<std::sync::Arc<photocraft_io::raw::RawPreview>>,
+    /// The filmstrip photo this dialog shows, when several raws open together
+    /// ([`crate::camera_raw_batch`]).
+    pub(crate) batch_photo: Option<u64>,
     /// The proxy after the raw-stage sliders and [`photocraft_algo::camera_raw::develop_tonal`],
     /// for the settings it was made with ([`photocraft_algo::camera_raw::tonal_part`]): a change
     /// of colour, Detail or Effects settings starts from it.
@@ -305,20 +308,43 @@ pub fn without_develop_note(warnings: &[String]) -> Vec<String> {
     warnings.iter().filter(|w| !w.contains(photocraft_io::raw::DEVELOPED_NOTE)).cloned().collect()
 }
 
-/// Queues the open-time dialog for the active document (shown on the next frame).
+/// Queues the open-time dialog for the active document (shown on the next frame). A raw that
+/// opens while another one waits for (or shows) its dialog joins it: both, or the filmstrip
+/// already showing, share one dialog ([`crate::camera_raw_batch::adopt`]).
 pub fn queue_open_dialog(app: &mut PhotocraftApp, name: &str, path: Option<&str>, bytes: Option<&[u8]>) {
     if let Some(st) = app.session.active() {
         // The open developed it with the preference's method (`Preferences::import_options`).
         let method = app.session.prefs().raw_defaults.demosaic.method();
-        app.pending_raw_open = Some(RawOpen {
+        let raw = RawOpen {
             document: st.doc.id,
             name: name.to_string(),
             path: path.map(str::to_string),
             bytes: bytes.map(|b| std::sync::Arc::new(b.to_vec())),
             developed_with: method,
             demosaic: method,
-        });
+        };
+        if let Some(raw) = crate::camera_raw_batch::adopt(app, raw) {
+            app.pending_raw_open = Some(raw);
+        }
     }
+}
+
+/// Is Camera Raw up (a dialog, or a filmstrip whose photo is still opening)? It is modal.
+pub fn is_open(app: &PhotocraftApp) -> bool {
+    app.camera_raw.is_some() || app.raw_batch.is_some()
+}
+
+/// What `ui.inspect.cameraRaw` and the dialog's control replies show: the dialog, and the
+/// filmstrip when several raws are opening (`params` is null while its photo is still opening).
+pub fn state(app: &PhotocraftApp) -> Value {
+    let mut v = app.camera_raw.as_ref().map(|d| d.describe(&app.ui.camera_raw_scope, &app.ui.camera_raw_preview)).unwrap_or(Value::Null);
+    if let Some(b) = app.raw_batch.as_ref() {
+        if v.is_null() {
+            v = json!({"params": null});
+        }
+        v["filmstrip"] = b.describe(&app.session);
+    }
+    v
 }
 
 /// `area` of the developed `source` in linear light (RGB, row-major) through `lut` (the linear
@@ -352,41 +378,64 @@ pub const RAW_COLOR_NOISE: f32 = 25.0;
 
 /// Opens the queued open-time dialog on its document's (only) layer.
 fn open_raw(app: &mut PhotocraftApp, ctx: &egui::Context, raw: RawOpen) -> Result<(), String> {
+    open_raw_with(app, ctx, raw, None, None).map(|_| ())
+}
+
+/// Camera Raw's settings for a raw file before any edit: the defaults with Color noise
+/// reduction 25 (Detail and Smoothness 50). The document was developed without it; Open
+/// develops with it.
+pub(crate) fn raw_defaults() -> CameraRaw {
+    CameraRaw { noise_color: RAW_COLOR_NOISE, ..Default::default() }
+}
+
+/// The open-time dialog on `raw`'s document with `params` (none: [`raw_defaults`]). `curve`: how
+/// the raw was developed, kept from an earlier showing (none: read from the file). Returns that
+/// curve, for a filmstrip photo to keep.
+pub(crate) fn open_raw_with(
+    app: &mut PhotocraftApp,
+    ctx: &egui::Context,
+    raw: RawOpen,
+    params: Option<CameraRaw>,
+    curve: Option<std::sync::Arc<photocraft_io::raw::RawPreview>>,
+) -> Result<Option<std::sync::Arc<photocraft_io::raw::RawPreview>>, String> {
     let index = document_index(app, raw.document).ok_or("the raw document was closed")?;
     app.session.set_active(index);
     let (layer, surf, _) = crate::distort_ui::active_pixels(app)?;
-    open_pixels(app, ctx, layer, surf, CameraRaw::default(), Coverage::None, Target::OpenRaw)?;
-    let curve = match (&raw.bytes, &raw.path) {
-        (Some(b), _) => Some(photocraft_io::raw::raw_preview(b)),
-        #[cfg(not(target_arch = "wasm32"))]
-        (None, Some(p)) => std::fs::read(p).ok().map(|b| photocraft_io::raw::raw_preview(&b)),
-        _ => None,
+    open_pixels(app, ctx, layer, surf, params.unwrap_or_else(raw_defaults), Coverage::None, Target::OpenRaw)?;
+    let curve = match curve {
+        Some(kept) => Some(kept),
+        None => {
+            let read = match (&raw.bytes, &raw.path) {
+                (Some(b), _) => Some(photocraft_io::raw::raw_preview(b)),
+                #[cfg(not(target_arch = "wasm32"))]
+                (None, Some(p)) => std::fs::read(p).ok().map(|b| photocraft_io::raw::raw_preview(&b)),
+                _ => None,
+            };
+            // The full frame's chroma noise, so reduced previews of the colour noise reduction
+            // match Open's full-size one.
+            read.map(|mut preview| {
+                if let Some(d) = app.camera_raw.as_mut() {
+                    let t = crate::gpu_canvas::now_ms();
+                    // Relative to the sensor's white, as the development reduces colour noise there.
+                    let lut: Vec<f32> = preview.linear_codes().iter().map(|v| v / preview.baseline_gain.max(1e-6)).collect();
+                    let (w, h, lin) = linear_frame(d.detail.source(), d.detail.area(), &lut);
+                    preview.estimate_noise(w, h, &lin);
+                    d.noise_ms = crate::gpu_canvas::now_ms() - t;
+                }
+                std::sync::Arc::new(preview)
+            })
+        }
     };
     if let Some(d) = app.camera_raw.as_mut() {
         d.layer_name = raw.name.clone();
-        // The full frame's chroma noise, so reduced previews of the colour noise reduction
-        // match Open's full-size one.
-        let mut curve = curve;
-        if let Some(raw) = curve.as_mut() {
-            let t = crate::gpu_canvas::now_ms();
-            // Relative to the sensor's white, as the development reduces colour noise there.
-            let lut: Vec<f32> = raw.linear_codes().iter().map(|v| v / raw.baseline_gain.max(1e-6)).collect();
-            let (w, h, lin) = linear_frame(d.detail.source(), d.detail.area(), &lut);
-            raw.estimate_noise(w, h, &lin);
-            d.noise_ms = crate::gpu_canvas::now_ms() - t;
-        }
-        let curve = curve.map(std::sync::Arc::new);
         d.detail.raw = curve.clone();
-        d.raw_curve = curve;
+        d.raw_curve = curve.clone();
         d.tonal = Default::default();
-        // Camera Raw's defaults for a raw file: Color noise reduction 25 (Detail and Smoothness
-        // 50). The document was developed without it; Open develops with it.
-        d.params.noise_color = RAW_COLOR_NOISE;
         d.original = d.params.clone();
         d.dirty = true;
         d.raw_open = Some(raw);
     }
-    Ok(())
+    Ok(curve)
 }
 
 fn document_index(app: &PhotocraftApp, id: photocraft_doc::DocId) -> Option<usize> {
@@ -394,7 +443,7 @@ fn document_index(app: &PhotocraftApp, id: photocraft_doc::DocId) -> Option<usiz
 }
 
 /// The non-default settings of `p` as engine params.
-fn non_defaults(p: &CameraRaw) -> Value {
+pub(crate) fn non_defaults(p: &CameraRaw) -> Value {
     let full = serde_json::to_value(p).unwrap_or(json!({}));
     let def = serde_json::to_value(CameraRaw::default()).unwrap_or(json!({}));
     let mut out = serde_json::Map::new();
@@ -420,6 +469,36 @@ pub struct Redevelop {
     /// The job is the final Camera Raw step (`filter.cameraRaw`), not the re-develop: when it
     /// lands the document is marked unmodified.
     filter_step: bool,
+    /// The develop makes the document (a filmstrip photo never shown): its open is recorded when
+    /// it lands (Open Recent, the Open Document script event).
+    fresh: bool,
+}
+
+/// The raw-stage part of `params` with the `demosaic` method: what developing the sensor data
+/// applies ([`photocraft_io::raw::import_raw_tuned`]).
+fn tuning_of(params: &CameraRaw, demosaic: photocraft_io::raw::Demosaic) -> photocraft_io::raw::RawTuning {
+    photocraft_io::raw::RawTuning {
+        temperature: params.temperature,
+        tint: params.tint,
+        exposure: params.exposure,
+        demosaic,
+        shadows: params.shadows,
+        highlights: params.highlights,
+        clarity: params.clarity,
+        texture: params.texture,
+        dehaze: params.dehaze,
+        color_noise: super::camera_raw_detail_ui::color_noise_of(params),
+    }
+}
+
+/// Where `raw` can be read again from: its bytes, or (natively) its path.
+fn raw_source(raw: &RawOpen) -> Option<photocraft_engine::jobs::OpenSource> {
+    match (&raw.bytes, &raw.path) {
+        (Some(b), _) => Some(photocraft_engine::jobs::OpenSource::Bytes(b.clone())),
+        #[cfg(not(target_arch = "wasm32"))]
+        (None, Some(p)) => Some(photocraft_engine::jobs::OpenSource::Path(p.clone())),
+        _ => None,
+    }
 }
 
 /// Open: re-develop for raw-stage settings, apply the rest, keep the document unmodified.
@@ -428,33 +507,47 @@ pub struct Redevelop {
 /// on) it runs as a job like the open itself: the reply is `{"job", "pending": true}`, the
 /// document is locked meanwhile, and [`on_redevelop_event`] finishes when it lands. Elsewhere
 /// (tests, the web) it runs inline.
-fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -> Result<Value, String> {
+pub(crate) fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -> Result<Value, String> {
     let index = document_index(app, raw.document).ok_or("the raw document was closed")?;
-    let tuning = photocraft_io::raw::RawTuning {
-        temperature: params.temperature,
-        tint: params.tint,
-        exposure: params.exposure,
-        demosaic: raw.demosaic,
-        shadows: params.shadows,
-        highlights: params.highlights,
-        clarity: params.clarity,
-        texture: params.texture,
-        dehaze: params.dehaze,
-        color_noise: super::camera_raw_detail_ui::color_noise_of(params),
-    };
+    let tuning = tuning_of(params, raw.demosaic);
     let as_opened = photocraft_io::raw::RawTuning { demosaic: raw.developed_with, ..Default::default() };
     // Without the file the raw-stage settings stay RGB adjustments, like the filter's.
-    let source = match (&raw.bytes, &raw.path) {
-        (Some(b), _) => Some(photocraft_engine::jobs::OpenSource::Bytes(b.clone())),
-        #[cfg(not(target_arch = "wasm32"))]
-        (None, Some(p)) => Some(photocraft_engine::jobs::OpenSource::Path(p.clone())),
-        _ => None,
-    };
-    let Some(source) = source.filter(|_| tuning != as_opened) else {
+    let Some(source) = raw_source(raw).filter(|_| tuning != as_opened) else {
         return finish_open_raw(app, index, params.clone(), None, Some(raw));
     };
     app.session.set_active(index);
-    let (name, doc_id) = (raw.name.clone(), raw.document);
+    let doc_id = raw.document;
+    develop(app, params, raw, source, tuning, false, move |s, (r, wb)| replace_raw_document(s, doc_id, r, wb))
+}
+
+/// Open for a filmstrip photo that was never shown (so never developed): its file developed
+/// once, with its settings, into a new document, the remaining settings applied as one Camera
+/// Raw step, and the document left unmodified, as [`commit_open_raw`] leaves a shown one.
+/// `raw.document` is a placeholder no document has.
+pub(crate) fn develop_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -> Result<Value, String> {
+    let source = raw_source(raw).ok_or("the raw file can't be read again here")?;
+    let tuning = tuning_of(params, raw.demosaic);
+    let path = raw.path.clone();
+    develop(app, params, raw, source, tuning, true, move |s, (r, wb): (photocraft_io::ImportResult, bool)| {
+        let (index, _) = s.open_document(r.document, path);
+        s.set_active(index);
+        Ok(json!({"document": index, "warnings": r.warnings, "wb": wb}))
+    })
+}
+
+/// Develop `source` with `tuning` and `apply` the result to the session: in the background in
+/// the desktop app (the reply is `{"job", "pending": true}` and [`on_redevelop_event`] finishes),
+/// inline elsewhere. A re-develop (`!fresh`) locks the document it replaces meanwhile.
+fn develop(
+    app: &mut PhotocraftApp,
+    params: &CameraRaw,
+    raw: &RawOpen,
+    source: photocraft_engine::jobs::OpenSource,
+    tuning: photocraft_io::raw::RawTuning,
+    fresh: bool,
+    apply: impl FnOnce(&mut photocraft_engine::Session, (photocraft_io::ImportResult, bool)) -> photocraft_engine::Result<Value> + Send + 'static,
+) -> Result<Value, String> {
+    let name = raw.name.clone();
     let work = move |ctx: &photocraft_engine::jobs::JobCtx| -> photocraft_engine::Result<(photocraft_io::ImportResult, bool)> {
         ctx.progress(0.0, "Reading");
         let bytes = match source {
@@ -470,18 +563,17 @@ fn commit_open_raw(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen) -
         ctx.progress(0.05, "Developing");
         photocraft_io::raw::import_raw_tuned(&name, &bytes, &tuning).map_err(|e| photocraft_engine::EngineError::Other(e.to_string()))
     };
-    let apply = move |s: &mut photocraft_engine::Session, (r, wb): (photocraft_io::ImportResult, bool)| replace_raw_document(s, doc_id, r, wb);
     let label = crate::i18n::fmt(tl!("Developing {name}"), &[("name", &raw.name)]);
     let started = if app.background_jobs {
-        app.session.start_job(REDEVELOP_JOB, json!({"name": raw.name}), &label, true, work, apply).map_err(|e| e.to_string())?
+        app.session.start_job(REDEVELOP_JOB, json!({"name": raw.name}), &label, !fresh, work, apply).map_err(|e| e.to_string())?
     } else {
         let v = work(&photocraft_engine::jobs::JobCtx::new()).and_then(|t| apply(&mut app.session, t)).map_err(|e| e.to_string())?;
         photocraft_engine::jobs::Started::Done(v)
     };
     match started {
-        photocraft_engine::jobs::Started::Done(v) => finish_redevelop(app, params, raw, &v),
+        photocraft_engine::jobs::Started::Done(v) => finish_redevelop(app, params, raw, &v, fresh),
         photocraft_engine::jobs::Started::Job(job) => {
-            app.raw_redevelop = Some(Redevelop { job, params: params.clone(), raw: raw.clone(), filter_step: false });
+            app.raw_redevelop.push(Redevelop { job, params: params.clone(), raw: raw.clone(), filter_step: false, fresh });
             app.ui.status = label;
             app.ui.status_error = false;
             Ok(json!({"job": job.0, "pending": true}))
@@ -511,8 +603,9 @@ fn replace_raw_document(
 }
 
 /// After the re-develop: keep the old document's view (zoom, scroll) on the new one, report
-/// the import's notes, then apply the remaining settings.
-fn finish_redevelop(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen, v: &Value) -> Result<Value, String> {
+/// the import's notes, then apply the remaining settings. A `fresh` document (no old one) is
+/// recorded as opened.
+fn finish_redevelop(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen, v: &Value, fresh: bool) -> Result<Value, String> {
     let index = v.get("document").and_then(Value::as_u64).ok_or("the re-develop returned no document")? as usize;
     if let Some(new_id) = app.session.documents().get(index).map(|st| st.doc.id) {
         for id in app.view_docs.iter_mut().filter(|id| **id == raw.document) {
@@ -522,6 +615,7 @@ fn finish_redevelop(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen, 
     let warnings: Vec<String> =
         v.get("warnings").and_then(Value::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
     crate::notices::io_warnings(app, &format!("Opened {}", raw.name), &without_develop_note(&warnings));
+    let developed = app.session.documents().get(index).map(|st| st.doc.id);
     let mut rest = params.clone();
     // Applied while developing (the colour noise reduction too), not again as the filter.
     rest.noise_color = 0.0;
@@ -535,7 +629,19 @@ fn finish_redevelop(app: &mut PhotocraftApp, params: &CameraRaw, raw: &RawOpen, 
         rest.temperature = 0.0;
         rest.tint = 0.0;
     }
-    finish_open_raw(app, index, rest, Some(true), Some(raw))
+    let result = finish_open_raw(app, index, rest, Some(true), Some(raw));
+    if fresh {
+        if let Some(path) = &raw.path {
+            app.push_recent(path);
+        }
+        // Script events bound to "Open Document".
+        if let Some(i) = developed.and_then(|id| document_index(app, id)) {
+            app.session.set_active(i);
+            photocraft_engine::automate_cmds::document_opened(&mut app.session);
+            app.sync_views();
+        }
+    }
+    result
 }
 
 /// The other settings as one Camera Raw step on document `index`, then the document is marked
@@ -553,7 +659,13 @@ fn finish_open_raw(app: &mut PhotocraftApp, index: usize, rest: CameraRaw, redev
         if r.get("pending").and_then(Value::as_bool) == Some(true)
             && let (Some(job), Some(raw)) = (r.get("job").and_then(Value::as_u64), raw)
         {
-            app.raw_redevelop = Some(Redevelop { job: photocraft_engine::jobs::JobId(job), params: rest.clone(), raw: raw.clone(), filter_step: true });
+            app.raw_redevelop.push(Redevelop {
+                job: photocraft_engine::jobs::JobId(job),
+                params: rest.clone(),
+                raw: raw.clone(),
+                filter_step: true,
+                fresh: false,
+            });
         }
         result["filter"] = r;
     }
@@ -576,7 +688,8 @@ fn mark_unmodified(app: &mut PhotocraftApp, index: usize) {
 /// A finished background re-develop ([`REDEVELOP_JOB`]) or open-time Camera Raw step. `true`
 /// when the event was one of those (handled here).
 pub fn on_redevelop_event(app: &mut PhotocraftApp, e: &photocraft_engine::jobs::JobEvent) -> bool {
-    let Some(pending) = app.raw_redevelop.take_if(|r| r.job == e.id) else { return false };
+    let Some(at) = app.raw_redevelop.iter().position(|r| r.job == e.id) else { return false };
+    let pending = app.raw_redevelop.remove(at);
     if pending.filter_step {
         if matches!(e.outcome, photocraft_engine::jobs::JobOutcome::Done(_))
             && let Some(index) = e.document.and_then(|id| document_index(app, id))
@@ -587,7 +700,7 @@ pub fn on_redevelop_event(app: &mut PhotocraftApp, e: &photocraft_engine::jobs::
         return false;
     }
     match &e.outcome {
-        photocraft_engine::jobs::JobOutcome::Done(v) => match finish_redevelop(app, &pending.params, &pending.raw, v) {
+        photocraft_engine::jobs::JobOutcome::Done(v) => match finish_redevelop(app, &pending.params, &pending.raw, v, pending.fresh) {
             Ok(_) => {
                 app.ui.status = crate::i18n::fmt(tl!("Opened {name}"), &[("name", &pending.raw.name)]);
                 app.ui.status_error = false;
@@ -595,7 +708,7 @@ pub fn on_redevelop_event(app: &mut PhotocraftApp, e: &photocraft_engine::jobs::
             Err(err) => crate::notices::error(app, format!("{}: {err}", e.label)),
         },
         photocraft_engine::jobs::JobOutcome::Failed(err) => {
-            // The document stays open, developed with the defaults.
+            // The document stays open, developed with the defaults (a fresh one was never made).
             app.sync_views();
             crate::notices::error(app, format!("{}: {err}", e.label));
         }
@@ -607,8 +720,13 @@ pub fn on_redevelop_event(app: &mut PhotocraftApp, e: &photocraft_engine::jobs::
     true
 }
 
-/// Cancel: closes the dialog; for the open-time dialog also the document it was opening.
+/// Cancel: closes the dialog; for the open-time dialog also the document it was opening (every
+/// filmstrip photo's, when several were opening).
 fn cancel(app: &mut PhotocraftApp) {
+    if crate::camera_raw_batch::showing(app) {
+        crate::camera_raw_batch::cancel(app);
+        return;
+    }
     let Some(d) = app.camera_raw.take() else { return };
     if let (Target::OpenRaw, Some(raw)) = (d.target, &d.raw_open)
         && let Some(index) = document_index(app, raw.document)
@@ -798,6 +916,7 @@ fn open_pixels(
         noise_ms: 0.0,
         raw_open: None,
         raw_curve: None,
+        batch_photo: None,
         tonal: Default::default(),
     };
     d.render(ctx);
@@ -813,6 +932,9 @@ pub fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Val
     let Some(fields) = params.as_object() else {
         return Some(Err("Camera Raw params must be an object".into()));
     };
+    if crate::camera_raw_batch::showing(app) && params.get("ui").is_none() {
+        return Some(Err("Camera Raw is opening raw files; finish with ui.commit or ui.cancel first".into()));
+    }
     if fields.is_empty() {
         return Some(
             open(app, ctx).map(|_| app.camera_raw.as_ref().map(|d| d.describe(&app.ui.camera_raw_scope, &app.ui.camera_raw_preview)).unwrap_or(Value::Null)),
@@ -836,7 +958,7 @@ pub fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Val
     };
     for (key, value) in fields {
         match key.as_str() {
-            "set" | "scope" | "view" | "layout" | "hidden" | "beforeAfter" | "demosaic" => {}
+            "set" | "scope" | "view" | "layout" | "hidden" | "beforeAfter" | "demosaic" | "filmstrip" => {}
             "before" | "commit" | "cancel" | "profileBrowser" if value.is_boolean() => {}
             "before" | "commit" | "cancel" | "profileBrowser" => return Some(Err(format!("Camera Raw {key} must be a boolean"))),
             _ => return Some(Err(format!("unknown Camera Raw ui property {key}"))),
@@ -844,6 +966,42 @@ pub fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Val
     }
     if ui.get("commit").and_then(Value::as_bool) == Some(true) && ui.get("cancel").and_then(Value::as_bool) == Some(true) {
         return Some(Err("Camera Raw cannot commit and cancel together".into()));
+    }
+    let finish = |app: &mut PhotocraftApp| {
+        if ui.get("cancel").and_then(Value::as_bool) == Some(true) {
+            cancel(app);
+            return Some(Ok(json!({"cancelled": true})));
+        }
+        if ui.get("commit").and_then(Value::as_bool) == Some(true) {
+            return Some(commit(app));
+        }
+        None
+    };
+    // Several raws opening together: the filmstrip first, on its own (the other parts act on
+    // the photo it shows, which may still be opening).
+    if let Some(strip) = ui.get("filmstrip") {
+        if !crate::camera_raw_batch::showing(app) {
+            return Some(Err("no filmstrip is showing: Camera Raw shows one while several raw files open together".into()));
+        }
+        if fields.keys().any(|k| !matches!(k.as_str(), "filmstrip" | "commit" | "cancel")) {
+            return Some(Err("Camera Raw filmstrip goes with commit or cancel only; send other ui properties separately".into()));
+        }
+        let action = match app.raw_batch.as_ref().map(|b| crate::camera_raw_batch::parse(b, strip)) {
+            Some(Ok(a)) => a,
+            Some(Err(e)) => return Some(Err(e)),
+            None => return Some(Err("no filmstrip is showing".into())),
+        };
+        crate::camera_raw_batch::act(app, ctx, action);
+        return finish(app).or_else(|| Some(Ok(state(app))));
+    }
+    if crate::camera_raw_batch::showing(app) && app.camera_raw.is_none() {
+        if let Some(done) = finish(app) {
+            return Some(done);
+        }
+        if fields.is_empty() {
+            return Some(Ok(state(app)));
+        }
+        return Some(Err("the filmstrip's photo is still opening: wait until cameraRaw.params shows its settings".into()));
     }
     let was_closed = app.camera_raw.is_none();
     let previous_view = app.ui.camera_raw_scope.clone();
@@ -1000,6 +1158,8 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
         d.ensure_scope(app.ui.camera_raw_scope.selected_region);
     }
     super::camera_raw_scope_ui::persist(app, ctx);
+    // With several filmstrip photos selected, the changed settings apply to each of them.
+    crate::camera_raw_batch::share(app);
     if ui.get("cancel").and_then(Value::as_bool) == Some(true) {
         cancel(app);
         return Some(Ok(json!({"cancelled": true})));
@@ -1007,10 +1167,20 @@ fn menu_update(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &Value) -> Opti
     if ui.get("commit").and_then(Value::as_bool) == Some(true) {
         return Some(commit(app));
     }
-    Some(Ok(app.camera_raw.as_ref().map(|d| d.describe(&app.ui.camera_raw_scope, &app.ui.camera_raw_preview)).unwrap_or(Value::Null)))
+    Some(Ok(state(app)))
 }
 
 fn commit(app: &mut PhotocraftApp) -> Result<Value, String> {
+    if crate::camera_raw_batch::showing(app) {
+        // Open with a filmstrip: the selected photos, each with its own settings.
+        let previous = app.camera_raw.as_ref().map(CameraRawDialog::command_params);
+        let result = crate::camera_raw_batch::commit(app)?;
+        app.camera_raw = None;
+        if let Some(previous) = previous {
+            app.session.prefs.edit(|p| p.dialogs.insert(PREVIOUS_KEY.into(), previous));
+        }
+        return Ok(result);
+    }
     let d = app.camera_raw.as_ref().ok_or(tl!("Camera Raw isn't open"))?;
     let previous = d.command_params();
     let result = match d.target {
@@ -1073,7 +1243,9 @@ pub(crate) fn is_linear(c: &[[f32; 2]]) -> bool {
 }
 
 pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    if app.camera_raw.is_none()
+    // Several raws opening together: thumbnails, the photo shown, the developing after Open.
+    crate::camera_raw_batch::tick(app, ctx);
+    if !is_open(app)
         && let Some(raw) = app.pending_raw_open.take()
         && let Err(e) = open_raw(app, ctx, raw)
     {
@@ -1081,13 +1253,17 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         app.ui.status = e;
         app.ui.status_error = true;
     }
-    let Some(d) = app.camera_raw.as_ref() else { return };
+    let window_title = match (app.camera_raw.as_ref(), app.raw_batch.as_ref()) {
+        (Some(d), _) => d.window_title(),
+        (None, Some(b)) => crate::i18n::fmt(tl!("Camera Raw ({name})"), &[("name", b.current_name())]),
+        (None, None) => return,
+    };
     // Where the platform has no extra windows (the web build), draw over the main window.
     if ctx.embed_viewports() {
         draw(app, ctx, false);
+        crate::camera_raw_batch::share(app);
         return;
     }
-    let window_title = d.window_title();
     // Camera Raw is modal, as in Photoshop: the main window is dimmed and takes no input while it
     // is open (in a separate window, or drawn over it where there are no extra windows).
     let main = ctx.content_rect();
@@ -1104,12 +1280,46 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         }
         draw(app, ui.ctx(), class != egui::ViewportClass::EmbeddedWindow);
     });
-    if close && app.camera_raw.is_some() {
+    if close && is_open(app) {
         cancel(app);
     }
+    // A setting changed with several filmstrip photos selected applies to all of them.
+    crate::camera_raw_batch::share(app);
 }
 
 impl CameraRawDialog {
+    /// The open-time dialog of a raw opening on its own (not a filmstrip photo's).
+    pub(crate) fn opens_single_raw(&self) -> bool {
+        self.target == Target::OpenRaw && self.batch_photo.is_none()
+    }
+
+    /// The developed preview reduced so its long edge is at most `max` pixels, as the screen
+    /// shows it: a filmstrip thumbnail with the photo's edits.
+    pub(crate) fn thumbnail(&self, max: usize) -> Option<egui::ColorImage> {
+        let (w, h) = (self.pw, self.ph);
+        if w == 0 || h == 0 || self.processed.len() != w * h {
+            return None;
+        }
+        let k = w.max(h).div_ceil(max.max(1)).max(1);
+        let (tw, th) = (w.div_ceil(k), h.div_ceil(k));
+        let mut small = vec![[0.0f32; 4]; tw * th];
+        for (i, out) in small.iter_mut().enumerate() {
+            let (tx, ty) = (i % tw, i / tw);
+            let mut acc = [0.0f32; 4];
+            let mut n = 0.0f32;
+            for y in ty * k..((ty + 1) * k).min(h) {
+                for q in self.processed.get(y * w + tx * k..y * w + ((tx + 1) * k).min(w)).unwrap_or_default() {
+                    for (a, v) in acc.iter_mut().zip(q) {
+                        *a += v;
+                    }
+                    n += 1.0;
+                }
+            }
+            *out = acc.map(|a| a / n.max(1.0));
+        }
+        Some(screen_image(&self.display, &small, tw, th))
+    }
+
     /// "Camera Raw (name)" for the open-time dialog, "Camera Raw Filter (layer)" otherwise.
     fn window_title(&self) -> String {
         if self.target == Target::OpenRaw {
@@ -1124,9 +1334,14 @@ impl CameraRawDialog {
 /// shows the title; Camera Raw's own top bar (file name, Save, Preferences, Full Screen) is drawn
 /// either way.
 fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
+    if app.camera_raw.is_none() {
+        draw_waiting(app, ctx);
+        return;
+    }
     let t = Tokens::get(ctx);
     let c = crate::camera_raw_style::Acr::get(ctx);
     let screen = ctx.content_rect();
+    let mut strip_action = None;
     let current_display = app.session.active().and_then(|st| app.session.color.canvas_display(&st.doc).ok());
     let mut action: Option<&str> = None;
     let previous: Option<CameraRaw> = app.session.prefs().dialogs.get(PREVIOUS_KEY).and_then(|v| serde_json::from_value(v.clone()).ok());
@@ -1148,12 +1363,11 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
         painter.rect_filled(full, 0.0, c.base);
         let layout = &mut app.ui.camera_raw_layout;
         let scope = &mut app.ui.camera_raw_scope;
-        // Columns: preview | rule | panels (+ scroll bar) | rule | tool strip.
-        let strip = ERect::from_min_max(pos2(full.right() - STRIP_W, full.top() + TOP_H), pos2(full.right(), full.bottom() - FOOTER_H));
-        let panels = ERect::from_min_max(pos2(strip.left() - 1.0 - PANEL_W, strip.top()), pos2(strip.left() - 1.0, strip.bottom()));
-        let preview_body = ERect::from_min_max(pos2(full.left(), strip.top()), pos2((panels.left() - 2.0).max(full.left() + 1.0), strip.bottom()));
+        // Columns: preview (the filmstrip under it) | rule | panels (+ scroll bar) | rule | tool strip.
+        let film = d.batch_photo.is_some() && app.raw_batch.is_some();
+        let areas = areas(full, film);
+        let (strip, panels, preview_body, top) = (areas.strip, areas.panels, areas.preview_body, areas.top);
         // Top bar.
-        let top = ERect::from_min_max(full.min, pos2(full.right(), full.top() + TOP_H));
         let _ = own_window;
         let title = if d.target == Target::OpenRaw { d.layer_name.clone() } else { d.doc_name.clone() };
         painter.text(pos2(preview_body.center().x, top.center().y), Align2::CENTER_CENTER, title, FontId::proportional(13.0), c.text);
@@ -1273,6 +1487,9 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
             preview.painter().rect_stroke(region, 0.0, egui::Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
         }
         preview_bar(ui, d, navigation, bar, after_view, size, &c);
+        if let (Some(film), Some(b)) = (areas.film, app.raw_batch.as_mut()) {
+            strip_action = crate::camera_raw_batch::filmstrip(ui, b, film, &c);
+        }
         // Right column: histogram (and the vectorscope when shown), the info row, the tool.
         let mut head = ui.new_child(egui::UiBuilder::new().max_rect(ERect::from_min_max(panels.min, pos2(panels.right(), panels.top() + HISTOGRAM_H + 300.0))));
         head.set_clip_rect(panels.intersect(ui.clip_rect()));
@@ -1354,31 +1571,132 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
             ctx.request_repaint();
         }
         // Footer: OK (Open for a raw being opened) and Cancel.
-        let foot = ERect::from_min_max(pos2(full.left(), full.bottom() - FOOTER_H), full.max);
-        let ok_label = if d.target == Target::OpenRaw { tl!("Open") } else { tl!("OK") };
-        let cancel_rect = ERect::from_min_size(pos2(foot.right() - 80.0, foot.center().y - 12.0), vec2(60.0, 24.0));
-        let ok_rect = ERect::from_min_size(pos2(cancel_rect.left() - 16.0 - 70.0, foot.center().y - 12.0), vec2(70.0, 24.0));
-        let ok = ui.interact(ok_rect, ui.id().with("cr-ok"), Sense::click());
-        ok.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, ok_label));
-        painter.rect_filled(ok_rect, 12.0, if ok.hovered() { c.hover } else { c.base });
-        painter.rect_stroke(ok_rect, 12.0, Stroke::new(1.2, c.text), egui::StrokeKind::Inside);
-        painter.text(ok_rect.center(), Align2::CENTER_CENTER, ok_label, FontId::proportional(12.5), c.text);
-        let cancel = ui.interact(cancel_rect, ui.id().with("cr-cancel"), Sense::click());
-        cancel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Cancel")));
-        if cancel.hovered() {
-            painter.rect_filled(cancel_rect, 12.0, c.hover);
-        }
-        painter.text(cancel_rect.center(), Align2::CENTER_CENTER, tl!("Cancel"), FontId::proportional(12.5), c.text);
-        if ok.clicked() {
-            action = Some("ok");
-        }
-        if cancel.clicked() {
-            action = Some("cancel");
+        let ok_label = match app.raw_batch.as_ref().filter(|_| film) {
+            Some(b) => crate::camera_raw_batch::open_label(b),
+            None if d.target == Target::OpenRaw => tl!("Open").to_owned(),
+            None => tl!("OK").to_owned(),
+        };
+        if let Some(clicked) = footer(ui, &painter, areas.foot, &ok_label, &c) {
+            action = Some(clicked);
         }
     });
     super::camera_raw_scope_ui::persist(app, ctx);
     persist_layout(app, ctx);
     shortcuts(app, ctx, &mut action);
+    if crate::camera_raw_batch::showing(app)
+        && let Some(a) = strip_action.or_else(|| crate::camera_raw_batch::shortcuts(app, ctx))
+    {
+        crate::camera_raw_batch::act(app, ctx, a);
+    }
+    match action {
+        Some("ok") => {
+            if let Err(e) = commit(app) {
+                app.ui.status = e;
+            }
+        }
+        Some("cancel") => cancel(app),
+        _ => {}
+    }
+}
+
+/// The dialog's areas over `full`.
+struct Areas {
+    top: ERect,
+    /// The preview with its bar under it.
+    preview_body: ERect,
+    /// Under the preview, when several raws are opening together.
+    film: Option<ERect>,
+    panels: ERect,
+    /// Camera Raw's tool strip.
+    strip: ERect,
+    foot: ERect,
+}
+
+/// Columns: preview (and the filmstrip under it, with `film`) | rule | panels (+ scroll bar) |
+/// rule | tool strip, between the top bar and the footer.
+fn areas(full: ERect, film: bool) -> Areas {
+    let strip = ERect::from_min_max(pos2(full.right() - STRIP_W, full.top() + TOP_H), pos2(full.right(), full.bottom() - FOOTER_H));
+    let panels = ERect::from_min_max(pos2(strip.left() - 1.0 - PANEL_W, strip.top()), pos2(strip.left() - 1.0, strip.bottom()));
+    let column = ERect::from_min_max(pos2(full.left(), strip.top()), pos2((panels.left() - 2.0).max(full.left() + 1.0), strip.bottom()));
+    let film_h = if film { crate::camera_raw_batch::FILMSTRIP_H.min(column.height() * 0.4).max(0.0) } else { 0.0 };
+    let preview_body = ERect::from_min_max(column.min, pos2(column.right(), column.bottom() - film_h));
+    Areas {
+        top: ERect::from_min_max(full.min, pos2(full.right(), full.top() + TOP_H)),
+        preview_body,
+        film: film.then(|| ERect::from_min_max(pos2(column.left(), preview_body.bottom()), column.max)),
+        panels,
+        strip,
+        foot: ERect::from_min_max(pos2(full.left(), full.bottom() - FOOTER_H), full.max),
+    }
+}
+
+/// Camera Raw's OK (or Open) and Cancel at the right end of the footer `foot`: which one was
+/// clicked. OK is at least 70 points wide, wider for a longer label.
+fn footer(ui: &mut egui::Ui, painter: &egui::Painter, foot: ERect, ok_label: &str, c: &crate::camera_raw_style::Acr) -> Option<&'static str> {
+    let cancel_rect = ERect::from_min_size(pos2(foot.right() - 80.0, foot.center().y - 12.0), vec2(60.0, 24.0));
+    let ok_w = (painter.layout_no_wrap(ok_label.to_owned(), FontId::proportional(12.5), c.text).size().x + 28.0).max(70.0);
+    let ok_rect = ERect::from_min_size(pos2(cancel_rect.left() - 16.0 - ok_w, foot.center().y - 12.0), vec2(ok_w, 24.0));
+    let ok = ui.interact(ok_rect, ui.id().with("cr-ok"), Sense::click());
+    ok.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, ok_label));
+    painter.rect_filled(ok_rect, 12.0, if ok.hovered() { c.hover } else { c.base });
+    painter.rect_stroke(ok_rect, 12.0, Stroke::new(1.2, c.text), egui::StrokeKind::Inside);
+    painter.text(ok_rect.center(), Align2::CENTER_CENTER, ok_label, FontId::proportional(12.5), c.text);
+    let cancel = ui.interact(cancel_rect, ui.id().with("cr-cancel"), Sense::click());
+    cancel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Cancel")));
+    if cancel.hovered() {
+        painter.rect_filled(cancel_rect, 12.0, c.hover);
+    }
+    painter.text(cancel_rect.center(), Align2::CENTER_CENTER, tl!("Cancel"), FontId::proportional(12.5), c.text);
+    if cancel.clicked() {
+        Some("cancel")
+    } else if ok.clicked() {
+        Some("ok")
+    } else {
+        None
+    }
+}
+
+/// The dialog while the filmstrip's photo is still opening (developing from its sensor data):
+/// its embedded preview, dimmed, under a spinner (or why it could not open), the filmstrip, Open
+/// and Cancel. There are no settings to show yet.
+fn draw_waiting(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    let c = crate::camera_raw_style::Acr::get(ctx);
+    let screen = ctx.content_rect();
+    let mut action: Option<&str> = None;
+    let mut strip_action = None;
+    egui::Area::new(egui::Id::new("camera-raw-dialog")).order(egui::Order::Foreground).fixed_pos(screen.min).show(ctx, |ui| {
+        let Some(b) = app.raw_batch.as_mut() else { return };
+        let (full, _) = ui.allocate_exact_size(screen.size(), Sense::click());
+        let painter = ui.painter().clone();
+        painter.rect_filled(full, 0.0, c.base);
+        let a = areas(full, true);
+        painter.text(pos2(a.preview_body.center().x, a.top.center().y), Align2::CENTER_CENTER, b.current_name(), FontId::proportional(13.0), c.text);
+        // The preview's place (its bar stays empty until there is a preview to zoom).
+        let well = ERect::from_min_max(a.preview_body.min, pos2(a.preview_body.right(), a.preview_body.bottom() - PREVIEW_BAR_H));
+        painter.rect_filled(well, 0.0, c.well);
+        painter.rect_filled(ERect::from_min_max(pos2(a.preview_body.right(), a.strip.top()), pos2(a.panels.left(), a.strip.bottom())), 0.0, c.rule);
+        painter.rect_filled(ERect::from_min_max(pos2(a.strip.left() - 1.0, a.strip.top()), pos2(a.strip.left(), a.strip.bottom())), 0.0, c.rule);
+        crate::camera_raw_batch::waiting_preview(ui, b, well.shrink(8.0), &c);
+        if let Some(film) = a.film {
+            strip_action = crate::camera_raw_batch::filmstrip(ui, b, film, &c);
+        }
+        let label = crate::camera_raw_batch::open_label(b);
+        action = footer(ui, &painter, a.foot, &label, &c);
+    });
+    if !ctx.text_edit_focused() {
+        use egui::{Key, Modifiers};
+        ctx.input_mut(|i| {
+            if i.consume_key(Modifiers::NONE, Key::Escape) {
+                action = Some("cancel");
+            }
+            if i.consume_key(Modifiers::NONE, Key::Enter) {
+                action = Some("ok");
+            }
+        });
+    }
+    if let Some(a) = strip_action.or_else(|| crate::camera_raw_batch::shortcuts(app, ctx)) {
+        crate::camera_raw_batch::act(app, ctx, a);
+    }
     match action {
         Some("ok") => {
             if let Err(e) = commit(app) {
@@ -2287,12 +2605,12 @@ mod tests {
         assert!(app.camera_raw.is_none());
         for _ in 0..3000 {
             crate::jobs_ui::tick(&mut app, &ctx);
-            if app.raw_redevelop.is_none() && !app.session.has_jobs() {
+            if app.raw_redevelop.is_empty() && !app.session.has_jobs() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        assert!(app.raw_redevelop.is_none() && !app.session.has_jobs(), "the jobs never finished");
+        assert!(app.raw_redevelop.is_empty() && !app.session.has_jobs(), "the jobs never finished");
         let docs = app.session.documents();
         assert_eq!(docs.len(), 3);
         assert_eq!((docs[0].doc.size.width, docs[2].doc.size.width), (10, 12), "the other tabs keep their places");

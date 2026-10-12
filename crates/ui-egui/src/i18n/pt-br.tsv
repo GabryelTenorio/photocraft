@@ -2622,6 +2622,9 @@
 cameraRaw	Light	Luz
 	Camera Raw Filter ({layer})	Filtro Camera Raw ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Abrir ({n})
+	Remove from Filmstrip	Remover da tira de filme
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Remover da tira de filme: a foto não é aberta; o arquivo permanece no disco
 cameraRaw	Lights	Claros
 cameraRaw	Darks	Escuros
 cameraRaw	Blacks	Pretos

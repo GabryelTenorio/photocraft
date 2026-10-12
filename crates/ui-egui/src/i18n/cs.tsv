@@ -2207,6 +2207,9 @@ cameraRaw	Light	Světlo
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Filtr Camera Raw ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Otevřít ({n})
+	Remove from Filmstrip	Odebrat z filmového pásu
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Odebrat z filmového pásu: fotografie se neotevře; soubor zůstane na disku
 cameraRaw	Red	Červené
 cameraRaw	Orange	Oranžové
 cameraRaw	Yellow	Žluté

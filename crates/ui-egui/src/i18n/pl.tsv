@@ -3338,6 +3338,9 @@ cameraRaw	Roughness	Chropowatość
 	More documents	Więcej dokumentów
 	Developing {name}	Wywoływanie {name}
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Otwórz ({n})
+	Remove from Filmstrip	Usuń z paska filmu
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Usuń z paska filmu: zdjęcie nie zostanie otwarte; plik pozostaje na dysku
 	Show/Hide All Panels	Pokaż/ukryj wszystkie panele
 	Show/Hide Panels	Pokaż/ukryj panele
 	Could not open	Nie można otworzyć

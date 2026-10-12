@@ -2072,6 +2072,9 @@ cameraRaw	Light	光线
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Camera Raw 滤镜（{layer}）
 	Camera Raw ({name})	Camera Raw（{name}）
+	Open ({n})	打开 ({n})
+	Remove from Filmstrip	从胶片栏中移除
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	从胶片栏中移除：不会打开此照片；文件仍保留在磁盘上
 cameraRaw	Lights	亮调
 cameraRaw	Darks	暗调
 cameraRaw	Blacks	黑色色阶

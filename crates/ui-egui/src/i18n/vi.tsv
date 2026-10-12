@@ -1933,6 +1933,9 @@ layers	Fill:	Độ tô:
 	Selected	Đã chọn
 	Open	Mở
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Mở ({n})
+	Remove from Filmstrip	Gỡ khỏi dải phim
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Gỡ khỏi dải phim: ảnh sẽ không được mở; tệp vẫn còn trên đĩa
 	Developing {name}	Đang xử lý {name}
 
 # Phase 5.1 — tools / paths / assets / filters / layers

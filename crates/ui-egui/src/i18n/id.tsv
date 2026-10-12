@@ -2604,6 +2604,9 @@
 cameraRaw	Light	Cahaya
 	Camera Raw Filter ({layer})	Filter Camera Raw ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	Buka ({n})
+	Remove from Filmstrip	Keluarkan dari strip film
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Keluarkan dari strip film: foto tidak dibuka; berkas tetap ada di disk
 cameraRaw	Lights	Nada Terang
 cameraRaw	Darks	Nada Gelap
 cameraRaw	Blacks	Hitam

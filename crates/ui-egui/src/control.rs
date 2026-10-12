@@ -353,7 +353,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             // than click a menu. Only that continuation may pass its own modal gate.
             // engine.execute is deliberately not subject to the UI's menu-click semantics.
             let camera_raw_continuation = id == "filter.cameraRaw"
-                && app.camera_raw.is_some()
+                && crate::camera_raw_ui::is_open(app)
                 && params.as_object().is_some_and(|fields| fields.len() == 1 && fields.get("ui").is_some_and(Value::is_object))
                 && app.ui.dialogs.is_empty()
                 && app.discard.is_none()
@@ -1242,7 +1242,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "brush": {"size": app.session.tools.brush.size, "hardness": app.session.tools.brush.hardness, "opacity": app.session.tools.brush.opacity},
         "distort": app.distort.describe(),
         "jobs": crate::jobs_ui::inspect(app),
-        "cameraRaw": app.camera_raw.as_ref().map(|d| d.describe(&app.ui.camera_raw_scope, &app.ui.camera_raw_preview)),
+        "cameraRaw": crate::camera_raw_ui::state(app),
     })
 }
 

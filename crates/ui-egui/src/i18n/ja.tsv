@@ -2186,6 +2186,9 @@ cameraRaw	Light	ライト
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Camera Raw フィルター ({layer})
 	Camera Raw ({name})	Camera Raw ({name})
+	Open ({n})	開く ({n})
+	Remove from Filmstrip	フィルムストリップから除外
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	フィルムストリップから除外：写真は開かれません。ファイルはディスクに残ります
 cameraRaw	Lights	明部
 cameraRaw	Blending	ブレンド
 cameraRaw	Blacks	黒レベル
