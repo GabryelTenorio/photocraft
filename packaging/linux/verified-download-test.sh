@@ -16,20 +16,21 @@ source_asset="$TMP/source.AppImage"
 cache="$TMP/cached.AppImage"
 printf '#!/bin/sh\nexit 0\n' >"$source_asset"
 expected="$(sha256 "$source_asset")"
+# Setup uses the external binary because failure-path tests below shadow the chmod function.
 
 # Offline preseed: a valid 0644 cache must not try the unavailable URL and must become runnable.
 cp "$source_asset" "$cache"
-command chmod 644 "$cache"
+/bin/chmod 644 "$cache"
 download_verified "file://$TMP/unavailable" "$cache" "$expected" true || fail "offline cache was not reused"
 [ -x "$cache" ] || fail "valid preseed did not become executable"
 
 # If a valid but non-executable cache cannot be chmod'd, fail here rather than at invocation.
-command chmod 644 "$cache"
+/bin/chmod 644 "$cache"
 chmod() { return 1; }
 if err="$(download_verified "file://$TMP/unavailable" "$cache" "$expected" true 2>&1)"; then fail "unfixable cache was accepted"; fi
 case "$err" in *"verified asset is not executable and cannot be chmod'd: $cache"*) ;; *) fail "wrong cache error: $err" ;; esac
 unset -f chmod
-command chmod 755 "$cache"
+/bin/chmod 755 "$cache"
 
 # A verified, executable cache can be owned by another user; do not try to chmod it again.
 chmod() { fail "chmod called for an already executable cache"; }
@@ -39,7 +40,7 @@ unset -f chmod
 # The type2 runtime is read as data; a valid 0644 preseed must remain usable as-is.
 runtime="$TMP/runtime"
 cp "$source_asset" "$runtime"
-command chmod 644 "$runtime"
+/bin/chmod 644 "$runtime"
 chmod() { fail "chmod called for a readable runtime cache"; }
 download_verified "file://$TMP/unavailable" "$runtime" "$expected" || fail "readable runtime was not reused"
 unset -f chmod
@@ -66,9 +67,9 @@ if download_verified "file://$source_asset" "$bad" "$wrong_digest" >/dev/null 2>
 [ ! -e "$bad" ] || fail "wrong-digest download left a cache entry"
 
 verify_appimagetool_override "$cache" "$expected" 1.9.1 x86_64 || fail "valid override rejected"
-command chmod 644 "$cache"
+/bin/chmod 644 "$cache"
 if verify_appimagetool_override "$cache" "$expected" 1.9.1 x86_64 >/dev/null 2>&1; then fail "non-executable override accepted"; fi
-command chmod 755 "$cache"
+/bin/chmod 755 "$cache"
 if verify_appimagetool_override "$cache" "$wrong_digest" 1.9.1 x86_64 >/dev/null 2>&1; then fail "wrong-digest override accepted"; fi
 
 echo "verified AppImage tooling ok"
