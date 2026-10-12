@@ -128,10 +128,22 @@ fn edit(s: &mut Session, p: &Value) -> Result<Value> {
                 Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
                 _ => vec![req_str(p, "preset", CMD)?.to_string()],
             };
-            for k in &keys {
-                super::call(s, "pattern.delete", json!({"pattern": k}))?;
+            if keys.is_empty() {
+                return Err(bad(CMD, "missing `preset`"));
             }
-            json!({"deleted": keys.len()})
+            // Resolve every reference first. Deleting as we go left the library partly
+            // removed when a later name was missing, and Undo cannot put a preset back (#4103).
+            let mut ids = Vec::new();
+            for k in &keys {
+                let id = crate::pattern_cmds::resolve(s, k).map(|q| q.id).ok_or_else(|| bad(CMD, format!("no pattern \"{k}\"")))?;
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            for id in &ids {
+                super::call(s, "pattern.delete", json!({"pattern": id}))?;
+            }
+            json!({"deleted": ids.len()})
         }
         "deleteGroup" => {
             // Deleting a folder deletes its patterns, as in Photoshop.
