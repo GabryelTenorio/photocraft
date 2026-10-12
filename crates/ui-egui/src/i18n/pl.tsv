@@ -389,6 +389,7 @@
 	Select Linked Layers	Zaznacz połączone warstwy
 	Merge Layers	Scal warstwy
 	Merge Down	Scal w dół
+	Merge Group	Scal grupę
 	Merge Visible	Scal widoczne
 	Stamp Visible	Odbij widoczne
 	Select Layer Above	Zaznacz warstwę powyżej
@@ -3790,3 +3791,6 @@ cameraRaw	Type	Typ
 	Hirakawa–Parks: the cleanest edges and the least colour fringing, the slowest.	Hirakawa–Parks: najczystsze krawędzie i najmniej barwnych obwódek, najwolniejsza.
 	Gradient-corrected interpolation: sharp and fast, with some colour fringing on fine detail.	Interpolacja z korekcją gradientu: ostra i szybka, z niewielkimi barwnymi obwódkami na drobnych szczegółach.
 	The fastest and the softest, with colour fringing on fine detail.	Najszybsza i najmiększa, z barwnymi obwódkami na drobnych szczegółach.
+	Remove after each stroke	Usuwaj po każdym pociągnięciu
+	Apply the removal ({key})	Zastosuj usuwanie ({key})
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Pociągnięcia do usunięcia: {n} (Enter stosuje, Esc anuluje)
