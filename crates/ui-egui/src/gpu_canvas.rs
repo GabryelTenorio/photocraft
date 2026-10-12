@@ -353,6 +353,20 @@ impl GpuCanvas {
         if size[0] == 0 || size[1] == 0 {
             return Err(photocraft_gpu::Unsupported("empty document".into()));
         }
+        // Android diagnostic isolation: larger documents may terminate the
+        // native process inside the GPU compositor on some Vulkan drivers.
+        // Keep GPU canvas texture rendering/uploads active, but compose
+        // these documents on CPU until the failing GPU stage is identified.
+        // PHOTOCRAFT_ANDROID_GPU_COMPOSITOR=1 explicitly opts into the
+        // original compositor for reproducing and tracing the crash.
+        #[cfg(target_os = "android")]
+        if (size[0] > 64 || size[1] > 64)
+            && option_env!("PHOTOCRAFT_ANDROID_GPU_COMPOSITOR") != Some("1")
+        {
+            return Err(photocraft_gpu::Unsupported(
+                "Android diagnostic: CPU composition for documents over 64px".into(),
+            ));
+        }
         if std::env::var_os("PHOTOCRAFT_CPU_COMPOSE").is_some() {
             return Err(photocraft_gpu::Unsupported("disabled by PHOTOCRAFT_CPU_COMPOSE".into()));
         }
