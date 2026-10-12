@@ -20,7 +20,12 @@ pub fn import_flat(name: &str, bytes: &[u8]) -> Result<ImportResult, IoError> {
         return import_tiff_page(name, bytes, None);
     }
     let img = codecs::decode(bytes)?;
+    let bmp_palette = if codecs::detect(bytes) == Some(Format::Bmp) { codecs::bmp_palette(bytes)? } else { None };
     let mut r = image_to_document(name, &img)?;
+    if let Some(colors) = bmp_palette {
+        r.document.mode = ColorMode::Indexed;
+        r.document.color_table = Some(photocraft_doc::ColorTable { colors, transparent: None });
+    }
     if codecs::detect(bytes) == Some(Format::Tga) && img.layout() == ChannelLayout::Rgba {
         tga_alpha_to_channel(&mut r.document)?;
     }
