@@ -73,6 +73,45 @@ fn avif_never_readable() {
 }
 
 #[test]
+fn jxl_is_detected_always_and_readable_only_with_the_feature() {
+    // Both leading forms: the bare codestream and the ISO BMFF container.
+    assert_eq!(detect(&[0xFF, 0x0A, 0x00, 0x00]), Some(Format::Jxl));
+    assert_eq!(detect(b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"), Some(Format::Jxl));
+    assert_eq!(from_extension("holiday.jxl"), Some(Format::Jxl));
+    assert_eq!(caps(Format::Jxl).read, cfg!(feature = "jxl"));
+    assert!(!caps(Format::Jxl).write);
+    assert!(ASYMMETRIC_EXCEPTIONS.iter().any(|(f, _)| *f == Format::Jxl));
+    // Either way a bare header is an error, never a panic.
+    assert!(decode_as(Format::Jxl, &[0xFF, 0x0A]).is_err());
+}
+
+#[test]
+fn pcx_is_detected_always_and_readable_only_with_the_feature() {
+    let mut header = vec![0u8; 128];
+    header[0] = 0x0A; // manufacturer
+    header[2] = 1; // RLE
+    header[3] = 8; // bits per pixel
+    header[65] = 1; // planes
+    assert_eq!(detect(&header), Some(Format::Pcx));
+    assert_eq!(from_extension("scan.PCX"), Some(Format::Pcx));
+    assert_eq!(caps(Format::Pcx).read, cfg!(feature = "pcx"));
+    assert!(!caps(Format::Pcx).write);
+    assert!(ASYMMETRIC_EXCEPTIONS.iter().any(|(f, _)| *f == Format::Pcx));
+    // Either way a bare header is an error, never a panic.
+    assert!(decode_as(Format::Pcx, &header).is_err());
+}
+
+#[test]
+fn a_stray_leading_0x0a_is_not_taken_for_pcx() {
+    // 0x0A is a common byte; only a whole plausible PCX header counts as one.
+    let mut other = vec![0u8; 128];
+    other[0] = 0x0A;
+    other[2] = 9; // not an encoding PCX has
+    assert_ne!(detect(&other), Some(Format::Pcx));
+    assert_eq!(detect(&[0x0A]), None);
+}
+
+#[test]
 fn heif_is_detected_always_and_readable_only_with_the_feature() {
     let header = b"\0\0\0\x18ftypheic\0\0\0\0mif1heic";
     assert_eq!(detect(header), Some(Format::Heif));

@@ -21,6 +21,10 @@ pub enum Format {
     Hdr,
     /// Encode-only behind the `avif` feature; see [`ASYMMETRIC_EXCEPTIONS`].
     Avif,
+    /// JPEG XL decode behind the `jxl` feature; see [`ASYMMETRIC_EXCEPTIONS`].
+    Jxl,
+    /// PCX (ZSoft Paintbrush): read-only; see [`ASYMMETRIC_EXCEPTIONS`].
+    Pcx,
     /// HEIF/HEIC (HEVC-coded): read-only; see [`ASYMMETRIC_EXCEPTIONS`].
     Heif,
     /// FITS (Flexible Image Transport System), the astronomy format: gray or RGB image data.
@@ -62,6 +66,19 @@ pub const ASYMMETRIC_EXCEPTIONS: &[(Format, &str)] = &[
          until a pure-Rust AV1 decoder is viable. Only enabled with the non-default `avif` feature.",
     ),
     (
+        Format::Jxl,
+        "JPEG XL decode uses jxl-oxide (pure Rust, behind the non-default `jxl` feature), so .jxl \
+         photos open; no pure-Rust JPEG XL encoder exists yet, so write stays unsupported. Without \
+         the feature JXL is detected but neither read nor written.",
+    ),
+    (
+        Format::Pcx,
+        "PCX is a legacy ZSoft format nobody writes any more; the decoder is a small clean-room \
+         implementation of the published spec behind the non-default `pcx` feature, and adding an \
+         encoder for a format only museums use is not worth the surface. Without the feature PCX is \
+         detected but neither read nor written.",
+    ),
+    (
         Format::Heif,
         "HEIC decode uses heic-rs (pure Rust, in the optional photocraft-heif crate behind the \
          non-default `heif` feature, which official builds enable), so iPhone and Mac photos open; \
@@ -78,7 +95,7 @@ const ALL_LAYOUTS: &[ChannelLayout] = &[L::Gray, L::GrayA, L::Rgb, L::Rgba, L::C
 
 impl Format {
     /// Every format known to the crate (enabled or not).
-    pub const ALL: [Format; 15] = [
+    pub const ALL: [Format; 17] = [
         Format::Png,
         Format::Jpeg,
         Format::Tiff,
@@ -92,6 +109,8 @@ impl Format {
         Format::OpenExr,
         Format::Hdr,
         Format::Avif,
+        Format::Jxl,
+        Format::Pcx,
         Format::Heif,
         Format::Fits,
     ];
@@ -121,6 +140,8 @@ impl Format {
             Format::OpenExr => "OpenEXR",
             Format::Hdr => "Radiance HDR",
             Format::Avif => "AVIF",
+            Format::Jxl => "JXL",
+            Format::Pcx => "PCX",
             Format::Heif => "HEIF",
             Format::Fits => "FITS",
         }
@@ -143,6 +164,8 @@ impl Format {
             Format::OpenExr => &["exr"],
             Format::Hdr => &["hdr"],
             Format::Avif => &["avif"],
+            Format::Jxl => &["jxl"],
+            Format::Pcx => &["pcx"],
             Format::Heif => &["heic", "heif", "hif"],
             Format::Fits => &["fits", "fit", "fts"],
         }
@@ -163,6 +186,8 @@ impl Format {
             Format::OpenExr => "image/x-exr",
             Format::Hdr => "image/vnd.radiance",
             Format::Avif => "image/avif",
+            Format::Jxl => "image/jxl",
+            Format::Pcx => "image/pcx",
             Format::Heif => "image/heif",
             Format::Fits => "image/fits",
         }
@@ -211,6 +236,8 @@ pub fn caps(format: Format) -> FormatCaps {
         Format::OpenExr => FormatCaps { depths: &[S::F16, S::F32], layouts: RGB_GRAY, ..base },
         Format::Hdr => FormatCaps { depths: &[S::F32], layouts: &[L::Rgb], alpha: false, lossy: true, ..base },
         Format::Avif => FormatCaps { read: false, write: cfg!(feature = "avif"), lossy: true, ..base },
+        Format::Jxl => FormatCaps { read: cfg!(feature = "jxl"), write: false, depths: &[S::U8, S::U16], ..base },
+        Format::Pcx => FormatCaps { read: cfg!(feature = "pcx"), write: false, depths: &[S::U8, S::U16], ..base },
         Format::Heif => {
             FormatCaps { read: cfg!(feature = "heif"), write: false, depths: &[S::U8, S::U16], icc: true, exif: true, xmp: true, lossy: true, ..base }
         }
@@ -224,6 +251,11 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     let b = bytes;
     if b.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Some(Format::Png);
+    }
+    // JPEG XL is either a bare codestream or the ISO BMFF container that opens with its
+    // signature box, so both leading forms are recognised.
+    if b.starts_with(b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a") || b.starts_with(&[0xFF, 0x0A]) {
+        return Some(Format::Jxl);
     }
     if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
         return Some(Format::Jpeg);
@@ -266,10 +298,24 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     if b.starts_with(b"SIMPLE  =") {
         return Some(Format::Fits);
     }
+    if looks_like_pcx(b) {
+        return Some(Format::Pcx);
+    }
     if looks_like_tga(b) {
         return Some(Format::Tga);
     }
     None
+}
+
+/// PCX has no strong magic — only the manufacturer byte `0x0A`, which a stray file could easily
+/// start with. Require the rest of the header to be plausible as well, so an unrelated leading
+/// `0x0A` is not taken for a picture.
+fn looks_like_pcx(b: &[u8]) -> bool {
+    b.len() >= 128
+        && b[0] == 0x0A
+        && matches!(b[2], 0 | 1)         // encoding: none or RLE
+        && matches!(b[3], 1 | 2 | 4 | 8) // bits per pixel per plane
+        && matches!(b[65], 1..=4) // color planes
 }
 
 /// The `ftyp` brands: the major brand, then the compatible ones (the minor version between them is skipped).

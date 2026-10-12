@@ -17,6 +17,13 @@ avif = ["image/avif"]
 # distributors choose it at build time; official builds and CI enable it (`--features heif` on the
 # apps). Without it HEIF files are still recognised and opening one is a clear "unsupported" error.
 heif = ["dep:photocraft-heif"]
+# JPEG XL decode via jxl-oxide (pure-Rust decoder, dual-licensed MIT/Apache-2.0). Off by default so
+# distributors choose it at build time; official builds and CI enable it (`--features jxl` on the
+# apps). Without it JXL files are still recognised and opening one is a clear "unsupported" error.
+jxl = ["jxl-oxide"]
+# PCX (ZSoft Paintbrush; open spec, tiny decoder). Off by default for the same reason; without it a
+# .pcx file is still recognised and opening one is a clear "unsupported" error.
+pcx = []
 
 [dependencies]
 thiserror.workspace = true
@@ -31,6 +38,7 @@ image-webp = "0.2"
 zune-jpeg = "0.5"
 zune-core = "0.5"
 jpeg-encoder = "0.6"
+jxl-oxide = { version = "=0.12.6", default-features = false, features = ["rayon"], optional = true }
 photocraft-heif = { path = "../heif", optional = true }
 
 # Orientation is applied a band of rows per task on native; wasm stays single-threaded.

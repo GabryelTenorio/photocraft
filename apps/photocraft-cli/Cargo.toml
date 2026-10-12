@@ -10,6 +10,12 @@ build = "build.rs"
 # Open HEIC/HEIF photos (the optional photocraft-heif crate). Not default so distributors choose
 # it; official builds (CI, packaging/, release) build with `--features heif`.
 heif = ["photocraft-codecs/heif"]
+# Open JPEG XL photos (the optional `jxl` feature of photocraft-codecs). Not default so
+# distributors choose it; official builds opt in with `--features jxl`.
+jxl = ["photocraft-codecs/jxl"]
+# Open PCX photos (the optional `pcx` feature of photocraft-codecs). Not default so distributors
+# choose it; official builds opt in with `--features pcx`.
+pcx = ["photocraft-codecs/pcx"]
 
 [lints]
 workspace = true
