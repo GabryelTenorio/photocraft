@@ -1236,7 +1236,6 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
         warp_pointer(app, ev, tol, mods);
         return true;
     }
-    let no_distort = distort_refused(app, &t);
     let Some(pv) = app.transform_preview.as_mut() else { return false };
     match ev {
         ToolEvent::Down { x, y, .. } => {
@@ -1267,20 +1266,38 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
                 commit(app);
                 return true;
             }
-            let legacy = app.session.prefs().general.use_legacy_free_transform;
-            if let (Some(g), Some(s)) = (g, app.ui.transform.as_mut())
+            let adjusted = g.map(|g| drag_mods(app, &t, g.hit, mods));
+            if let (Some(g), Some(mods), Some(s)) = (g, adjusted, app.ui.transform.as_mut())
                 && distort_allows(t.mode, g.hit)
                 && (t.content_aware.is_none() || g.hit != Hit::Outside)
             {
-                let (mode, mods) = if no_distort { scale_not_distort(t.mode, g.hit, mods) } else { (t.mode, mods) };
-                let mut mods = mode_mods(mode, g.hit, legacy_mods(legacy, g.hit, mods));
-                // Content-Aware Scale: ⌘ neither skews nor distorts.
-                mods.command &= t.content_aware.is_none();
                 apply_drag(s, g, [x, y], mods);
             }
         }
     }
+    crate::snap_ui::retain_transform_lines(app, mods);
     true
+}
+
+/// The same effective modifiers drive the geometry and decide whether Ctrl is a distortion
+/// gesture rather than the ordinary snap override. Keep type and Content-Aware Scale refusals.
+fn drag_mods(app: &PhotocraftApp, t: &TransformSession, hit: Hit, mods: egui::Modifiers) -> egui::Modifiers {
+    let (mode, mods) = if distort_refused(app, t) { scale_not_distort(t.mode, hit, mods) } else { (t.mode, mods) };
+    let legacy = app.session.prefs().general.use_legacy_free_transform;
+    let mut mods = mode_mods(mode, hit, legacy_mods(legacy, hit, mods));
+    mods.command &= t.content_aware.is_none();
+    mods
+}
+
+/// Only a freely distorted corner can snap its proposed position. Perspective moves paired
+/// corners on one axis; Warp and Content-Aware Scale have their own constrained geometry.
+pub(crate) fn corner_distorts(app: &PhotocraftApp, index: usize, mods: egui::Modifiers) -> bool {
+    let Some(t) = app.ui.transform.as_ref() else { return false };
+    if t.quad.get(index).is_none() || t.warp.is_some() {
+        return false;
+    }
+    let mods = drag_mods(app, t, Hit::Corner(index), mods);
+    mods.command && !(mods.alt && mods.shift)
 }
 
 /// Editable type can be scaled, rotated and skewed but not distorted (#2630): the rule that greys
