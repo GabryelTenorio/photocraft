@@ -341,7 +341,9 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     warn_all(err, &remaining);
     if let Some(o) = a.get("--out") {
         let r = h.save(None, Some(Path::new(o)), a.get("--format"), &opts).map_err(|e| e.to_string())?;
-        let ws: Vec<String> = serde_json::from_value(r["warnings"].clone()).unwrap_or_default();
+        let mut ws: Vec<String> = serde_json::from_value(r["warnings"].clone()).unwrap_or_default();
+        // Saving also reports missing fonts; this run has already emitted those warnings.
+        ws.retain(|warning| !reported_fonts.contains(warning));
         warn_all(err, &ws);
     }
     Ok(())
