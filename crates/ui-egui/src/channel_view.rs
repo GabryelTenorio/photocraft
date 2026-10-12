@@ -399,8 +399,9 @@ mod tests {
         let refreshed = app.channel_views.get(&id).unwrap().source.as_ref().unwrap();
         assert!(!first_doc.ptr_eq(&refreshed.doc), "pixel edits invalidate the source");
         let st = app.session.active().unwrap();
-        assert_eq!(render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap()[0],
-                   render_with_source(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer, Some(&refreshed.pixels), &mut None).unwrap()[0]);
+        let expected = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap();
+        let actual = render_with_source(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer, Some(&refreshed.pixels), &mut None).unwrap();
+        assert_eq!(actual, expected, "reused pixels must preserve channel colours");
     }
 
     #[test]
