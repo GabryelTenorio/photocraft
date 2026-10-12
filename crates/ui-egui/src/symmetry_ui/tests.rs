@@ -188,3 +188,83 @@ fn overlays_follow_document_view_transforms_in_every_theme() {
     assert_eq!(crate::i18n::tr(de, "Dual Axis"), "Duale Achse");
     assert_eq!(crate::i18n::tr(de, "Transform Symmetry"), "Symmetrie transformieren");
 }
+/// The canvas at 100 %, a 400 x 300 document centred, with a dual-axis symmetry on Brush.
+fn canvas() -> Harness<'static, PhotocraftApp> {
+    let mut app = PhotocraftApp::new(Session::new(), crate::Services::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.sync_views();
+    app.ui.extras.rulers = false;
+    app.ui.tool = Tool::Brush;
+    app.run("paint.setSymmetry", json!({"mode":"dual"})).unwrap();
+    let mut h = Harness::builder().with_size(vec2(1000.0, 700.0)).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            let ctx = ui.ctx().clone();
+            if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                return;
+            }
+            crate::shortcuts::handle(app, &ctx);
+            egui::CentralPanel::default().show(ui, |ui| crate::canvas::document_area(app, ui));
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+    h.run_steps(4);
+    let v = &mut h.state_mut().ui.views[0];
+    v.zoom = 1.0;
+    v.center = [200.0, 150.0];
+    v.fit_pending = false;
+    h.run_steps(2);
+    h
+}
+fn hover(h: &mut Harness<'static, PhotocraftApp>, p: [f64; 2]) -> (egui::CursorIcon, bool) {
+    let app = h.state();
+    let v = &app.ui.views[0];
+    let xf = ViewXform {
+        rect: crate::rulers::content_rect(app, app.last_canvas_rect),
+        zoom: v.zoom,
+        center: v.center,
+        flip: app.ui.view.flip_horizontal,
+        rotation: v.rotation,
+        aspect: app.ui.view.display_aspect(),
+    };
+    h.event(egui::Event::PointerMoved(xf.to_screen(p[0] as f32, p[1] as f32)));
+    h.run_steps(2);
+    let out = &h.output().platform_output;
+    (out.cursor_icon, out.cursor_image.is_some())
+}
+/// #4495: while the symmetry is transformed the brush tip is not the cursor. The centre moves it,
+/// the handle turns it (the drawn arc, no tip bitmap), and elsewhere a press does nothing: the arrow.
+#[test]
+fn transform_shows_move_rotate_and_arrow_cursors_instead_of_the_brush_tip() {
+    let mut h = canvas();
+    let (_, tip) = hover(&mut h, [100.0, 100.0]);
+    assert!(tip, "outside the transform the brush tip is the cursor");
+    begin(h.state_mut()).unwrap();
+    h.run_steps(1);
+    let p = h.state().ui.symmetry_transform.as_ref().unwrap().preview;
+    assert_eq!(hover(&mut h, p.center), (egui::CursorIcon::Move, false), "centre");
+    assert_eq!(hover(&mut h, rotation_handle(p, [400.0, 300.0])), (egui::CursorIcon::None, false), "rotation handle");
+    assert_eq!(hover(&mut h, [100.0, 100.0]), (egui::CursorIcon::Default, false), "background");
+}
+/// #4495: Enter and Esc were the only way out of the transform. The options bar carries Photoshop's
+/// commit and cancel buttons while it is open, so a pen or a touch screen can finish it too.
+#[test]
+fn options_bar_commits_or_cancels_the_symmetry_transform() {
+    for commit in [true, false] {
+        let mut app = app();
+        app.session.edit_prefs(|p| p.interface.language = "en".into());
+        app.run("paint.setSymmetry", json!({"mode":"dual"})).unwrap();
+        let mut h = Harness::builder().with_size(vec2(1600.0, 300.0)).build_ui_state(|ui, app| crate::panels::options_bar(app, ui), app);
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+        h.run_steps(4);
+        assert!(h.query_by_label("Commit transform").is_none() && h.query_by_label("Cancel transform").is_none());
+        begin(h.state_mut()).unwrap();
+        h.state_mut().ui.symmetry_transform.as_mut().unwrap().preview.center = [60.0, 45.0];
+        h.run_steps(2);
+        h.get_by_label(if commit { "Commit transform" } else { "Cancel transform" }).click();
+        h.run_steps(2);
+        assert!(h.state().ui.symmetry_transform.is_none());
+        assert_eq!(preset(h.state()).unwrap().center, if commit { [60.0, 45.0] } else { [50.0, 40.0] });
+        assert!(h.query_by_label("Commit transform").is_none());
+    }
+}
