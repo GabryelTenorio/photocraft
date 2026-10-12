@@ -155,48 +155,32 @@ fn every_adjustment_layer_edits_through_properties() {
     }
 }
 
-/// #3264: wheel browsing previews without recording one edit per selected LUT.
+/// #3264: browsing LUTs previews without recording one edit per LUT. The list replaces the
+/// dropdown: Up/Down move through it and preview, a click or Enter applies once.
 #[test]
-fn color_lookup_picker_cycles_luts_with_the_mouse_wheel() {
+fn color_lookup_list_previews_luts_and_applies_one_edit() {
     let mut h = app_harness("colorLookup", "rgb", 8);
     let (_, before) = layer(&h);
     let Adjustment::ColorLookup { name: before_name, .. } = before else { panic!("Color Lookup layer") };
-    let label = label_rect(&h, "3D LUT File").expect("Color Lookup file label");
-    let at = h
-        .query_all_by_role(egui::accesskit::Role::ComboBox)
-        .min_by(|a, b| a.rect().center().distance(label.center()).total_cmp(&b.rect().center().distance(label.center())))
-        .expect("Color Lookup picker")
-        .rect()
-        .center();
     let steps = h.state().session.active().unwrap().history.past_len();
-    h.hover_at(at);
-    h.run_steps(1);
-    h.query_all_by_role(egui::accesskit::Role::ComboBox)
-        .min_by(|a, b| a.rect().center().distance(label.center()).total_cmp(&b.rect().center().distance(label.center())))
-        .expect("Color Lookup picker")
-        .click();
-    h.run_steps(1);
-    h.key_press(egui::Key::ArrowDown);
-    h.run_steps(1);
-    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps, "arrow navigation previews");
-    assert!(h.state().live_adjust.is_some(), "arrow navigation selects a preview LUT");
+    let first = photocraft_engine::adjust_cmds::LOOKS.first().expect("a built-in look").1;
+    h.get_by_label(first).click();
+    h.run_steps(4);
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "a click applies once");
+    assert!(h.state().live_adjust.is_none(), "the click is committed");
+    let steps = steps + 1;
     for _ in 0..3 {
-        h.event(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Line,
-            delta: vec2(0.0, -1.0),
-            phase: egui::TouchPhase::Move,
-            modifiers: Default::default(),
-        });
+        h.key_press(egui::Key::ArrowDown);
         h.run_steps(1);
     }
-    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps, "cycling remains a preview");
-    assert!(h.state().live_adjust.is_some(), "the selected LUT is previewed");
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps, "arrow navigation only previews");
+    assert!(h.state().live_adjust.is_some(), "the LUT under the cursor is previewed");
+    h.key_press(egui::Key::Enter);
     h.run_steps(4);
     let (_, after) = layer(&h);
     let Adjustment::ColorLookup { name: after_name, .. } = after else { panic!("Color Lookup layer") };
-    assert_ne!(after_name, before_name, "wheel browsing selects a different LUT");
-    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "one wheel gesture makes one adjustment edit");
-    assert!(h.state().live_adjust.is_none(), "the completed wheel gesture is committed");
+    assert_ne!(after_name, before_name, "browsing selects a different LUT");
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "Enter applies the previewed LUT as one edit");
 }
 
 fn curve_of(a: &Adjustment) -> Vec<[f32; 2]> {

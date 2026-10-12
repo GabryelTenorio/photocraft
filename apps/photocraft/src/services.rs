@@ -128,6 +128,10 @@ fn show_file_dialog(request: FileDialogRequest, parent: Option<&eframe::Frame>, 
             let picked = dialog.save_file();
             Box::pin(async move { picked.await.map(|file| FileDialogAnswer::SaveTo(path_of(&file))) })
         }
+        FileDialogRequest::Folder => {
+            let picked = dialog.pick_folder();
+            Box::pin(async move { picked.await.map(|dir| FileDialogAnswer::Paths(vec![path_of(&dir)])) })
+        }
     };
     // Without the thread the reply is dropped unanswered, which the app takes as Cancel.
     if let Err(e) = std::thread::Builder::new().name("file dialog".into()).spawn(move || {
@@ -178,6 +182,11 @@ pub fn prefs_file() -> Option<PathBuf> {
 /// `photocraft_engine::preset_store`).
 pub fn presets_dir() -> Option<PathBuf> {
     config_dir().map(|d| d.join("Presets"))
+}
+
+/// Installed LUT packs for Color Lookup (see `photocraft_engine::lut_library`).
+pub fn luts_dir() -> Option<PathBuf> {
+    presets_dir().map(|d| d.join("LUTs"))
 }
 
 fn recovery_dir() -> Option<PathBuf> {

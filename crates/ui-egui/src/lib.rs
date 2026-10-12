@@ -109,6 +109,7 @@ pub mod layer_tree_ui;
 mod layout_keys;
 pub mod links;
 pub mod liquify_ui;
+pub mod lut_library_ui;
 pub mod magnetic_lasso_ui;
 mod mask_props_ui;
 pub mod mask_thumbs_ui;
@@ -1617,6 +1618,7 @@ impl eframe::App for PhotocraftApp {
             self.automation_input = false;
             return;
         }
+        lut_library_ui::end_stale_preview(self, &ctx);
         let t0 = gpu_canvas::now_ms();
         // A text field's right-click menu, before any field is drawn (text_field_menu.rs).
         text_field_menu::show(&ctx);
