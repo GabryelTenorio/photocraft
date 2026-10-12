@@ -3612,6 +3612,20 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     if let Some(b) = layer_edges_rect(app, idx) {
         painter.set(layer_edges, egui::Shape::rect_stroke(xf.doc_rect(b), 0, Stroke::new(1.0, LAYER_EDGES), egui::StrokeKind::Outside));
     }
+    // A tool drag held past the canvas edge scrolls the view toward the pointer (#4183); the
+    // drag's next move then extends into what scrolled in.
+    if primary
+        && app.drag.is_some()
+        && tool != Tool::Hand
+        && !middle
+        && let Some(p) = ui.input(|i| i.pointer.primary_down().then(|| i.pointer.latest_pos()).flatten())
+    {
+        let step = crate::canvas_autoscroll::edge_step(p, rect, ui.input(|i| i.stable_dt));
+        let d = xf.unmap_vec(step) / (view.zoom / ppp);
+        if crate::canvas_autoscroll::scroll(&mut view, d, rect.size() / vec2(aspect, 1.0), ppp) {
+            ctx.request_repaint();
+        }
+    }
     // Scrollbars (scrollbars.rs): drawn over the canvas edges, they take the pointer there.
     let t0 = crate::gpu_canvas::now_ms();
     let before = view.center;
