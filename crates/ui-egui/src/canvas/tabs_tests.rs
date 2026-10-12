@@ -1,5 +1,6 @@
-//! #1276: a document tab strip with more tabs than fit keeps the active document's tab on the
-//! strip, shrinks and elides the others, and moves the rest into a » menu (whole app, real tree).
+//! #1276, #4487: a document tab strip with more tabs than fit keeps the active document's tab on
+//! the strip, keeps whole titles on the tabs it shows, and moves the rest into a » menu (whole
+//! app, real tree).
 
 use egui::vec2;
 use egui_kittest::Harness;
@@ -165,4 +166,38 @@ fn ctrl_tab_with_one_document_or_a_focused_field() {
         assert_eq!(bound.as_deref(), Some(sc));
     }
     assert!(!Focus::Widget.allows(&crate::shortcuts::parse("Tab").unwrap()), "a focused widget keeps plain Tab");
+}
+
+/// Whether any title painted on the strip was cut with '…'.
+fn elided_on_strip(h: &Harness<'_, PhotocraftApp>) -> bool {
+    fn elided(shape: &egui::Shape, strip: egui::Rect) -> bool {
+        match shape {
+            egui::Shape::Text(text) => text.galley.elided && strip.intersects(text.visual_bounding_rect()),
+            egui::Shape::Vec(shapes) => shapes.iter().any(|shape| elided(shape, strip)),
+            _ => false,
+        }
+    }
+    let strip = strip(h).rect;
+    h.output().shapes.iter().any(|shape| elided(&shape.shape, strip))
+}
+
+/// #4487: a crowded strip keeps whole names on the tabs it shows and moves the rest into the »
+/// menu instead of shrinking them all, and the menu lists every open document, as Photoshop's does.
+#[test]
+fn crowded_tabs_keep_their_whole_names_and_the_menu_lists_every_document() {
+    for theme in [ThemeKind::Pro, ThemeKind::Studio] {
+        let mut h = harness(14, theme);
+        let s = strip(&h);
+        assert!(s.tabs.len() > 1 && s.tabs.len() < 14, "{theme:?}: {} shown", s.tabs.len());
+        assert!(!elided_on_strip(&h), "{theme:?}: no tab title is cut");
+        let pro = crate::theme::Tokens::get(&h.ctx).pro;
+        let labels: Vec<String> = (0..14).map(|i| if pro { pro_tab_title(h.state(), i) } else { h.state().session.documents()[i].doc.name.clone() }).collect();
+        // A tab on the strip carries its document's name too: count, so the menu entry is what's seen.
+        let before: Vec<usize> = labels.iter().map(|l| h.query_all_by_label(l).count()).collect();
+        h.get_by_label("More documents").click();
+        h.run_steps(2);
+        for (i, label) in labels.iter().enumerate() {
+            assert_eq!(h.query_all_by_label(label).count(), before[i] + 1, "{theme:?}: document {i} is in the menu: {label}");
+        }
+    }
 }
