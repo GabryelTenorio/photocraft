@@ -917,7 +917,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                     events.push(ToolEvent::Move { x: q[0], y: q[1], pressure: pr });
                     ctx.request_repaint();
                 }
-            } else if resp.drag_started() || (resp.is_pointer_button_down_on() && d.cur.is_none()) {
+            } else if d.cur.is_none() && (resp.drag_started() || resp.is_pointer_button_down_on()) {
                 events.push(ToolEvent::Down { x: q[0], y: q[1], pressure: pr });
             } else if resp.dragged() || resp.is_pointer_button_down_on() {
                 let moved = d.cur.as_ref().is_some_and(|(_, l)| l[0] != q[0] || l[1] != q[1]);
@@ -1009,6 +1009,361 @@ fn draw_mesh(d: &LiquifyDialog, painter: &egui::Painter, area: ERect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn freeze_repro_frame(app: &mut PhotocraftApp, ctx: &egui::Context, events: Vec<egui::Event>) {
+        freeze_repro_frame_mods(app, ctx, events, egui::Modifiers::NONE);
+    }
+
+    fn freeze_repro_frame_mods(app: &mut PhotocraftApp, ctx: &egui::Context, mut events: Vec<egui::Event>, modifiers: egui::Modifiers) {
+        events.insert(0, egui::Event::ModifiersChanged(modifiers));
+        let input = egui::RawInput {
+            screen_rect: Some(ERect::from_min_size(Pos2::ZERO, vec2(1000.0, 700.0))),
+            time: Some(ctx.cumulative_frame_nr() as f64 / 60.0),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            crate::shortcuts::handle(app, ui.ctx());
+            show(app, ui.ctx());
+        });
+        out.textures_delta.clear();
+    }
+
+    fn freeze_repro_app(scale: f32) -> (PhotocraftApp, egui::Context) {
+        let ctx = egui::Context::default();
+        ctx.set_pixels_per_point(scale);
+        PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::ProMedium);
+        let mut app = app_with_layer();
+        crate::menus::invoke(&mut app, &ctx, "filter.liquify", json!({})).unwrap();
+        control(&mut app, &json!({"tool": "freeze", "size": 12, "density": 100, "pressure": 100, "rate": 100})).unwrap();
+        app.distort.liquify.as_mut().unwrap().zoom = 2.0;
+        app.distort.liquify.as_mut().unwrap().center = [60.0, 40.0];
+        for _ in 0..3 {
+            freeze_repro_frame(&mut app, &ctx, Vec::new());
+        }
+        assert_eq!(ctx.pixels_per_point(), scale);
+        (app, ctx)
+    }
+
+    fn freeze_repro_position(app: &PhotocraftApp, ctx: &egui::Context, point: [f64; 2]) -> Pos2 {
+        let screen = ctx.content_rect();
+        let area = ERect::from_min_max(pos2(screen.left() + LEFT_W, screen.top() + 30.0), pos2(screen.right() - RIGHT_W, screen.bottom()));
+        to_screen(app.distort.liquify.as_ref().unwrap(), area, point)
+    }
+
+    fn freeze_repro_drag(app: &mut PhotocraftApp, ctx: &egui::Context, start: [f64; 2], end: [f64; 2]) {
+        let from = freeze_repro_position(app, ctx, start);
+        let to = freeze_repro_position(app, ctx, end);
+        freeze_repro_frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(from),
+                egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
+            ],
+        );
+        assert!(app.distort.liquify.as_ref().unwrap().cur.is_some(), "the press began a real preview stroke");
+        freeze_repro_frame(app, ctx, vec![egui::Event::PointerMoved(to)]);
+        freeze_repro_frame(
+            app,
+            ctx,
+            vec![egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+        );
+        assert!(app.distort.liquify.as_ref().unwrap().cur.is_none());
+    }
+
+    fn freeze_repro_key(app: &mut PhotocraftApp, ctx: &egui::Context, key: egui::Key, modifiers: egui::Modifiers) {
+        freeze_repro_frame_mods(
+            app,
+            ctx,
+            [true, false].map(|pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers }).to_vec(),
+            modifiers,
+        );
+    }
+
+    #[test]
+    fn freeze_raw_preview_drag_connects_the_original_press_to_the_first_moved_point() {
+        let mut failed = Vec::new();
+        for scale in [1.0, 2.0] {
+            let (mut app, ctx) = freeze_repro_app(scale);
+            let doc = app.session.active().unwrap().doc.clone();
+            let past = app.session.active().unwrap().history.past_len();
+            let prefs = app.session.prefs().to_json();
+            freeze_repro_drag(&mut app, &ctx, [20.0, 40.0], [90.0, 40.0]);
+            let d = app.distort.liquify.as_ref().unwrap();
+            assert_eq!(d.strokes.len(), 1);
+            eprintln!(
+                "RAW scale{scale}: points={:?}, freeze start/middle/end={:?}",
+                d.strokes[0].points,
+                [d.field.freeze_at(20.0, 40.0), d.field.freeze_at(55.0, 40.0), d.field.freeze_at(90.0, 40.0)]
+            );
+            if d.field.freeze_at(55.0, 40.0) == 0.0 {
+                failed.push(scale);
+            }
+            assert!(std::sync::Arc::ptr_eq(&doc, &app.session.active().unwrap().doc));
+            assert_eq!(app.session.active().unwrap().history.past_len(), past);
+            assert_eq!(app.session.prefs().to_json(), prefs);
+        }
+        assert!(failed.is_empty(), "the actual preview drag left the middle unfrozen at scales {failed:?}");
+    }
+
+    #[test]
+    fn freeze_raw_preview_undo_retains_the_entire_previous_stroke() {
+        let mut failed = Vec::new();
+        for scale in [1.0, 2.0] {
+            let (mut app, ctx) = freeze_repro_app(scale);
+            let doc = app.session.active().unwrap().doc.clone();
+            let past = app.session.active().unwrap().history.past_len();
+            let prefs = app.session.prefs().to_json();
+            freeze_repro_drag(&mut app, &ctx, [20.0, 40.0], [90.0, 40.0]);
+            let first = app.distort.liquify.as_ref().unwrap().field.clone();
+            freeze_repro_drag(&mut app, &ctx, [20.0, 65.0], [90.0, 65.0]);
+            assert_eq!(app.distort.liquify.as_ref().unwrap().strokes.len(), 2);
+            freeze_repro_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key { key: egui::Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::COMMAND }],
+            );
+            let d = app.distort.liquify.as_ref().unwrap();
+            assert_eq!(d.strokes.len(), 1, "actual keyboard Undo removed just the second stroke");
+            eprintln!(
+                "UNDO scale{scale}: start {} -> {}, frozen nodes {} -> {}",
+                first.freeze_at(20.0, 40.0),
+                d.field.freeze_at(20.0, 40.0),
+                first.freeze.iter().filter(|v| **v > 0.0).count(),
+                d.field.freeze.iter().filter(|v| **v > 0.0).count()
+            );
+            if d.field != first {
+                failed.push(scale);
+            }
+            assert!(std::sync::Arc::ptr_eq(&doc, &app.session.active().unwrap().doc));
+            assert_eq!(app.session.active().unwrap().history.past_len(), past);
+            assert_eq!(app.session.prefs().to_json(), prefs);
+        }
+        assert!(failed.is_empty(), "Undo changed the remaining stroke at scales {failed:?}");
+    }
+
+    #[test]
+    fn freeze_direct_pointer_control_connects_and_replays_the_whole_stroke() {
+        let (mut app, _) = freeze_repro_app(1.0);
+        for ev in [ToolEvent::Down { x: 20.0, y: 40.0, pressure: 1.0 }, ToolEvent::Move { x: 90.0, y: 40.0, pressure: 1.0 }, ToolEvent::Up { x: 90.0, y: 40.0 }]
+        {
+            pointer(&mut app, ev, egui::Modifiers::NONE);
+        }
+        let d = app.distort.liquify.as_ref().unwrap();
+        assert_eq!(d.strokes.len(), 1);
+        assert!(d.field.freeze_at(55.0, 40.0) > 0.0, "the algorithm interpolates a long segment");
+        assert_eq!(d.field, LiquifyField::from_strokes(d.canvas, d.cell, &d.strokes), "recorded direct input replays exactly");
+    }
+
+    #[test]
+    fn freeze_raw_preview_multiple_moves_undo_and_redo_replay_exactly() {
+        for scale in [1.0, 2.0] {
+            let (mut app, ctx) = freeze_repro_app(scale);
+            let points = [[20.0, 20.0], [90.0, 20.0], [90.0, 60.0], [20.0, 60.0]];
+            let start = freeze_repro_position(&app, &ctx, points[0]);
+            freeze_repro_frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(start),
+                    egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
+                ],
+            );
+            for point in &points[1..] {
+                let position = freeze_repro_position(&app, &ctx, *point);
+                freeze_repro_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(position)]);
+            }
+            let end = freeze_repro_position(&app, &ctx, points[3]);
+            freeze_repro_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+            );
+            let d = app.distort.liquify.as_ref().unwrap();
+            assert_eq!(d.strokes[0].points, points.map(|p| vec![p[0], p[1], 1.0]).to_vec());
+            for (x, y) in [(55.0, 20.0), (90.0, 40.0), (55.0, 60.0)] {
+                assert!(d.field.freeze_at(x, y) > 0.0, "every long segment is connected");
+            }
+            let whole = d.field.clone();
+            assert_eq!(whole, LiquifyField::from_strokes(d.canvas, d.cell, &d.strokes));
+            freeze_repro_key(&mut app, &ctx, egui::Key::Z, egui::Modifiers::COMMAND);
+            let d = app.distort.liquify.as_ref().unwrap();
+            assert_eq!((d.strokes.len(), d.redo.len()), (0, 1));
+            assert!(d.field.freeze.iter().all(|v| *v == 0.0));
+            freeze_repro_key(&mut app, &ctx, egui::Key::Z, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
+            let d = app.distort.liquify.as_ref().unwrap();
+            assert_eq!((d.strokes.len(), d.redo.len()), (1, 0));
+            assert_eq!(d.field, whole, "actual keyboard Redo restores every dab");
+        }
+    }
+
+    #[test]
+    fn freeze_raw_preview_stationary_alt_tool_is_captured_at_the_press() {
+        let (mut app, ctx) = freeze_repro_app(1.0);
+        control(&mut app, &json!({"tool": "twirlCw", "size": 36})).unwrap();
+        let start = freeze_repro_position(&app, &ctx, [53.0, 40.0]);
+        freeze_repro_frame_mods(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::ALT },
+            ],
+            egui::Modifiers::ALT,
+        );
+        let before = app.distort.liquify.as_ref().unwrap().field.clone();
+        // Advance the existing dab clock without a wall-clock sleep; the held input is unchanged.
+        app.distort.liquify.as_mut().unwrap().last_dab -= 34.0;
+        freeze_repro_frame(&mut app, &ctx, Vec::new());
+        let d = app.distort.liquify.as_ref().unwrap();
+        assert_ne!(d.field, before, "a stationary held tool keeps working after Alt is released");
+        assert_eq!(d.cur.as_ref().unwrap().0.tool, LiquifyTool::TwirlCcw);
+        let end = freeze_repro_position(&app, &ctx, [75.0, 40.0]);
+        freeze_repro_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        freeze_repro_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+        );
+        let d = app.distort.liquify.as_ref().unwrap();
+        assert_eq!(d.opts.tool, LiquifyTool::TwirlCw);
+        assert_eq!(d.strokes.len(), 1);
+        assert_eq!(d.strokes[0].tool, LiquifyTool::TwirlCcw, "crossing the drag threshold must not recapture Alt");
+        assert_eq!(d.field, LiquifyField::from_strokes(d.canvas, d.cell, &d.strokes));
+    }
+
+    #[test]
+    fn freeze_raw_preview_lasso_keeps_its_polygon_and_alt_thaws() {
+        let (mut app, ctx) = freeze_repro_app(1.0);
+        control(&mut app, &json!({"tool": "lassoMask"})).unwrap();
+        for modifiers in [egui::Modifiers::NONE, egui::Modifiers::ALT] {
+            let points = [[20.0, 20.0], [90.0, 20.0], [90.0, 60.0], [20.0, 60.0]];
+            let start = freeze_repro_position(&app, &ctx, points[0]);
+            freeze_repro_frame_mods(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(start),
+                    egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers },
+                ],
+                modifiers,
+            );
+            assert!(app.distort.liquify.as_ref().unwrap().lasso.is_some());
+            for point in &points[1..] {
+                let position = freeze_repro_position(&app, &ctx, *point);
+                freeze_repro_frame_mods(&mut app, &ctx, vec![egui::Event::PointerMoved(position)], modifiers);
+            }
+            let end = freeze_repro_position(&app, &ctx, points[3]);
+            freeze_repro_frame_mods(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers }],
+                modifiers,
+            );
+            let d = app.distort.liquify.as_ref().unwrap();
+            assert!(d.lasso.is_none() && d.cur.is_none());
+            assert_eq!(d.strokes.last().unwrap().tool, LiquifyTool::LassoMask);
+            assert_eq!(d.field.freeze_at(55.0, 40.0), if modifiers.alt { 0.0 } else { 1.0 });
+            assert_eq!(d.field, LiquifyField::from_strokes(d.canvas, d.cell, &d.strokes));
+        }
+    }
+
+    #[test]
+    fn freeze_raw_preview_cancel_and_commit_use_the_existing_document_history() {
+        let (mut app, ctx) = freeze_repro_app(1.0);
+        let original = app.session.active().unwrap().doc.clone();
+        let past = app.session.active().unwrap().history.past_len();
+        control(&mut app, &json!({"tool": "forwardWarp", "size": 40})).unwrap();
+        freeze_repro_drag(&mut app, &ctx, [35.0, 40.0], [65.0, 40.0]);
+        assert!(app.distort.liquify.as_ref().unwrap().field.max_displacement() > 0.0);
+        freeze_repro_key(&mut app, &ctx, egui::Key::Escape, egui::Modifiers::NONE);
+        assert!(app.distort.liquify.is_none());
+        assert!(std::sync::Arc::ptr_eq(&original, &app.session.active().unwrap().doc));
+        assert_eq!(app.session.active().unwrap().history.past_len(), past);
+        crate::menus::invoke(&mut app, &ctx, "filter.liquify", json!({})).unwrap();
+        for _ in 0..3 {
+            freeze_repro_frame(&mut app, &ctx, Vec::new());
+        }
+        freeze_repro_drag(&mut app, &ctx, [35.0, 40.0], [65.0, 40.0]);
+        freeze_repro_key(&mut app, &ctx, egui::Key::Enter, egui::Modifiers::NONE);
+        assert!(app.distort.liquify.is_none());
+        assert_eq!(app.session.active().unwrap().history.past_len(), past + 1, "OK records exactly one command");
+        let edited = app.session.active().unwrap().doc.clone();
+        let layer = app.session.active().unwrap().active_layer.unwrap();
+        let pixels = |doc: &photocraft_doc::Document| doc.layer(layer).unwrap().surface().unwrap().read_region(Rect::new(0, 0, 120, 80));
+        assert_ne!(pixels(&edited), pixels(&original), "the recorded rendered stroke changes the committed pixels");
+        app.session.execute("edit.undo", json!({})).unwrap();
+        assert_eq!(pixels(&app.session.active().unwrap().doc), pixels(&original));
+    }
+
+    #[test]
+    fn freeze_full_app_preview_connects_and_preserves_the_mask_on_undo() {
+        let _gpu = photocraft_testkit::gpu_lock();
+        let mut failed = Vec::new();
+        for (theme, name) in [(crate::theme::ThemeKind::ProMedium, "proMedium"), (crate::theme::ThemeKind::StudioLight, "studioLight")] {
+            for scale in [1.0, 2.0] {
+                let mut h =
+                    egui_kittest::Harness::builder().with_size(vec2(1000.0, 700.0)).with_pixels_per_point(scale).with_max_steps(64).wgpu().build_eframe(
+                        move |cc| {
+                            PhotocraftApp::setup_context(&cc.egui_ctx, theme);
+                            let mut app = app_with_layer();
+                            app.session.execute("prefs.set", json!({"path": "interface.theme", "value": name})).unwrap();
+                            app
+                        },
+                    );
+                h.run_steps(3);
+                let ctx = h.ctx.clone();
+                crate::menus::invoke(h.state_mut(), &ctx, "filter.liquify", json!({})).unwrap();
+                control(h.state_mut(), &json!({"tool": "freeze", "size": 12, "density": 100, "pressure": 100, "rate": 100})).unwrap();
+                let d = h.state_mut().distort.liquify.as_mut().unwrap();
+                d.zoom = 2.0;
+                d.center = [60.0, 40.0];
+                h.run_steps(3);
+                assert_eq!(ctx.pixels_per_point(), scale);
+                let doc = h.state().session.active().unwrap().doc.clone();
+                let past = h.state().session.active().unwrap().history.past_len();
+                let prefs = h.state().session.prefs().to_json();
+                let save = |h: &mut egui_kittest::Harness<'_, PhotocraftApp>, phase: &str| {
+                    h.run_steps(2);
+                    let image = h.render().unwrap();
+                    assert_eq!((image.width(), image.height()), ((1000.0 * scale) as u32, (700.0 * scale) as u32));
+                    if let Some(dir) = std::env::var_os("PHOTOCRAFT_LIQUIFY_EVIDENCE_DIR") {
+                        std::fs::create_dir_all(&dir).unwrap();
+                        image.save(std::path::Path::new(&dir).join(format!("{name}-{scale}x-{phase}.png"))).unwrap();
+                    }
+                };
+                let drag = |h: &mut egui_kittest::Harness<'_, PhotocraftApp>, y| {
+                    let from = freeze_repro_position(h.state(), &ctx, [20.0, y]);
+                    let to = freeze_repro_position(h.state(), &ctx, [90.0, y]);
+                    h.event(egui::Event::PointerMoved(from));
+                    h.event(egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+                    h.step();
+                    h.event(egui::Event::PointerMoved(to));
+                    h.step();
+                    h.event(egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+                    h.step();
+                };
+                drag(&mut h, 40.0);
+                let first = h.state().distort.liquify.as_ref().unwrap().field.clone();
+                save(&mut h, "first");
+                drag(&mut h, 65.0);
+                save(&mut h, "second");
+                h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+                save(&mut h, "undo");
+                let d = h.state().distort.liquify.as_ref().unwrap();
+                assert_eq!((d.strokes.len(), d.redo.len()), (1, 1));
+                eprintln!("FULL APP {name}-{scale}x: midpoint {}, Undo preserved {}", first.freeze_at(55.0, 40.0), d.field == first);
+                if first.freeze_at(55.0, 40.0) == 0.0 || d.field != first {
+                    failed.push((name, scale));
+                }
+                assert!(std::sync::Arc::ptr_eq(&doc, &h.state().session.active().unwrap().doc));
+                assert_eq!(h.state().session.active().unwrap().history.past_len(), past);
+                assert_eq!(h.state().session.prefs().to_json(), prefs);
+            }
+        }
+        assert!(failed.is_empty(), "the full application lost Freeze mask pixels for {failed:?}");
+    }
 
     fn app_with_layer() -> PhotocraftApp {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
