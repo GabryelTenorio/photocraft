@@ -2691,3 +2691,17 @@ curves	Smooth	Glätten
 	Remove after each stroke	Nach jedem Strich entfernen
 	Apply the removal ({key})	Entfernen anwenden ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Striche zum Entfernen: {n} (Eingabe wendet an, Esc bricht ab)
+
+# Art History Brush (#213).
+	Art History Brush	Künstlerischer Protokollpinsel
+	Art History Brush Tool	Künstlerischer-Protokollpinsel-Werkzeug
+	Tight Short	Eng kurz
+	Tight Medium	Eng mittel
+	Tight Long	Eng lang
+	Loose Medium	Locker mittel
+	Loose Long	Locker lang
+	Dab	Tupfer
+	Tight Curl	Eng gewellt
+	Loose Curl	Locker gewellt
+	Area	Fläche
+	Stylized dabs from a history state	Stilisierte Tupfer aus einem Protokollzustand

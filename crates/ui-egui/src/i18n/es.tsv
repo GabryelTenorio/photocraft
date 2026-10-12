@@ -2732,3 +2732,17 @@ curves	Smooth	Suavizar
 	Remove after each stroke	Eliminar después de cada trazo
 	Apply the removal ({key})	Aplicar la eliminación ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Trazos por eliminar: {n} (Intro aplica, Esc cancela)
+
+# Art History Brush (#213).
+	Art History Brush	Pincel de historia artística
+	Art History Brush Tool	Herramienta Pincel de historia artística
+	Tight Short	Corto apretado
+	Tight Medium	Medio apretado
+	Tight Long	Largo apretado
+	Loose Medium	Medio suelto
+	Loose Long	Largo suelto
+	Dab	Toque
+	Tight Curl	Rizo apretado
+	Loose Curl	Rizo suelto
+	Area	Área
+	Stylized dabs from a history state	Toques estilizados desde un estado del historial

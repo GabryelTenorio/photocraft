@@ -2641,3 +2641,17 @@ curves	Smooth	平滑
 	Remove after each stroke	每次描邊後移除
 	Apply the removal ({key})	套用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描邊：{n}（Enter 套用，Esc 取消）
+
+# Art History Brush (#213).
+	Art History Brush	藝術歷史畫筆
+	Art History Brush Tool	藝術歷史畫筆工具
+	Tight Short	緊密短
+	Tight Medium	緊密中
+	Tight Long	緊密長
+	Loose Medium	寬鬆中
+	Loose Long	寬鬆長
+	Dab	點塗
+	Tight Curl	緊密捲曲
+	Loose Curl	寬鬆捲曲
+	Area	區域
+	Stylized dabs from a history state	從歷史狀態繪製風格化點塗
