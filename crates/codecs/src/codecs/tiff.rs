@@ -1026,13 +1026,16 @@ struct TagSet<'a> {
 
 /// Writes one image directory. (The `tiff` encoder only compresses through `write_data`, which
 /// takes every sample at once.)
-fn write_one<C, K>(enc: &mut TiffEncoder<&mut Cursor<Vec<u8>>, K>, w: u32, h: u32, data: &[C::Inner], tags: &TagSet<'_>) -> tiff::TiffResult<()>
+fn write_one<C, K>(enc: &mut TiffEncoder<&mut Cursor<Vec<u8>>, K>, w: u32, h: u32, rows_per_strip: u32, data: &[C::Inner], tags: &TagSet<'_>) -> tiff::TiffResult<()>
 where
     C: TiffColorType,
     [C::Inner]: TiffValue,
     K: TiffKind,
 {
     let mut im = enc.new_image::<C>(w, h)?;
+    // Override the `tiff` encoder's own `RowsPerStrip`, which is not clamped to the image (see
+    // `rows_per_strip`). Before any strip is written.
+    im.rows_per_strip(rows_per_strip)?;
     if let Some((x, y)) = tags.dpi {
         im.resolution_unit(ResolutionUnit::Inch);
         im.x_resolution(Rational { n: (x * 1000.0).round() as u32, d: 1000 });
@@ -1062,7 +1065,7 @@ where
 }
 
 /// Writes the image with the colour type matching its layout and sample type.
-fn write_image<K: TiffKind>(enc: &mut TiffEncoder<&mut Cursor<Vec<u8>>, K>, img: &Image, tags: &TagSet<'_>) -> tiff::TiffResult<()> {
+fn write_image<K: TiffKind>(enc: &mut TiffEncoder<&mut Cursor<Vec<u8>>, K>, img: &Image, rows_per_strip: u32, tags: &TagSet<'_>) -> tiff::TiffResult<()> {
     use ChannelLayout as L;
     use SampleType as S;
     let (w, h) = img.dimensions();
@@ -1070,26 +1073,45 @@ fn write_image<K: TiffKind>(enc: &mut TiffEncoder<&mut Cursor<Vec<u8>>, K>, img:
     let f32s = || img.to_f32_samples().unwrap_or_default();
     let d8 = img.data();
     match (img.layout(), img.sample_type()) {
-        (L::Gray, S::U8) => write_one::<colortype::Gray8, K>(enc, w, h, d8, tags),
-        (L::Gray, S::U16) => write_one::<colortype::Gray16, K>(enc, w, h, &u16s(), tags),
-        (L::Gray, S::F32) => write_one::<colortype::Gray32Float, K>(enc, w, h, &f32s(), tags),
-        (L::GrayA, S::U8) => write_one::<GrayA8, K>(enc, w, h, d8, tags),
-        (L::GrayA, S::U16) => write_one::<GrayA16, K>(enc, w, h, &u16s(), tags),
-        (L::GrayA, S::F32) => write_one::<GrayA32F, K>(enc, w, h, &f32s(), tags),
-        (L::Rgb, S::U8) => write_one::<colortype::RGB8, K>(enc, w, h, d8, tags),
-        (L::Rgb, S::U16) => write_one::<colortype::RGB16, K>(enc, w, h, &u16s(), tags),
-        (L::Rgb, S::F32) => write_one::<colortype::RGB32Float, K>(enc, w, h, &f32s(), tags),
-        (L::Rgba, S::U8) => write_one::<colortype::RGBA8, K>(enc, w, h, d8, tags),
-        (L::Rgba, S::U16) => write_one::<colortype::RGBA16, K>(enc, w, h, &u16s(), tags),
-        (L::Rgba, S::F32) => write_one::<colortype::RGBA32Float, K>(enc, w, h, &f32s(), tags),
-        (L::Cmyk, S::U8) => write_one::<colortype::CMYK8, K>(enc, w, h, d8, tags),
-        (L::Cmyk, S::U16) => write_one::<colortype::CMYK16, K>(enc, w, h, &u16s(), tags),
-        (L::Cmyk, S::F32) => write_one::<colortype::CMYK32Float, K>(enc, w, h, &f32s(), tags),
-        (L::CmykA, S::U8) => write_one::<colortype::CMYKA8, K>(enc, w, h, d8, tags),
-        (L::CmykA, S::U16) => write_one::<CmykA16, K>(enc, w, h, &u16s(), tags),
-        (L::CmykA, S::F32) => write_one::<CmykA32F, K>(enc, w, h, &f32s(), tags),
+        (L::Gray, S::U8) => write_one::<colortype::Gray8, K>(enc, w, h, rows_per_strip, d8, tags),
+        (L::Gray, S::U16) => write_one::<colortype::Gray16, K>(enc, w, h, rows_per_strip, &u16s(), tags),
+        (L::Gray, S::F32) => write_one::<colortype::Gray32Float, K>(enc, w, h, rows_per_strip, &f32s(), tags),
+        (L::GrayA, S::U8) => write_one::<GrayA8, K>(enc, w, h, rows_per_strip, d8, tags),
+        (L::GrayA, S::U16) => write_one::<GrayA16, K>(enc, w, h, rows_per_strip, &u16s(), tags),
+        (L::GrayA, S::F32) => write_one::<GrayA32F, K>(enc, w, h, rows_per_strip, &f32s(), tags),
+        (L::Rgb, S::U8) => write_one::<colortype::RGB8, K>(enc, w, h, rows_per_strip, d8, tags),
+        (L::Rgb, S::U16) => write_one::<colortype::RGB16, K>(enc, w, h, rows_per_strip, &u16s(), tags),
+        (L::Rgb, S::F32) => write_one::<colortype::RGB32Float, K>(enc, w, h, rows_per_strip, &f32s(), tags),
+        (L::Rgba, S::U8) => write_one::<colortype::RGBA8, K>(enc, w, h, rows_per_strip, d8, tags),
+        (L::Rgba, S::U16) => write_one::<colortype::RGBA16, K>(enc, w, h, rows_per_strip, &u16s(), tags),
+        (L::Rgba, S::F32) => write_one::<colortype::RGBA32Float, K>(enc, w, h, rows_per_strip, &f32s(), tags),
+        (L::Cmyk, S::U8) => write_one::<colortype::CMYK8, K>(enc, w, h, rows_per_strip, d8, tags),
+        (L::Cmyk, S::U16) => write_one::<colortype::CMYK16, K>(enc, w, h, rows_per_strip, &u16s(), tags),
+        (L::Cmyk, S::F32) => write_one::<colortype::CMYK32Float, K>(enc, w, h, rows_per_strip, &f32s(), tags),
+        (L::CmykA, S::U8) => write_one::<colortype::CMYKA8, K>(enc, w, h, rows_per_strip, d8, tags),
+        (L::CmykA, S::U16) => write_one::<CmykA16, K>(enc, w, h, rows_per_strip, &u16s(), tags),
+        (L::CmykA, S::F32) => write_one::<CmykA32F, K>(enc, w, h, rows_per_strip, &f32s(), tags),
         (l, s) => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("unsupported {l:?} {s:?}")).into()),
     }
+}
+
+/// Rows per strip to write.
+///
+/// The `tiff` encoder sizes a strip for about 1 MB of samples but never clamps the row count to
+/// the image, so a short image declares more rows per strip than it has rows (`RowsPerStrip` >
+/// `ImageLength`): a 37x23 image came out with `RowsPerStrip` 9010. The tag is then inconsistent
+/// with `ImageLength`, and a reader that trusts `RowsPerStrip` instead of `StripByteCounts` reads
+/// past the end of the strip. Photoshop and libtiff write `min(rows, height)`; do the same, so a
+/// small image is one strip of its own height. PackBits must not compress across a row boundary,
+/// so it stays one row per strip.
+fn rows_per_strip(img: &Image, compression: TiffCompression) -> u32 {
+    if matches!(compression, TiffCompression::PackBits) {
+        return 1;
+    }
+    let (w, h) = img.dimensions();
+    let bytes_per_row = u64::from(w) * img.layout().channels() as u64 * img.sample_type().bytes() as u64;
+    let rows = 1_000_000u64.div_ceil(bytes_per_row.max(1));
+    u32::try_from(rows.min(u64::from(h)).max(1)).unwrap_or(1)
 }
 
 /// Classic TIFF offsets are 32-bit: a file that may grow past this is written as BigTIFF.
@@ -1144,14 +1166,15 @@ pub(crate) fn encode(src: &Image, plan: Plan, opts: &EncodeOptions) -> Result<Ve
     // BigTIFF when asked, or when the file could pass the 4 GiB a classic TIFF can address. A
     // classic write that still runs out of 32-bit offsets (compression grew the data) is redone
     // as BigTIFF.
+    let rows = rows_per_strip(&img, opts.tiff_compression);
     let write = |big: bool| -> tiff::TiffResult<Vec<u8>> {
         let mut cursor = Cursor::new(Vec::new());
         if big {
             let mut enc = TiffEncoder::new_big(&mut cursor)?.with_compression(compression).with_predictor(predictor);
-            write_image::<TiffKindBig>(&mut enc, &img, &tags)?;
+            write_image::<TiffKindBig>(&mut enc, &img, rows, &tags)?;
         } else {
             let mut enc = TiffEncoder::new(&mut cursor)?.with_compression(compression).with_predictor(predictor);
-            write_image::<TiffKindStandard>(&mut enc, &img, &tags)?;
+            write_image::<TiffKindStandard>(&mut enc, &img, rows, &tags)?;
         }
         Ok(cursor.into_inner())
     };

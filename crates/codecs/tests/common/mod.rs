@@ -120,3 +120,59 @@ pub fn sample_icc(len: usize) -> Vec<u8> {
 }
 
 pub const SAMPLE_XMP: &str = "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"/></x:xmpmeta><?xpacket end=\"w\"?>";
+
+/// The first value of an unsigned integer tag in the first image directory of a (Big)TIFF, in
+/// either byte order. `None` when the tag or the bytes behind it are not there.
+pub fn tiff_tag_u64(bytes: &[u8], tag: u16) -> Option<u64> {
+    let le = match bytes.get(0..2)? {
+        b"II" => true,
+        b"MM" => false,
+        _ => return None,
+    };
+    let u16_at = |o: usize| -> Option<u16> {
+        let s: [u8; 2] = bytes.get(o..o.checked_add(2)?)?.try_into().ok()?;
+        Some(if le { u16::from_le_bytes(s) } else { u16::from_be_bytes(s) })
+    };
+    let u32_at = |o: usize| -> Option<u32> {
+        let s: [u8; 4] = bytes.get(o..o.checked_add(4)?)?.try_into().ok()?;
+        Some(if le { u32::from_le_bytes(s) } else { u32::from_be_bytes(s) })
+    };
+    let u64_at = |o: usize| -> Option<u64> {
+        let s: [u8; 8] = bytes.get(o..o.checked_add(8)?)?.try_into().ok()?;
+        Some(if le { u64::from_le_bytes(s) } else { u64::from_be_bytes(s) })
+    };
+    let (big, ifd) = match u16_at(2)? {
+        42 => (false, usize::try_from(u32_at(4)?).ok()?),
+        43 => (true, usize::try_from(u64_at(8)?).ok()?),
+        _ => return None,
+    };
+    let (entry_len, first, inline, count) = if big { (20usize, ifd + 8, 8usize, u64_at(ifd)?) } else { (12, ifd + 2, 4, u64::from(u32_at(ifd)?)) };
+    for i in 0..count.min(4096) as usize {
+        let e = first.checked_add(i.checked_mul(entry_len)?)?;
+        if u16_at(e)? != tag {
+            continue;
+        }
+        let ty = u16_at(e.checked_add(2)?)?;
+        let n = if big { u64_at(e.checked_add(4)?)? } else { u64::from(u32_at(e.checked_add(4)?)?) };
+        if n == 0 {
+            return None;
+        }
+        let field = e.checked_add(if big { 12 } else { 8 })?;
+        let size = match ty {
+            1 | 2 | 6 | 7 => 1usize,
+            3 | 8 => 2,
+            4 | 9 | 11 | 13 => 4,
+            5 | 10 | 12 | 16 | 17 | 18 => 8,
+            _ => return None,
+        };
+        let at = if n as usize * size <= inline { field } else { usize::try_from(if big { u64_at(field)? } else { u64::from(u32_at(field)?) }).ok()? };
+        return match ty {
+            1 | 6 => bytes.get(at).map(|&b| u64::from(b)),
+            3 | 8 => u16_at(at).map(u64::from),
+            4 | 9 | 13 => u32_at(at).map(u64::from),
+            16..=18 => u64_at(at),
+            _ => None,
+        };
+    }
+    None
+}
