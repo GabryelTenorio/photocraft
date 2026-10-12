@@ -3534,3 +3534,6 @@ curves	Smooth	Làm mượt
 	Remove after each stroke	Xóa sau mỗi nét vẽ
 	Apply the removal ({key})	Áp dụng việc xóa ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Nét vẽ cần xóa: {n} (Enter áp dụng, Esc hủy)
+# Field Blur pins (#3373)
+	No pin selected	Chưa chọn ghim nào
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Bấm vào ảnh để thêm ghim; kéo ghim để di chuyển, hoặc kéo vòng của ghim để đổi độ mờ. Delete xóa ghim đã chọn.
