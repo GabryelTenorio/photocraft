@@ -604,6 +604,7 @@ fn doc_pixels_equal(a: &Document, b: &Document) -> bool {
         layers: _,
         channels,
         guides: _,
+        ruler_origin: _,
         selection: _,
         metadata: _,
         global_light,
