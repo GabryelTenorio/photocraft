@@ -3748,3 +3748,7 @@ curves	Smooth	Εξομάλυνση
 	Float Panel Group	Αποδέσμευση ομάδας πάνελ
 	Dock Panel Group	Αγκύρωση ομάδας πάνελ
 	Move Panel Group	Μετακίνηση ομάδας πάνελ
+	Float Document View	Αποδέσμευση προβολής εγγράφου
+	Dock Document View	Προσάρτηση προβολής εγγράφου
+	Resize Document View	Αλλαγή μεγέθους προβολής εγγράφου
+	Dock	Προσάρτηση

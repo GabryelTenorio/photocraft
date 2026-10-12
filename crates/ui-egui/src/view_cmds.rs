@@ -659,16 +659,27 @@ fn arrange(app: &mut PhotocraftApp, k: &str) -> Result<Value, String> {
     match k {
         "consolidateAllToTabs" => {
             app.ui.view.arrange = "tabs".into();
+            crate::document_docking::consolidate(app);
             app.ui.windows.clear();
             Ok(json!({"arrange": "tabs"}))
         }
-        "newWindowForDocument" | "floatInWindow" => {
+        "newWindowForDocument" => {
             let doc = app.session.active_index().ok_or("no document")?;
             Ok(json!({"window": float_window(app, doc, 0)}))
         }
+        "floatInWindow" => {
+            let doc = app.session.active_index().ok_or("no document")?;
+            crate::document_docking::detach(app, doc, None).map(|id| json!({"window":id}))
+        }
         "floatAllInWindows" | "cascade" => {
             let n = app.session.documents().len();
-            let ids: Vec<u64> = (0..n).map(|d| float_window(app, d, d)).collect();
+            if app.session.prefs().workspace_locked {
+                return Err("workspace is locked".into());
+            }
+            if n > 64 {
+                return Err("too many floating document views".into());
+            }
+            let ids: Vec<u64> = (0..n).map(|d| crate::document_docking::detach(app, d, None)).collect::<Result<_, _>>()?;
             Ok(json!({"windows": ids}))
         }
         "matchZoom" | "matchLocation" | "matchRotation" | "matchAll" => {
@@ -922,6 +933,7 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
         let r = app.run(id, params.clone());
         if r.is_ok() {
             app.ui.views = if id == "file.closeAll" { Vec::new() } else { keep.into_iter().collect() };
+            crate::document_docking::consolidate(app);
             app.ui.windows.clear();
             app.sync_views();
         }

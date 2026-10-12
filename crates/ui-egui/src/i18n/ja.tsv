@@ -3660,3 +3660,7 @@ curves	Smooth	スムーズ
 	Float Panel Group	パネルグループを分離
 	Dock Panel Group	パネルグループをドッキング
 	Move Panel Group	パネルグループを移動
+	Float Document View	ドキュメントビューをフローティング表示
+	Dock Document View	ドキュメントビューをドッキング
+	Resize Document View	ドキュメントビューのサイズを変更
+	Dock	ドッキング

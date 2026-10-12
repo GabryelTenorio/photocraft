@@ -3664,3 +3664,7 @@ navigator	Zoom	Zvětšení
 	Float Panel Group	Uvolnit skupinu panelů
 	Dock Panel Group	Ukotvit skupinu panelů
 	Move Panel Group	Přesunout skupinu panelů
+	Float Document View	Uvolnit zobrazení dokumentu
+	Dock Document View	Ukotvit zobrazení dokumentu
+	Resize Document View	Změnit velikost zobrazení dokumentu
+	Dock	Ukotvit

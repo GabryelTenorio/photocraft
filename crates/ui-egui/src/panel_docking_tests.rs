@@ -62,6 +62,7 @@ fn harness(app: PhotocraftApp, size: egui::Vec2) -> Harness<'static, PhotocraftA
             if !app.ui.dock_regions.enabled {
                 egui::CentralPanel::default().show(ui, |_| {});
             }
+            crate::document_docking::show(app, ui.ctx());
         },
         app,
     );
@@ -907,7 +908,7 @@ fn region_dividers_resize_through_commands_and_group_up_down_stay_on_their_side(
     app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
     let mut h = harness(app, vec2(1280.0, 800.0));
     let rendered = h.state().ui.dock_regions.render(h.state().ui.docking.as_ref().unwrap());
-    let left_path = rendered.splits.iter().find(|(_, target)| matches!(target, SplitTarget::Region(DockSide::Left))).unwrap().0;
+    let left_path = rendered.splits.iter().find(|(_, target)| matches!(target, SplitTarget::Region(DockHost::Workspace, DockSide::Left))).unwrap().0;
     let divider = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("split", left_path))).unwrap().rect.center();
     let width = canvas_region(&h).left();
     drag(&mut h, divider, divider + vec2(40.0, 0.0));
@@ -1224,4 +1225,261 @@ fn unchanged_first_slot_in_an_overflowing_float_preserves_hidden_tab_order() {
     h.run_steps(3);
     assert_eq!(group_members(h.state().ui.docking.as_ref().unwrap(), "layers"), before);
     assert_eq!(h.state().ui.docking.as_ref().unwrap().floating.len(), 1);
+}
+
+#[test]
+fn floating_memory_is_independent_of_dock_sizes_and_persists() {
+    let mut app = app();
+    app.run("window.panel.float", json!({"panel":"layers","width":355,"height":455})).unwrap();
+    for side in DockSide::ALL {
+        app.run("window.panel.dock", json!({"panel":"layers","side":side})).unwrap();
+        app.run("window.panel.layout", json!({"side":side,"size":700})).unwrap();
+        app.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+        let rect = app.ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels.contains(&"layers".into())).unwrap().rect;
+        assert_eq!(&rect[2..], &[355.0, 455.0]);
+        assert_eq!(app.ui.dock_regions.sizes[side.index()], 700.0);
+    }
+    let value = json!({"docking":app.ui.docking,"dockRegions":app.ui.dock_regions});
+    let mut restored = self::app();
+    crate::dock::apply(&mut restored, &value);
+    assert_eq!(restored.ui.dock_regions.floating_memory, app.ui.dock_regions.floating_memory);
+    restored.run("window.panel.layout", json!({"action":Action::<String>::MoveFloating{panel:"layers".into(),rect:[40.0,50.0,380.0,480.0]}})).unwrap();
+    restored.run("window.panel.dock", json!({"panel":"layers","scope":"document","side":"bottom"})).unwrap();
+    restored.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+    assert_eq!(restored.ui.dock_regions.floating_memory["layers"], [40.0, 50.0, 380.0, 480.0]);
+}
+
+#[test]
+fn live_preview_of_an_inactive_tab_preserves_selection_on_cancel() {
+    let mut app = app();
+    enable_workspace(&mut app);
+    let mut h = harness(app, vec2(1440.0, 1000.0));
+    let before = serde_json::to_value(h.state().ui.dock_tabs).unwrap();
+    let from = tab_rect(&h, "channels").center();
+    let to = from - vec2(400.0, 0.0);
+    hold_drag(&mut h, from, to);
+    assert_eq!(serde_json::to_value(h.state().ui.dock_tabs).unwrap(), before);
+    h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert_eq!(serde_json::to_value(h.state().ui.dock_tabs).unwrap(), before);
+    assert_eq!(group_members(h.state().ui.docking.as_ref().unwrap(), "layers"), ["layers", "channels", "paths"]);
+}
+
+#[test]
+fn document_host_ownership_is_independent_and_returns_on_redock() {
+    let mut app = app();
+    app.run("file.new", json!({"width":80,"height":60})).unwrap();
+    let doc = app.session.active().unwrap().doc.id.0;
+    app.run("window.panel.dock", json!({"panel":"color","scope":"document","side":"left"})).unwrap();
+    app.run("window.document.float", json!({"documentView":doc,"width":700,"height":500})).unwrap();
+    let inner_sizes = app.ui.dock_regions.sizes_for(DockHost::DocumentView(doc));
+    app.run("window.panel.layout", json!({"scope":"document","side":"left","size":350})).unwrap();
+    assert_eq!(app.ui.dock_regions.sizes_for(DockHost::DocumentView(doc)), inner_sizes);
+    assert_eq!(app.ui.dock_regions.host("color"), DockHost::Document);
+    for side in DockSide::ALL {
+        app.run("window.panel.dock", json!({"panel":"layers","scope":"document","documentView":doc,"side":side})).unwrap();
+        assert_eq!(app.ui.dock_regions.host("layers"), DockHost::DocumentView(doc));
+        let layout = app.ui.docking.as_ref().unwrap();
+        assert!(!app.ui.dock_regions.render(layout).layout.panels().contains(&&"layers".to_string()));
+        assert!(
+            app.ui
+                .dock_regions
+                .render_host(layout, DockHost::DocumentView(doc), &crate::document_docking::canvas_id(doc))
+                .layout
+                .panels()
+                .contains(&&"layers".to_string())
+        );
+    }
+    let preferred = app.ui.views[0].clone();
+    app.run("window.document.dock", json!({"documentView":doc})).unwrap();
+    assert!(!crate::document_docking::detached(&app, 0));
+    assert_eq!(app.ui.views[0], preferred);
+    assert_eq!(app.ui.dock_regions.host("layers"), DockHost::Document);
+    assert_eq!(app.ui.dock_regions.side("layers"), DockSide::Bottom);
+}
+
+#[test]
+fn malformed_document_and_host_commands_are_atomic() {
+    let mut app = app();
+    app.run("file.new", json!({"width":50,"height":50})).unwrap();
+    for (id, params) in [
+        ("window.document.float", json!({"width":-1})),
+        ("window.document.float", json!({"documentView":999999})),
+        ("window.document.geometry", json!({"width":800})),
+        ("window.document.float", json!({"x":"bad"})),
+        ("window.panel.dock", json!({"panel":"layers","side":"top","scope":"document","documentView":999999})),
+        ("window.panel.dock", json!({"panel":"layers","side":"top","scope":17})),
+        ("window.panel.layout", json!({"side":"left","size":-20,"scope":"document"})),
+    ] {
+        let before = serde_json::to_value(&app.ui).unwrap();
+        assert!(app.run(id, params).is_err(), "{id}");
+        assert_eq!(serde_json::to_value(&app.ui).unwrap(), before, "{id}");
+    }
+    app.session.edit_prefs(|p| p.workspace_locked = true);
+    assert!(app.run("window.document.float", json!({})).is_err());
+}
+
+#[test]
+fn pointer_inner_document_edges_match_measured_drop_layout() {
+    for side in DockSide::ALL {
+        let mut app = app();
+        app.run("file.new", json!({"width":80,"height":60})).unwrap();
+        app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let canvas = rendered_group(&h, CANVAS);
+        let to = match side {
+            DockSide::Left => egui::pos2(canvas.left() + 40.0, canvas.center().y),
+            DockSide::Right => egui::pos2(canvas.right() - 40.0, canvas.center().y),
+            DockSide::Top => egui::pos2(canvas.center().x, canvas.top() + 40.0),
+            DockSide::Bottom => egui::pos2(canvas.center().x, canvas.bottom() - 40.0),
+        };
+        let from = tab_rect(&h, "layers").center();
+        hold_drag(&mut h, from, to);
+        capture_insertion(&mut h, &format!("live-inner-{side:?}-drag"));
+        release_and_compare_preview(&mut h, to, "layers");
+        assert_eq!(h.state().ui.dock_regions.host("layers"), DockHost::Document);
+        assert_eq!(h.state().ui.dock_regions.side("layers"), side);
+        capture_insertion(&mut h, &format!("live-inner-{side:?}-settled"));
+    }
+}
+
+#[test]
+fn floating_document_host_accepts_pointer_drops_and_keeps_geometry_on_cancel() {
+    let mut app = app();
+    app.run("file.new", json!({"width":80,"height":60})).unwrap();
+    let id = app.session.active().unwrap().doc.id.0;
+    app.run("window.document.float", json!({"documentView":id,"x":50,"y":150,"width":650,"height":500})).unwrap();
+    let mut h = harness(app, vec2(1440.0, 1000.0));
+    let original = h.state().ui.floating_documents.clone();
+    let canvas = rendered_group(&h, &crate::document_docking::canvas_id(id));
+    let to = egui::pos2(canvas.right() - 40.0, canvas.center().y);
+    let from = tab_rect(&h, "layers").center();
+    hold_drag(&mut h, from, to);
+    capture_insertion(&mut h, "live-floating-document-drag");
+    release_and_compare_preview(&mut h, to, "layers");
+    assert_eq!(h.state().ui.dock_regions.host("layers"), DockHost::DocumentView(id));
+    assert_eq!(h.state().ui.floating_documents, original);
+    capture_insertion(&mut h, "live-floating-document-settled");
+}
+
+#[test]
+fn document_header_movement_and_resize_commit_only_on_release_and_cancel() {
+    let mut app = app();
+    app.run("file.new", json!({"width":80,"height":60})).unwrap();
+    let id = app.session.active().unwrap().doc.id.0;
+    app.run("window.document.float", json!({"x":70,"y":150,"width":600,"height":500})).unwrap();
+    let mut h = harness(app, vec2(1440.0, 1000.0));
+    for name in ["header", "corner"] {
+        let original = h.state().ui.floating_documents.clone();
+        let control = if name == "header" { egui::Id::new(("document-header", id)) } else { egui::Id::new(("document-resize", id, "corner")) };
+        let from = h.ctx.read_response(control).unwrap().rect.center();
+        hold_drag(&mut h, from, from + vec2(60.0, 40.0));
+        assert_eq!(h.state().ui.floating_documents, original, "transient {name} must not modify saved geometry");
+        h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+        h.event(Event::PointerButton { pos: from + vec2(60.0, 40.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.run_steps(2);
+        assert_eq!(h.state().ui.floating_documents, original);
+        let from = h.ctx.read_response(control).unwrap().rect.center();
+        drag(&mut h, from, from + vec2(60.0, 40.0));
+        let rect = h.state().ui.floating_documents[&id];
+        let old = original[&id];
+        if name == "header" {
+            assert_eq!(&rect[..2], &[old[0] + 60.0, old[1] + 40.0]);
+        } else {
+            assert_eq!(&rect[2..], &[old[2] + 60.0, old[3] + 40.0]);
+        }
+    }
+}
+
+#[test]
+fn document_tab_detachment_redocking_and_stable_identity_after_reorder() {
+    let mut app = app();
+    for _ in 0..2 {
+        app.run("file.new", json!({"width":80,"height":60})).unwrap();
+    }
+    enable_workspace(&mut app);
+    let id = app.session.documents()[0].doc.id.0;
+    let mut h = harness(app, vec2(1440.0, 1000.0));
+    let tab = h.state().tab_strip.as_ref().unwrap().tabs.iter().find(|(i, _)| *i == 0).unwrap().1;
+    drag(&mut h, tab.center(), tab.center() + vec2(120.0, 180.0));
+    assert!(h.state().ui.floating_documents.contains_key(&id));
+    assert!(!h.state().tab_strip.as_ref().unwrap().tabs.iter().any(|(i, _)| *i == 0));
+    h.state_mut().run("document.move", json!({"document":0,"to":1})).unwrap();
+    h.run_steps(2);
+    assert!(crate::document_docking::detached(h.state(), 1));
+    let from = h.ctx.read_response(egui::Id::new(("document-header", id))).unwrap().rect.center();
+    let to = h.state().tab_strip.as_ref().unwrap().rect.right_center() - vec2(20.0, 0.0);
+    drag(&mut h, from, to);
+    assert!(!h.state().ui.floating_documents.contains_key(&id));
+    assert_eq!(h.state().session.documents().len(), 2);
+    h.state_mut().run("window.document.float", json!({"documentView":id,"width":680,"height":420})).unwrap();
+    h.state_mut().run("window.document.dock", json!({"documentView":id})).unwrap();
+    h.run_steps(2);
+    let tab = h.state().tab_strip.as_ref().unwrap().tabs.iter().find(|(i, _)| *i == 1).unwrap().1;
+    drag(&mut h, tab.center(), tab.center() + vec2(80.0, 150.0));
+    assert_eq!(&h.state().ui.floating_documents[&id][2..], &[680.0, 420.0]);
+    h.state_mut().run("window.panel.dock", json!({"panel":"color","scope":"document","documentView":id,"side":"top"})).unwrap();
+    h.state_mut().run("file.close", json!({"document":1})).unwrap();
+    h.run_steps(2);
+    assert!(!h.state().ui.floating_documents.contains_key(&id));
+    assert_eq!(h.state().ui.dock_regions.host("color"), DockHost::Document);
+    assert_eq!(h.state().ui.dock_regions.side("color"), DockSide::Top);
+}
+
+#[test]
+fn capture_live_document_docking_themes() {
+    let Some(directory) = std::env::var_os("PHOTOCRAFT_LIVE_DOCK_FIXTURES").map(std::path::PathBuf::from) else {
+        return;
+    };
+    std::fs::create_dir_all(&directory).unwrap();
+    for theme in crate::theme::ThemeKind::ALL {
+        for size in [vec2(960.0, 700.0), vec2(1440.0, 1000.0)] {
+            let mut app = app();
+            app.run("file.new", json!({"width":120,"height":90})).unwrap();
+            app.ui.theme = theme;
+            let id = app.session.active().unwrap().doc.id.0;
+            app.run("window.document.float", json!({"x":30,"y":140,"width":600,"height":450})).unwrap();
+            app.run("window.panel.dock", json!({"panel":"color","scope":"document","documentView":id,"side":"left"})).unwrap();
+            app.run("window.panel.dock", json!({"panel":"swatches","scope":"document","side":"bottom"})).unwrap();
+            let mut ready = false;
+            let mut h = Harness::builder().with_size(size).wgpu().build_ui_state(
+                move |ui, app: &mut PhotocraftApp| {
+                    if !ready {
+                        PhotocraftApp::setup_context(ui.ctx(), theme);
+                        ready = true;
+                        return;
+                    }
+                    crate::panels::right_dock(app, ui);
+                    crate::document_docking::show(app, ui.ctx());
+                },
+                app,
+            );
+            h.input_mut().max_texture_side = Some(8192);
+            h.run_steps(4);
+            let stem = format!("{}-{}", theme.label(), size.x as u32);
+            h.render().unwrap().save(directory.join(format!("{stem}-settled.png"))).unwrap();
+            let from = tab_rect(&h, "layers").center();
+            let canvas = rendered_group(&h, &crate::document_docking::canvas_id(id));
+            let to = egui::pos2(canvas.right() - 35.0, canvas.center().y);
+            hold_drag(&mut h, from, to);
+            h.render().unwrap().save(directory.join(format!("{stem}-drag.png"))).unwrap();
+        }
+    }
+}
+
+#[test]
+fn hidden_floating_panel_keeps_its_dock_return_and_floating_memory() {
+    let mut app = app();
+    app.run("window.panel.dock", json!({"panel":"properties","scope":"document","side":"bottom"})).unwrap();
+    app.run("window.panel.float", json!({"panel":"properties","width":345,"height":465})).unwrap();
+    app.run("window.panel.close", json!({"panel":"properties"})).unwrap();
+    app.run("window.panel.activate", json!({"panel":"properties"})).unwrap();
+    app.run("window.panel.dock", json!({"panel":"properties"})).unwrap();
+    assert_eq!(app.ui.dock_regions.host("properties"), DockHost::Document);
+    assert_eq!(app.ui.dock_regions.side("properties"), DockSide::Bottom);
+    app.run("window.panel.float", json!({"panel":"properties"})).unwrap();
+    assert_eq!(&app.ui.dock_regions.floating_memory["properties"][2..], &[345.0, 465.0]);
 }

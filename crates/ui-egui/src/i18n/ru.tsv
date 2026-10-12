@@ -2995,3 +2995,7 @@ curves	Smooth	Сгладить
 	Float Panel Group	Открепить группу панелей
 	Dock Panel Group	Закрепить группу панелей
 	Move Panel Group	Переместить группу панелей
+	Float Document View	Отделить вид документа
+	Dock Document View	Закрепить вид документа
+	Resize Document View	Изменить размер вида документа
+	Dock	Закрепить

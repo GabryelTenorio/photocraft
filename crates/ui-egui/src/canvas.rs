@@ -1682,8 +1682,9 @@ pub fn document_area(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 pub(crate) fn arranged_cells(app: &PhotocraftApp, rect: Rect) -> Option<Vec<(usize, Rect)>> {
     let idx = app.session.active_index()?;
     let n = app.session.documents().len();
-    let cells = crate::view_cmds::cells(&app.ui.view.arrange, rect, n)?;
-    let mut shown: Vec<(usize, Rect)> = (0..n).map(|k| (idx + k) % n).zip(cells).collect();
+    let visible: Vec<_> = (0..n).map(|k| (idx + k) % n).filter(|i| !crate::document_docking::detached(app, *i)).collect();
+    let cells = crate::view_cmds::cells(&app.ui.view.arrange, rect, visible.len())?;
+    let mut shown: Vec<(usize, Rect)> = visible.into_iter().zip(cells).collect();
     shown.sort_by_key(|(d, _)| *d);
     Some(shown)
 }
@@ -1722,8 +1723,18 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         crate::jobs_ui::open_card(app, ui, job);
         return;
     }
-    let Some(idx) = app.session.active_index() else { return };
+    let Some(idx) = app
+        .session
+        .active_index()
+        .filter(|i| !crate::document_docking::detached(app, *i))
+        .or_else(|| (0..n).find(|i| !crate::document_docking::detached(app, *i)))
+    else {
+        return;
+    };
     let rect = ui.available_rect_before_wrap();
+    if crate::document_docking::blank_source(app, ui.ctx(), idx) {
+        return;
+    }
     app.last_canvas_rect = rect;
     app.drop_canvas_rect = Some(rect);
     // Window › Arrange: tiled / n-up layouts show several documents side by side; the active one
@@ -1745,8 +1756,21 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         return;
     }
+    if app.session.active_index() != Some(idx) && ui.rect_contains_pointer(rect) && ui.input(|i| i.pointer.primary_pressed()) {
+        app.session.set_active(idx);
+    }
     let view = app.ui.views[idx].clone();
-    canvas_view(app, ui, idx, rect, view, true);
+    canvas_view(app, ui, idx, rect, view, app.session.active_index() == Some(idx));
+}
+
+fn fit_document_tabs(app: &PhotocraftApp, natural: &[f32], selected: usize, width: f32) -> crate::tab_strip::TabFit {
+    let visible: Vec<_> = natural.iter().enumerate().filter(|(i, _)| !crate::document_docking::detached(app, *i)).collect();
+    let widths: Vec<_> = visible.iter().map(|(_, w)| **w).collect();
+    let selected = visible.iter().position(|(i, _)| *i == selected).unwrap_or(0);
+    let mut fit = crate::tab_strip::fit(&widths, selected, width, DOC_TAB_MIN_W, crate::tab_strip::CHEVRON_W);
+    fit.shown = fit.shown.into_iter().filter_map(|(i, w)| visible.get(i).map(|(index, _)| (*index, w))).collect();
+    fit.overflow = fit.overflow.into_iter().filter_map(|i| visible.get(i).map(|(index, _)| *index)).collect();
+    fit
 }
 
 /// The tab strip; returns where its document tabs are.
@@ -1798,7 +1822,7 @@ fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         .map_or_else(|| app.session.active_index().unwrap_or(0), |p| tab_count + p);
     let frame = egui::Frame::NONE.fill(t.canvas).inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
         let (row, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), tab_h), Sense::hover());
-        let f = crate::tab_strip::fit(&natural, selected, row.width(), DOC_TAB_MIN_W, crate::tab_strip::CHEVRON_W);
+        let f = fit_document_tabs(app, &natural, selected, row.width());
         let mut x = row.left();
         let mut placed: Vec<(usize, Rect)> = Vec::with_capacity(f.shown.len());
         for &(i, w) in &f.shown {
@@ -1819,6 +1843,7 @@ fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
             // The title was cut: the tooltip has the rest of it.
             let cut = name_g.size().x + 0.5 < natural_w - STUDIO_TAB_PAD + STUDIO_TAB_GAP - meta_g.size().x;
             let resp = ui.interact(r, ui.id().with(("dtab", i)), Sense::click_and_drag());
+            crate::document_docking::tab_gesture(app, ui, i, &resp);
             let saving = crate::jobs_ui::save_progress(app, st.doc.id);
             resp.widget_info(|| {
                 let label = saving.as_ref().map_or_else(|| st.doc.name.clone(), |s| format!("{} - {s}", st.doc.name));
@@ -1853,11 +1878,12 @@ fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
             }
             // Drag a tab sideways to reorder it (#217); a line shows where it will land.
             if resp.dragged()
+                && !crate::document_docking::tab_outside(ui.ctx(), r)
                 && let Some(p) = resp.interact_pointer_pos()
             {
                 tab_drop_line(ui, &placed, p.x, &t);
             }
-            if resp.drag_stopped() {
+            if resp.drag_stopped() && !crate::document_docking::tab_outside(ui.ctx(), r) {
                 let x = resp.interact_pointer_pos().or_else(|| ui.input(|i| i.pointer.interact_pos())).map_or(r.center().x, |p| p.x);
                 let to = tab_move_target(i, tab_drop_index(&placed, x));
                 if to != i {
@@ -2072,7 +2098,7 @@ fn pro_tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         .focus
         .and_then(|job| opening.iter().position(|(open, _, _)| *open == job))
         .map_or_else(|| app.session.active_index().unwrap_or(0), |p| tab_count + p);
-    let f = crate::tab_strip::fit(&natural, selected, strip.width(), DOC_TAB_MIN_W, crate::tab_strip::CHEVRON_W);
+    let f = fit_document_tabs(app, &natural, selected, strip.width());
     let mut x = strip.left();
     let mut placed: Vec<(usize, Rect)> = Vec::with_capacity(f.shown.len());
     for &(i, w) in &f.shown {
@@ -2086,6 +2112,7 @@ fn pro_tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         let Some(title) = titles.get(i) else { continue };
         let g = crate::tab_strip::elided(ui, title, font.clone(), t.text, (r.width() - DOC_TAB_PAD).max(1.0));
         let resp = ui.interact(r, ui.id().with(("ptab", i)), Sense::click_and_drag());
+        crate::document_docking::tab_gesture(app, ui, i, &resp);
         let sel = Some(i) == active;
         if sel {
             ui.painter().rect_filled(r, 0.0, t.chrome);
@@ -2113,11 +2140,12 @@ fn pro_tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         }
         // Drag a tab sideways to reorder it (#217); a line shows where it will land.
         if resp.dragged()
+            && !crate::document_docking::tab_outside(ui.ctx(), r)
             && let Some(p) = resp.interact_pointer_pos()
         {
             tab_drop_line(ui, &placed, p.x, &t);
         }
-        if resp.drag_stopped() {
+        if resp.drag_stopped() && !crate::document_docking::tab_outside(ui.ctx(), r) {
             let x = resp.interact_pointer_pos().or_else(|| ui.input(|i| i.pointer.interact_pos())).map_or(r.center().x, |p| p.x);
             let to = tab_move_target(i, tab_drop_index(&placed, x));
             if to != i {

@@ -3840,3 +3840,7 @@ layerLabel	No Color	Sem cor
 	Float Panel Group	Flutuar grupo de painéis
 	Dock Panel Group	Encaixar grupo de painéis
 	Move Panel Group	Mover grupo de painéis
+	Float Document View	Flutuar visualização do documento
+	Dock Document View	Encaixar visualização do documento
+	Resize Document View	Redimensionar visualização do documento
+	Dock	Encaixar

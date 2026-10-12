@@ -55,6 +55,15 @@ impl DockSide {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DockHost {
+    #[default]
+    Workspace,
+    Document,
+    DocumentView(u64),
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DockRegions {
@@ -62,11 +71,25 @@ pub struct DockRegions {
     pub sides: BTreeMap<String, DockSide>,
     /// Left/right widths and top/bottom heights, in logical points.
     pub sizes: [f32; 4],
+    pub hosts: BTreeMap<String, DockHost>,
+    pub document_sizes: [f32; 4],
+    pub view_sizes: BTreeMap<u64, [f32; 4]>,
+    pub floating_memory: BTreeMap<String, [f32; 4]>,
+    pub dock_returns: BTreeMap<String, craft_ui::docking::Location<String>>,
 }
 
 impl Default for DockRegions {
     fn default() -> Self {
-        Self { enabled: false, sides: BTreeMap::new(), sizes: [290.0, 290.0, 220.0, 220.0] }
+        Self {
+            enabled: false,
+            sides: BTreeMap::new(),
+            sizes: [290.0, 290.0, 220.0, 220.0],
+            hosts: BTreeMap::new(),
+            document_sizes: [290.0, 290.0, 220.0, 220.0],
+            view_sizes: BTreeMap::new(),
+            floating_memory: BTreeMap::new(),
+            dock_returns: BTreeMap::new(),
+        }
     }
 }
 
@@ -75,8 +98,58 @@ impl DockRegions {
         self.sides.get(panel).copied().unwrap_or_default()
     }
 
+    pub(crate) fn host(&self, panel: &str) -> DockHost {
+        self.hosts.get(panel).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn sizes_for(&self, host: DockHost) -> [f32; 4] {
+        match host {
+            DockHost::Workspace => self.sizes,
+            DockHost::Document => self.document_sizes,
+            DockHost::DocumentView(id) => self.view_sizes.get(&id).copied().unwrap_or(self.document_sizes),
+        }
+    }
+
+    pub(crate) fn remember(&mut self, layout: &Layout<String>) {
+        for panel in layout.panels() {
+            if let Ok(location) = layout.location(panel)
+                && location.floating.is_none()
+            {
+                self.dock_returns.insert(panel.clone(), location);
+            }
+        }
+        for group in &layout.floating {
+            for panel in &group.panels {
+                self.floating_memory.insert(panel.clone(), group.rect);
+            }
+        }
+    }
+
+    /// Named workspaces do not capture session-specific document identities.
+    pub(crate) fn portable(&self) -> Self {
+        let mut result = self.clone();
+        for host in result.hosts.values_mut() {
+            if matches!(host, DockHost::DocumentView(_)) {
+                *host = DockHost::Document;
+            }
+        }
+        result.view_sizes.clear();
+        result
+    }
+
     pub(crate) fn valid(&self) -> bool {
         self.sides.len() <= 64
+            && self.hosts.len() <= 64
+            && self.dock_returns.len() <= 64
+            && self.dock_returns.keys().all(|id| crate::panel_docking::normalize(id) == Some(id.as_str()))
+            && self.floating_memory.len() <= 64
+            && self.view_sizes.len() <= 64
+            && self.hosts.keys().chain(self.floating_memory.keys()).all(|id| crate::panel_docking::normalize(id) == Some(id.as_str()))
+            && self
+                .floating_memory
+                .values()
+                .all(|r| r.iter().all(|v| v.is_finite() && v.abs() <= 1_000_000.0) && r.get(2).is_some_and(|v| *v > 0.0) && r.get(3).is_some_and(|v| *v > 0.0))
+            && self.document_sizes.iter().chain(self.view_sizes.values().flatten()).all(|size| size.is_finite() && (80.0..=4096.0).contains(size))
             && self.sides.keys().all(|id| crate::panel_docking::normalize(id) == Some(id.as_str()))
             && self.sizes.iter().all(|size| size.is_finite() && (80.0..=4096.0).contains(size))
     }
@@ -84,37 +157,46 @@ impl DockRegions {
     /// A projection preserves every tab, stack and divider within a region. Each visible
     /// split remembers its original path so resizing never addresses a synthetic divider.
     pub(crate) fn render(&self, layout: &Layout<String>) -> RenderLayout {
-        let mut rendered = Projected { node: Node::Tabs { panels: vec![CANVAS.into()], active: 0 }, splits: BTreeMap::new() };
-        // Wrap inside-out: top/bottom span the full width, left/right share the middle band.
-        for side in [DockSide::Right, DockSide::Left, DockSide::Bottom, DockSide::Top] {
-            let Some(region) = layout.root.as_ref().and_then(|root| project(root, self, side, &mut Vec::new(), 0)) else { continue };
-            let first_region = matches!(side, DockSide::Left | DockSide::Top);
-            let mut splits = BTreeMap::new();
-            for (path, target) in rendered.splits {
-                splits.insert(prefixed(!first_region, path), target);
+        self.render_host(layout, DockHost::Workspace, CANVAS)
+    }
+
+    pub(crate) fn render_host(&self, layout: &Layout<String>, host: DockHost, canvas: &str) -> RenderLayout {
+        let mut rendered = Projected { node: Node::Tabs { panels: vec![canvas.into()], active: 0 }, splits: BTreeMap::new() };
+        let hosts = if host == DockHost::Workspace { vec![DockHost::Document, host] } else { vec![host] };
+        for host in hosts {
+            for side in [DockSide::Right, DockSide::Left, DockSide::Bottom, DockSide::Top] {
+                let Some(region) = layout.root.as_ref().and_then(|root| project(root, self, host, side, &mut Vec::new(), 0)) else { continue };
+                let first_region = matches!(side, DockSide::Left | DockSide::Top);
+                let mut splits = BTreeMap::new();
+                for (path, target) in rendered.splits {
+                    splits.insert(prefixed(!first_region, path), target);
+                }
+                for (path, target) in region.splits {
+                    splits.insert(prefixed(first_region, path), target);
+                }
+                splits.insert(Vec::new(), SplitTarget::Region(host, side));
+                let size = self.sizes_for(host).get(side.index()).copied().unwrap_or(290.0);
+                let (first, second) = if first_region { (region.node, rendered.node) } else { (rendered.node, region.node) };
+                rendered = Projected {
+                    node: Node::Split {
+                        axis: if matches!(side, DockSide::Left | DockSide::Right) { SplitAxis::Horizontal } else { SplitAxis::Vertical },
+                        size: if first_region { SplitSize::FixedFirst(size) } else { SplitSize::FixedSecond(size) },
+                        first: Box::new(first),
+                        second: Box::new(second),
+                    },
+                    splits,
+                };
             }
-            for (path, target) in region.splits {
-                splits.insert(prefixed(first_region, path), target);
-            }
-            splits.insert(Vec::new(), SplitTarget::Region(side));
-            let size = self.sizes.get(side.index()).copied().unwrap_or(290.0);
-            let (first, second) = if first_region { (region.node, rendered.node) } else { (rendered.node, region.node) };
-            rendered = Projected {
-                node: Node::Split {
-                    axis: if matches!(side, DockSide::Left | DockSide::Right) { SplitAxis::Horizontal } else { SplitAxis::Vertical },
-                    size: if first_region { SplitSize::FixedFirst(size) } else { SplitSize::FixedSecond(size) },
-                    first: Box::new(first),
-                    second: Box::new(second),
-                },
-                splits,
-            };
         }
-        RenderLayout { layout: Layout { root: Some(rendered.node), floating: layout.floating.clone() }, splits: rendered.splits }
+        RenderLayout {
+            layout: Layout { root: Some(rendered.node), floating: if host == DockHost::Workspace { layout.floating.clone() } else { Vec::new() } },
+            splits: rendered.splits,
+        }
     }
 }
 
 pub(crate) enum SplitTarget {
-    Region(DockSide),
+    Region(DockHost, DockSide),
     Tree(Vec<bool>),
 }
 
@@ -133,14 +215,14 @@ fn prefixed(first: bool, mut path: Vec<bool>) -> Vec<bool> {
     path
 }
 
-fn project(node: &Node<String>, regions: &DockRegions, side: DockSide, path: &mut Vec<bool>, depth: usize) -> Option<Projected> {
+fn project(node: &Node<String>, regions: &DockRegions, host: DockHost, side: DockSide, path: &mut Vec<bool>, depth: usize) -> Option<Projected> {
     if depth >= craft_ui::docking::MAX_DEPTH {
         return None;
     }
     match node {
         Node::Tabs { panels, active } => {
             let selected = panels.get(*active);
-            let panels: Vec<_> = panels.iter().filter(|id| regions.side(id) == side).cloned().collect();
+            let panels: Vec<_> = panels.iter().filter(|id| regions.side(id) == side && regions.host(id) == host).cloned().collect();
             if panels.is_empty() {
                 return None;
             }
@@ -148,15 +230,15 @@ fn project(node: &Node<String>, regions: &DockRegions, side: DockSide, path: &mu
             Some(Projected { node: Node::Tabs { panels, active }, splits: BTreeMap::new() })
         }
         Node::Stack { entries } => {
-            let entries: Vec<_> = entries.iter().filter(|entry| regions.side(&entry.panel) == side).cloned().collect();
+            let entries: Vec<_> = entries.iter().filter(|entry| regions.side(&entry.panel) == side && regions.host(&entry.panel) == host).cloned().collect();
             (!entries.is_empty()).then_some(Projected { node: Node::Stack { entries }, splits: BTreeMap::new() })
         }
         Node::Split { axis, size, first, second } => {
             path.push(false);
-            let a = project(first, regions, side, path, depth + 1);
+            let a = project(first, regions, host, side, path, depth + 1);
             path.pop();
             path.push(true);
-            let b = project(second, regions, side, path, depth + 1);
+            let b = project(second, regions, host, side, path, depth + 1);
             path.pop();
             match (a, b) {
                 (Some(a), Some(b)) => {

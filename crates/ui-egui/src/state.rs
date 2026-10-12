@@ -1143,6 +1143,11 @@ pub struct UiState {
     pub views: Vec<View>,
     pub dialogs: Vec<Dialog>,
     pub windows: Vec<DocWindow>,
+    /// Primary document views floating inside PhotoCraft, keyed by stable document identity.
+    #[serde(default)]
+    pub floating_documents: std::collections::BTreeMap<u64, [f32; 4]>,
+    #[serde(default)]
+    pub document_float_memory: std::collections::BTreeMap<u64, [f32; 4]>,
     pub theme: crate::theme::ThemeKind,
     pub workspace: String,
     pub palette_open: bool,
@@ -1277,6 +1282,8 @@ impl Default for UiState {
             views: Vec::new(),
             dialogs: Vec::new(),
             windows: Vec::new(),
+            floating_documents: Default::default(),
+            document_float_memory: Default::default(),
             theme: crate::theme::ThemeKind::ProMedium,
             workspace: "Essentials".into(),
             palette_open: false,

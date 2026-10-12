@@ -3220,3 +3220,7 @@ curves	Smooth	매끄럽게
 	Float Panel Group	패널 그룹 분리
 	Dock Panel Group	패널 그룹 도킹
 	Move Panel Group	패널 그룹 이동
+	Float Document View	문서 보기 분리
+	Dock Document View	문서 보기 도킹
+	Resize Document View	문서 보기 크기 조정
+	Dock	도킹

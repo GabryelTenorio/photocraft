@@ -2640,3 +2640,7 @@ curves	Smooth	平滑
 	Float Panel Group	浮動面板群組
 	Dock Panel Group	停駐面板群組
 	Move Panel Group	移動面板群組
+	Float Document View	浮動文件檢視
+	Dock Document View	停駐文件檢視
+	Resize Document View	調整文件檢視大小
+	Dock	停駐

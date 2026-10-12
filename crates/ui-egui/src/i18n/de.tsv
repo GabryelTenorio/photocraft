@@ -2690,3 +2690,7 @@ curves	Smooth	Glätten
 	Float Panel Group	Bedienfeldgruppe lösen
 	Dock Panel Group	Bedienfeldgruppe andocken
 	Move Panel Group	Bedienfeldgruppe verschieben
+	Float Document View	Dokumentansicht lösen
+	Dock Document View	Dokumentansicht andocken
+	Resize Document View	Dokumentansicht skalieren
+	Dock	Andocken

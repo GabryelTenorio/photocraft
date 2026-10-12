@@ -3748,3 +3748,7 @@ curves	Smooth	Згладити
 	Float Panel Group	Відкріпити групу панелей
 	Dock Panel Group	Закріпити групу панелей
 	Move Panel Group	Перемістити групу панелей
+	Float Document View	Відокремити подання документа
+	Dock Document View	Закріпити подання документа
+	Resize Document View	Змінити розмір подання документа
+	Dock	Закріпити

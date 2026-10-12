@@ -1228,7 +1228,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "view": app.ui.view,
         "views": app.ui.views,
         "dialogs": dialogs,
-        "windows": app.ui.windows,
+        "windows": app.ui.windows, "floatingDocuments": app.ui.floating_documents,
         "theme": app.ui.theme,
         "status": app.ui.status,
         "statusError": app.ui.status_error,

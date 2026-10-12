@@ -116,7 +116,8 @@ fn arrange_layouts_floating_windows_and_matching() {
     let six = cells("sixUp", egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 600.0)), 3).unwrap();
     assert_eq!((six.len(), six[1].min.x), (6, 300.0));
     menu(&mut app, &ctx, "window.arrange.floatAllInWindows", json!({})).unwrap();
-    assert_eq!(app.ui.windows.len(), 3);
+    assert_eq!(app.ui.floating_documents.len(), 3);
+    assert!(app.ui.windows.is_empty());
     app.ui.views[2].zoom = 3.0;
     app.ui.views[2].center = [1.0, 2.0];
     menu(&mut app, &ctx, "window.arrange.matchAll", json!({})).unwrap();
@@ -125,6 +126,7 @@ fn arrange_layouts_floating_windows_and_matching() {
     menu(&mut app, &ctx, "window.arrange.consolidateAllToTabs", json!({})).unwrap();
     assert!(app.ui.windows.is_empty());
     assert_eq!(app.ui.view.arrange, "tabs");
+    assert!(app.ui.floating_documents.is_empty());
     menu(&mut app, &ctx, "window.arrange.newWindowForDocument", json!({})).unwrap();
     assert_eq!(app.ui.windows.len(), 1);
 }

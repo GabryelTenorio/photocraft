@@ -2722,3 +2722,7 @@ curves	Smooth	Leviga
 	Float Panel Group	Rendi mobile il gruppo di pannelli
 	Dock Panel Group	Ancora gruppo di pannelli
 	Move Panel Group	Sposta gruppo di pannelli
+	Float Document View	Rendi mobile la vista del documento
+	Dock Document View	Ancora la vista del documento
+	Resize Document View	Ridimensiona la vista del documento
+	Dock	Ancora

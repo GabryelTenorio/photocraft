@@ -3810,3 +3810,7 @@ curves	Smooth	Vloeiend maken
 	Float Panel Group	Paneelgroep zwevend maken
 	Dock Panel Group	Paneelgroep vastzetten
 	Move Panel Group	Paneelgroep verplaatsen
+	Float Document View	Documentweergave losmaken
+	Dock Document View	Documentweergave vastzetten
+	Resize Document View	Documentweergave vergroten of verkleinen
+	Dock	Vastzetten

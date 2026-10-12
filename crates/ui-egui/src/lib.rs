@@ -69,6 +69,7 @@ pub mod discard_ui;
 pub mod distort_ui;
 pub mod doc_props_ui;
 pub mod dock;
+mod document_docking;
 pub mod duplicate_layer_ui;
 pub mod enable_rules;
 pub mod eraser_ui;
@@ -902,6 +903,9 @@ impl PhotocraftApp {
         {
             authorize(id, &params)?;
         }
+        if let Some(result) = document_docking::command(self, id, &params) {
+            return result;
+        }
         if let Some(result) = panel_docking::command(self, id, &params) {
             return result;
         }
@@ -1032,7 +1036,7 @@ impl PhotocraftApp {
             let new_docs: Vec<usize> = ids.iter().enumerate().filter(|(_, id)| !self.view_docs.contains(id)).map(|(i, _)| i).collect();
             for &idx in &new_docs {
                 if !self.ui.windows.iter().any(|w| w.document == idx) {
-                    crate::view_cmds::float_window(self, idx, idx);
+                    let _ = document_docking::detach(self, idx, None);
                 }
             }
         }
@@ -1693,6 +1697,7 @@ impl eframe::App for PhotocraftApp {
         distort_ui::show(self, &ctx);
         camera_raw_ui::show(self, &ctx);
         wide_angle_ui::show(self, &ctx);
+        document_docking::show(self, &ctx);
         canvas::extra_windows(self, &ctx);
         notices::show(self, &ctx);
         gpu_status::show_fallback(self, &ctx);

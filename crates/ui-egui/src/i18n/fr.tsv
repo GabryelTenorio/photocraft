@@ -3051,3 +3051,7 @@ curves	Smooth	Lisser
 	Float Panel Group	Détacher le groupe de panneaux
 	Dock Panel Group	Ancrer le groupe de panneaux
 	Move Panel Group	Déplacer le groupe de panneaux
+	Float Document View	Détacher la vue du document
+	Dock Document View	Ancrer la vue du document
+	Resize Document View	Redimensionner la vue du document
+	Dock	Ancrer

@@ -2731,3 +2731,7 @@ curves	Smooth	Suavizar
 	Float Panel Group	Hacer flotante el grupo de paneles
 	Dock Panel Group	Acoplar grupo de paneles
 	Move Panel Group	Mover grupo de paneles
+	Float Document View	Hacer flotante la vista del documento
+	Dock Document View	Acoplar la vista del documento
+	Resize Document View	Cambiar tamaño de la vista del documento
+	Dock	Acoplar

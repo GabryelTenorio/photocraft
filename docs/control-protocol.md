@@ -612,9 +612,36 @@ without `dockRegions` keep their existing right dock; Reset Workspace restores d
 Dock previews measure the validated candidate arrangement using the renderer's sizing
 rules, including saved dock sizes, panel/canvas minimums and space released by the source.
 Workspace-edge destinations take precedence over group destinations, except when reordering
-inside the source group's tab strip; canvas-edge drops preview the corresponding workspace-side
+inside the source group's tab strip; document-edge drops preview an inner document-area
 dock. Same-group tab-strip destinations show only an insertion line, including unchanged
 positions, with the marker contained inside the visible strip. Unchanged releases preserve
 position. Floating groups move from the grip, empty header or top border; their left, right
 and bottom edges and both bottom corners resize within panel and viewport limits. Workspace
-locking blocks both movement and resizing.
+locking blocks both movement and resizing. The top border retains the normal mouse pointer.
+
+Dragging renders the panel UI once with controls disabled, leaving the source body filled
+with its theme background. Destination feedback still measures the final candidate; Escape,
+focus loss and workspace changes cancel without committing.
+
+Panel side commands also accept `scope:"workspace"|"document"` (default `workspace`).
+Document scope without `documentView` addresses the main document area. With a floating
+`documentView` identity it addresses that in-app document window. Region resizing accepts
+the same scope and identity. Anchored joins/splits inherit the destination group's host.
+`dockRegions` additionally exposes `hosts`, `documentSizes`, `viewSizes` and
+`floatingMemory` (panel ID to `[x,y,width,height]`) and `dockReturns` (last docked
+locations, retained independently of hidden floating locations). Floating dimensions are independent
+of dock dimensions; moving/resizing a floating group records the geometry for its members.
+Named workspaces convert session-specific hosts to the main document area.
+
+`window.document.float {document?, documentView?, x?, y?, width?, height?}` detaches the
+primary document view inside PhotoCraft. `document` is the session index; `documentView`
+is the stable document ID returned by the command. Omit both to target the active document.
+`window.document.geometry` accepts the same target/geometry and requires an existing
+floating view. Sizes must be 320–4096 by 240–4096 logical points.
+`window.document.dock {document?, documentView?}` returns its view to the document tab
+strip. `ui.inspect.floatingDocuments` maps stable document identities to preferred rectangles.
+Float in Window / Float All use these in-app views; New Window for Document retains its
+additional native desktop view. Main-app panels stay in the main app on detachment. Panels
+docked inside a floating document move with that window and return to the main document
+area when it redocks or closes. Closing a primary document uses the normal save guard.
+Separate desktop-window tear-off by dragging remains unfinished.
