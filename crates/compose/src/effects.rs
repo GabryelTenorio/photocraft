@@ -395,6 +395,24 @@ enum Metric {
     Chamfer,
 }
 
+/// Outside width from which a stroke's outer edge uses the exact Euclidean transform instead of
+/// the fitted 5 × 5 chamfer.
+///
+/// The chamfer's level sets are octagons: measured against a point source, its distance exceeds
+/// the Euclidean radius by up to `0.027 · r` px — 0.48 px at r = 18 (the widest outside stroke any
+/// Photoshop oracle matches with the chamfer) and 1.6 px at r = 60, where a wide stroke's boundary
+/// visibly facets (#3646). Half a pixel of deviation is reached at r ≈ 19, so strokes narrower
+/// than 20 px keep the chamfer, whose sub-pixel edge seeding Photoshop matches at small offsets,
+/// and wider ones stay round.
+pub const STROKE_CHAMFER_MAX: f32 = 20.0;
+
+/// Whether a stroke whose outside edge is `out_w` px wide uses the exact Euclidean transform (round)
+/// rather than the 5 × 5 chamfer's octagon ([`STROKE_CHAMFER_MAX`]). The CPU compositor and the GPU
+/// compositor's `program_with` both call this, so a stroke picks the same field in each.
+pub fn stroke_outside_exact(out_w: f32) -> bool {
+    out_w >= STROKE_CHAMFER_MAX
+}
+
 fn dist_outside_by(s: &Map, m: Metric) -> Vec<f32> {
     if m == Metric::Chamfer {
         // Seeds start at their sub-pixel edge offset (1 − coverage).
@@ -1642,9 +1660,14 @@ pub struct FxMaps {
     per: Vec<Vec<Map>>,
     bevel_paint: Vec<BevelPaint>,
     din: Option<Vec<f32>>,
+    /// Stroke outside distance below [`STROKE_CHAMFER_MAX`]: the fitted 5 × 5 chamfer.
     dout: Option<Vec<f32>>,
-    /// Shape layers: distance outside the vector outline (from local coverage).
+    /// Stroke outside distance at or above [`STROKE_CHAMFER_MAX`]: the exact Euclidean transform.
+    dout_exact: Option<Vec<f32>>,
+    /// Shape layers: chamfer distance outside the vector outline (from local coverage).
     vdout: Option<Vec<f32>>,
+    /// Shape layers: exact Euclidean distance outside the vector outline (from local coverage).
+    vdout_exact: Option<Vec<f32>>,
     /// `shape` joins the alpha with a filled shape's outline (`crate::effect_outline`).
     outline: bool,
     /// Frames of gradient strokes by outside width (bits): see [`stroke_frame`].
@@ -1663,7 +1686,14 @@ impl FxMaps {
     pub fn bytes(&self) -> usize {
         let n = self.shape.v.len();
         let maps: usize = self.per.iter().map(Vec::len).sum();
-        (1 + maps + usize::from(self.din.is_some()) + usize::from(self.dout.is_some()) + usize::from(self.vdout.is_some())) * n * 4
+        (1 + maps
+            + usize::from(self.din.is_some())
+            + usize::from(self.dout.is_some())
+            + usize::from(self.dout_exact.is_some())
+            + usize::from(self.vdout.is_some())
+            + usize::from(self.vdout_exact.is_some()))
+            * n
+            * 4
     }
 
     fn crop_vec(&self, v: &[f32], to: Rect, fill: f32) -> Vec<f32> {
@@ -1750,14 +1780,34 @@ pub(crate) fn build_maps_prepared(
         .collect();
     let has_stroke = items.iter().any(|e| matches!(e, Effect::Stroke(_)));
     let vector_shape = matches!(layer.content, photocraft_doc::LayerContent::Shape(_));
-    // The outer edge uses exact Euclidean distances, not the 5 × 5 chamfer: the chamfer's level
-    // sets are polygons (an ~8-fold octagon here), so a wide stroke's outer boundary shows flat
-    // facets — at 245 px it wanders by ~10 px (#3646). Inside stroke distances keep the chamfer,
-    // whose sub-pixel edge seeding is fitted to Photoshop at small offsets.
-    let (din, dout) = if has_stroke { (Some(dist_inside_by(&shape, Metric::Chamfer)), Some(dist_outside_by(&shape, Metric::Euclidean))) } else { (None, None) };
-    // Without an outline (unfilled shapes), estimate the vector outline from local coverage.
+    // A stroke's outer edge keeps the 5 × 5 chamfer while its outside width is under
+    // `STROKE_CHAMFER_MAX` — Photoshop matches the chamfer's sub-pixel edge seeding at small
+    // offsets — and uses the exact Euclidean transform at or above it, where the chamfer's octagon
+    // facets a wide stroke (#3646). Inside stroke distances always keep the chamfer. Each outer
+    // field is built only when a stroke of that width is present; the compositor picks per stroke,
+    // so one layer may hold both a narrow and a wide stroke.
+    let out_widths: Vec<f32> =
+        items.iter().filter_map(|e| if let Effect::Stroke(st) = e { Some(stroke_widths(st).1) } else { None }).filter(|w| *w > 0.0).collect();
+    let chamfer_out = out_widths.iter().any(|&w| !stroke_outside_exact(w));
+    let exact_out = out_widths.iter().any(|&w| stroke_outside_exact(w));
+    let (din, dout, dout_exact) = if has_stroke {
+        (
+            Some(dist_inside_by(&shape, Metric::Chamfer)),
+            chamfer_out.then(|| dist_outside_by(&shape, Metric::Chamfer)),
+            exact_out.then(|| dist_outside_by(&shape, Metric::Euclidean)),
+        )
+    } else {
+        (None, None, None)
+    };
+    // Without an outline (unfilled shapes), estimate the vector outline from local coverage; it
+    // picks the chamfer or the exact transform the same way.
     let outline = crate::effect_outline(layer).is_some();
-    let vdout = (has_stroke && vector_shape && !outline).then(|| dist_outside_by(&local_coverage(&shape), Metric::Euclidean));
+    let (vdout, vdout_exact) = if has_stroke && vector_shape && !outline {
+        let lc = local_coverage(&shape);
+        (chamfer_out.then(|| dist_outside_by(&lc, Metric::Chamfer)), exact_out.then(|| dist_outside_by(&lc, Metric::Euclidean)))
+    } else {
+        (None, None)
+    };
     let mut frames: Vec<(u32, Rect)> = Vec::new();
     for e in &items {
         if let Effect::Stroke(st) = e
@@ -1769,7 +1819,7 @@ pub(crate) fn build_maps_prepared(
             }
         }
     }
-    FxMaps { rect, shape, per, bevel_paint, din, dout, vdout, outline, frames }
+    FxMaps { rect, shape, per, bevel_paint, din, dout, dout_exact, vdout, vdout_exact, outline, frames }
 }
 
 /// Far outside any shape (distance fill for cropped distance fields).
@@ -1937,10 +1987,13 @@ pub(crate) fn composite_with_effects_prepared(
     // Strokes. Inside parts are painted over the layer (bottom instance first); outside parts
     // are slid beneath it, so the first listed (top) instance is processed first.
     let strokes: Vec<&photocraft_doc::StrokeFx> = items.iter().filter_map(|e| if let Effect::Stroke(s) = e { Some(s) } else { None }).collect();
-    let (din, dout) = match (&maps.din, &maps.dout) {
-        (Some(a), Some(b)) if !strokes.is_empty() => (maps.crop_vec(a, big, 0.0), maps.crop_vec(b, big, FAR)),
-        _ => (Vec::new(), Vec::new()),
-    };
+    let ready = !strokes.is_empty();
+    let din = if ready { maps.din.as_ref().map(|a| maps.crop_vec(a, big, 0.0)).unwrap_or_default() } else { Vec::new() };
+    // A stroke's outer edge picks the chamfer or the exact field by its width
+    // ([`stroke_outside_exact`]); both are cropped here, and only the ones a stroke needs exist.
+    let crop_out = |v: &Option<Vec<f32>>| v.as_ref().map(|b| maps.crop_vec(b, big, FAR));
+    let (dout, dout_exact, vdout, vdout_exact) =
+        if ready { (crop_out(&maps.dout), crop_out(&maps.dout_exact), crop_out(&maps.vdout), crop_out(&maps.vdout_exact)) } else { (None, None, None, None) };
     let widths = stroke_widths;
     // A gradient stroke aligned with the layer spans the stroke's own extent.
     let frame = |st: &photocraft_doc::StrokeFx| maps.stroke_frame(st).unwrap_or(sb);
@@ -1968,7 +2021,9 @@ pub(crate) fn composite_with_effects_prepared(
     for (p, a) in lay.px.iter_mut().zip(&shape.v) {
         p[3] *= a.min(1.0);
     }
-    let vdout = maps.vdout.as_ref().filter(|_| vector_shape && !strokes.is_empty()).map(|v| maps.crop_vec(v, big, FAR));
+    // Shape layers without a filled outline stroke their vector outline, estimated from local
+    // coverage; every other layer strokes its shape. The width then picks the field.
+    let vector_outline = vector_shape && !maps.outline;
     // Outside parts lie beneath the layer and blend onto the backdrop with their own mode. A
     // higher stroke covers the ones below it (Photoshop: a Multiply stroke listed above a wider
     // Normal stroke multiplies the backdrop, not the lower stroke). Each stroke's share is its
@@ -1986,7 +2041,14 @@ pub(crate) fn composite_with_effects_prepared(
             // Shape layers: Photoshop strokes the vector outline (estimated from local coverage
             // for unfilled shapes); the stroke never shows through the shape's pixels. Along a
             // filled shape's outline it covers the part of each edge pixel outside the path.
-            let d = vdout.as_ref().unwrap_or(&dout);
+            let exact = stroke_outside_exact(out_w);
+            let d: &[f32] = if vector_outline {
+                (if exact { vdout_exact.as_deref() } else { vdout.as_deref() }).unwrap_or_default()
+            } else if exact {
+                dout_exact.as_deref().unwrap_or_default()
+            } else {
+                dout.as_deref().unwrap_or_default()
+            };
             let mut share = vec![0.0f32; w * h];
             for (i, sh) in share.iter_mut().enumerate() {
                 let band = (out_w + 0.5 - d[i]).clamp(0.0, 1.0);
@@ -2151,19 +2213,23 @@ pub enum FieldKind {
     BevelOutside,
     /// `bevel_dist_inside` of the shape: the inside distance of chiselled bevels.
     BevelInside,
-    /// Chamfer distance outside the shape: the spread of drop shadows and softer outer glows
+    /// Chamfer distance outside the shape: a narrow raster stroke's outer edge (see
+    /// [`stroke_outside_exact`]), and the spread of drop shadows and softer outer glows
     /// ([`dilate`]); their metric is fitted to Photoshop (#224) and keeps the sub-pixel seeding.
     StrokeOutside,
     /// Chamfer distance outside `1 - alpha`: the choke of inner shadows and softer inner glows.
     ChokeInside,
     /// Stroke distance inside the shape.
     StrokeInside,
-    /// Exact Euclidean distance outside the shape: a raster stroke's outer edge. The chamfer's
-    /// level sets are polygons (an ~8-fold octagon), so a wide stroke's outer boundary facets; the
-    /// outer edge is exact while the shadow / glow spread above keeps the chamfer (#3646).
+    /// Exact Euclidean distance outside the shape: a wide raster stroke's outer edge (see
+    /// [`stroke_outside_exact`]). The chamfer's level sets are polygons (an ~8-fold octagon), so a
+    /// wide stroke's outer boundary facets; the shadow / glow spread above keeps the chamfer (#3646).
     StrokeOutsideExact,
     /// Stroke distance outside a shape layer's outline (from its local coverage), exact Euclidean.
     StrokeOutsideVector,
+    /// Chamfer distance outside a shape layer's outline (from its local coverage): a narrow vector
+    /// stroke's outer edge, where the chamfer matches Photoshop (see [`STROKE_CHAMFER_MAX`]).
+    StrokeOutsideVectorChamfer,
 }
 
 /// The `kind` distance field of the shape `alpha` (row-major `w × h`). Values past `reach` pixels
@@ -2180,6 +2246,7 @@ pub fn distance_field(kind: FieldKind, alpha: Vec<f32>, w: usize, h: usize, reac
         FieldKind::StrokeInside => dist_inside_by(&s, Metric::Chamfer),
         FieldKind::StrokeOutsideExact => dist_outside_by(&s, Metric::Euclidean),
         FieldKind::StrokeOutsideVector => dist_outside_by(&local_coverage(&s), Metric::Euclidean),
+        FieldKind::StrokeOutsideVectorChamfer => dist_outside_by(&local_coverage(&s), Metric::Chamfer),
     }
 }
 

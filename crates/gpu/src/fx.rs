@@ -434,7 +434,15 @@ pub(crate) fn program_with(e: &Effect, light: &GlobalLight, vector_shape: bool, 
             // composite_with_effects' stroke bands (maps 0 outside, 1 inside)
             let (in_w, out_w) = stroke_widths(st);
             if out_w > 0.0 {
-                let d = b.field(if vector_shape { FieldKind::StrokeOutsideVector } else { FieldKind::StrokeOutsideExact }, out_w);
+                // Narrow strokes keep the fitted chamfer, wide ones the exact transform (#3646);
+                // the CPU picks the same field by the same width (`stroke_outside_exact`).
+                let kind = match (vector_shape, photocraft_compose::effects::stroke_outside_exact(out_w)) {
+                    (true, true) => FieldKind::StrokeOutsideVector,
+                    (true, false) => FieldKind::StrokeOutsideVectorChamfer,
+                    (false, true) => FieldKind::StrokeOutsideExact,
+                    (false, false) => FieldKind::StrokeOutside,
+                };
+                let d = b.field(kind, out_w);
                 let mut s = stage(Kernel::MStroke, Some(d), None, [out_w, 0.0, 0.0, 0.0], 0);
                 s.out = Some(0);
                 b.stages.push(s);
@@ -751,6 +759,7 @@ mod tests {
             FieldKind::StrokeInside,
             FieldKind::StrokeOutsideExact,
             FieldKind::StrokeOutsideVector,
+            FieldKind::StrokeOutsideVectorChamfer,
         ] {
             let reach = 9;
             let whole = photocraft_compose::effects::distance_field(kind, shape.clone(), w, h, reach as f32);
@@ -828,28 +837,36 @@ mod tests {
         assert!(too_small_noticed, "a 2 row halo went unnoticed, so this test guards nothing");
     }
 
-    /// #3646: a wide raster stroke's outer edge is the exact Euclidean distance, not the chamfer's
-    /// octagon. The GPU builds it from `StrokeOutsideExact`, while the spread of drop shadows and
-    /// softer outer glows keeps the chamfer field (fitted to Photoshop, #224) — so routing the
-    /// stroke back through the chamfer, or a shadow through the exact field, fails here.
+    /// #3646: a stroke's outer edge is the fitted 5 × 5 chamfer while it is narrow and the exact
+    /// Euclidean transform once it is wide — the chamfer's octagon facets a wide stroke. The GPU
+    /// builds it from the field its width picks (`stroke_outside_exact`), while the spread of drop
+    /// shadows and softer outer glows keeps the chamfer field (fitted to Photoshop, #224) — so
+    /// routing a wide stroke through the chamfer, or a shadow through the exact field, fails here.
     #[test]
-    fn a_raster_stroke_uses_the_exact_outer_field() {
+    fn a_stroke_uses_the_chamfer_narrow_and_the_exact_field_wide() {
         use photocraft_color::{BlendMode, Color};
         use photocraft_doc::{FxCommon, FxPaint, StrokeFx, StrokePosition};
         let light = GlobalLight::default();
         let stroke =
-            |position| Effect::Stroke(StrokeFx { common: FxCommon::new(BlendMode::Normal, 1.0), size: 40.0, position, paint: FxPaint::Color(Color::BLACK) });
-        let outer = program(&stroke(StrokePosition::Outside), &light, false);
+            |size, position| Effect::Stroke(StrokeFx { common: FxCommon::new(BlendMode::Normal, 1.0), size, position, paint: FxPaint::Color(Color::BLACK) });
+        // Narrow (< STROKE_CHAMFER_MAX): the chamfer, exactly as before #3646.
+        let narrow = program(&stroke(6.0, StrokePosition::Outside), &light, false);
+        assert!(narrow.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutside), "a narrow raster outside stroke keeps the chamfer: {:?}", narrow.fields);
+        assert!(!narrow.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideExact), "…not the exact field: {:?}", narrow.fields);
+        // Wide: the exact transform.
+        let wide = program(&stroke(40.0, StrokePosition::Outside), &light, false);
         assert!(
-            outer.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideExact),
-            "a raster outside stroke needs the exact outer field: {:?}",
-            outer.fields
+            wide.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideExact),
+            "a wide raster outside stroke needs the exact outer field: {:?}",
+            wide.fields
         );
-        assert!(!outer.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutside), "…not the chamfer field: {:?}", outer.fields);
-        // A shape layer's outline stroke is exact too; the inside edge keeps the chamfer.
-        let vector = program(&stroke(StrokePosition::Outside), &light, true);
-        assert!(vector.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideVector), "{:?}", vector.fields);
-        let inner = program(&stroke(StrokePosition::Inside), &light, false);
+        assert!(!wide.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutside), "…not the chamfer field: {:?}", wide.fields);
+        // A shape layer's outline stroke follows the same width rule; the inside edge keeps the chamfer.
+        let vector_narrow = program(&stroke(6.0, StrokePosition::Outside), &light, true);
+        assert!(vector_narrow.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideVectorChamfer), "{:?}", vector_narrow.fields);
+        let vector_wide = program(&stroke(40.0, StrokePosition::Outside), &light, true);
+        assert!(vector_wide.fields.iter().any(|(k, _)| *k == FieldKind::StrokeOutsideVector), "{:?}", vector_wide.fields);
+        let inner = program(&stroke(40.0, StrokePosition::Inside), &light, false);
         assert!(inner.fields.iter().any(|(k, _)| *k == FieldKind::StrokeInside), "{:?}", inner.fields);
         // The shadow / softer-glow spread is unchanged: still the chamfer.
         let Effect::DropShadow(mut s) = Effect::default_drop_shadow() else { unreachable!() };

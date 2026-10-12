@@ -1273,17 +1273,30 @@ fn shapeless_effect_maps_cover_only_the_band_being_rendered() {
 // ---------- PSD-fidelity effect semantics (fitted on Photoshop composites) ----------
 
 #[test]
-fn stroke_edges_use_the_exact_euclidean_distance() {
-    // #3646: stroke distances are exact Euclidean. The 5 × 5 chamfer is a polygon at scale (see
-    // `a_wide_outside_stroke_is_round_not_a_polygon`), so it can't be the metric here.
-    // Square 10..30, outside stroke 3: (9, 7) is offset (1, 3) from the corner pixel: distance
-    // √10 = 3.162, coverage 3 + 1 − 3.162 = 0.838.
+fn stroke_edges_use_the_chamfer_when_narrow_and_the_exact_distance_when_wide() {
+    // #3646: a narrow stroke's outer edge keeps the 5 × 5 chamfer, whose sub-pixel seeding
+    // Photoshop matches at small offsets (see `stroke_outside_exact`); only a wide one — where the
+    // chamfer's octagon facets (see `a_wide_outside_stroke_is_round_not_a_polygon`) — uses the
+    // exact Euclidean transform.
+    // Square 10..30, outside stroke 3: (9, 7) is offset (1, 3) from the corner pixel. Photoshop
+    // measures √5 + 1 = 3.236 there, so coverage is 3 + 1 − 3.236 = 0.764 (the exact distance is
+    // 3.162, coverage 0.838).
     let d = fx_doc(vec![stroke(3.0, StrokePosition::Outside)]);
     let a = 1.0 - px(&d, 9, 7)[0]; // blue stroke over white: red channel drops by coverage
-    assert!((a - 0.838).abs() < 0.01, "{a}");
+    assert!((a - 0.764).abs() < 0.01, "{a}");
     // (2, 2) is the same in both metrics (two diagonal steps).
     let a = 1.0 - px(&d, 8, 8)[0];
     assert!((a - 1.0).abs() < 0.01, "{a}");
+}
+
+#[test]
+fn the_stroke_metric_switches_at_the_fitted_threshold() {
+    // The widest outside stroke any Photoshop oracle matches with the chamfer is 18 px
+    // (ag-psd read-write/strokes): its octagon deviates 0.48 px from a circle there; 20 px keeps
+    // it. Wider strokes (the 60 px #3646 case) are round.
+    assert!(!crate::effects::stroke_outside_exact(18.0));
+    assert!(crate::effects::stroke_outside_exact(crate::effects::STROKE_CHAMFER_MAX));
+    assert!(crate::effects::stroke_outside_exact(60.0));
 }
 
 #[test]
