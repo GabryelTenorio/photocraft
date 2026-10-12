@@ -45,6 +45,11 @@ pub const SECTIONS: [(&str, bool); 13] = [
     ("Protect Texture", true),
 ];
 
+/// Sections `0..SELECTABLE_SECTIONS` (`Brush Tip Shape` through `Brush Pose`) open a properties
+/// pane on the right; sections `SELECTABLE_SECTIONS..` (`Noise`, `Wet Edges`, `Build-up`,
+/// `Smoothing`, `Protect Texture`) are checkbox-only rows (#4283).
+pub const SELECTABLE_SECTIONS: usize = 8;
+
 /// Panel width and the stroke strip's size.
 pub(crate) const WIDTH: f32 = 540.0;
 const STRIP: (u32, u32) = (488, 76);
@@ -233,16 +238,50 @@ pub(crate) fn full_uv() -> egui::Rect {
     egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0))
 }
 
+fn section_checked(b: &BrushSettings, i: usize) -> Option<bool> {
+    match i {
+        1 => Some(b.shape_dynamics.enabled),
+        2 => Some(b.scattering.enabled),
+        3 => Some(b.texture.enabled),
+        4 => Some(b.dual_brush.enabled),
+        5 => Some(b.color_dynamics.enabled),
+        6 => Some(b.transfer.enabled),
+        7 => Some(b.pose.enabled),
+        8 => Some(b.noise),
+        9 => Some(b.wet_edges),
+        10 => Some(b.build_up),
+        11 => Some(b.smoothing.amount > 0.0),
+        12 => Some(b.protect_texture),
+        _ => None,
+    }
+}
+
+fn set_section_checked(b: &mut BrushSettings, i: usize, on: bool) {
+    if let Some(flag) = section_flag(b, i) {
+        *flag = on;
+    } else if i == 11 {
+        b.smoothing.amount = if on { 0.1 } else { 0.0 };
+    }
+}
+
 /// The section list: enable boxes, names, locks, the selection. Clicking a name shows the section
 /// and turns it on (Photoshop); clicking a box only toggles it; the lock on the right keeps the
-/// section when another preset is picked.
+/// section when another preset is picked. The bottom five entries (`Noise`..=`Protect Texture`)
+/// are checkbox-only rows (#4283).
 fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSettings) {
     let t = Tokens::get(ui.ctx());
     ui.vertical(|ui| {
         ui.set_width(150.0);
         ui.spacing_mut().item_spacing.y = 1.0;
-        for (i, (name, has_box)) in SECTIONS.iter().enumerate() {
-            let sel = app.ui.brush_section == i;
+        for (i, (name, _)) in SECTIONS.iter().enumerate() {
+            if i == SELECTABLE_SECTIONS {
+                ui.add_space(3.0);
+                widgets::hairline(ui);
+                ui.add_space(3.0);
+                ui.spacing_mut().item_spacing.y = 0.0;
+            }
+            let checkbox_only = i >= SELECTABLE_SECTIONS;
+            let sel = !checkbox_only && app.ui.brush_section == i;
             let (r, resp) = ui.allocate_exact_size(vec2(150.0, 23.0), Sense::click());
             // Named for accessibility and for tests and agents that look sections up by name.
             resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, tl!(*name)));
@@ -252,14 +291,13 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                 ui.painter().rect_filled(r, t.radius_sm, t.hover);
             }
             let mut x = r.left() + 6.0;
-            if *has_box && let Some(flag) = section_flag(b, i) {
+            if let Some(checked) = section_checked(b, i) {
                 let br = egui::Rect::from_center_size(egui::pos2(x + 6.0, r.center().y), vec2(13.0, 13.0));
                 let box_resp = ui.interact(br, ui.id().with(("brush-sec-box", i)), Sense::click());
-                let checked = *flag;
                 box_resp.widget_info(|| {
                     egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, checked, crate::i18n::fmt(tl!("Enable {name}"), &[("name", tl!(*name))]))
                 });
-                if *flag {
+                if checked {
                     ui.painter().rect_filled(br, 2.0, t.accent);
                     let (a, m, c) = (br.left_center() + vec2(3.0, 0.5), br.center_bottom() + vec2(-1.0, -3.5), br.right_top() + vec2(-3.0, 3.5));
                     ui.painter().line_segment([a, m], Stroke::new(1.6, Color32::WHITE));
@@ -269,9 +307,9 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                 }
                 let on_lock = resp.interact_pointer_pos().is_some_and(|p| p.x > r.right() - 22.0);
                 if box_resp.clicked() {
-                    *flag = !*flag;
+                    set_section_checked(b, i, !checked);
                 } else if resp.clicked() && !on_lock {
-                    *flag = true;
+                    set_section_checked(b, i, if checkbox_only { !checked } else { true });
                 }
                 x += 20.0;
             } else if i > 0 {
@@ -301,7 +339,7 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
                     lock_clicked = true;
                 }
             }
-            if resp.clicked() && !lock_clicked {
+            if resp.clicked() && !lock_clicked && !checkbox_only {
                 app.ui.brush_section = i;
             }
             if i == 0 {
@@ -315,7 +353,7 @@ fn settings_tab(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let before = app.session.tools.brush.clone();
     let mut b = before.clone();
-    let section = app.ui.brush_section.min(SECTIONS.len() - 1);
+    let section = app.ui.brush_section.min(SELECTABLE_SECTIONS - 1);
     ui.horizontal_top(|ui| {
         section_list(app, ui, &mut b);
         widgets::vline(ui, 482.0);
