@@ -564,7 +564,7 @@ fn flat_tiff_warns_when_extra_channels_matte_transparency() {
     let fmt = doc.pixel_format();
     let mut art = Surface::new(fmt);
     // (0, 0) stays transparent. (1, 1) is half-red, so the matte is halfway to white.
-    art.fill_rect(Rect::new(1, 1, 1, 1), &photocraft_raster::from_rgba(&fmt, [1.0, 0.0, 0.0, 0.5]));
+    art.fill_rect(Rect::new(1, 1, 2, 2), &photocraft_raster::from_rgba(&fmt, [1.0, 0.0, 0.0, 0.5]));
     doc.layers.push(Layer::new("Art", LayerContent::Raster(art)));
     let mut spot = AlphaChannel::new("Spot Color 1", Surface::new(PixelFormat::new(ColorMode::Grayscale, SampleType::U8, false)));
     spot.spot = Some((Color::rgb(0.0, 1.0, 0.0), 1.0));

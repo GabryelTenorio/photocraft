@@ -307,6 +307,12 @@ pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions, ctl: &photocr
         r.data[0] = be[0];
         r.data[1] = be[1];
     }
+    // The name and DisplayInfo resources list the merged transparency plane first. The IFD
+    // leaves that plane out, so the resources must too: Photoshop pairs each name with the
+    // next sample past the colour channels.
+    if has_alpha && !write_alpha {
+        drop_merged_transparency(&mut resources);
+    }
     let resources = resources_to_bytes(&resources)?;
     let ifd_channels = cc + usize::from(write_alpha);
     let sample = csample(fmt.sample);
@@ -333,6 +339,44 @@ pub(crate) fn export_layered(doc: &Document, opts: &ExportOptions, ctl: &photocr
         ..Default::default()
     };
     encode_image(&img, Format::Tiff, opts, warnings)
+}
+
+/// Removes the leading transparency entry from the channel-name resources (1006, 1045) and
+/// from DisplayInfo (1077). Each is left unchanged when it is too short to hold that entry.
+fn drop_merged_transparency(resources: &mut [ImageResource]) {
+    for r in resources {
+        r.data = match r.id {
+            1006 => drop_first_pascal(&r.data),
+            1045 => drop_first_unicode(&r.data),
+            id if id == crate::channel_map::DISPLAY_INFO => drop_first_display_record(&r.data),
+            _ => continue,
+        };
+    }
+}
+
+fn drop_first_pascal(data: &[u8]) -> Vec<u8> {
+    let Some(&n) = data.first() else { return data.to_vec() };
+    let end = 1usize.saturating_add(usize::from(n));
+    data.get(end..).unwrap_or(data).to_vec()
+}
+
+fn drop_first_unicode(data: &[u8]) -> Vec<u8> {
+    let Some(nbe) = data.get(..4) else { return data.to_vec() };
+    let n = u32::from_be_bytes([nbe[0], nbe[1], nbe[2], nbe[3]]) as usize;
+    let end = 4usize.saturating_add(n.saturating_mul(2));
+    data.get(end..).unwrap_or(data).to_vec()
+}
+
+/// Resource 1077: a 4-byte version, then 13-byte records. Drops the first record.
+fn drop_first_display_record(data: &[u8]) -> Vec<u8> {
+    const RECORD: usize = 13;
+    if data.len() < 4 + RECORD {
+        return data.to_vec();
+    }
+    let mut out = Vec::with_capacity(data.len() - RECORD);
+    out.extend_from_slice(&data[..4]);
+    out.extend_from_slice(&data[4 + RECORD..]);
+    out
 }
 
 /// Filter-mask block (`FMsk`) Photoshop writes next to a layered TIFF: the same red 50%
