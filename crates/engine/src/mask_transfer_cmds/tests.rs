@@ -189,7 +189,7 @@ fn explicit_source_background_targets_and_locked_source_moves() {
     let background = s.active().unwrap().doc.layers.first().unwrap().id;
     s.execute(PASTE, json!({"layer": background.0})).unwrap();
     assert_eq!(mask(&s, background), mask(&s, a));
-    assert!(!crate::extra_cmds::is_background(s.active().unwrap().doc.layer(background).unwrap()));
+    assert!(!s.active().unwrap().doc.is_background(background));
     s.execute("layer.setProps", json!({"layer": a.0, "locks": {"all": true}})).unwrap();
     let before = s.active().unwrap().doc.clone();
     assert!(s.execute(TRANSFER, json!({"from": a.0, "layer": b.0, "copy": false})).is_err());
