@@ -343,7 +343,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             let doc = app.session.active_index().ok_or("no document")?;
             let wid = app.ui.alloc_id();
             let view = app.ui.views[doc].clone();
-            app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true });
+            app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true, position: None });
             Ok(json!({"window": wid}))
         }
         "window.theme.toggle" => {
@@ -396,6 +396,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         l if matches!(l, "layer.exportAs" | "layer.quickExportAsPng") && params.as_object().is_none_or(|o| o.is_empty()) => {
             let layer = app.session.active().and_then(|d| d.active_layer).ok_or("no active layer")?;
             if l == "layer.exportAs" {
+                // Several layers (artboards, say) selected: one file each (#3629).
+                let layers = app.session.active().map(|d| d.selected_layers()).unwrap_or_default();
+                if layers.len() > 1 {
+                    return Ok(json!({"dialog": crate::export_dialog::open_layers(app, &layers)?}));
+                }
                 Ok(json!({"dialog": crate::export_dialog::open_layer(app, layer)?}))
             } else {
                 crate::export_dialog::quick_export_selected_layers_png(app)
