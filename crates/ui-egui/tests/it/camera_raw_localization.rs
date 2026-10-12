@@ -6,9 +6,10 @@ use serde_json::json;
 
 #[test]
 fn all_seven_languages_render_camera_raw_and_switch_without_resetting_view_or_filter() {
+    let _gpu = photocraft_testkit::gpu_lock();
     for lang in i18n::Lang::all() {
         let gpu = std::env::var_os("PHOTOCRAFT_LOCALE_SNAPSHOTS").is_some();
-        let _gpu = gpu.then(crate::support::gpu_lock);
+        let _gpu = gpu.then(photocraft_testkit::gpu_lock);
         let builder = Harness::builder().with_step_dt(1.0 / 60.0).with_size(vec2(1440.0, 1000.0));
         let builder = if gpu { builder.wgpu() } else { builder };
         let mut h = builder.build_eframe(move |cc| {

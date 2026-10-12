@@ -8,4 +8,5 @@ mod layer_block_order;
 mod malformed;
 mod proptests;
 mod roundtrip;
+mod swatch_malformed;
 mod tree;

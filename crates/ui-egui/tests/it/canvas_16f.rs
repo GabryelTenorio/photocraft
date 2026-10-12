@@ -17,8 +17,7 @@ use photocraft_ui_egui::PhotocraftApp;
 use photocraft_ui_egui::gpu_canvas::{self, GpuCanvas};
 use serde_json::json;
 
-// Concurrent wgpu devices crash some drivers: see `support::gpu_lock`.
-use crate::support::gpu_lock;
+use photocraft_testkit::gpu_lock;
 
 /// A headless GPU canvas on a device created like the app's, if the adapter has a float canvas.
 fn canvas() -> Option<(GpuCanvas, RenderState)> {

@@ -4,8 +4,7 @@ use egui_kittest::{Harness, kittest::Queryable};
 use photocraft_ui_egui::{PhotocraftApp, camera_raw_ui, control, theme::ThemeKind};
 use serde_json::{Value, json};
 
-// Concurrent wgpu devices crash some drivers: see `support::gpu_lock`.
-use crate::support::gpu_lock;
+use photocraft_testkit::gpu_lock;
 
 fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, p: Value) -> Result<Value, String> {
     camera_raw_ui::menu(app, ctx, "filter.cameraRaw", &p).ok_or("missing handler")?

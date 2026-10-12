@@ -1,7 +1,7 @@
 //! GPU parity of the Image › Adjustments dialog preview (`adjust_preview`): the document with
 //! the temporary clipped adjustment layer must composite on the wgpu compositor like on the CPU
 //! reference, and like the destructive command's result, for every kind with a dialog. Skips
-//! without an adapter that renders 32-bit float targets (like `crates/gpu/tests/parity.rs`).
+//! without an adapter that renders 32-bit float targets (like `crates/gpu/tests/it/parity.rs`).
 
 use eframe::wgpu;
 use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, SampleType};
@@ -126,7 +126,7 @@ fn max_diff(a: &[[f32; 4]], b: &[[f32; 4]], skip: usize) -> f32 {
 
 #[test]
 fn preview_layer_composites_on_the_gpu_like_the_command() {
-    let _gpu = crate::support::gpu_lock();
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some((device, queue, mut comp)) = gpu() else { return };
     // GPU vs CPU of the same document (as the compositor parity tests), and GPU preview vs the
     // command's CPU result (adds the command's rounding to the layer depth).
@@ -171,7 +171,7 @@ fn preview_layer_composites_on_the_gpu_like_the_command() {
 /// The zoomed-out proxy preview (own document and layer ids) composites on the GPU like the CPU.
 #[test]
 fn proxy_preview_composites_on_the_gpu() {
-    let _gpu = crate::support::gpu_lock();
+    let _gpu = photocraft_testkit::gpu_lock();
     use photocraft_ui_egui::adjust_preview::{base_document, proxy_base, proxy_with_settings};
     let Some((device, queue, mut comp)) = gpu() else { return };
     for selection in [false, true] {
