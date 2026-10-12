@@ -252,7 +252,7 @@ fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
 /// Fails, before moving anything, when some pixels would land outside the i32 coordinate
 /// range: the surface copy saturates its target rectangle there, which no longer matches
 /// the pixel data and panics (#959).
-fn translate_doc(doc: &mut Document, cmd: &str, dx: i32, dy: i32) -> Result<()> {
+pub(crate) fn translate_doc(doc: &mut Document, cmd: &str, dx: i32, dy: i32) -> Result<()> {
     if dx == 0 && dy == 0 {
         return Ok(());
     }
@@ -961,7 +961,7 @@ mod tests {
         let surf = st.doc.layers[0].surface().unwrap();
         for (x, y) in [(0, 0), (1, 1), (2, 3)] {
             let v = surf.rgba(x, y)[0];
-            assert!(!v.is_nan() && !(0.01..=0.99).contains(&v), "nearest produced an averaged value {v} at ({x},{y})");
+            assert!(v.is_finite() && !(0.01..=0.99).contains(&v), "nearest produced an averaged value {v} at ({x},{y})");
         }
     }
 
