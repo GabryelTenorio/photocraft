@@ -130,7 +130,7 @@ fn bad_params_and_states_fail_without_changing_anything() {
         json!({"document": -1}),
         json!({"document": "1"}),
         json!({"document": 1, "source": 9}),
-        json!({"document": 1, "layers": [999_999]}),
+        json!({"document": 1, "layers": [u64::MAX]}),
         json!({"document": 1, "layers": "all"}),
         json!({"document": 1, "layers": []}),
         json!({"document": 1, "at": [1.0]}),

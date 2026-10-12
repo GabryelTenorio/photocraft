@@ -1530,7 +1530,7 @@ mod tests {
         // Layer 1 is already the only visible layer: ⌥-clicking it shows everything.
         assert_eq!(s.execute("layer.showOnly", json!({})).unwrap()["shownAlone"], false);
         assert!(doc(&s).layers.iter().all(|l| l.visible));
-        assert!(s.execute("layer.showOnly", json!({"layer": 9999})).is_err());
+        assert!(s.execute("layer.showOnly", json!({"layer": u64::MAX})).is_err());
         assert!(Session::new().execute("layer.showOnly", json!({})).is_err());
     }
 
