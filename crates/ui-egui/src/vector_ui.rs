@@ -1098,22 +1098,11 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
     true
 }
 
-/// The shape layer the options bar edits.
-struct SelectedShape {
-    doc: photocraft_doc::DocId,
-    layer: photocraft_doc::LayerId,
-    fill: Option<photocraft_doc::Fill>,
-    stroke: Option<photocraft_doc::ShapeStroke>,
-    live: Option<photocraft_doc::LiveShape>,
-}
-
-fn selected_shape(session: &photocraft_engine::Session) -> Option<SelectedShape> {
+/// Whether the active layer supplies the selected-shape options.
+fn selected_shape(session: &photocraft_engine::Session) -> Option<photocraft_doc::LayerId> {
     let st = session.active()?;
     let layer = st.active_layer?;
-    match &st.doc.layer(layer)?.content {
-        LayerContent::Shape(sh) => Some(SelectedShape { doc: st.doc.id, layer, fill: sh.fill.clone(), stroke: sh.stroke.clone(), live: sh.live.clone() }),
-        _ => None,
-    }
+    matches!(st.doc.layer(layer)?.content, LayerContent::Shape(_)).then_some(layer)
 }
 
 // ---------------------------------------------------------------------------------------------
