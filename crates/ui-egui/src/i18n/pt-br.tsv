@@ -3841,3 +3841,10 @@ layerLabel	No Color	Sem cor
 	Remove after each stroke	Remover após cada traço
 	Apply the removal ({key})	Aplicar a remoção ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traços a remover: {n} (Enter aplica, Esc cancela)
+# Bevel & Emboss shading controls.
+	Highlight Mode	Modo de realces
+	Highlight Color	Cor dos realces
+	Highlight Opacity	Opacidade dos realces
+	Shadow Mode	Modo de sombras
+	Shadow Color	Cor das sombras
+	Shadow Opacity	Opacidade das sombras

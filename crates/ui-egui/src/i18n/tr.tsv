@@ -3782,3 +3782,10 @@ cameraData	Lens	Lens
 @plural	{n} step|{n} steps	{n} adım
 @plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} fırça ön ayarı uyarısı daha)
 @plural	{what} with {n} warning|{what} with {n} warnings	{what}, {n} uyarı ile
+# Bevel & Emboss shading controls.
+	Highlight Mode	Vurgu Modu
+	Highlight Color	Vurgu Rengi
+	Highlight Opacity	Vurgu Opaklığı
+	Shadow Mode	Gölge Modu
+	Shadow Color	Gölge Rengi
+	Shadow Opacity	Gölge Opaklığı

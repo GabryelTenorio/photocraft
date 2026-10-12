@@ -2732,3 +2732,10 @@ curves	Smooth	Suavizar
 	Remove after each stroke	Eliminar después de cada trazo
 	Apply the removal ({key})	Aplicar la eliminación ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Trazos por eliminar: {n} (Intro aplica, Esc cancela)
+# Bevel & Emboss shading controls.
+	Highlight Mode	Modo de luces
+	Highlight Color	Color de luces
+	Highlight Opacity	Opacidad de luces
+	Shadow Mode	Modo de sombras
+	Shadow Color	Color de sombras
+	Shadow Opacity	Opacidad de sombras

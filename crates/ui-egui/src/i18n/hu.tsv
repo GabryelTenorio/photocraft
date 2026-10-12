@@ -3970,3 +3970,10 @@ cameraRaw	Yellow	Sárga
 	Transform On Drop	Átalakítás elengedéskor
 	Vanishing Point is not active	Az Enyészpont nem aktív
 	Vanishing Point: click four corners to create a plane	Enyészpont: sík létrehozásához kattintson a négy sarokra
+# Bevel & Emboss shading controls.
+	Highlight Mode	Csúcsfény módja
+	Highlight Color	Csúcsfény színe
+	Highlight Opacity	Csúcsfény fedettsége
+	Shadow Mode	Árnyék módja
+	Shadow Color	Árnyék színe
+	Shadow Opacity	Árnyék fedettsége

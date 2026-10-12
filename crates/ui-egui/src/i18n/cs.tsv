@@ -3665,3 +3665,10 @@ navigator	Zoom	Zvětšení
 	Remove after each stroke	Odstranit po každém tahu
 	Apply the removal ({key})	Použít odstranění ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Tahy k odstranění: {n} (Enter použije, Esc zruší)
+# Bevel & Emboss shading controls.
+	Highlight Mode	Režim světel
+	Highlight Color	Barva světel
+	Highlight Opacity	Krytí světel
+	Shadow Mode	Režim stínů
+	Shadow Color	Barva stínů
+	Shadow Opacity	Krytí stínů

@@ -2996,3 +2996,10 @@ curves	Smooth	Сгладить
 	Remove after each stroke	Удалять после каждого штриха
 	Apply the removal ({key})	Применить удаление ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)
+# Bevel & Emboss shading controls.
+	Highlight Mode	Режим светлых тонов
+	Highlight Color	Цвет светлых тонов
+	Highlight Opacity	Непрозрачность светлых тонов
+	Shadow Mode	Режим теней
+	Shadow Color	Цвет теней
+	Shadow Opacity	Непрозрачность теней

@@ -2656,3 +2656,10 @@ curves	Smooth	平滑
 	Remove after each stroke	每次描边后移除
 	Apply the removal ({key})	应用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描边：{n}（Enter 应用，Esc 取消）
+# Bevel & Emboss shading controls.
+	Highlight Mode	高光模式
+	Highlight Color	高光颜色
+	Highlight Opacity	高光不透明度
+	Shadow Mode	阴影模式
+	Shadow Color	阴影颜色
+	Shadow Opacity	阴影不透明度

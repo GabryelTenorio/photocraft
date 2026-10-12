@@ -3661,3 +3661,10 @@ curves	Smooth	スムーズ
 	Remove after each stroke	ストロークごとに削除
 	Apply the removal ({key})	削除を適用 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	削除するストローク: {n}（Enter で適用、Esc で取り消し）
+# Bevel & Emboss shading controls.
+	Highlight Mode	ハイライトモード
+	Highlight Color	ハイライトカラー
+	Highlight Opacity	ハイライト不透明度
+	Shadow Mode	シャドウモード
+	Shadow Color	シャドウカラー
+	Shadow Opacity	シャドウ不透明度
