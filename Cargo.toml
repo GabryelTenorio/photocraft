@@ -128,6 +128,12 @@ opt-level = "z"
 opt-level = "z"
 [profile.wasm-release.package.wasmparser]
 opt-level = "z"
+[profile.wasm-release.package.read-fonts]
+opt-level = "z"
+[profile.wasm-release.package.exr]
+opt-level = "z"
+[profile.wasm-release.package.tiff]
+opt-level = "z"
 
 [profile.wasm-release.package.photocraft-raster]
 opt-level = 3
