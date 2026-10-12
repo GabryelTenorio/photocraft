@@ -71,6 +71,26 @@ fn linear_raw_decodes_and_develops() {
     assert!(d.info.cfa.is_none());
 }
 
+#[test]
+fn monochrome_linear_raw_decodes_and_develops() {
+    let (w, h) = (12, 8);
+    let data = noise(w * h, 16);
+    let mut spec = DngSpec::cfa(w, h, data.clone());
+    spec.samples = 1;
+    spec.linear_raw = true;
+    spec.storage = DngStorage::Strips { rows: h };
+    let s = sensor(&spec.build());
+    assert_eq!((s.samples, s.cfa.is_none()), (1, true));
+    assert_eq!(s.data, data);
+    let d = develop_sensor(&s, &DevelopOptions::default()).unwrap();
+    assert_eq!((d.width, d.height, d.rgb.len()), (12, 8, 12 * 8 * 3));
+    assert!(d.info.cfa.is_none());
+    for px in d.rgb.chunks_exact(3) {
+        assert_eq!(px[0], px[1]);
+        assert_eq!(px[1], px[2]);
+    }
+}
+
 /// `spec`'s file with its Orientation entry (a SHORT `from`) rewritten as a LONG `to`.
 fn with_long_orientation(spec: &DngSpec, from: u16, to: u32) -> Vec<u8> {
     let mut b = spec.build();

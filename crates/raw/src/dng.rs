@@ -138,7 +138,7 @@ pub(crate) fn decode(t: &Tiff, limits: &Limits) -> Result<Sensor> {
     if is_cfa && samples != 1 {
         return Err(RawError::unsupported(format!("CFA data with {samples} samples per pixel")));
     }
-    if !is_cfa && samples != 3 {
+    if !is_cfa && samples != 1 && samples != 3 {
         return Err(RawError::unsupported(format!("LinearRaw data with {samples} samples per pixel")));
     }
     let active = rect_from(t, &raw, plane.width, plane.height);

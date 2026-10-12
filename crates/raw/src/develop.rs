@@ -299,16 +299,26 @@ pub fn develop_sensor(s: &Sensor, opts: &DevelopOptions) -> Result<Developed> {
         None => {
             pattern = None;
             rgb = vec![0.0f32; w * h * 3];
+            let src_samples = s.samples;
             par::chunks_mut(&mut rgb, band * w * 3, |b, chunk| {
                 for (r, row) in chunk.chunks_exact_mut(w * 3).enumerate() {
                     let y = c.y + b * band + r;
                     for i in 0..w {
-                        for k in 0..3 {
-                            row[i * 3 + k] = (sc.value(c.x + i, y, k) * mult[k]).clamp(0.0, 1.0);
+                        if src_samples == 1 {
+                            // Monochrome LinearRaw: replicate the grey sample into RGB (#3497).
+                            let v = (sc.value(c.x + i, y, 0) * mult[0]).clamp(0.0, 1.0);
+                            row[i * 3] = v;
+                            row[i * 3 + 1] = v;
+                            row[i * 3 + 2] = v;
+                        } else {
+                            for k in 0..3 {
+                                row[i * 3 + k] = (sc.value(c.x + i, y, k) * mult[k]).clamp(0.0, 1.0);
+                            }
                         }
                     }
                     for k in 0..3 {
-                        if let Some(g) = gain_row(s, y, c.x, w, k) {
+                        let plane = if src_samples == 1 { 0 } else { k };
+                        if let Some(g) = gain_row(s, y, c.x, w, plane) {
                             for (i, g) in g.into_iter().enumerate() {
                                 row[i * 3 + k] = (row[i * 3 + k] * g).clamp(0.0, 1.0);
                             }
