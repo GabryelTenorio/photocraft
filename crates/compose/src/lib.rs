@@ -206,8 +206,24 @@ pub const BAND_PIXELS: u64 = 8 << 20;
 /// documents can be exported or displayed without a full-size float copy. `band_rows` of 0 picks
 /// about [`BAND_PIXELS`] per band; bands are whole multiples of [`RENDER_TILE`] rows.
 pub fn render_bands<E>(doc: &Document, rect: Rect, band_rows: i32, mut sink: impl FnMut(Buffer) -> Result<(), E>) -> Result<(), E> {
+    let mut error = None;
+    render_bands_with_sink(doc, rect, band_rows, &mut |band| match sink(band) {
+        Ok(()) => true,
+        Err(e) => {
+            error = Some(e);
+            false
+        }
+    });
+    match error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+#[inline(never)]
+fn render_bands_with_sink(doc: &Document, rect: Rect, band_rows: i32, sink: &mut dyn FnMut(Buffer) -> bool) {
     if rect.is_empty() {
-        return Ok(());
+        return;
     }
     // Keep prepared pixels and compiled vector masks across bands without retaining any rendered band.
     let patterns = pattern::PreparedPatterns::new(&doc.patterns, pattern::PREPARED_PATTERN_BYTES).in_mode(doc.pixel_format().mode);
@@ -216,10 +232,11 @@ pub fn render_bands<E>(doc: &Document, rect: Rect, band_rows: i32, mut sink: imp
     let mut y = rect.y0;
     while y < rect.y1 {
         let y1 = y.saturating_add(rows).min(rect.y1);
-        sink(render_tiled_with(doc, Rect::new(rect.x0, y, rect.x1, y1), RENDER_TILE, &cx))?;
+        if !sink(render_tiled_with(doc, Rect::new(rect.x0, y, rect.x1, y1), RENDER_TILE, &cx)) {
+            return;
+        }
         y = y1;
     }
-    Ok(())
 }
 
 /// Band height for [`render_bands`]: `requested` rounded up to whole tiles, or ~[`BAND_PIXELS`].

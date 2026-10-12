@@ -365,13 +365,16 @@ mod tests {
         let full = photocraft_compose::render(doc, rect);
         let full_ref = &full;
         for factor in [1, 2, 3, 5] {
-            let expected: Vec<_> = (0..rect.height()).step_by(factor as usize).flat_map(|y| {
+            let expected: Vec<_> = (0..rect.height())
+            .step_by(factor as usize)
+            .flat_map(|y| {
                 (0..rect.width()).step_by(factor as usize).map(move |x| {
                     let p = full_ref.get(rect.x0 + x as i32, rect.y0 + y as i32);
                     let a = p[3].clamp(0.0, 1.0);
                     [p[0] * a + 1.0 - a, p[1] * a + 1.0 - a, p[2] * a + 1.0 - a, 1.0]
                 })
-            }).collect();
+            })
+            .collect();
             assert_eq!(composite(doc, rect, factor), expected, "factor {factor}");
         }
     }
