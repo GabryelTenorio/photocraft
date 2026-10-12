@@ -164,9 +164,8 @@ pub static LANGUAGES: [LangInfo; 18] = [
     // Dutch; `nl-NL` and `nl-BE` locales both resolve here.
     LangInfo { code: "nl", name: "Nederlands", source: catalog!("nl"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "it", name: "Italiano", source: catalog!("it"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
-    // Vietnamese covers all current stable localization keys. `complete_menus` remains false
-    // while generated/dynamic long-tail labels are still under review.
-    LangInfo { code: "vi", name: "Tiếng Việt", source: catalog!("vi"), plural: plural_none, complete_menus: false, catalog: OnceLock::new() },
+    // Vietnamese; `vi-VN` resolves here.
+    LangInfo { code: "vi", name: "Tiếng Việt", source: catalog!("vi"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
 ];
 
 impl LangInfo {
@@ -398,7 +397,7 @@ mod tests {
             assert_eq!(lang_from_tag(tag), Some(VI()), "{tag}");
         }
         assert_eq!(VI().name(), "Tiếng Việt");
-        assert!(!VI().complete_menus(), "Vietnamese keeps complete_menus false while long-tail labels are under review");
+        assert!(VI().complete_menus(), "Vietnamese translates every source key");
         assert_eq!(Lang::from_pref("vi"), VI());
         assert_eq!(Lang::from_pref("VI"), VI());
     }
