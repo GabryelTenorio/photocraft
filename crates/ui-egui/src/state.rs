@@ -896,6 +896,10 @@ pub struct TransformSession {
     /// Edit › Transform › Skew / Distort / Perspective (`Free` for Free Transform).
     #[serde(default)]
     pub mode: TransformMode,
+    /// Free Transform of several selected layers at once (#3592): every layer the box moves, bottom
+    /// to top, around one shared frame (`layer` stays the active one). Empty for a single layer.
+    #[serde(default)]
+    pub layers: Vec<u64>,
     /// Edit › Content-Aware Scale (#3096): the box only scales and moves, and OK runs
     /// `edit.contentAwareScale` with these options instead of `edit.transform`.
     #[serde(default)]

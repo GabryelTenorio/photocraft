@@ -58,6 +58,7 @@ pub(crate) fn begin(app: &mut PhotocraftApp, offset: [i32; 2]) -> bool {
         path: None,
         made: None,
         mode: Default::default(),
+        layers: Vec::new(),
         content_aware: None,
     };
     app.ui.cam_transform = Some(CamTransform { document, revision, offset, frame, gesture: None });
