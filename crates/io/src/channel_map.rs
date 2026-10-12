@@ -15,6 +15,7 @@ pub(crate) const DISPLAY_INFO_OLD: u16 = 1007;
 pub(crate) const QUICK_MASK_INFO: u16 = 1022;
 
 const SPACE_RGB: u16 = 0;
+const SPACE_HSB: u16 = 1;
 const SPACE_CMYK: u16 = 2;
 const SPACE_LAB: u16 = 7;
 const SPACE_GRAY: u16 = 8;
@@ -79,8 +80,29 @@ pub(crate) fn decode_color(space: u16, c: [u16; 4]) -> Color {
             let v = 1.0 - f32::from(c[0].min(10000)) / 10000.0;
             Color::rgb(v, v, v)
         }
+        SPACE_HSB => {
+            let [r, g, b] = hsb_to_rgb(n(c[0]) * 360.0, n(c[1]), n(c[2]));
+            Color::rgb(r, g, b)
+        }
         _ => Color::rgb(n(c[0]), n(c[1]), n(c[2])),
     }
+}
+
+/// HSB (hue in degrees, saturation and brightness 0..1) to RGB.
+fn hsb_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
+    let h = if h.is_finite() { h.rem_euclid(360.0) / 60.0 } else { 0.0 };
+    let c = v * s;
+    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let (r, g, b) = match h as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = v - c;
+    [r + m, g + m, b + m]
 }
 
 #[cfg(test)]

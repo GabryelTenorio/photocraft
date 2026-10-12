@@ -267,7 +267,9 @@ fn be32(d: &[u8], at: usize) -> Option<u32> {
 /// key), reverse, dither, [method], name, colour stops (location /4096, midpoint %, colour
 /// space + four u16 components, 2 bytes), transparency stops, then smoothness (/4096) among
 /// noise-gradient fields. Smoothness, midpoints and the method are baked into dense stops like
-/// gradient fills. Noise gradients (no colour stops) and non-RGB stops stay unsupported.
+/// gradient fills. Stops in any colour space Photoshop stores (RGB, HSB, CMYK, Lab, Grayscale:
+/// a Grayscale document's stops are Grayscale) are converted to RGB; noise gradients (no colour
+/// stops) and colour-book stops stay unsupported.
 fn parse_gradient_map(d: &[u8]) -> Option<Adjustment> {
     let version = be16(d, 0)?;
     let reverse = *d.get(2)? != 0;
@@ -285,11 +287,13 @@ fn parse_gradient_map(d: &[u8]) -> Option<Adjustment> {
     for _ in 0..n {
         let loc = (be32(d, at)? as f32 / 4096.0).clamp(0.0, 1.0);
         let mid = be32(d, at + 4)? as f32 / 100.0;
-        if be16(d, at + 8)? != 0 {
+        // Colour books and other spaces have no conversion here.
+        let space = be16(d, at + 8)?;
+        if !matches!(space, 0 | 1 | 2 | 7 | 8) {
             return None;
         }
-        let c = |k: usize| be16(d, at + 10 + 2 * k).map(|v| f32::from(v) / 65535.0);
-        stops.push((loc, photocraft_color::Color::rgb(c(0)?, c(1)?, c(2)?)));
+        let v = |k: usize| be16(d, at + 10 + 2 * k);
+        stops.push((loc, crate::channel_map::decode_color(space, [v(0)?, v(1)?, v(2)?, v(3)?])));
         mids.push(mid);
         at += 20;
     }
@@ -765,6 +769,43 @@ pub fn write(adj: &Adjustment) -> Vec<([u8; 4], Vec<u8>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Stops in any colour space Photoshop stores come in as RGB: a Grayscale document's Gradient
+    /// Map has Grayscale stops (measured on Photoshop's oracles: 10000 is black), and they used to
+    /// make the whole adjustment unreadable.
+    #[test]
+    fn gradient_map_stops_in_every_colour_space() {
+        let base = write_gradient_map(&[(0.0, [0.0; 3]), (1.0, [1.0; 3])], false, false);
+        let name_units = be32(&base, 4).unwrap() as usize;
+        let first = 8 + name_units * 2 + 2;
+        // `base` with both stops' colour structures replaced.
+        let with = |space: u16, a: [u16; 4], b: [u16; 4]| {
+            let mut v = base.clone();
+            for (k, vals) in [a, b].iter().enumerate() {
+                let at = first + k * 20 + 8;
+                v[at..at + 2].copy_from_slice(&space.to_be_bytes());
+                for (j, x) in vals.iter().enumerate() {
+                    v[at + 2 + 2 * j..at + 4 + 2 * j].copy_from_slice(&x.to_be_bytes());
+                }
+            }
+            v
+        };
+        let ends = |data: Vec<u8>| match parse(b"grdm", &data, None, Channels::Rgb) {
+            Adjustment::GradientMap { stops, .. } => (stops.first().unwrap().1, stops.last().unwrap().1),
+            other => panic!("{other:?}"),
+        };
+        let close = |a: [f32; 3], b: [f32; 3]| (0..3).all(|k| (a[k] - b[k]).abs() < 0.02);
+        let (a, b) = ends(with(8, [10000, 0, 0, 0], [2500, 0, 0, 0]));
+        assert!(close(a, [0.0; 3]) && close(b, [0.75; 3]), "Grayscale: {a:?} {b:?}");
+        let (a, b) = ends(with(1, [0, 65535, 65535, 0], [21845, 0, 32768, 0]));
+        assert!(close(a, [1.0, 0.0, 0.0]) && close(b, [0.5; 3]), "HSB: {a:?} {b:?}");
+        let (a, b) = ends(with(7, [10000, 0, 0, 0], [0, 0, 0, 0]));
+        assert!(close(a, [1.0; 3]) && close(b, [0.0; 3]), "Lab: {a:?} {b:?}");
+        let (a, _) = ends(with(2, [65535; 4], [0; 4]));
+        assert!(close(a, [1.0; 3]), "CMYK with no ink (stored inverted): {a:?}");
+        // A colour book has no conversion: the layer stays as saved, as before.
+        assert!(matches!(parse(b"grdm", &with(3, [0; 4], [0; 4]), None, Channels::Rgb), Adjustment::Unsupported { .. }));
+    }
 
     #[test]
     fn gradient_map_v3_methods_and_smoothness() {
