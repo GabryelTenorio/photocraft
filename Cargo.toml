@@ -135,6 +135,12 @@ opt-level = "z"
 [profile.wasm-release.package.tiff]
 opt-level = "z"
 
+# Browser UI layout and painting also favor download size; native profiles stay unchanged.
+[profile.wasm-release.package.egui]
+opt-level = "z"
+[profile.wasm-release.package.epaint]
+opt-level = "z"
+
 [profile.wasm-release.package.photocraft-raster]
 opt-level = 3
 [profile.wasm-release.package.photocraft-color]
