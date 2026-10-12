@@ -980,6 +980,28 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
     true
 }
 
+/// Select the visible shape under a Shape-tool click, without selecting through an
+/// unrelated top layer. An empty click still belongs to the Create Shape dialog.
+pub fn select_existing_shape_at(app: &mut PhotocraftApp, at: [f64; 2]) -> bool {
+    let [x, y] = at;
+    if !x.is_finite() || !y.is_finite() || x < f64::from(i32::MIN) || y < f64::from(i32::MIN)
+        || x >= f64::from(i32::MAX) || y >= f64::from(i32::MAX)
+    {
+        return false;
+    }
+    let Some(st) = app.session.active() else { return false };
+    let Some(id) = photocraft_engine::pick_cmds::layers_at(&st.doc, x.floor() as i32, y.floor() as i32).into_iter().next() else {
+        return false;
+    };
+    if !st.doc.layer(id).is_some_and(|l| matches!(&l.content, LayerContent::Shape(_)))
+        || st.doc.effective_locks(id).all
+        || st.doc.effective_locks(id).pixels
+    {
+        return false;
+    }
+    app.session.select_layer(id).is_ok()
+}
+
 /// The shape layer the options bar edits.
 struct SelectedShape {
     doc: photocraft_doc::DocId,
@@ -1609,6 +1631,52 @@ mod tests {
         app.session.execute("file.new", json!({"width": 200, "height": 200})).unwrap();
         app.sync_views();
         app
+    }
+
+    #[test]
+    fn shape_tool_click_selects_an_existing_shape_for_fill_edits() {
+        use crate::canvas::{ToolEvent, tool_event};
+        let mut app = app();
+        let shape = app.run("shape.create", json!({"kind": "rect", "rect": [20, 20, 60, 50], "fill": "#ee3311"})).unwrap()["layer"].as_u64().unwrap();
+        let background = app.session.active().unwrap().doc.layers[0].id;
+        app.run("layer.select", json!({"layer": background.0})).unwrap();
+        app.ui.tool = Tool::Rectangle;
+        let history = app.session.active().unwrap().history.past_len();
+        let down = ToolEvent::Down { x: 30.0, y: 30.0, pressure: 1.0 };
+        tool_event(&mut app, down, egui::Modifiers::NONE);
+        tool_event(&mut app, ToolEvent::Up { x: 30.0, y: 30.0 }, egui::Modifiers::NONE);
+        assert_eq!(app.session.active().unwrap().active_layer, Some(photocraft_doc::LayerId(shape)));
+        assert!(app.ui.dialogs.is_empty(), "clicking a filled shape does not open Create Rectangle");
+        assert_eq!(app.session.active().unwrap().history.past_len(), history, "selection does not modify the image");
+
+        let old_fill = app.run("shape.info", json!({})).unwrap()["fill"].clone();
+        app.run("shape.edit", json!({"fill": "#1144cc"})).unwrap();
+        assert_ne!(app.run("shape.info", json!({})).unwrap()["fill"], old_fill);
+        app.run("layer.select", json!({"layer": background.0})).unwrap();
+
+        tool_event(&mut app, ToolEvent::Down { x: 150.0, y: 150.0, pressure: 1.0 }, egui::Modifiers::NONE);
+        tool_event(&mut app, ToolEvent::Up { x: 150.0, y: 150.0 }, egui::Modifiers::NONE);
+        assert_eq!(app.ui.dialogs.len(), 1, "clicking empty canvas still opens Create Rectangle");
+        assert_eq!(app.session.active().unwrap().active_layer, Some(background));
+    }
+
+    #[test]
+    fn shape_click_does_not_pick_through_opaque_or_hidden_layers() {
+        let mut app = app();
+        let shape = app.run("shape.create", json!({"kind": "rect", "rect": [20, 20, 60, 50], "fill": "#ee3311"})).unwrap()["layer"].as_u64().unwrap();
+        assert!(select_existing_shape_at(&mut app, [30.0, 30.0]));
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("select.rect", json!({"x": 25, "y": 25, "width": 15, "height": 15})).unwrap();
+        app.run("edit.fill", json!({"color": "#00ff00"})).unwrap();
+        app.run("select.deselect", json!({})).unwrap();
+        let cover = app.session.active().unwrap().active_layer;
+        assert!(!select_existing_shape_at(&mut app, [30.0, 30.0]), "an opaque raster layer blocks the shape");
+        assert_eq!(app.session.active().unwrap().active_layer, cover);
+        app.run("layer.setProps", json!({"layer": cover.unwrap().0, "visible": false})).unwrap();
+        assert!(select_existing_shape_at(&mut app, [30.0, 30.0]));
+        assert_eq!(app.session.active().unwrap().active_layer, Some(photocraft_doc::LayerId(shape)));
+        assert!(!select_existing_shape_at(&mut app, [f64::NAN, 30.0]));
+        assert!(!select_existing_shape_at(&mut app, [f64::INFINITY, 30.0]));
     }
 
     #[test]
