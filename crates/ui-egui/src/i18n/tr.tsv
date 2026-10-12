@@ -176,3 +176,138 @@
 	WIA Support…	WIA Desteği…
 	Window	Pencere
 	Workspace…	Çalışma Alanı…
+
+# Labels every registered language must carry (tests in i18n/mod.rs): LUT export, Mixer Brush,
+# Pattern Stamp, Camera Raw
+	Scope	Kapsam
+	Selected	Seçili
+	Mixer Brush	Karıştırıcı Fırça
+	Mixer Brush Tool	Karıştırıcı Fırça Aracı
+	Wet	Islaklık
+	Load	Yükleme
+	Mix	Karışım
+	Flow	Akış
+	Sample All Layers	Tüm Katmanları Örnekle
+	Pattern Stamp Tool	Desen Damgası Aracı
+	Pattern Stamp	Desen Damgası
+	Impressionist	Empresyonist
+	Aligned	Hizalı
+
+# Camera Raw
+cameraRaw	Light	Işık
+cameraRaw	Lights	Açık Tonlar
+cameraRaw	Darks	Koyu Tonlar
+cameraRaw	Blacks	Siyahlar
+cameraRaw	Amount	Miktar
+cameraRaw	Tint	Ton
+cameraRaw	Masking	Maskeleme
+cameraRaw	Blending	Karıştırma
+cameraRaw	Highlights	Vurgular
+cameraRaw	Shadows	Gölgeler
+cameraRaw	Color	Renk
+cameraRaw	Effects	Efektler
+cameraRaw	Whites	Beyazlar
+cameraRaw	Exposure	Pozlama
+cameraRaw	Contrast	Kontrast
+cameraRaw	Texture	Doku
+cameraRaw	Clarity	Netlik
+cameraRaw	Dehaze	Pus Giderme
+cameraRaw	Temperature	Sıcaklık
+cameraRaw	Vibrance	Canlılık
+cameraRaw	Saturation	Doygunluk
+cameraRaw	Curve	Eğri
+cameraRaw	Color Mixer	Renk Karıştırıcı
+cameraRaw	Hue	Renk Tonu
+cameraRaw	Luminance	Parlaklık
+cameraRaw	Red	Kırmızı
+cameraRaw	Orange	Turuncu
+cameraRaw	Yellow	Sarı
+cameraRaw	Green	Yeşil
+cameraRaw	Aqua	Su Yeşili
+cameraRaw	Blue	Mavi
+cameraRaw	Purple	Mor
+cameraRaw	Magenta	Macenta
+cameraRaw	Color Grading	Renk Derecelendirme
+cameraRaw	Midtones	Orta Tonlar
+cameraRaw	Global	Genel
+cameraRaw	Balance	Denge
+cameraRaw	Detail	Ayrıntı
+cameraRaw	Radius	Yarıçap
+cameraRaw	Luminance Detail	Parlaklık Ayrıntısı
+cameraRaw	Color Detail	Renk Ayrıntısı
+cameraRaw	Feather	Yumuşatma
+cameraRaw	Midpoint	Orta Nokta
+cameraRaw	Roundness	Yuvarlaklık
+cameraRaw	Roughness	Pürüzlülük
+cameraRaw	Size	Boyut
+	Before (Y)	Önce (Y)
+	Camera Raw ({name})	Camera Raw ({name})
+	Camera Raw Filter ({layer})	Camera Raw Filtresi ({layer})
+	Camera Raw isn't open	Camera Raw açık değil
+	Cancel	İptal
+	Cancelled opening {name}	Açma iptal edildi: {name}
+	Cancelled {label}	İptal edildi: {label}
+	Developing {name}	Geliştiriliyor: {name}
+	Full-resolution preview unavailable	Tam çözünürlüklü önizleme kullanılamıyor
+	Grain	Gren
+	Highlight Clipping Warning (O)	Vurgu Kırpma Uyarısı (O)
+	Highlight Priority	Vurgu Önceliği
+	Color Priority	Renk Önceliği
+	Noise Reduction	Gürültü Azaltma
+	OK	Tamam
+	Open	Aç
+	Opened {name}	Açıldı: {name}
+	Paint Overlay	Boya Kaplaması
+	Shadow Clipping Warning (U)	Gölge Kırpma Uyarısı (U)
+	Sharpening	Keskinleştirme
+	Show Lab Color Readouts	Lab Renk Değerlerini Göster
+	Show Red at 3 o'clock	Kırmızıyı Saat 3 Yönünde Göster
+	Show Selected Region	Seçili Bölgeyi Göster
+	Show Skin Tone Indicator	Ten Rengi Göstergesini Göster
+	Show Vectorscope	Vektörskopu Göster
+	Tone Histogram	Ton Histogramı
+	Vignetting	Vinyet
+	White Balance: As Shot	Beyaz Dengesi: Çekildiği Gibi
+
+# Labels every registered language must carry: delete-layer prompt, image mode depth,
+# New Document depth, Select menu dialogs (Select and Mask, Modify ▸ …)
+	Delete layer ‘{name}’?	‘{name}’ katmanı silinsin mi?
+	Delete {count} layers? {names}	{count} katman silinsin mi? {names}
+	Delete layer?	Katman silinsin mi?
+	Don't show again	Bir daha gösterme
+	The document is closed	Belge kapalı
+	The document or selected layers changed. Please request deletion again.	Belge ya da seçili katmanlar değişti. Lütfen silmeyi yeniden isteyin.
+	Missing delete command	Silme komutu eksik
+	Invalid delete command	Geçersiz silme komutu
+	Layer deleted, but confirmation preference could not be saved: {error}	Katman silindi, ancak onay tercihi kaydedilemedi: {error}
+	8 Bits/Channel	8 Bit/Kanal
+	16 Bits/Channel	16 Bit/Kanal
+	32 Bits/Channel	32 Bit/Kanal
+	8 bit	8 Bit
+	16 bit	16 Bit
+	32 bit (float)	32 Bit (kayan nokta)
+	Integer	Tam sayı
+	Floating point	Kayan nokta
+	Amount	Miktar
+	Apply At Canvas Bounds	Tuval Sınırlarında Uygula
+	Border…	Kenarlık…
+	Contract…	Daralt…
+	Contrast	Kontrast
+	Decontaminate	Renk Arındırma
+	Expand…	Genişlet…
+	Feather	Yumuşatma
+	Feather…	Yumuşat…
+	Layer Mask	Katman Maskesi
+	New Document	Yeni Belge
+	New Document With Mask	Maskeli Yeni Belge
+	New Layer	Yeni Katman
+	New Layer With Mask	Maskeli Yeni Katman
+	Output	Çıktı
+	Radius	Yarıçap
+	Refine Edge…	Kenarı İyileştir…
+	Refine Strokes	Konturları İyileştir
+	Selection	Seçim
+	Shift Edge	Kenarı Kaydır
+	Smart Radius	Akıllı Yarıçap
+	Smooth	Yumuşak
+	Smooth…	Düzgünleştir…
