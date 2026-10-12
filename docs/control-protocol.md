@@ -632,6 +632,12 @@ groups. Incoming destination highlights retain the accent color. The dragged con
 only in the moving preview; its reserved destination is background-filled. Source and receiving
 groups keep their remaining existing content selected during preview.
 
+Panel/document bounds and their orange outlines ease between preview sizes over 150 ms.
+Changing destinations continues from the current displayed geometry; leaving a destination
+or cancelling eases back. Release commits the measured candidate immediately while its visual
+transition finishes. The incoming accent highlight stays at the final destination. Controls
+remain disabled during settling, and ordinary panel resizing keeps its immediate response.
+
 Live layouts are presentation-only: authoritative drag targets remain stable, preview controls
 are disabled, and no temporary panel sizes, floating memory or document cameras are saved.
 Insertion lines follow the measured displayed strip for cross-group joins. Same-group reorder

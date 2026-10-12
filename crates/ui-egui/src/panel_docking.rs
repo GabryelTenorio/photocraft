@@ -766,18 +766,17 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
     }
     if cancelled && cancel_legacy_drag(app, ui.ctx()) {
         ui.ctx().data_mut(|data| data.insert_temp(area.with("legacy-suppressed"), true));
-        if app.ui.docking.is_none() {
+        if app.ui.docking.is_none() && !craft_ui::docking::geometry_transition_active::<String>(ui.ctx(), area) {
             return false;
         }
     }
-    let Some(layout) = app.ui.docking.as_ref() else { return false };
-    if !valid(layout) {
+    let Some(layout) = app.ui.docking.clone().or_else(|| workspace_presentation(app, ui.ctx()).then(|| legacy(app))) else { return false };
+    if !valid(&layout) {
         app.ui.docking = None;
         let message = "Invalid panel layout; restored the default dock";
         app.ui.status = tl!(message).into();
         return false;
     }
-    let layout = layout.clone();
     for (panel, location) in &app.ui.docking_hidden {
         if normalize(panel).is_some() && location.floating.is_none() {
             app.ui.dock_regions.dock_returns.entry(panel.clone()).or_insert_with(|| location.clone());
@@ -1349,6 +1348,13 @@ pub(crate) fn workspace_presentation(app: &PhotocraftApp, ctx: &egui::Context) -
     if app.ui.dock_regions.enabled {
         return true;
     }
+    let area = egui::Id::new("photocraft-panel-docking");
+    if !app.session.prefs().workspace_locked
+        && ctx.data(|data| data.get_temp::<u64>(area.with("generation"))) == Some(app.ui.docking_generation)
+        && craft_ui::docking::geometry_transition_active::<String>(ctx, area)
+    {
+        return true;
+    }
     if app.session.prefs().workspace_locked
         || !craft_ui::docking::is_dragging::<String>(ctx, egui::Id::new("photocraft-panel-docking"))
         || ctx.input(|i| !i.focused || i.key_pressed(egui::Key::Escape) || (!i.pointer.primary_down() && !i.pointer.primary_released()))
@@ -1501,6 +1507,31 @@ fn eligible_drag_targets(
 }
 
 impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
+    fn preview_geometry_duration(&self) -> f32 {
+        if self.app.session.prefs().workspace_locked { 0.0 } else { 0.15 }
+    }
+    fn preview_geometry_generation(&self) -> u64 {
+        self.app.ui.docking_generation
+    }
+    fn preview_geometry_origin(&self, ctx: &egui::Context, panel: &String) -> Option<egui::Rect> {
+        ctx.data(|data| {
+            data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
+                .and_then(|registry| registry.get(&self.host).and_then(|targets| {
+                    targets.iter().find(|target| &target.anchor == panel || target.tabs.iter().any(|(member, _)| member == panel))
+                        .map(|target| target.rect)
+                }))
+                .or_else(|| (panel == CANVAS).then(|| data.get_temp::<egui::Rect>(egui::Id::new("photocraft-document-area-rect"))).flatten())
+        })
+    }
+    fn preview_geometry(&mut self, ctx: &egui::Context, _panels: &[String], display: egui::Rect, _destination: egui::Rect) {
+        let key = egui::Id::new("photocraft-panel-docking");
+        ctx.data_mut(|data| {
+            let rects = data.get_temp_mut_or_default::<Vec<egui::Rect>>(key.with(("affected", self.host)));
+            if !rects.contains(&display) {
+                rects.push(display);
+            }
+        });
+    }
     fn preview_layout(
         &mut self,
         ctx: &egui::Context,
@@ -1564,10 +1595,12 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         });
     }
     fn paint_preview(&mut self, ctx: &egui::Context) {
-        if live_preview(ctx, self.app.ui.docking_generation).is_none_or(|preview| !preview.rearrange) {
+        let key = egui::Id::new("photocraft-panel-docking");
+        if craft_ui::docking::is_dragging::<String>(ctx, key)
+            && ctx.data(|data| data.get_temp::<bool>(key.with("same-group-strip"))).unwrap_or(false)
+        {
             return;
         }
-        let key = egui::Id::new("photocraft-panel-docking");
         let rects = ctx.data(|data| data.get_temp::<Vec<egui::Rect>>(key.with(("affected", self.host)))).unwrap_or_default();
         let layer = egui::LayerId::new(egui::Order::Foreground, key.with("drop-preview"));
         ctx.move_to_top(layer);
@@ -1643,6 +1676,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         }
         ctx.data_mut(|data| data.remove::<LiveDockPreview>(key.with("live-preview")));
         ctx.data_mut(|data| data.remove::<DropFeedback>(key.with("resolved-preview")));
+        ctx.data_mut(|data| data.insert_temp(key.with("same-group-strip"), false));
         if self.app.session.prefs().workspace_locked {
             return Some(DropFeedback::default());
         }
@@ -1658,6 +1692,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             .and_then(|target| resolve_drop(&panel, request.pointer, std::slice::from_ref(target)));
         let same_group_strip =
             !whole && proposal.as_ref().is_some_and(|proposal| proposal.insertion.is_some() && group_members(layout, &panel).contains(&proposal.anchor));
+        ctx.data_mut(|data| data.insert_temp(key.with("same-group-strip"), same_group_strip));
         // A strip reorder remains a reorder even when its header touches a dock edge.
         let edge = (!same_group_strip).then(|| crate::workspace_dock::edge_at(self.workspace_rect, request.pointer)).flatten();
         // Inset document targets remain reachable even where document/workspace edges coincide.
