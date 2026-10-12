@@ -4108,3 +4108,7 @@ cameraRaw	Visualize Spots	Foltok megjelenítése
 cameraRaw	Vivid	Élénk
 cameraRaw	White balance	Fehéregyensúly
 cameraRaw	Zoom and Pan	Nagyítás és pásztázás
+# Camera Raw: several raws in one dialog
+	Open ({n})	Megnyitás ({n})
+	Remove from Filmstrip	Eltávolítás a filmszalagról
+	Remove from Filmstrip: the photo is not opened; the file stays on disk	Eltávolítás a filmszalagról: a fotó nem nyílik meg; a fájl a lemezen marad
