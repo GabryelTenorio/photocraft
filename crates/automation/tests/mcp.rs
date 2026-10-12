@@ -1252,6 +1252,9 @@ async fn convention_resources_are_live_json() {
     let tool = tool.as_array().unwrap();
     let layer_new = resource.iter().find(|c| c["id"] == "layer.new.layer").unwrap();
     assert_eq!(layer_new["enabled"], true);
+    let purge = resource.iter().find(|c| c["id"] == "edit.purge.all").unwrap();
+    assert_eq!(purge["enabled"], true, "session-owned undo history keeps purge enabled");
+    assert!(purge["disabledReason"].is_null(), "enabled purge has no disabled reason");
     assert_eq!(resource.len(), tool.len());
     for (resource_command, tool_command) in resource.iter().zip(tool) {
         assert_eq!(resource_command, tool_command, "command {}", resource_command["id"]);
