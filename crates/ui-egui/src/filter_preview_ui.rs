@@ -28,9 +28,9 @@ const CENTER_X_FIELD: &str = "__pvCx";
 const CENTER_Y_FIELD: &str = "__pvCy";
 
 /// Draw the filter dialog's in-dialog preview window below its parameters (its `fields` `f`). A
-/// no-op for dialogs without a preview and for Select and Mask, which has its own view.
+/// no-op for dialogs without one (see [`has_window`]).
 pub(crate) fn window(app: &PhotocraftApp, dialog: u64, ui: &mut egui::Ui, f: &mut Map<String, Value>) {
-    if !f.contains_key("__preview") || crate::select_mask_view::owns(f) {
+    if !has_window(f) {
         return;
     }
     let Some(cmd) = f.get("__command").and_then(Value::as_str).map(str::to_owned) else { return };
@@ -145,7 +145,13 @@ const ZOOM_STEPS: [f32; 7] = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 /// The vertical space the preview window takes below the parameters: the image, the zoom row and
 /// their spacing. `0` when the dialog has no preview (so the caller reserves nothing).
 pub(crate) fn reserved_height(f: &Map<String, Value>) -> f32 {
-    if f.contains_key("__preview") && !crate::select_mask_view::owns(f) { PREVIEW_H + 32.0 } else { 0.0 }
+    if has_window(f) { PREVIEW_H + 32.0 } else { 0.0 }
+}
+
+/// Only filter dialogs get the in-dialog preview window, as in Photoshop: Rotate Canvas, the
+/// adjustments and New Guide Layout keep just the on-canvas preview. Select and Mask has its own view.
+fn has_window(f: &Map<String, Value>) -> bool {
+    f.contains_key("__preview") && !crate::select_mask_view::owns(f) && f.get("__command").and_then(Value::as_str).is_some_and(|c| c.starts_with("filter."))
 }
 
 /// The next zoom level up or down from `zoom`, clamped to [`ZOOM_STEPS`]' ends.
@@ -317,4 +323,18 @@ mod tests {
         assert_eq!(f.get(ZOOM_FIELD), Some(&json!(1.0)));
         assert_eq!(f.get(CENTER_Y_FIELD), Some(&json!(0.0)));
     }
+
+    #[test]
+    fn only_filter_dialogs_get_the_preview_window() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 64, "height": 48})).unwrap();
+        let emboss = crate::filter_dialog::open(&mut app, "filter.stylize.emboss").expect("Emboss opens a dialog");
+        let rotate = crate::filter_dialog::open(&mut app, "image.rotation.arbitrary").expect("Arbitrary opens a dialog");
+        let fields = |id: u64| app.ui.dialogs.iter().find(|d| d.id == id).expect("the dialog is open").fields.clone();
+        let (emboss, rotate) = (fields(emboss), fields(rotate));
+        assert!(rotate.contains_key("__preview"), "Arbitrary keeps its on-canvas preview");
+        assert!(reserved_height(&emboss) > 0.0);
+        assert_eq!(reserved_height(&rotate), 0.0, "Rotate Canvas has no preview window in Photoshop");
+    }
+
 }
