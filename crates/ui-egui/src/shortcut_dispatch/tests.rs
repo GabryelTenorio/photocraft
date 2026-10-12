@@ -26,6 +26,9 @@ fn realistic() -> photocraft_engine::Session {
     s.execute("select.rect", json!({"x": 20, "y": 20, "width": 80, "height": 60})).unwrap();
     s.execute("edit.fill", json!({"color": "#3070c0"})).unwrap();
     s.execute("layer.select", json!({"layer": paint})).unwrap();
+    // Group Layers makes a collapsed group; open it so the panel shows the layer inside. (Opened
+    // last: an open active group would take the new layers above inside it, as in Photoshop.)
+    s.execute("layer.setExpanded", json!({"all": true, "expanded": true})).unwrap();
     s
 }
 

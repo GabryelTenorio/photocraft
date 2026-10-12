@@ -17,10 +17,12 @@ fn layered() -> photocraft_engine::Session {
     let inner = s.execute("layer.groupLayers", json!({"name": "inner"})).unwrap()["layer"].as_u64().unwrap();
     let outer = s.execute("layer.groupLayers", json!({"layer": inner, "name": "outer"})).unwrap()["layer"].as_u64().unwrap();
     s.execute("layer.select", json!({"layer": inner})).unwrap();
-    // `layer.new.layer` lands above the active layer, inside `outer`.
+    // `layer.new.layer` lands above the active (closed) group `inner`, inside `outer`.
     s.execute("layer.new.layer", json!({"name": "in-outer"})).unwrap();
     s.execute("layer.select", json!({"layer": outer})).unwrap();
     s.execute("layer.new.layer", json!({"name": "top"})).unwrap();
+    // Group Layers makes collapsed groups, as in Photoshop; these tests start from open ones.
+    s.execute("layer.setExpanded", json!({"all": true, "expanded": true})).unwrap();
     s
 }
 
