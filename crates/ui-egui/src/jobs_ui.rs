@@ -454,6 +454,10 @@ fn on_event(app: &mut PhotocraftApp, ctx: &egui::Context, e: JobEvent) {
     if crate::camera_raw_ui::on_redevelop_event(app, &e) {
         return;
     }
+    // A filmstrip photo developed to be shown (several raws opening together).
+    if crate::camera_raw_batch::on_job_event(app, &e) {
+        return;
+    }
     if e.command == SAVE_JOB
         && let Some(i) = app.jobs.saves.iter().position(|s| s.job == e.id)
     {
@@ -542,8 +546,7 @@ fn finish_open(app: &mut PhotocraftApp, name: &str, path: Option<&str>, v: &Valu
     photocraft_engine::automate_cmds::document_opened(&mut app.session);
     app.sync_views();
     let color = v.get("color").cloned().unwrap_or(Value::Null);
-    let ask = color.get("ask").and_then(Value::as_bool) == Some(true);
-    if ask && (color.get("mismatch").and_then(Value::as_bool) == Some(true) || color.get("missing").is_some()) {
+    if crate::camera_raw_ui::asks_about_profile(&color, &warnings) {
         crate::prefs_ui::open_mismatch(app, &color);
     }
     Ok(())
