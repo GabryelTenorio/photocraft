@@ -3032,6 +3032,23 @@ curves	Smooth	Lisser
 	Click to place · Alt-click or drag off-canvas to remove	Cliquez pour placer · Alt-clic ou glisser hors du canevas pour supprimer
 	No document open	Aucun document ouvert
 	{n} of {max} sample points	{n} sur {max} points d'échantillonnage
+	Right-to-left	De droite à gauche
+	Left-to-right	De gauche à droite
+	Kashida	Kashida
+	Western	Occidentaux
+	Arabic-Indic	Arabes orientaux
+	Persian	Persans
+	Keep Selection Left-to-Right	Garder la sélection de gauche à droite
+	Keep Selection Right-to-Left	Garder la sélection de droite à gauche
+	Keep Selection in Its Own Direction	Garder la sélection dans sa propre direction
+	Insert End of Isolate	Insérer la fin d’isolat
+	Insert Left-to-Right Mark	Insérer une marque gauche-droite
+	Insert Right-to-Left Mark	Insérer une marque droite-gauche
+	Insert Arabic Letter Mark	Insérer une marque de lettre arabe
+	Insert Zero-Width Joiner	Insérer un liant de largeur nulle
+	Insert Zero-Width Non-Joiner	Insérer un antiliant de largeur nulle
+	Insert Tatweel	Insérer un tatwil
+	Insert Control Character	Insérer un caractère de contrôle
 # Print dialog (#2697)
 	Emulsion Down	Émulsion verso
 	Functions	Fonctions

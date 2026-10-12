@@ -3628,6 +3628,23 @@ curves	Smooth	Wygładź
 	Click to place · Alt-click or drag off-canvas to remove	Kliknij, aby umieścić · Alt-kliknij lub przeciągnij poza obszar roboczy, aby usunąć
 	No document open	Brak otwartego dokumentu
 	{n} of {max} sample points	{n} z {max} punktów próbkowania
+	Right-to-left	Od prawej do lewej
+	Left-to-right	Od lewej do prawej
+	Kashida	Kaszida
+	Western	Zachodnie
+	Arabic-Indic	Arabsko-indyjskie
+	Persian	Perskie
+	Keep Selection Left-to-Right	Zachowaj zaznaczenie od lewej do prawej
+	Keep Selection Right-to-Left	Zachowaj zaznaczenie od prawej do lewej
+	Keep Selection in Its Own Direction	Zachowaj zaznaczenie we własnym kierunku
+	Insert End of Isolate	Wstaw koniec izolacji
+	Insert Left-to-Right Mark	Wstaw znak od lewej do prawej
+	Insert Right-to-Left Mark	Wstaw znak od prawej do lewej
+	Insert Arabic Letter Mark	Wstaw arabski znak litery
+	Insert Zero-Width Joiner	Wstaw łącznik o zerowej szerokości
+	Insert Zero-Width Non-Joiner	Wstaw rozłącznik o zerowej szerokości
+	Insert Tatweel	Wstaw tatwil
+	Insert Control Character	Wstaw znak sterujący
 # Print dialog (#2697)
 	Emulsion Down	Emulsja w dół
 	Functions	Funkcje

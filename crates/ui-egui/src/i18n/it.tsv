@@ -2688,6 +2688,24 @@ curves	Smooth	Leviga
 	Click to place · Alt-click or drag off-canvas to remove	Fai clic per posizionare · Alt-clic o trascina fuori dal quadro per rimuovere
 	No document open	Nessun documento aperto
 	{n} of {max} sample points	{n} di {max} punti di campionamento
+	Right-to-left	Da destra a sinistra
+	Left-to-right	Da sinistra a destra
+	Kashida	Kashida
+	Digits	Cifre
+	Western	Occidentali
+	Arabic-Indic	Indo-arabe
+	Persian	Persiane
+	Keep Selection Left-to-Right	Mantieni la selezione da sinistra a destra
+	Keep Selection Right-to-Left	Mantieni la selezione da destra a sinistra
+	Keep Selection in Its Own Direction	Mantieni la selezione nella sua direzione
+	Insert End of Isolate	Inserisci fine isolamento
+	Insert Left-to-Right Mark	Inserisci indicatore da sinistra a destra
+	Insert Right-to-Left Mark	Inserisci indicatore da destra a sinistra
+	Insert Arabic Letter Mark	Inserisci indicatore lettera araba
+	Insert Zero-Width Joiner	Inserisci unitore di larghezza zero
+	Insert Zero-Width Non-Joiner	Inserisci non-unitore di larghezza zero
+	Insert Tatweel	Inserisci tatweel
+	Insert Control Character	Inserisci carattere di controllo
 # Print dialog (#2697)
 	Emulsion Down	Emulsione sotto
 	Functions	Funzioni

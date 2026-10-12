@@ -2656,6 +2656,24 @@ curves	Smooth	Glätten
 	Click to place · Alt-click or drag off-canvas to remove	Klicken zum Platzieren · Alt-Klick oder Ziehen außerhalb der Arbeitsfläche zum Entfernen
 	No document open	Kein Dokument geöffnet
 	{n} of {max} sample points	{n} von {max} Messpunkten
+	Right-to-left	Rechts nach links
+	Left-to-right	Links nach rechts
+	Kashida	Kaschida
+	Digits	Ziffern
+	Western	Westlich
+	Arabic-Indic	Arabisch-indisch
+	Persian	Persisch
+	Keep Selection Left-to-Right	Auswahl links nach rechts halten
+	Keep Selection Right-to-Left	Auswahl rechts nach links halten
+	Keep Selection in Its Own Direction	Auswahl in eigener Richtung halten
+	Insert End of Isolate	Ende der Isolierung einfügen
+	Insert Left-to-Right Mark	Links-nach-rechts-Marke einfügen
+	Insert Right-to-Left Mark	Rechts-nach-links-Marke einfügen
+	Insert Arabic Letter Mark	Arabische Buchstabenmarke einfügen
+	Insert Zero-Width Joiner	Verbinder ohne Breite einfügen
+	Insert Zero-Width Non-Joiner	Nicht-Verbinder ohne Breite einfügen
+	Insert Tatweel	Tatweel einfügen
+	Insert Control Character	Steuerzeichen einfügen
 # Print dialog (#2697)
 	Emulsion Down	Schichtseite unten
 	Functions	Funktionen

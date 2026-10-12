@@ -3201,6 +3201,24 @@ curves	Smooth	매끄럽게
 	Click to place · Alt-click or drag off-canvas to remove	클릭하여 배치 · Alt-클릭 또는 캔버스 밖으로 드래그하여 제거
 	No document open	열린 문서 없음
 	{n} of {max} sample points	{max}개 중 {n}개의 샘플 지점
+	Right-to-left	오른쪽에서 왼쪽
+	Left-to-right	왼쪽에서 오른쪽
+	Kashida	카시다
+	Digits	숫자
+	Western	서양식
+	Arabic-Indic	아랍-인도 숫자
+	Persian	페르시아
+	Keep Selection Left-to-Right	선택 영역을 왼쪽에서 오른쪽으로 유지
+	Keep Selection Right-to-Left	선택 영역을 오른쪽에서 왼쪽으로 유지
+	Keep Selection in Its Own Direction	선택 영역을 고유 방향으로 유지
+	Insert End of Isolate	격리 끝 삽입
+	Insert Left-to-Right Mark	왼쪽에서 오른쪽 표시 삽입
+	Insert Right-to-Left Mark	오른쪽에서 왼쪽 표시 삽입
+	Insert Arabic Letter Mark	아랍 문자 표시 삽입
+	Insert Zero-Width Joiner	폭 없는 연결자 삽입
+	Insert Zero-Width Non-Joiner	폭 없는 비연결자 삽입
+	Insert Tatweel	타트윌 삽입
+	Insert Control Character	제어 문자 삽입
 # Print dialog (#2697)
 	Emulsion Down	감광면 아래로
 	Functions	기능

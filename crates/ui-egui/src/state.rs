@@ -533,6 +533,8 @@ pub struct ToolOptions {
     pub type_size: f32,
     pub type_aa: String,
     pub type_align: String,
+    /// Type tool: paragraph direction for new layers, "auto" | "rtl" | "ltr" (spec 5.1.2).
+    pub type_direction: String,
     /// Clone Stamp / Healing Brush.
     pub clone_aligned: bool,
     /// Pattern Stamp: lock the tile origin in document space across strokes.
@@ -764,6 +766,7 @@ impl Default for ToolOptions {
             type_size: 48.0,
             type_aa: "sharp".into(),
             type_align: "left".into(),
+            type_direction: "auto".into(),
             clone_aligned: true,
             pattern_stamp_aligned: true,
             pattern_stamp_impressionist: false,
@@ -939,11 +942,16 @@ pub enum MadeLayer {
 }
 
 /// In-progress inline type editing (Type tool). Offsets are character indices.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct TextEdit {
     pub layer: u64,
     pub caret: usize,
     pub anchor: usize,
+    /// The caret sits after the character before it, not before the next one. The two differ
+    /// where an Arabic and a Latin run meet and at a wrapped line's end
+    /// (`photocraft_text::navigate::Caret`).
+    #[serde(default)]
+    pub upstream: bool,
     /// History coalescing key: the whole editing session is one "Edit Type Layer" step.
     pub session: String,
     /// The layer was created by this session (its name follows the text; empty on commit = delete).
@@ -951,6 +959,10 @@ pub struct TextEdit {
     /// A Type Mask tool session: the layer is temporary and commits as a selection.
     #[serde(default)]
     pub mask: bool,
+    /// An alignment was picked in this session, so new Arabic text no longer right-aligns itself
+    /// (spec 5.1.1).
+    #[serde(default)]
+    pub align_picked: bool,
     #[serde(skip)]
     pub dragging: bool,
     /// Paragraph-box handle being dragged (0-3 corners from top-left clockwise, 4-7 top/right/bottom/left edges).

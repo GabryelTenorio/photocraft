@@ -3473,6 +3473,23 @@ curves	Smooth	Vyhladit
 	Click to place · Alt-click or drag off-canvas to remove	Kliknutím umístíte · Alt-kliknutím nebo přetažením mimo plátno odeberete
 	No document open	Není otevřen žádný dokument
 	{n} of {max} sample points	{n} z {max} bodů měření
+	Right-to-left	Zprava doleva
+	Left-to-right	Zleva doprava
+	Kashida	Kašida
+	Western	Západní
+	Arabic-Indic	Arabsko-indické
+	Persian	Perské
+	Keep Selection Left-to-Right	Ponechat výběr zleva doprava
+	Keep Selection Right-to-Left	Ponechat výběr zprava doleva
+	Keep Selection in Its Own Direction	Ponechat výběr ve vlastním směru
+	Insert End of Isolate	Vložit konec izolace
+	Insert Left-to-Right Mark	Vložit značku zleva doprava
+	Insert Right-to-Left Mark	Vložit značku zprava doleva
+	Insert Arabic Letter Mark	Vložit arabskou značku písmene
+	Insert Zero-Width Joiner	Vložit spojovač nulové šířky
+	Insert Zero-Width Non-Joiner	Vložit nespojovač nulové šířky
+	Insert Tatweel	Vložit tatwíl
+	Insert Control Character	Vložit řídicí znak
 	Drag (lasso) or click points (polygonal) · {add} add · {sub} subtract	Táhněte (laso) nebo klikejte na body (mnohoúhelník) · {add} přidat · {sub} odečíst
 	The current gradient (pick one in Window › Gradients)	Aktuální přechod (vyberte v Okno › Přechody)
 # Canvas context menus, Channels panel menu, Layer Style blending page (labels rendered through a variable).
@@ -3566,7 +3583,6 @@ curves	Smooth	Vyhladit
 	GPU error; using the CPU renderer.	Chyba GPU; používá se vykreslování pomocí CPU.
 @plural	{what} with {n} warning|{what} with {n} warnings	{what} ({n} upozornění)|{what} ({n} upozornění)|{what} ({n} upozornění)
 	Couldn't open {name}: {error}	Soubor {name} se nepodařilo otevřít: {error}
-
 # Menus, tooltips and hardware information
 	Toggle the Brush Settings panel	Zobrazit/skrýt panel Nastavení štětce
 	New Brush Preset	Nové přednastavení štětce
@@ -3621,7 +3637,6 @@ curves	Smooth	Vyhladit
 	Monitor profile on {display}: {profile}	Profil monitoru {display}: {profile}
 	manual	ruční
 	fallback	náhradní
-
 # Composed labels and Navigator zoom context
 	The document does not have an embedded colour profile. Working space: {working}.	Dokument nemá vložený barevný profil. Pracovní prostor barev: {working}.
 	The document has an embedded colour profile that does not match the working space.\nEmbedded: {embedded}\nWorking: {working}	Dokument má vložený barevný profil, který neodpovídá pracovnímu prostoru barev.\nVložený: {embedded}\nPracovní: {working}

@@ -2636,6 +2636,24 @@ curves	Smooth	平滑
 	Click to place · Alt-click or drag off-canvas to remove	单击以放置 · Alt 单击或拖到画布外以移除
 	No document open	未打开任何文档
 	{n} of {max} sample points	{max} 个取样点中的 {n} 个
+	Right-to-left	从右到左
+	Left-to-right	从左到右
+	Kashida	Kashida
+	Digits	数字
+	Western	西方
+	Arabic-Indic	阿拉伯-印度
+	Persian	波斯
+	Keep Selection Left-to-Right	保持选区从左到右
+	Keep Selection Right-to-Left	保持选区从右到左
+	Keep Selection in Its Own Direction	保持选区为其自身方向
+	Insert End of Isolate	插入隔离结束符
+	Insert Left-to-Right Mark	插入从左到右标记
+	Insert Right-to-Left Mark	插入从右到左标记
+	Insert Arabic Letter Mark	插入阿拉伯字母标记
+	Insert Zero-Width Joiner	插入零宽连接符
+	Insert Zero-Width Non-Joiner	插入零宽非连接符
+	Insert Tatweel	插入延长符 (Tatweel)
+	Insert Control Character	插入控制字符
 # Print dialog (#2697)
 	Emulsion Down	药膜朝下
 	Functions	功能
