@@ -15,6 +15,7 @@ use photocraft_color::{ColorMode, SampleType};
 use photocraft_doc::{Document, Layer, LayerContent, LayerId, SmartFilter};
 use photocraft_geom::Rect;
 use photocraft_raster::{Surface, from_rgba_into};
+use rayon::prelude::*;
 use serde_json::{Value, json};
 
 use crate::commands::CommandSpec;
@@ -161,12 +162,6 @@ fn raw_pixels(area: Rect) -> Option<usize> {
     (n <= MAX_RAW_PIXELS).then(|| usize::try_from(n).ok()).flatten()
 }
 
-fn rgba_region(surf: &Surface, area: Rect, len: usize) -> Vec<[f32; 4]> {
-    let mut v = vec![[0.0f32; 4]; len];
-    surf.read_rgba_into(area, &mut v);
-    v
-}
-
 /// Camera Raw on a surface over `area` (RGB / Gray via RGBA, at the surface's depth).
 ///
 /// An area above [`MAX_RAW_PIXELS`] is returned unchanged: the command rejects it with an
@@ -179,22 +174,49 @@ pub fn camera_raw_surface(surf: &Surface, area: Rect, p: &CameraRaw) -> Surface 
     let Some(len) = raw_pixels(area) else { return surf.clone() };
     let fmt = surf.format();
     let (w, h) = (area.width() as usize, area.height() as usize);
-    let mut px = rgba_region(surf, area, len);
+    let mut px = vec![[0.0f32; 4]; len];
+    // Read in strips of rows, in parallel (the same reads as one `read_rgba_into`).
+    px.par_chunks_mut(w * 64).enumerate().for_each(|(k, chunk)| {
+        let y0 = area.y0 + (k * 64) as i32;
+        surf.read_rgba_into(Rect::new(area.x0, y0, area.x1, y0 + (chunk.len() / w) as i32), chunk);
+    });
     camera_raw::develop(&mut px, w, h, p, fmt.sample == SampleType::F32);
-    let n = fmt.channels();
-    let orig = surf.read_region(area);
-    let mut data = vec![0.0f32; w * h * n];
-    for (i, (q, o)) in px.iter().zip(data.chunks_exact_mut(n)).enumerate() {
-        from_rgba_into(&fmt, *q, o);
-        if fmt.alpha {
-            // Alpha is untouched.
-            o[n - 1] = orig[i * n + n - 1];
-        }
-    }
     let mut out = surf.clone();
-    out.write_region(area, &data);
+    write_rgba_keeping_alpha(&mut out, area, &px);
     out.prune();
     out
+}
+
+/// Writes straight RGBA `px` (row-major over `area`) into `surf` in its format, alpha untouched:
+/// what `from_rgba_into` and one `write_region` over `area` give, tile by tile in parallel (each
+/// tile through `write_region` on a surface of its own, so the samples are the same bits).
+fn write_rgba_keeping_alpha(surf: &mut Surface, area: Rect, px: &[[f32; 4]]) {
+    let fmt = surf.format();
+    let n = fmt.channels();
+    let w = area.width() as usize;
+    let tiles = surf.take_tiles(area);
+    let done: Vec<_> = tiles
+        .into_par_iter()
+        .flat_map_iter(|(tc, tile)| {
+            let tr = tc.rect().intersect(&area);
+            let mut one = Surface::new(fmt);
+            one.put_tiles([(tc, tile)]);
+            let mut data = one.read_region(tr);
+            let tw = tr.width() as usize;
+            for (j, o) in data.chunks_exact_mut(n).enumerate() {
+                let (x, y) = ((tr.x0 - area.x0) as usize + j % tw, (tr.y0 - area.y0) as usize + j / tw);
+                let alpha = if fmt.alpha { o.get(n - 1).copied() } else { None };
+                from_rgba_into(&fmt, px[y * w + x], o);
+                if let (Some(a), Some(v)) = (alpha, o.get_mut(n - 1)) {
+                    // Alpha is untouched.
+                    *v = a;
+                }
+            }
+            one.write_region(tr, &data);
+            one.take_tiles(tc.rect())
+        })
+        .collect();
+    surf.put_tiles(done);
 }
 
 /// Mixes `new` over `old` by the selection's coverage.
@@ -481,6 +503,42 @@ pub fn specs() -> Vec<CommandSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The tile-parallel write leaves the surface `from_rgba_into` and one `write_region` over the
+    /// area leave, alpha untouched, for every depth and model, over an area cutting tiles.
+    #[test]
+    fn camera_raw_writes_tiles_as_one_write_region() {
+        use photocraft_color::PixelFormat;
+        let area = Rect::new(-37, 100, 600, 389);
+        let (w, h) = (area.width() as usize, area.height() as usize);
+        let px: Vec<[f32; 4]> =
+            (0..w * h).map(|i| [((i * 7) % 1013) as f32 / 900.0 - 0.05, ((i * 13) % 997) as f32 / 997.0, ((i / w) % 37) as f32 / 36.0, 0.3]).collect();
+        for fmt in [
+            PixelFormat { mode: ColorMode::Rgb, sample: SampleType::U16, alpha: false },
+            PixelFormat::RGBA8,
+            PixelFormat { mode: ColorMode::Grayscale, sample: SampleType::U16, alpha: true },
+            PixelFormat { mode: ColorMode::Rgb, sample: SampleType::F32, alpha: true },
+            PixelFormat { mode: ColorMode::Cmyk, sample: SampleType::U8, alpha: false },
+        ] {
+            let mut surf = Surface::new(fmt);
+            let n = fmt.channels();
+            let seed: Vec<f32> = (0..700 * 400 * n).map(|i| ((i * 31) % 255) as f32 / 254.0).collect();
+            surf.write_region(Rect::new(-50, 90, 650, 490), &seed);
+            let mut expected = surf.clone();
+            let orig = surf.read_region(area);
+            let mut data = vec![0.0f32; w * h * n];
+            for (i, (q, o)) in px.iter().zip(data.chunks_exact_mut(n)).enumerate() {
+                from_rgba_into(&fmt, *q, o);
+                if fmt.alpha {
+                    o[n - 1] = orig[i * n + n - 1];
+                }
+            }
+            expected.write_region(area, &data);
+            let mut got = surf.clone();
+            write_rgba_keeping_alpha(&mut got, area, &px);
+            assert!(got == expected, "{fmt:?}");
+        }
+    }
 
     fn session(depth: u32) -> Session {
         let mut s = Session::new();
