@@ -2732,3 +2732,5 @@ curves	Smooth	Suavizar
 	Remove after each stroke	Eliminar después de cada trazo
 	Apply the removal ({key})	Aplicar la eliminación ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Trazos por eliminar: {n} (Intro aplica, Esc cancela)
+	File Naming	Nombres de archivo
+	Starting serial	Número de serie inicial

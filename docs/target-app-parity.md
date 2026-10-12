@@ -1,6 +1,6 @@
 # PhotoCraft vs Adobe Photoshop: target-app parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Batch output naming evidence added; parity estimates unchanged) · **Target:** Adobe Photoshop 2026
 
 The authoritative answer to "how close is PhotoCraft to Photoshop, and how much work is left". The
 one-page summary is [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [`gaps.md`](gaps.md);
@@ -177,7 +177,7 @@ parity for the area and are already contained in the dimension rows above.
 | Vector shapes and paths | 55% | 80–140 | Pen, Direct/Path Selection, shapes, shape strokes. Freeform and Curvature Pen (#1054). Missing anchor tools, on-canvas corner radius, path-point nudge; shape parity tracking issue #2496 |
 | Colour management and modes | 70% | 60–100 | Own ICC engine, soft proof, CMYK/Lab/Indexed/Duotone/Multichannel; no Adobe CMYK profiles, no spot plates (FILE-215-17), monitor profile only at launch |
 | Camera Raw and computational photo (Photomerge, HDR, lens) | 45% | 120–200 | Raw for DNG/CR2/NEF/ARW/RW2/ORF/RAF(uncompressed)/PEF; no CR3; ACR dialog partial (no masking, calibration); generic lens profiles only |
-| Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; Actions panel and recording not document-independent (AUTO-219-1/2), no .atn, no ExtendScript/UXP |
+| Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; [Batch naming templates](batch-naming.md) supported (AUTO-219-5 remains partial); Actions panel and recording not document-independent (AUTO-219-1/2), no .atn, no ExtendScript/UXP |
 | File I/O | 60% | 300–500 | See [file-format-parity.md](file-format-parity.md) |
 | Print, export, Save for Web | 50% | 60–100 | JPEG Options dialog missing (FILE-215-19), no Photoshop PDF, no separations, Save for Web settings not remembered |
 | Video / timeline, data-driven graphics | 30% | 100–200 | Menu items live; frame model persists in `.pcraft`; no PSD video-layer mapping |
@@ -563,6 +563,7 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | Batch name/serial/UTC-date templates documented; AUTO-219-5 remains partial and estimates are unchanged |
 | 2026-10-10 | minor | Added measured Tilt-Shift computation/filtered-proxy gains and inconclusive cases; parity percentages and budgets unchanged |
 | 2026-10-10 | minor | Readiness-by-audience table: percent and hours for full, mainstream and essentials; full number confirmed as the additive weighted sum over dimensions (46%, reported ~45%) |
 | 2026-10-10 | minor | Added mainstream-practitioner (~43%) and essentials-user (~61%) numbers with written weights and discounts; full ready-for-real-work rechecked against its written weights (46%, reported ~45%), unchanged |
