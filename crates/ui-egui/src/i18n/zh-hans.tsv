@@ -2664,3 +2664,6 @@ curves	Smooth	平滑
 	Remove after each stroke	每次描边后移除
 	Apply the removal ({key})	应用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描边：{n}（Enter 应用，Esc 取消）
+	Automatically Create First Snapshot	自动创建第一幅快照
+	Automatically Create New Snapshot When Saving	存储时自动创建新快照
+	Show New Snapshot Dialog by Default	默认显示新建快照对话框

@@ -1395,6 +1395,8 @@ impl PhotocraftApp {
                     st.saved_to(path.to_string());
                     // The job locked the document, but record the revision that was written.
                     st.saved_revision = revision;
+                    // History Options › Automatically Create New Snapshot When Saving (#2966).
+                    photocraft_engine::history_options_cmds::snapshot_on_save(&mut app.session);
                 }
                 // "Save Document" script events and File › Generate › Image Assets.
                 if hooks

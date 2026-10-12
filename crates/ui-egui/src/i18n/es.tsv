@@ -2740,3 +2740,6 @@ curves	Smooth	Suavizar
 	Remove after each stroke	Eliminar después de cada trazo
 	Apply the removal ({key})	Aplicar la eliminación ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Trazos por eliminar: {n} (Intro aplica, Esc cancela)
+	Automatically Create First Snapshot	Crear automáticamente la primera instantánea
+	Automatically Create New Snapshot When Saving	Crear automáticamente una instantánea nueva al guardar
+	Show New Snapshot Dialog by Default	Mostrar el cuadro de diálogo Instantánea nueva de forma predeterminada

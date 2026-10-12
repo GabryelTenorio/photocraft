@@ -2956,9 +2956,11 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 footer_cmd = Some("history.deleteState");
             }
             let can_snap = app.session.is_enabled("history.newSnapshot");
-            // ⌥-click opens New Snapshot (name, From) instead, as in Photoshop.
+            // ⌥-click opens New Snapshot (name, From) instead, as in Photoshop; with History
+            // Options › Show New Snapshot Dialog by Default a plain click does too.
+            let dialog_by_default = photocraft_engine::history_options_cmds::show_new_snapshot_dialog(&app.session);
             if ui.add_enabled_ui(can_snap, |ui| icons::button(ui, "scan", 26.0, false, tl!("Create new snapshot"))).inner.clicked() {
-                if ui.input(|i| i.modifiers.alt) {
+                if dialog_by_default || ui.input(|i| i.modifiers.alt) {
                     snapshot_dialog = true;
                 } else {
                     footer_cmd = Some("history.newSnapshot");
@@ -4605,6 +4607,73 @@ mod snapshot_row_tests {
         assert_eq!(snap.name, "Red layer only");
         assert_eq!(snap.doc.layers.len(), 1, "only the current layer");
         assert!(h.state().ui.dialogs.is_empty());
+    }
+
+    /// History Options › Show New Snapshot Dialog by Default (#2966): a plain click on the camera
+    /// opens New Snapshot as ⌥-click does, and ⌥-click still opens it (Photoshop's button always
+    /// prompts with the option on). Off, a plain click takes the snapshot at once.
+    #[test]
+    fn show_new_snapshot_dialog_by_default_makes_a_click_open_the_dialog() {
+        for (dialog_by_default, modifiers) in [(true, egui::Modifiers::NONE), (true, egui::Modifiers::ALT), (false, egui::Modifiers::NONE)] {
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+            app.run("file.new", json!({"width": 200, "height": 150})).unwrap();
+            app.run("history.options", json!({"showNewSnapshotDialogByDefault": dialog_by_default})).unwrap();
+            let mut h = Harness::builder().with_size(vec2(900.0, 700.0)).build_ui_state(
+                |ui, app: &mut PhotocraftApp| {
+                    let ctx = ui.ctx().clone();
+                    if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                        return;
+                    }
+                    history(app, ui);
+                    crate::dialogs::show(app, &ctx);
+                },
+                app,
+            );
+            PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ProMedium);
+            h.state_mut().ui.theme = crate::theme::ThemeKind::ProMedium;
+            h.run_steps(4);
+            let mut buttons: Vec<Rect> = h
+                .ctx
+                .viewport(|v| v.prev_pass.widgets.layers().flat_map(|(_, w)| w.iter()).filter(|w| w.rect.size() == vec2(26.0, 26.0)).map(|w| w.rect).collect());
+            buttons.sort_by(|a, b| b.center().x.total_cmp(&a.center().x));
+            let camera = buttons[1].center();
+            h.event(egui::Event::ModifiersChanged(modifiers));
+            h.event(egui::Event::PointerMoved(camera));
+            h.run_steps(1);
+            for pressed in [true, false] {
+                h.event(egui::Event::PointerButton { pos: camera, button: egui::PointerButton::Primary, pressed, modifiers });
+                h.run_steps(1);
+            }
+            h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+            h.run_steps(3);
+            let snaps = h.state().session.active().unwrap().snapshots.len();
+            let dialog = h.state().ui.dialogs.last().is_some_and(|d| crate::snapshot_dialog::owns(&d.fields));
+            if dialog_by_default {
+                assert!(dialog, "{modifiers:?}: the dialog opens");
+                assert_eq!(snaps, 1, "{modifiers:?}: no snapshot until OK");
+                h.get_by_label("OK").click();
+                h.run_steps(3);
+                assert_eq!(h.state().session.active().unwrap().snapshots.last().unwrap().name, "Snapshot 1");
+            } else {
+                assert!(!dialog, "off: no dialog");
+                assert_eq!(snaps, 2, "off: the click takes the snapshot");
+            }
+        }
+    }
+
+    /// History Options › Automatically Create First Snapshot: on, the panel's top row is a
+    /// snapshot named after the document; off, there is none above the opening state.
+    #[test]
+    fn the_first_snapshot_row_follows_the_option() {
+        for first in [true, false] {
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+            app.run("history.options", json!({"automaticallyCreateFirstSnapshot": first})).unwrap();
+            app.run("file.new", json!({"width": 200, "height": 150})).unwrap();
+            let name = app.session.active().unwrap().doc.name.clone();
+            let mut h = Harness::builder().with_size(vec2(300.0, 400.0)).build_ui_state(|ui, app: &mut PhotocraftApp| history(app, ui), app);
+            h.run_steps(3);
+            assert_eq!(h.query_by_label(&name).is_some(), first, "a snapshot row named after the document: {first}");
+        }
     }
 
     /// Renaming belongs to one document: snapshot ids restart in each, so switching tabs must not

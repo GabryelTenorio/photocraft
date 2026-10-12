@@ -219,7 +219,8 @@ pub struct DocState {
     /// to `.pcraft` or PSD, and not a history step.
     pub color_samplers: Vec<[f64; 2]>,
     /// History panel snapshots, oldest first (`history.newSnapshot`, #2966): the first (id 0) is
-    /// the document as opened. Kept for the session only, as in Photoshop: not history states,
+    /// the document as opened (unless History Options › Automatically Create First Snapshot is
+    /// off). Kept for the session only, as in Photoshop: not history states,
     /// and not saved with the document.
     pub snapshots: Vec<history_cmds::Snapshot>,
     /// The id the next snapshot gets; ids are never reused, so deleting one keeps the others.
@@ -497,6 +498,11 @@ impl Session {
         st.history.max_states = self.prefs.get().performance.history_states.max(1) as usize;
         st.history.max_bytes = self.prefs.get().performance.history_budget_bytes();
         st.history.non_linear = self.prefs.get().history_options.allow_non_linear_history;
+        // History Options › Automatically Create First Snapshot off: no snapshot of the document
+        // as opened, so the History panel starts at the opening state (#2966).
+        if !self.prefs.get().history_options.automatically_create_first_snapshot {
+            st.snapshots.clear();
+        }
         self.docs.push(st);
         let i = self.docs.len() - 1;
         self.active = Some(i);
