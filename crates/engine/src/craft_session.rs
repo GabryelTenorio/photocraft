@@ -126,7 +126,7 @@ impl Session {
         self.tools.background = background;
         self.tools.brush = brush;
         if v["app"] != "photocraft" || v["schema"] != 1 {
-            return Err("Incompatible photocraft session".into());
+            return Err("Incompatible PhotoCraft session".into());
         }
         Ok(v["ui"].clone())
     }
@@ -136,7 +136,7 @@ impl Session {
     pub fn craft_ui(bytes: &[u8]) -> std::result::Result<Value, String> {
         let (v, _) = crate::craft_codec::unpack(bytes)?;
         if v["app"] != "photocraft" || v["schema"] != 1 {
-            return Err("Incompatible photocraft session".into());
+            return Err("Incompatible PhotoCraft session".into());
         }
         Ok(v["ui"].clone())
     }
