@@ -235,7 +235,7 @@ built-in format changes dimensions and PPI, preserving the current name/mode/dep
 The clipboard offer remains first in Popular when an image is available. The dialog always opens centred, ignores its previous opening’s dragged position and keeps
 the footer outside the scrolling body on smaller viewports.
 
-`ui.dialog.set` can set the UI-only `__category` (`Popular`, `Social Media`, `All`, the existing
+`ui.dialog.set` can set the UI-only `__category` (`Popular`, `Recent`, `Social Media`, `All`, the existing
 category ids or `Saved`) and `__search` fields. `__advanced: true` opens Advanced initially.
 
 Built-in selection and search use `unitsAndRulers.printResolution` / `screenResolution`
@@ -243,7 +243,7 @@ from preferences, including the dimensions shown by cards and matched by search.
 keeps its physical size; screen/social keeps its pixels. Clipboard and saved presets retain
 their own resolution. Explicit `width`, `height` and `resolution` fields remain authoritative.
 These keys, like all `__` fields, are stripped before dispatching `file.new`. The legacy
-`Recent` id remains accepted; its built-ins are also available through All/search.
+`Recent` category lists the Clipboard offer, recently created document settings (newest first), and uncovered defaults. Its search filters those cards by name, dimensions or ratio. Selecting a recent card restores its captured resolution, mode, depth, background and display units; preference resolutions do not rescale it.
 
 Social presets are editable starting canvases, not upload validators. The generic post shapes
 are 1:1, 3:4, 4:5 and 1200×630; vertical Stories/Reels/Shorts starts at 1080×1920 (9:16).
@@ -260,7 +260,7 @@ mode, depth, background, and display `unit` (`px`, `in`, `cm`, `mm`, `pt`, `pica
 `resolutionUnit` (`in`, `cm`). The defaults match File › New. Background Color captures the
 toolbox colour as `backgroundColor: [r,g,b]` (0..1), so reusing it does not follow later toolbox
 changes. Up to 256 presets are kept. Invalid saved entries are skipped independently; other
-presets and preferences still load. Automatic Recent configurations are separate follow-up work.
+presets and preferences still load. Recent configurations use `document.recent.list` / `document.recent.add` and preserve the settings of the last 20 documents created through the dialog.
 
 ## Snapping
 

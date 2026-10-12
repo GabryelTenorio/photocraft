@@ -405,9 +405,9 @@ fn resolved_cards(f: &Map<String, Value>, category: &str, query: &str, recent: &
             .collect();
     }
     let mut cards: Vec<Card> = resolved_catalog(category, query, units).into_iter().map(Card::Builtin).collect();
-    if let Some(p) = clipboard_preset(f).filter(|p| {
-        (category == "Popular" || category == "All" || !query.trim().is_empty()) && crate::new_doc_catalog::matches(p, query, lang)
-    }) {
+    if let Some(p) = clipboard_preset(f)
+        .filter(|p| (category == "Popular" || category == "All" || !query.trim().is_empty()) && crate::new_doc_catalog::matches(p, query, lang))
+    {
         cards.insert(0, Card::Builtin(p));
     }
     cards
@@ -510,7 +510,10 @@ fn catalog(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                 for c in row {
                     let (w, h, ppi) = c.size(&units);
                     let (r, resp) = ui.allocate_exact_size(card, Sense::click());
-                    let on = match c { Card::Builtin(p) => chosen == p.0, Card::Recent(settings) => holds(f, settings) };
+                    let on = match c {
+                        Card::Builtin(p) => chosen == p.0,
+                        Card::Recent(settings) => holds(f, settings),
+                    };
                     let t = if on && t.bevel { Tokens { text: t.accent_text, text_dim: t.accent_text, text_faint: t.accent_text, ..t } } else { t };
                     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), on, tl!(c.title())));
                     ui.painter().rect_filled(
@@ -546,10 +549,19 @@ fn catalog(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
                         Card::Builtin(_) => resp.on_hover_text(tl!(c.title())),
                         Card::Recent(settings) => {
                             let background = match settings.background.as_str() {
-                                "white" => tl!("White"), "black" => tl!("Black"), "transparent" => tl!("Transparent"),
-                                "backgroundColor" => tl!("Background Color"), hex => hex,
+                                "white" => tl!("White"),
+                                "black" => tl!("Black"),
+                                "transparent" => tl!("Transparent"),
+                                "backgroundColor" => tl!("Background Color"),
+                                hex => hex,
                             };
-                            resp.on_hover_text(format!("{} · {} · {}/{} · {background}", tl!(c.title()), c.size_line(&units), settings.mode.to_uppercase(), settings.depth))
+                            resp.on_hover_text(format!(
+                                "{} · {} · {}/{} · {background}",
+                                tl!(c.title()),
+                                c.size_line(&units),
+                                settings.mode.to_uppercase(),
+                                settings.depth
+                            ))
                         }
                     };
                     if resp.clicked() {
@@ -1170,6 +1182,51 @@ mod tests {
                 h.run();
                 assert_eq!(created(&h), (1080, height, 600.0));
             }
+        }
+
+        #[test]
+        fn recent_search_restores_captured_settings_without_preference_rescaling() {
+            let mut h = harness();
+            h.state_mut().run("prefs.set", serde_json::json!({"path":"unitsAndRulers.printResolution","value":200.0})).unwrap();
+            h.state_mut().run("prefs.set", serde_json::json!({"path":"unitsAndRulers.screenResolution","value":600.0})).unwrap();
+            h.state_mut()
+                .run(
+                    "document.recent.add",
+                    serde_json::json!({"settings":{
+                        "width":800,"height":600,"resolution":120.0,"mode":"cmyk","depth":16,
+                        "background":"black","unit":"mm","resolutionUnit":"cm"
+                    }}),
+                )
+                .unwrap();
+            h.run();
+            h.get_by_label("Recent").click();
+            h.run();
+            search(&mut h, "800x600");
+            enter(&mut h);
+            assert!(h.state().session.documents().is_empty());
+            let f = fields(&h);
+            assert_eq!((f["mode"].as_str(), f["depth"].as_u64(), f["background"].as_str()), (Some("cmyk"), Some(16), Some("black")));
+            assert_eq!((f["__unit"].as_str(), f["__resUnit"].as_str()), (Some("mm"), Some("cm")));
+            h.get_by_label("Create").click();
+            h.run();
+            assert_eq!(created(&h), (800, 600, 120.0));
+            let recent = h.state().session.presets.recent_documents.first().unwrap();
+            assert_eq!((recent.mode.as_str(), recent.depth, recent.unit.as_str()), ("cmyk", 16, "mm"));
+        }
+
+        #[test]
+        fn typed_physical_units_create_the_expected_pixels_while_displaying_pixels() {
+            let mut h = harness();
+            let mut f = fields(&h);
+            f.insert("resolution".into(), serde_json::json!(300.0));
+            f.insert("__unit".into(), serde_json::json!("px"));
+            set_fields(&mut h, f);
+            type_into(&mut h, 0, "210mm");
+            type_into(&mut h, 1, "297mm");
+            assert_eq!(fields(&h)["__unit"], "px");
+            h.get_by_label("Create").click();
+            h.run();
+            assert_eq!(created(&h), (2480, 3508, 300.0));
         }
 
         #[test]

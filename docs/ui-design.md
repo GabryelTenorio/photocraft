@@ -54,9 +54,9 @@ Built-in presets follow Units & Rulers › New Document Preset Resolutions: prin
 keep their physical size at Print Resolution; screen/social keep their pixels at Screen
 Resolution. Cards and dimension search use the resulting pixel sizes. Selection and search
 Enter apply the preference conversion once. Clipboard keeps its pixels and resolution,
-and saved presets restore their captured settings.
+and saved/recent presets restore their captured settings. Recent shows the last created documents, newest first, plus Clipboard and uncovered defaults; its search filters that list. Width/height also accept typed units such as `210mm` while displaying pixels.
 The name starts selected; Tab and Shift-Tab cycle through visible text and number fields,
-including Search. Double-clicking a built-in, clipboard or saved preset creates it immediately.
+including Search. Double-clicking a built-in, clipboard, recent or saved preset creates it immediately.
 See [control protocol](control-protocol.md) for search and automation details.
 
 Before (Pro Medium, pt-br):
