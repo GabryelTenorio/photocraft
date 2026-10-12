@@ -1355,7 +1355,7 @@ fn gradient_map(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         let (press, close) = crate::press_menu::PressCombo::before(ui, cx.mem.with("gm-preset"));
         let combo = egui::ComboBox::from_id_salt(cx.mem.with("gm-preset"))
             .selected_text(tl!("Custom"))
-            .width(190.0)
+            .width(ui.available_width().min(190.0))
             .height(420.0)
             .icon(widgets::chevron_icon)
             .close_behavior(close)
@@ -1399,6 +1399,11 @@ fn gradient_map(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
             let r = color_button(ui, &mut s.1);
             changed |= r.changed;
             e.add(r);
+            ui.add_enabled_ui(can_remove, |ui| {
+                remove = crate::icons::button(ui, "x", 20.0, false, tl!("Remove stop")).clicked();
+            });
+        });
+        ui.horizontal(|ui| {
             label(ui, tl!("Location:"));
             let mut loc = s.0 * 100.0;
             let rl = widgets::value_field(ui, &mut loc, 0.0..=100.0, "%", 70.0);
@@ -1407,9 +1412,6 @@ fn gradient_map(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
                 changed = true;
             }
             e.add(Edit::of(&rl));
-            ui.add_enabled_ui(can_remove, |ui| {
-                remove = crate::icons::button(ui, "x", 20.0, false, tl!("Remove stop")).clicked();
-            });
         });
     }
     if let Some(loc) = location {

@@ -548,6 +548,41 @@ fn gradient_map_drag_clamps_at_the_endpoints_and_reverse_keeps_stop_coordinates(
     assert_eq!(h.state().session.active().unwrap().history.past_len(), steps, "a clamped no-op makes no history");
 }
 
+#[test]
+fn gradient_map_stop_controls_fit_a_narrow_properties_panel_in_every_theme() {
+    use crate::adjust_editors::{EditorCx, editor};
+    for kind in crate::theme::ThemeKind::ALL {
+        for width in [240.0, 280.0] {
+            let mut h = Harness::builder().with_size(vec2(width, 360.0)).build_ui_state(
+                |ui, values: &mut serde_json::Value| {
+                    if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                        return;
+                    }
+                    let cx = EditorCx {
+                        mem: egui::Id::new("map-layout"),
+                        hist: None,
+                        gray: false,
+                        swatches: [[0.0; 3], [1.0; 3]],
+                        gradients: Vec::new(),
+                        dialog: false,
+                        dynamic_color_sliders: true,
+                    };
+                    editor(ui, "gradientMap", values, &cx);
+                },
+                json!({"stops": [[0, "#000000"], [1, "#ffffff"]]}),
+            );
+            PhotocraftApp::setup_context(&h.ctx, kind);
+            h.run_steps(4);
+            for role in [egui::accesskit::Role::Button, egui::accesskit::Role::ComboBox, egui::accesskit::Role::SpinButton] {
+                for control in h.query_all_by_role(role) {
+                    let r = control.rect();
+                    assert!(r.left() >= 0.0 && r.right() <= width && r.width() >= 8.0, "{kind:?} width {width}: {role:?} {r:?}");
+                }
+            }
+        }
+    }
+}
+
 /// Issue #1588: the Gradient Map preset picker offers the session's gradient library (built-in
 /// groups beyond Basics and the user's own saved gradients), and picking one writes its stops as
 /// one history step.
