@@ -123,8 +123,8 @@ fn serve(stream: TcpStream, token: &str, tx: Sender<ControlRequest>, ctx: egui::
 
 /// Wait for the frame thread's reply, falling back when the frame loop is wedged (#2493):
 /// after [`STALL_CHECK`] without a reply, a live loop keeps waiting while a wedged one serves
-/// the getter's last snapshot or fails fast. A dropped reply sender (the request's receiver
-/// gone) can never be answered; it gets the same deadline error as before.
+/// the getter's last snapshot or fails fast. A dropped reply sender can never be answered; it
+/// gets the same deadline error as before.
 fn wait_reply(
     rrx: &Receiver<ControlResponse>,
     watch: &ControlWatch,
@@ -133,8 +133,8 @@ fn wait_reply(
     logic_before: u64,
     deadline: Instant,
 ) -> Value {
-    let stall_at = std::cmp::min(deadline, Instant::now() + STALL_CHECK);
-    match rrx.recv_timeout(stall_at) {
+    let until = deadline.saturating_duration_since(Instant::now()).min(STALL_CHECK);
+    match rrx.recv_timeout(until) {
         Ok(r) => return r,
         Err(RecvTimeoutError::Disconnected) => return json!({"ok": false, "error": timeout_error()}),
         Err(RecvTimeoutError::Timeout) => {}
@@ -222,9 +222,10 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let (tx, rx) = channel::<ControlRequest>();
+        let watch = ControlWatch::new();
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            serve(stream, TOKEN, tx, egui::Context::default());
+            serve(stream, TOKEN, tx, egui::Context::default(), &watch);
         });
         let handler = std::thread::spawn(move || {
             let req = rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -252,6 +253,157 @@ mod tests {
         let after: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(after["id"], 7);
         assert_eq!(after["result"], "still serving");
+        drop(reader);
+        drop(stream);
+        handler.join().unwrap();
+        server.join().unwrap();
+    }
+
+    const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    /// Generous against the stall checkpoint (1s) and the reply deadline (60s): a healthy
+    /// reply lands within a second or two, a broken one never.
+    const READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+    fn authed_client(addr: std::net::SocketAddr) -> (TcpStream, BufReader<TcpStream>) {
+        let mut stream = TcpStream::connect(addr).unwrap();
+        stream.set_read_timeout(Some(READ_TIMEOUT)).unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        writeln!(stream, "{}", json!({"id": "auth", "method": "auth", "params": {"token": TOKEN}})).unwrap();
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&line).unwrap()["ok"], true, "auth failed: {line}");
+        (stream, reader)
+    }
+
+    fn send_and_read(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>, request: Value) -> Value {
+        writeln!(stream, "{request}").unwrap();
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        serde_json::from_str(&line).unwrap_or_else(|e| panic!("not JSON ({e}): {line}"))
+    }
+
+    #[test]
+    fn health_is_answered_without_queueing() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = channel::<ControlRequest>();
+        let watch = Arc::new(ControlWatch::new());
+        watch.note_logic();
+        let server_watch = Arc::clone(&watch);
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            serve(stream, TOKEN, tx, egui::Context::default(), &server_watch);
+        });
+        let (mut stream, mut reader) = authed_client(addr);
+        let reply = send_and_read(&mut stream, &mut reader, json!({"id": 2, "method": "health", "params": {"extra": true}}));
+        assert_eq!(reply["id"], 2);
+        assert_eq!(reply["ok"], true);
+        for key in ["lastLogicAgoMs", "lastDrawnAgoMs", "logicCount", "drawnCount"] {
+            assert!(reply["result"].as_object().is_some_and(|o| o.contains_key(key)), "health result lacks `{key}`: {reply}");
+        }
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "health must never reach the control channel");
+        drop(reader);
+        drop(stream);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn wedged_snapshot_getter_serves_the_last_reply() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = channel::<ControlRequest>();
+        let watch = Arc::new(ControlWatch::new());
+        watch.note_snapshot("ui.inspect", &json!({"ok": true, "result": {"tool": "Move"}}));
+        let server_watch = Arc::clone(&watch);
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            serve(stream, TOKEN, tx, egui::Context::default(), &server_watch);
+        });
+        // A wedged frame loop never answers: hold the request until the client has its reply,
+        // so the reply sender is not dropped while the transport is still waiting.
+        let (release_tx, release_rx) = channel::<()>();
+        let handler = std::thread::spawn(move || {
+            let Ok(req) = rx.recv_timeout(Duration::from_secs(5)) else { return };
+            assert_eq!(req.method, "ui.inspect");
+            let _ = release_rx.recv_timeout(READ_TIMEOUT);
+        });
+        let (mut stream, mut reader) = authed_client(addr);
+        let sent = Instant::now();
+        let reply = send_and_read(&mut stream, &mut reader, json!({"id": 3, "method": "ui.inspect"}));
+        let elapsed = sent.elapsed();
+        assert!(elapsed < READ_TIMEOUT, "served after {elapsed:?}, not from the snapshot");
+        assert_eq!(reply["id"], 3);
+        assert_eq!(reply["ok"], true);
+        assert_eq!(reply["result"]["tool"], "Move");
+        assert_eq!(reply["result"]["frameStalled"], true);
+        assert!(reply["result"]["snapshotAgeMs"].as_u64().is_some(), "no snapshot age: {reply}");
+        drop(reader);
+        drop(stream);
+        let _ = release_tx.send(());
+        handler.join().unwrap();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn wedged_getter_without_a_snapshot_fails_fast() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = channel::<ControlRequest>();
+        let watch = Arc::new(ControlWatch::new());
+        let server_watch = Arc::clone(&watch);
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            serve(stream, TOKEN, tx, egui::Context::default(), &server_watch);
+        });
+        let (release_tx, release_rx) = channel::<()>();
+        let handler = std::thread::spawn(move || {
+            let Ok(req) = rx.recv_timeout(Duration::from_secs(5)) else { return };
+            assert_eq!(req.method, "jobs.list");
+            let _ = release_rx.recv_timeout(READ_TIMEOUT);
+        });
+        let (mut stream, mut reader) = authed_client(addr);
+        let sent = Instant::now();
+        let reply = send_and_read(&mut stream, &mut reader, json!({"id": 4, "method": "jobs.list"}));
+        let elapsed = sent.elapsed();
+        assert!(elapsed < READ_TIMEOUT, "failed after {elapsed:?}, not fast");
+        assert_eq!(reply["id"], 4);
+        assert_eq!(reply["ok"], false);
+        assert!(reply["error"].as_str().is_some_and(|e| e.contains("not drawing frames")), "{reply}");
+        drop(reader);
+        drop(stream);
+        let _ = release_tx.send(());
+        handler.join().unwrap();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_live_frame_loop_keeps_waiting_for_a_slow_reply() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = channel::<ControlRequest>();
+        let watch = Arc::new(ControlWatch::new());
+        // The snapshot exists, but the live counter must win: the real reply, not the stale one.
+        watch.note_snapshot("ui.inspect", &json!({"ok": true, "result": {"tool": "Stale"}}));
+        let server_watch = Arc::clone(&watch);
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            serve(stream, TOKEN, tx, egui::Context::default(), &server_watch);
+        });
+        let handler_watch = Arc::clone(&watch);
+        let handler = std::thread::spawn(move || {
+            let Ok(req) = rx.recv_timeout(Duration::from_secs(5)) else { return };
+            assert_eq!(req.method, "ui.inspect");
+            // The frame loop ran after the request was queued; its reply is only slow.
+            handler_watch.note_logic();
+            std::thread::sleep(STALL_CHECK + Duration::from_secs(1));
+            let _ = req.reply.send(json!({"ok": true, "result": "slow but live"}));
+        });
+        let (mut stream, mut reader) = authed_client(addr);
+        let reply = send_and_read(&mut stream, &mut reader, json!({"id": 5, "method": "ui.inspect"}));
+        assert_eq!(reply["id"], 5);
+        assert_eq!(reply["result"], "slow but live");
+        assert!(reply.get("frameStalled").is_none(), "a live loop must not be reported stalled: {reply}");
         drop(reader);
         drop(stream);
         handler.join().unwrap();
