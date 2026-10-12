@@ -41,10 +41,12 @@ let out = encode(&img, Format::Tiff, &EncodeOptions::default())?;
 | TGA | yes | yes | U8 | Gray, GrayA, RGB, RGBA | yes | no | no | no | no | no | no | `image` |
 | ICO | yes | yes | U8 | RGBA (at most 256×256) | yes | no | no | no | no | no | no | `image` |
 | Netpbm (PBM/PGM/PPM/PAM/PFM) | yes | yes | U8, U16, F32 (float: PFM gray/RGB only) | all six (PAM `CMYK`/`CMYK_ALPHA`) | yes (PAM) | no | no | no | no | no | no | built in |
+| PCX | yes | **no** | U8 | RGB | no | no | no | no | yes | no | n/a | built in |
 | QOI | yes | yes | U8 | RGB, RGBA | yes | no | no | no | no | no | no | `image` |
 | OpenEXR | yes | yes | F16, F32 | Y, YA, RGB, RGBA | yes | no | no | no | no | no | no | `exr` |
 | Radiance HDR | yes | yes | F32 | RGB | no | no | no | no | no | no | yes (RGBE) | `image` |
 | FITS | yes | yes | U8, U16, F32 | Gray, RGB | no | no | no | no | no | yes (header cards) | no | built in |
+| DPX | yes | **no** | U8, U16 (10/12-bit as U16) | Gray, RGB, RGBA | yes | no | no | no | no | no | n/a | built in |
 | AVIF | **no** | only with feature `avif` | U8 | RGB, RGBA | yes | no | no | no | no | no | yes | `image` + `ravif` |
 | HEIF/HEIC | with feature `heif` | **no** | U8, U16 (10/12-bit decodes to U16) | RGB, RGBA | yes (auxiliary alpha) | yes (`colr` prof) | yes | yes | no | no | n/a | `heic-rs` |
 
@@ -77,6 +79,19 @@ Palette BMP pixels decode as RGB in `Image`; `bmp_palette` exposes the embedded 
 * **Camera raw files** (DNG, CR2, NEF, ARW… which are TIFF-structured) are recognised and refused
   with `CodecError::Unsupported`: they are sensor data, not flat images. `photocraft-raw` decodes
   and develops them, and `photocraft-io` routes them there.
+
+* **PCX (read-only).** ZSoft Paintbrush files open for legacy paint and clipart assets: one
+  image plane, 1/2/4-bit planar palettes, 8-bit indexed (with the optional VGA palette) and 8-bit
+  three-plane RGB, with strictly bounded scanline RLE and DPI. Writing is intentionally not
+  provided (`ASYMMETRIC_EXCEPTIONS`); save as PNG instead.
+
+* **DPX (read-only).** SMPTE 268M digital-intermediate frames from film scanners and grading
+  systems: one image element with descriptor 50 (RGB), 51 (RGBA), 52 (ABGR), 1 (single channel) or
+  6 (luminance), 8/10/12/16-bit integer samples, packing 0 (packed bit fields) or 1 (filled to
+  16-bit), both byte orders, the per-element reference low/high levels, and the frame orientation.
+  Anything else (multiple elements, other descriptors, 32/64-bit float, RLE encoding) is a clear
+  `Unsupported` or `Malformed` error, never wrong pixels. There is no DPX writer
+  (`ASYMMETRIC_EXCEPTIONS`); save as TIFF or EXR.
 
 * **HEIF/HEIC (read-only, feature `heif`).** Decoding lives in the optional `photocraft-heif` crate
   behind the non-default `heif` feature (official PhotoCraft builds enable it; distributors choose).

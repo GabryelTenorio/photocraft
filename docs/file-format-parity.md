@@ -43,9 +43,9 @@ XL are missing (gap G10). Remaining: 300–500 h including PSD fidelity.
 | Generic EPS / AI | R (rasterize) | no | no | |
 | SVG | R (rasterize) | yes, as editable shape layers or a vector smart object | no | Better than Photoshop for editing; gradients approximated (FILE-215-9) |
 | JPEG 2000 | R/W | no (#1047) | no | |
-| Cineon / DPX | R (DPX), R/W (CIN) | no (#1049) | no | |
+| Cineon / DPX | R (DPX), R/W (CIN) | DPX yes, Cineon no (#1049) | no | DPX: one element, descriptors 1/6/50/51/52, 8/10/12/16-bit, packed and filled (#1049) |
 | DICOM | R/W | no | no | |
-| PCX | R/W | no | no | |
+| PCX | R/W | yes | no | Read-only: 1/2/4-bit planar, 8-bit indexed and RGB |
 | Pixar | R/W | no | no | |
 | Amiga IFF | R/W | no | no | |
 | Wireless Bitmap | R/W | no | no | |

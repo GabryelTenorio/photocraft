@@ -193,6 +193,33 @@ fn detect_magic_avif() {
     assert_eq!(detect(b"\0\0\0\x18ftypisom\0\0\0\0isommp41"), None, "mp4 is not avif");
 }
 #[test]
+fn detect_magic_dpx() {
+    assert_eq!(detect(b"SDPX\x00\x00\x02\x00"), Some(Format::Dpx), "big-endian SDPX");
+    assert_eq!(detect(b"XPDS\x00\x08\x00\x00"), Some(Format::Dpx), "little-endian XPDS");
+    assert_eq!(from_extension("frame.DPX"), Some(Format::Dpx));
+    assert!(caps(Format::Dpx).read && !caps(Format::Dpx).write);
+    assert!(ASYMMETRIC_EXCEPTIONS.iter().any(|(f, _)| *f == Format::Dpx));
+    // A bare magic is an error, never a panic.
+    assert!(decode_as(Format::Dpx, b"SDPX").is_err());
+}
+
+#[test]
+fn detect_magic_pcx() {
+    // A minimal 1×1 8-bit, three-plane PCX header.
+    let mut b = vec![0u8; 128];
+    b[0] = 0x0a;
+    b[1] = 5;
+    b[2] = 1;
+    b[3] = 8;
+    b[65] = 3;
+    b[66..68].copy_from_slice(&1u16.to_le_bytes());
+    b[8..10].copy_from_slice(&0u16.to_le_bytes());
+    b[10..12].copy_from_slice(&0u16.to_le_bytes());
+    assert_eq!(detect(&b), Some(Format::Pcx));
+    assert_eq!(from_extension("art.PCX"), Some(Format::Pcx));
+}
+
+#[test]
 fn detect_tga_heuristic() {
     // Uncompressed true-colour 2x2, 24 bpp.
     let mut b = vec![0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 24, 0];
