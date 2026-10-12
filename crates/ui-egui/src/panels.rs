@@ -1013,6 +1013,11 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         widgets::vline(ui, 22.0);
                         if app.ui.tool == Tool::Eraser {
                             crate::eraser_ui::mode_dropdown(ui, &mut app.ui.tool_options.eraser_mode);
+                        } else {
+                            // The Brush's blend Mode, as in the Pro options bar (#4512).
+                            opt_label(ui, tl!("Mode"));
+                            let held = app.held_erase;
+                            paint_mode_dropdown(ui, "brush-mode", b, &mut app.ui.tool_options.brush_clear, held);
                         }
                         // A Pencil-mode Eraser is always hard and at full flow (Photoshop).
                         let fixed = block || crate::eraser_ui::pencil_mode(app, app.ui.tool);
@@ -3976,6 +3981,33 @@ mod symmetry_theme_tests {
                 PhotocraftApp::setup_context(&h.ctx, kind);
                 h.run_steps(4);
                 assert!(h.query_by_label("Set painting symmetry options").is_some(), "missing symmetry menu in {:?} for {:?}", kind, tool);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod options_bar_theme_tests {
+    use super::*;
+    use egui_kittest::{
+        Harness,
+        kittest::{NodeT, Queryable},
+    };
+
+    /// The Brush and the Pencil both show Photoshop's Mode (blend) dropdown in every theme. The
+    /// Brush's was missing from the non-Pro (Studio/Classic/…) options bar (#4512).
+    #[test]
+    fn brush_and_pencil_show_the_mode_dropdown_in_every_theme() {
+        for kind in crate::theme::ThemeKind::ALL {
+            for tool in [Tool::Brush, Tool::Pencil] {
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+                app.run("file.new", json!({"width": 80, "height": 80})).unwrap();
+                app.ui.tool = tool;
+                let mut h = Harness::builder().with_size(vec2(1600.0, 300.0)).build_ui_state(|ui, app| options_bar(app, ui), app);
+                PhotocraftApp::setup_context(&h.ctx, kind);
+                h.run_steps(4);
+                let mode = h.get_all_by_role(egui::accesskit::Role::ComboBox).any(|n| n.accesskit_node().value().as_deref() == Some("Normal"));
+                assert!(mode, "missing Mode dropdown in {kind:?} for {tool:?}");
             }
         }
     }
