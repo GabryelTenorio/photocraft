@@ -4604,10 +4604,23 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                 let mode = if mods.shift { "add" } else { "replace" };
                 let before = app.session.active().map(|st| st.selected_layers());
                 let picked = app.run("layer.pickAt", json!({"x": x, "y": y, "target": target, "mode": mode}));
+                let picked_locked = picked.as_ref().ok().and_then(|v| v["layer"].as_u64()).map(photocraft_doc::LayerId).is_some_and(|id| {
+                    app.session.active().is_some_and(|st| {
+                        let locks = st.doc.effective_locks(id);
+                        locks.position || locks.all || st.doc.is_background(id)
+                    })
+                });
+                if picked_locked {
+                    if let Some(prev) = before {
+                        let active = prev.last().copied();
+                        let _ = app.run("layer.select", json!({"layers": prev.iter().map(|l| l.0).collect::<Vec<_>>(), "active": active.map(|l| l.0)}));
+                    }
+                    crate::move_box::begin(app, [x, y], mods.shift);
+                    return;
+                }
                 // No pixels there at all (an empty spot, or off the canvas): drag a marquee that
-                // selects the layers it touches instead (move_box.rs). A fully locked layer's
-                // pixels still say it is locked once the pointer moves (`move_lock`).
-                if picked.is_ok_and(|v| v["layer"].is_null()) && crate::move_box::empty_at(app, [x, y]) {
+                // selects the layers it touches instead (move_box.rs).
+                if picked.is_ok_and(|v| v["layer"].is_null()) {
                     crate::move_box::begin(app, [x, y], mods.shift);
                     return;
                 }

@@ -27,10 +27,6 @@ pub(crate) fn begin(app: &mut PhotocraftApp, p: [f64; 2], add: bool) {
     app.move_mods = Default::default();
 }
 
-/// No visible layer has pixels at document point `p` (locked ones included).
-pub(crate) fn empty_at(app: &mut PhotocraftApp, p: [f64; 2]) -> bool {
-    app.run("layer.pickAt", json!({"x": p[0], "y": p[1], "list": true})).is_ok_and(|v| v["layers"].as_array().is_some_and(Vec::is_empty))
-}
 
 /// The pointer moves or is released while a marquee is dragged (unsnapped, unconstrained): true
 /// when the event was the marquee's.

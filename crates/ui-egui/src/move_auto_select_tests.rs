@@ -210,3 +210,16 @@ fn every_theme_shows_the_gradient_options() {
         assert!(combos.iter().any(|c| c.contains("Normal")), "{theme:?}: the blend mode picker shows; combo boxes: {combos:?}");
     }
 }
+
+#[test]
+fn dragging_over_locked_background_initiates_marquee_selection() {
+    let (mut app, a, _) = app();
+    // A covers (8..24)², B covers (40..56)².
+    // Drag starting at (2.0, 2.0) on the locked Background layer to (20.0, 20.0) touching A.
+    drag(&mut app, [2.0, 2.0], [18.0, 18.0], egui::Modifiers::NONE);
+    // Auto-Select dragging over the locked Background should not show an error dialog
+    // and should marquee-select layer A (#4058).
+    assert!(!app.move_blocked, "dragging on locked background does not block move");
+    assert!(app.ui.dialogs.is_empty(), "no 'layer is locked' error modal");
+    assert_eq!(active(&app), Some(a), "marquee drag selected layer A");
+}
