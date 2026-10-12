@@ -426,7 +426,27 @@ fn transform(s: &mut Session, p: &Value) -> Result<Value> {
         Some(v) => Some(LayerId(v)),
         None => st.active_layer,
     };
+    // A Free Transform normally follows the active layer.  The UI can instead provide the
+    // complete Layers-panel selection so all of its layers share one source frame and one
+    // homography.  Keep the singular `layer` parameter for scripts and existing callers.
+    let layers = match p.get("layers") {
+        Some(Value::Array(values)) if !values.is_empty() => {
+            let mut ids = Vec::with_capacity(values.len());
+            for value in values {
+                let id = value.as_u64().map(LayerId).ok_or_else(|| bad("layers must be layer ids"))?;
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            ids
+        }
+        Some(_) => return Err(bad("layers must be a non-empty array of layer ids")),
+        None => id.into_iter().collect(),
+    };
     let lone = lone_target(&st.doc, id, p)?;
+    if lone.is_some() && layers.len() > 1 {
+        return Err(bad("a mask or channel transform cannot target multiple layers"));
+    }
     let id = match (id, lone.is_some() && crate::channel_cmds::is_channel_target(p)) {
         (_, true) => None,
         (Some(id), false) => Some(id),
@@ -440,7 +460,9 @@ fn transform(s: &mut Session, p: &Value) -> Result<Value> {
         _ => {
             let b = match (lone, id) {
                 (Some(surf), _) => target_bounds(&st.doc, surf),
-                (None, Some(id)) => transform_bounds(&st.doc, st.doc.layer(id).ok_or(EngineError::NoLayer(id))?),
+                (None, Some(_)) => layers.iter().try_fold(Rect::EMPTY, |bounds, id| {
+                    Ok::<Rect, EngineError>(bounds.union(&transform_bounds(&st.doc, st.doc.layer(*id).ok_or(EngineError::NoLayer(*id))?)))
+                })?,
                 (None, None) => Rect::EMPTY,
             };
             if b.is_empty() {
@@ -485,18 +507,21 @@ fn transform(s: &mut Session, p: &Value) -> Result<Value> {
             }
             return Ok(());
         }
-        let id = id.ok_or_else(|| EngineError::Other("no active layer".into()))?;
-        let is_group = doc.layer(id).is_some_and(Layer::is_group);
-        let group = group_locks(doc, id);
-        // Photoshop turns the Background into a normal layer before transforming it.
-        crate::extra_cmds::background_to_layer(doc, id);
-        let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
-        transform_layer(if is_group { None } else { sel.as_ref() }, group, l, &h, affine, interp)?;
+        for id in &layers {
+            let is_group = doc.layer(*id).is_some_and(Layer::is_group);
+            let group = group_locks(doc, *id);
+            // Photoshop turns the Background into a normal layer before transforming it.
+            crate::extra_cmds::background_to_layer(doc, *id);
+            let l = doc.layer_mut(*id).ok_or(EngineError::NoLayer(*id))?;
+            transform_layer(if is_group { None } else { sel.as_ref() }, group, l, &h, affine, interp)?;
+        }
         if !h.is_identity() {
             // Type layers re-render from their new transform.
             let snapshot = doc.clone();
-            if let Some(l) = doc.layer_mut(id) {
-                refresh_text(&snapshot, l);
+            for id in &layers {
+                if let Some(l) = doc.layer_mut(*id) {
+                    refresh_text(&snapshot, l);
+                }
             }
             // The selection outline moves with the pixels.
             if let Some(sel) = &doc.selection {
@@ -514,7 +539,7 @@ pub fn specs() -> Vec<CommandSpec> {
         label: "Free Transform",
         menu: &[],
         shortcut: None,
-        params: r##"{"layer":id?,"rect":[x0,y0,x1,y1]? (source frame; default = layer content ∩ selection),"quad":[[x,y]×4]? (where the frame's corners go, clockwise from top-left),"matrix":[a,b,c,d,e,f]? (affine alternative),"interpolation":"bicubic|bilinear|nearest"="bicubic","target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target (an unlinked mask, an alpha channel or the Quick Mask transforms alone; a linked mask moves with its layer)}"##,
+        params: r##"{"layer":id?,"layers":[id,…]? (layers transformed together; default = active layer),"rect":[x0,y0,x1,y1]? (source frame; default = transformed content bounds ∩ selection),"quad":[[x,y]×4]? (where the frame's corners go, clockwise from top-left),"matrix":[a,b,c,d,e,f]? (affine alternative),"interpolation":"bicubic|bilinear|nearest"="bicubic","target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target (an unlinked mask, an alpha channel or the Quick Mask transforms alone; a linked mask moves with its layer)}"##,
         enabled: has_layer,
         journal: true,
         run: transform,
@@ -551,6 +576,39 @@ mod tests {
         assert!(b.width().abs_diff(40) <= 2 && b.height().abs_diff(20) <= 2, "{b:?}");
         s.undo();
         assert_eq!(active_bounds(&s), Rect::new(10, 10, 30, 20));
+    }
+
+    #[test]
+    fn selected_layers_transform_together_from_their_combined_bounds() {
+        let mut s = session();
+        let first = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        let second = s.active().unwrap().active_layer.unwrap();
+        s.edit("paint second", |doc, _| {
+            doc.layer_mut(second).unwrap().surface_mut().unwrap().fill_rect(Rect::new(50, 10, 70, 20), &[0.0, 1.0, 0.0, 1.0]);
+            Ok(())
+        })
+        .unwrap();
+
+        // The shared source frame is 10..70. Scaling it 2× around its top-left must move both
+        // layers and retain their 40 px separation as an 80 px separation.
+        s.execute(
+            "edit.transform",
+            json!({
+                "layers": [first.0, second.0],
+                "quad": [[10, 10], [130, 10], [130, 30], [10, 30]],
+                "interpolation": "nearest"
+            }),
+        )
+        .unwrap();
+        let doc = &s.active().unwrap().doc;
+        assert_eq!(doc.layer(first).unwrap().surface().unwrap().content_bounds(), Rect::new(10, 10, 50, 30));
+        assert_eq!(doc.layer(second).unwrap().surface().unwrap().content_bounds(), Rect::new(90, 10, 130, 30));
+
+        s.undo();
+        let doc = &s.active().unwrap().doc;
+        assert_eq!(doc.layer(first).unwrap().surface().unwrap().content_bounds(), Rect::new(10, 10, 30, 20));
+        assert_eq!(doc.layer(second).unwrap().surface().unwrap().content_bounds(), Rect::new(50, 10, 70, 20));
     }
 
     #[test]

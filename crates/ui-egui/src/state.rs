@@ -869,6 +869,10 @@ impl TransformMode {
 pub struct TransformSession {
     pub session: u64,
     pub layer: u64,
+    /// Every layer transformed by this box. Empty keeps compatibility with sessions saved before
+    /// multi-layer Free Transform support and means `layer` only.
+    #[serde(default)]
+    pub layers: Vec<u64>,
     pub rect: [f64; 4],
     /// Corners clockwise from top-left (document px).
     pub quad: [[f64; 2]; 4],

@@ -182,8 +182,9 @@ pub fn begin(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(), String>
         return begin_lone(app, ctx, doc, surf, target);
     }
     let id = st.active_layer.ok_or("no active layer")?;
+    let layers = st.selected_layers();
     let layer = doc.layer(id).ok_or("no layer")?;
-    if photocraft_engine::transform_cmds::locked_for_transform(&doc, id) {
+    if layers.iter().any(|id| photocraft_engine::transform_cmds::locked_for_transform(&doc, *id)) {
         // Photoshop refuses before the box opens rather than when it is committed (#2585).
         app.ui.open_dialog(crate::state::DialogKind::Error, json!({"message": tl!(LOCKED)}).as_object().cloned().unwrap_or_default());
         return Err(LOCKED.into());
@@ -191,7 +192,10 @@ pub fn begin(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(), String>
     if matches!(layer.content, LayerContent::Adjustment(_)) && layer.mask.is_none() {
         return Err("Adjustment layers have nothing to transform".into());
     }
-    let b = photocraft_engine::transform_cmds::transform_bounds(&doc, layer);
+    let b = layers.iter().try_fold(photocraft_geom::Rect::EMPTY, |bounds, id| {
+        let layer = doc.layer(*id).ok_or("no layer")?;
+        Ok::<_, &str>(bounds.union(&photocraft_engine::transform_cmds::transform_bounds(&doc, layer)))
+    })?;
     if b.is_empty() {
         return Err("Could not transform: the layer is empty".into());
     }
@@ -243,6 +247,7 @@ pub fn begin(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(), String>
     app.ui.transform = Some(TransformSession {
         session,
         layer: id.0,
+        layers: layers.iter().map(|id| id.0).collect(),
         rect,
         quad: corners(rect),
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
@@ -342,6 +347,7 @@ pub(crate) fn begin_content_aware(
     app.ui.transform = Some(TransformSession {
         session,
         layer: id.0,
+        layers: Vec::new(),
         rect,
         quad: corners(rect),
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
@@ -454,6 +460,7 @@ fn begin_lone(
     app.ui.transform = Some(TransformSession {
         session,
         layer,
+        layers: Vec::new(),
         rect,
         quad: corners(rect),
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
@@ -505,6 +512,7 @@ fn begin_path(app: &mut PhotocraftApp, ctx: &egui::Context, params: serde_json::
     app.ui.transform = Some(TransformSession {
         session,
         layer: layer.0,
+        layers: Vec::new(),
         rect,
         quad: corners(rect),
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
@@ -588,6 +596,7 @@ pub fn begin_selection(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<(
     app.ui.transform = Some(TransformSession {
         session,
         layer: layer.0,
+        layers: Vec::new(),
         rect,
         quad: corners(rect),
         pivot: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0],
@@ -1004,6 +1013,9 @@ pub fn commit(app: &mut PhotocraftApp) {
             return; // untouched: nothing to do and no history step; a ⌥⌘T copy or a place stays
         }
         let mut p = json!({"layer": t.layer, "rect": t.rect, "quad": t.quad, "interpolation": t.interpolation});
+        if t.layers.len() > 1 {
+            p["layers"] = json!(t.layers);
+        }
         if let Some(target) = t.target {
             p["target"] = target;
         }
@@ -2726,6 +2738,7 @@ mod tests {
         TransformSession {
             session: 1,
             layer: 1,
+            layers: Vec::new(),
             rect: [0.0, 0.0, 100.0, 50.0],
             quad: corners([0.0, 0.0, 100.0, 50.0]),
             pivot: [50.0, 25.0],

@@ -48,6 +48,7 @@ pub(crate) fn begin(app: &mut PhotocraftApp, offset: [i32; 2]) -> bool {
     let frame = TransformSession {
         session: app.ui.alloc_id(),
         layer: 0,
+        layers: Vec::new(),
         rect: r,
         quad: [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]],
         pivot: [(r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0],

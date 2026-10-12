@@ -115,6 +115,7 @@ pub(crate) fn frame(app: &mut PhotocraftApp) -> Option<TransformSession> {
     Some(TransformSession {
         session: 0,
         layer: id.0,
+        layers: Vec::new(),
         rect,
         quad,
         pivot,
