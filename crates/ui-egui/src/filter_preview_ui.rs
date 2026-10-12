@@ -200,6 +200,18 @@ fn document_size(proxy: [u32; 2], k: u32) -> Vec2 {
 
 /// A composite as monitor pixels, matching the canvas (`canvas::display_image`).
 fn upload(ctx: &egui::Context, app: &PhotocraftApp, name: &str, doc: &Document) -> egui::TextureHandle {
+    // Never exceed what the GPU accepts (egui panics on oversized textures): a full-resolution
+    // preview of a large document is reduced to fit. The view samples it in UV space, so only
+    // sharpness changes.
+    let max_side = (ctx.input(|i| i.max_texture_side) as u32).max(256);
+    let factor = doc.size.width.max(doc.size.height).div_ceil(max_side).max(1);
+    let reduced;
+    let doc = if factor > 1 {
+        reduced = crate::proxy::proxy_document(doc, factor);
+        &reduced
+    } else {
+        doc
+    };
     let buf = photocraft_compose::flatten(doc);
     let (display, _) = crate::canvas::canvas_display(app, doc, None);
     let img = crate::canvas::display_image(display.as_deref(), &buf);
@@ -337,4 +349,18 @@ mod tests {
         assert_eq!(reserved_height(&rotate), 0.0, "Rotate Canvas has no preview window in Photoshop");
     }
 
+    #[test]
+    fn a_document_larger_than_the_gpu_texture_limit_is_reduced_not_panicked_on() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 3000, "height": 200})).unwrap();
+        let id = crate::filter_dialog::open(&mut app, "filter.stylize.emboss").expect("Emboss opens a dialog");
+        let mut f = app.ui.dialogs.iter().find(|d| d.id == id).expect("the dialog is open").fields.clone();
+        let input = egui::RawInput { max_texture_side: Some(2048), ..Default::default() };
+        let ctx = egui::Context::default();
+        ctx.run_ui(input, |ui| window(&app, id, ui, &mut f)).textures_delta.clear();
+        let cache: Cache = ctx.data_mut(|d| d.get_temp(egui::Id::new(("filter-preview-ui", id)))).expect("the preview cached its texture");
+        let original = cache.original.expect("the unfiltered preview");
+        assert!(original.tex.size().iter().all(|s| *s <= 2048), "texture {:?} fits the GPU limit", original.tex.size());
+        assert_eq!(f.get(CENTER_X_FIELD), Some(&json!(1500.0)), "the view still works in document pixels");
+    }
 }
