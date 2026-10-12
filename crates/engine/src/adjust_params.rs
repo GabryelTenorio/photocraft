@@ -1404,10 +1404,12 @@ mod tests {
 
     #[test]
     fn destructive_levels_dont_clip_in_32_bit() {
-        // Input 15..230, gamma 1.3, output 10..245: black and white land on the output range in
-        // integer documents, but in a 32-bit document the curve runs on past it (then 0..1).
+        // Input 15..230, gamma 1.3, output 10..245: integer documents clip black and white to the
+        // output range, but a 32-bit document keeps the signed, unbounded HDR result the
+        // compositor's float Levels produce (see `compose::adjust::levels_float`): black runs below
+        // the output black (0) and white above the output white (1), neither clamped to 0..1.
         let params = json!({"inBlack": 15, "inWhite": 230, "gamma": 1.3, "outBlack": 10, "outWhite": 245});
-        for (depth, low, high) in [(8, 10.0, 245.0), (16, 10.0, 245.0), (32, 0.0, 255.0)] {
+        for (depth, clip) in [(8, true), (16, true), (32, false)] {
             let mut s = crate::Session::new();
             s.execute("file.new", json!({"width": 16, "height": 16, "depth": depth, "background": "white"})).unwrap();
             s.execute("select.rect", json!({"x": 0, "y": 0, "width": 8, "height": 16})).unwrap();
@@ -1415,8 +1417,13 @@ mod tests {
             s.execute("select.deselect", json!({})).unwrap();
             s.execute("image.adjustments.levels", params.clone()).unwrap();
             let px = pixels(&s);
-            assert!((px[0][0] * 255.0 - low).abs() < 0.6, "black @{depth}: {:?}", px[0]);
-            assert!((px[1][0] * 255.0 - high).abs() < 0.6, "white @{depth}: {:?}", px[1]);
+            if clip {
+                assert!((px[0][0] * 255.0 - 10.0).abs() < 0.6, "black @{depth}: {:?}", px[0]);
+                assert!((px[1][0] * 255.0 - 245.0).abs() < 0.6, "white @{depth}: {:?}", px[1]);
+            } else {
+                assert!(px[0][0] * 255.0 < 0.0, "black @{depth} is not clipped: {:?}", px[0]);
+                assert!(px[1][0] * 255.0 > 255.0, "white @{depth} is not clipped: {:?}", px[1]);
+            }
         }
     }
 
