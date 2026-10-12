@@ -111,12 +111,15 @@ fn adjusted(s: &Surface, r: Rect, adj: &Adjustment, selection: Option<&Surface>,
     let fmt = s.format();
     let n = fmt.channels();
     let raw = s.read_region(r);
+    if fmt.mode == mode && adjust::on_document_channels(adj, mode) {
+        return adjusted_channels(raw, r, adj, selection, fmt);
+    }
     let mut buf = Buffer { rect: r, px: raw.chunks_exact(n).map(|p| to_rgba(&fmt, p)).collect() };
     let orig = buf.clone();
     // 32-bit documents get the float behaviour of an adjustment layer there (Levels doesn't clip);
     // integer depths keep the unrounded, clipped curves.
     let depth = (fmt.sample == photocraft_color::SampleType::F32).then_some(fmt.sample);
-    adjust::apply_depth(adj, &mut buf, adjust::Transfer::for_document(mode, fmt.sample), depth);
+    adjust::apply_mode(adj, &mut buf, adjust::Transfer::for_document(mode, fmt.sample), depth, mode, fmt.sample);
     let w = r.width() as usize;
     let mut out = Vec::with_capacity(raw.len());
     for (i, (a, o)) in buf.px.iter().zip(&orig.px).enumerate() {
@@ -127,6 +130,32 @@ fn adjusted(s: &Surface, r: Rect, adj: &Adjustment, selection: Option<&Surface>,
         out.extend_from_slice(&enc[..m]);
     }
     out
+}
+
+/// [`adjusted`] for an adjustment that works on a Lab or CMYK surface's own channels: exact on the
+/// stored values, with the selection mixing them (alpha untouched).
+fn adjusted_channels(mut raw: Vec<f32>, r: Rect, adj: &Adjustment, selection: Option<&Surface>, fmt: photocraft_color::PixelFormat) -> Vec<f32> {
+    let colors = fmt.mode.color_channels();
+    let w = r.width() as usize;
+    for (i, px) in raw.chunks_exact_mut(fmt.channels()).enumerate() {
+        let k = selection.map_or(1.0, |sel| sel.sample_channel(r.x0 + (i % w) as i32, r.y0 + (i / w) as i32, 0));
+        if k <= 0.0 {
+            continue;
+        }
+        let gray = photocraft_color::convert::rgb_to_gray(rgb_of(&fmt, px));
+        let Some(ch) = px.get_mut(..colors) else { continue };
+        let orig: Vec<f32> = ch.to_vec();
+        adjust::document_channels(adj, fmt.mode, fmt.sample, ch, gray);
+        for (v, o) in ch.iter_mut().zip(orig) {
+            *v = o + (*v - o) * k;
+        }
+    }
+    raw
+}
+
+fn rgb_of(fmt: &photocraft_color::PixelFormat, px: &[f32]) -> [f32; 3] {
+    let p = to_rgba(fmt, px);
+    [p[0], p[1], p[2]]
 }
 
 /// Fill (respecting selection coverage) with a straight RGBA colour.

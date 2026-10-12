@@ -934,7 +934,7 @@ impl<'a> Planner<'a> {
 
     /// adjust::apply_with on a slot (consumes it).
     fn adjust(&mut self, adj: &Adjustment, src: Slot) -> Result<Slot, Unsupported> {
-        if !adjustment_on_gpu(adj) {
+        if !adjustment_on_gpu(adj, self.cx.mode) {
             return Err(Unsupported(format!("{} on CMYK/Lab channels (evaluated on the CPU)", adj.label())));
         }
         if let Adjustment::GradientMap { stops, .. } = adj {
@@ -1512,10 +1512,13 @@ fn to_row(t: &[f32]) -> [f32; 4096] {
     row
 }
 
-/// Whether the adjustment kernel can evaluate `adj`: Levels and Curves on CMYK ink or Lab
-/// channels convert through ICC profiles per pixel, which only the CPU does.
-pub fn adjustment_on_gpu(adj: &Adjustment) -> bool {
+/// Whether the adjustment kernel can evaluate `adj` in a `mode` document: Levels and Curves on
+/// CMYK ink or Lab channels convert through ICC profiles per pixel, and so do Invert, Posterize
+/// and Threshold on a Lab document's channels (`adjust::on_document_channels`), which only the
+/// CPU does.
+pub fn adjustment_on_gpu(adj: &Adjustment, mode: photocraft_color::ColorMode) -> bool {
     !matches!(adj, Adjustment::Levels { space: ToneSpace::Cmyk | ToneSpace::Lab, .. } | Adjustment::Curves { space: ToneSpace::Cmyk | ToneSpace::Lab, .. })
+        && !photocraft_compose::adjust::on_document_channels(adj, mode)
 }
 
 /// A tone transfer as the shader's `t_decode`/`t_encode` exponent (0: the sRGB curve).
@@ -1753,6 +1756,21 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn lab_and_cmyk_invert_posterize_and_threshold_fall_back_to_the_cpu() {
+        for adj in [Adjustment::Invert, Adjustment::Posterize { levels: 4 }, Adjustment::Threshold { level: 0.5 }] {
+            for mode in [ColorMode::Rgb, ColorMode::Lab, ColorMode::Cmyk] {
+                let mut doc = Document::with_background("doc", Size::new(4, 4), mode, SampleType::U8, Color::WHITE);
+                doc.layers.push(Layer::new("adj", LayerContent::Adjustment(adj.clone())));
+                let planned = plan(&doc);
+                assert_eq!(planned.is_ok(), mode == ColorMode::Rgb, "{} in {mode:?}", adj.label());
+                if let Err(e) = planned {
+                    assert!(e.0.contains("evaluated on the CPU"), "{}", e.0);
+                }
+            }
+        }
+    }
+
     #[test]
     fn outer_glow_plan_knocks_out_see_through_fill() {
         use photocraft_doc::{Contour, FxCommon, GlowSource, GlowTechnique};

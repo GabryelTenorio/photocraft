@@ -3,8 +3,8 @@
 //! Formulas are documented approximations of Photoshop behaviour. Exact matching is tuned in
 //! milestone M7 against Photoshop-rendered PSD composites (the oracle in `testkit`).
 
-use photocraft_color::SampleType;
-use photocraft_color::convert::{D50, SRGB_TO_XYZ_D50, XYZ_D50_TO_SRGB, mat3_mul, rgb_to_gray, srgb_to_linear};
+use photocraft_color::convert::{D50, SRGB_TO_XYZ_D50, XYZ_D50_TO_SRGB, lab_to_srgb, mat3_mul, rgb_to_gray, srgb_to_lab, srgb_to_linear};
+use photocraft_color::{ColorMode, SampleType};
 use photocraft_doc::Adjustment;
 use photocraft_doc::adjust::{CurvePoint, HueRange, LevelsChannel, ToneSpace, lut3d_len};
 
@@ -243,6 +243,69 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
         }
         // Not evaluated: identity (still round-trips through PSD).
         Adjustment::ColorLookup { .. } | Adjustment::Unsupported { .. } => {}
+    }
+}
+
+/// [`apply_depth`] in a document of colour `mode` and `sample` type. Invert, Posterize and
+/// Threshold work on a Lab or CMYK document's own channels as Photoshop's do (see
+/// [`on_document_channels`]).
+pub fn apply_mode(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth: Option<SampleType>, mode: ColorMode, sample: SampleType) {
+    if !on_document_channels(adj, mode) {
+        apply_depth(adj, buf, transfer, depth);
+    } else if mode == ColorMode::Lab {
+        map_rgb(buf, |c| {
+            let l = srgb_to_lab(c);
+            let mut n = [l[0] / 100.0, (l[1] + 128.0) / 255.0, (l[2] + 128.0) / 255.0];
+            document_channels(adj, mode, sample, &mut n, 0.0);
+            lab_to_srgb([n[0] * 100.0, n[1] * 255.0 - 128.0, n[2] * 255.0 - 128.0])
+        });
+    } else {
+        use photocraft_color::convert::{cmyk_to_rgb, rgb_to_cmyk};
+        map_rgb(buf, |c| {
+            let mut ink = rgb_to_cmyk(c);
+            document_channels(adj, mode, sample, &mut ink, rgb_to_gray(c));
+            cmyk_to_rgb(ink)
+        });
+    }
+}
+
+/// Whether [`apply_mode`] evaluates `adj` on a `mode` document's own channels rather than on RGB:
+/// Invert, Posterize and Threshold in Lab and CMYK (see [`document_channels`]).
+pub fn on_document_channels(adj: &Adjustment, mode: ColorMode) -> bool {
+    matches!(mode, ColorMode::Lab | ColorMode::Cmyk) && matches!(adj, Adjustment::Invert | Adjustment::Posterize { .. } | Adjustment::Threshold { .. })
+}
+
+/// Invert, Posterize or Threshold on one pixel's own channels in a Lab or CMYK document of
+/// `sample` type: `ch` is L, a, b or C, M, Y, K as stored (0..1; a and b centred on 128/255,
+/// inks 0 for none), `gray` the pixel's luma (CMYK Threshold).
+///
+/// Photoshop inverts and posterizes each of L, a and b (neutral a and b posterize to +42, so greys
+/// turn warm) and thresholds lightness to a neutral black or white; 8-bit Invert turns each byte
+/// `v` into `255 - v` (a becomes -1 - a), 16-bit Invert mirrors a and b around neutral (photoshop
+/// corpus lab8 and lab16 invert, posterize-4 and threshold-128: every pixel within a level). In
+/// CMYK it inverts and posterizes each ink, black included (white paper inverts to 400% ink), and
+/// Threshold gives paper white or 100% black ink alone (cmyk8 and cmyk16, every pixel).
+pub fn document_channels(adj: &Adjustment, mode: ColorMode, sample: SampleType, ch: &mut [f32], gray: f32) {
+    match adj {
+        Adjustment::Invert => {
+            let mirror = if mode == ColorMode::Lab && sample != SampleType::U8 { 256.0 / 255.0 } else { 1.0 };
+            for (i, v) in ch.iter_mut().enumerate() {
+                *v = if mode == ColorMode::Lab && i > 0 { mirror } else { 1.0 } - *v;
+            }
+        }
+        Adjustment::Posterize { levels } => ch.iter_mut().for_each(|v| *v = posterize(*v, *levels)),
+        Adjustment::Threshold { level } => {
+            // On the 8-bit grid, like the RGB threshold.
+            let t = (level * 255.0).round();
+            let out = if mode == ColorMode::Lab {
+                let white = ch.first().is_some_and(|l| (l * 255.0).round() >= t);
+                [if white { 1.0 } else { 0.0 }, 128.0 / 255.0, 128.0 / 255.0, 0.0]
+            } else {
+                [0.0, 0.0, 0.0, if (gray * 255.0).round() < t { 1.0 } else { 0.0 }]
+            };
+            ch.iter_mut().zip(out).for_each(|(v, o)| *v = o);
+        }
+        _ => {}
     }
 }
 

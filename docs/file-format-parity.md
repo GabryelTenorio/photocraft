@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Lab and CMYK Invert, Posterize and Threshold on the document's channels; Photoshop-oracle floor 139/258) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -21,7 +21,7 @@ XL are missing (gap G10). Remaining: 300–500 h including PSD fidelity.
 
 | Format | Photoshop | PhotoCraft read | PhotoCraft write | Fidelity and tests |
 |---|---|---|---|---|
-| PSD | R/W | yes | yes | 1/8/16/32-bit; Bitmap, Gray, Indexed, RGB, CMYK, Multichannel, Lab, Duotone; layers, groups, masks, vector masks, adjustment and fill layers, effects, text, shapes, smart objects (SoLd/lnk2), smart filters (14 mapped, rest verbatim), slices, comps, Advanced Blending. Oracle floors: Photoshop-authored 133/256, io 146/170, psd-tools 236/309; round trip ≥ 169/170, 308/309, 258/256. Known failures: #1281, #2469, #2465 (#2374, text layers, closed 2026-10-10) |
+| PSD | R/W | yes | yes | 1/8/16/32-bit; Bitmap, Gray, Indexed, RGB, CMYK, Multichannel, Lab, Duotone; layers, groups, masks, vector masks, adjustment and fill layers, effects, text, shapes, smart objects (SoLd/lnk2), smart filters (14 mapped, rest verbatim), slices, comps, Advanced Blending. Oracle floors: Photoshop-authored 139/258, io 146/170, psd-tools 236/309; round trip ≥ 169/170, 308/309, 258/256. Known failures: #1281, #2469, #2465 (#2374, text layers, closed 2026-10-10) |
 | PSB | R/W | yes | yes | Auto-switches above 2 GB (REL-212-2); 4–5 GB fixtures generated (FILE-216-2); > 4 GB fails on Windows (#375) |
 | Cloud PSD (.psdc) | R/W | no | no | Out of scope (Adobe cloud) |
 | TIFF | R/W | yes | yes | 8/16/32f, Gray/RGB/CMYK, BigTIFF, every IFD, banded parallel decode; layered TIFF both byte orders (FILE-215-7: extra alpha channels not written) |
@@ -140,5 +140,6 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Lab and CMYK Invert, Posterize and Threshold layers work on the document's own channels (Lab Threshold oracles pass); Photoshop-oracle floor 133 → 139 of 258 (137 already passed on main) |
 | 2026-10-11 | minor | D5100 image area and fitted-look preservation in Camera Raw tuning |
 | 2026-10-10 | major | First version: Photoshop 2026 27.11.0's formats from its bundle, against our codecs; Affinity notes moved from `roadmap.md` |

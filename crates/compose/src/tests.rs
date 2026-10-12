@@ -463,6 +463,68 @@ fn cmyk_document_renders_via_rgb() {
     assert!(p[0] < 0.3 && (p[0] - p[1]).abs() < 0.05 && (p[1] - p[2]).abs() < 0.05 && p[3] == 1.0, "{p:?}");
 }
 
+/// `adj` in a document of `mode` and `sample` on one display-RGB colour.
+fn in_mode(adj: &Adjustment, mode: ColorMode, sample: SampleType, c: [f32; 3]) -> [f32; 3] {
+    let mut buf = Buffer::filled(Rect::new(0, 0, 1, 1), [c[0], c[1], c[2], 1.0]);
+    adjust::apply_mode(adj, &mut buf, adjust::Transfer::Srgb, Some(sample), mode, sample);
+    let p = buf.px[0];
+    [p[0], p[1], p[2]]
+}
+
+fn close3(a: [f32; 3], b: [f32; 3]) -> bool {
+    a.iter().zip(b).all(|(x, y)| (x - y).abs() < 2e-3)
+}
+
+#[test]
+fn lab_documents_invert_posterize_and_threshold_their_own_channels() {
+    use photocraft_color::convert::lab_to_srgb;
+    let grey = lab_to_srgb([40.0, 0.0, 0.0]);
+    // Each channel inverts: 8-bit bytes become 255 - v (a and b land on -1), 16-bit mirrors a and b
+    // around neutral (photoshop corpus lab8 and lab16 invert.psd).
+    let got = in_mode(&Adjustment::Invert, ColorMode::Lab, SampleType::U8, grey);
+    assert!(close3(got, lab_to_srgb([60.0, -1.0, -1.0])), "{got:?}");
+    let got = in_mode(&Adjustment::Invert, ColorMode::Lab, SampleType::U16, grey);
+    assert!(close3(got, lab_to_srgb([60.0, 0.0, 0.0])), "{got:?}");
+    // Posterize steps L, a and b alike, so a neutral grey turns warm (posterize-4.psd).
+    let got = in_mode(&Adjustment::Posterize { levels: 4 }, ColorMode::Lab, SampleType::U8, grey);
+    assert!(close3(got, lab_to_srgb([100.0 / 3.0, 42.0, 42.0])), "{got:?}");
+    // Threshold compares lightness and gives neutral black or white (threshold-128.psd): a
+    // saturated blue as light as the level is white, though its RGB luma is far below it.
+    let level = Adjustment::Threshold { level: 128.0 / 255.0 };
+    let blue = lab_to_srgb([50.5, 20.0, -70.0]);
+    assert!(close3(in_mode(&level, ColorMode::Lab, SampleType::U8, blue), [1.0; 3]));
+    assert!(close3(in_mode(&level, ColorMode::Rgb, SampleType::U8, blue), [0.0; 3]));
+    assert!(close3(in_mode(&level, ColorMode::Lab, SampleType::U16, grey), [0.0; 3]));
+}
+
+#[test]
+fn cmyk_documents_invert_posterize_and_threshold_their_inks() {
+    use photocraft_color::convert::{cmyk_to_rgb, rgb_to_cmyk};
+    // Paper inverts to all four inks at 100%, not to RGB black (photoshop corpus cmyk8 invert.psd).
+    let got = in_mode(&Adjustment::Invert, ColorMode::Cmyk, SampleType::U8, [1.0; 3]);
+    assert!(close3(got, cmyk_to_rgb([1.0; 4])), "{got:?}");
+    let red = [0.9, 0.2, 0.1];
+    let got = in_mode(&Adjustment::Invert, ColorMode::Cmyk, SampleType::U16, red);
+    assert!(close3(got, cmyk_to_rgb(rgb_to_cmyk(red).map(|v| 1.0 - v))), "{got:?}");
+    let got = in_mode(&Adjustment::Posterize { levels: 2 }, ColorMode::Cmyk, SampleType::U8, red);
+    assert!(close3(got, cmyk_to_rgb(rgb_to_cmyk(red).map(|v| if v >= 0.5 { 1.0 } else { 0.0 }))), "{got:?}");
+    // Threshold's black is the black ink alone (threshold-128.psd), its white the paper.
+    let level = Adjustment::Threshold { level: 0.5 };
+    assert!(close3(in_mode(&level, ColorMode::Cmyk, SampleType::U8, [0.2; 3]), cmyk_to_rgb([0.0, 0.0, 0.0, 1.0])));
+    assert!(close3(in_mode(&level, ColorMode::Cmyk, SampleType::U8, [0.8; 3]), cmyk_to_rgb([0.0; 4])));
+}
+
+#[test]
+fn a_lab_invert_layer_inverts_lightness_and_keeps_greys_neutral() {
+    let mut d = Document::new("lab", Size::new(2, 2), ColorMode::Lab, SampleType::U16);
+    let mut bg = Layer::raster("bg", d.pixel_format());
+    bg.surface_mut().unwrap().fill_rect(Rect::new(0, 0, 2, 2), &[0.25, 128.0 / 255.0, 128.0 / 255.0, 1.0]);
+    d.layers.push(bg);
+    d.layers.push(Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert)));
+    let p = px(&d, 1, 1);
+    assert!(close3([p[0], p[1], p[2]], photocraft_color::convert::lab_to_srgb([75.0, 0.0, 0.0])), "{p:?}");
+}
+
 #[test]
 fn sixteen_bit_and_float_layers_composite() {
     for fmt in [PixelFormat::RGBA16, PixelFormat::RGBA32F] {
