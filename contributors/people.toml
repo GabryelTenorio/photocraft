@@ -117,3 +117,7 @@ sync_github_name = true
 
 [people.FredApps]
 sync_github_name = true
+
+[people.davidvhk]
+real_name = "David Vanhoucke"
+sync_github_name = true

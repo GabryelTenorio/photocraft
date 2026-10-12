@@ -908,7 +908,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     crate::brush_picker::settings_toggle(app, ui);
                     widgets::vline(ui, 22.0);
                 }
-                if tool == Tool::CloneStamp {
+                if tool == Tool::CloneStamp || tool == Tool::HistoryBrush {
                     let before = app.session.tools.brush.clone();
                     let mut brush = before.clone();
                     let width = if t.pro { 62.0 } else { 66.0 };
@@ -2867,17 +2867,31 @@ fn channels(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
-    let Some(st) = app.session.active() else {
-        empty(ui, tl!("No document"));
-        return;
+    let (doc, entries, current, redo, src_snapshot, src_state) = {
+        let Some(st) = app.session.active() else {
+            empty(ui, tl!("No document"));
+            return;
+        };
+        (
+            st.doc.clone(),
+            st.history.entries(),
+            st.history.entries().len().saturating_sub(1),
+            st.history.redo_labels().map(str::to_string).collect::<Vec<_>>(),
+            st.history_source_snapshot,
+            st.history_source_state,
+        )
     };
-    let doc = st.doc.clone();
-    let entries = st.history.entries();
-    let current = entries.len() - 1;
-    let redo: Vec<String> = st.history.redo_labels().map(str::to_string).collect();
+    let mut snap_cmd: Option<(&'static str, Value)> = None;
     // Snapshot row (Photoshop shows the document's opening state with a thumbnail).
     {
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), Sense::hover());
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), Sense::click());
+        let src_rect = Rect::from_min_size(pos2(rect.left() + 4.0, rect.center().y - 10.0), vec2(20.0, 20.0));
+        let is_source = src_snapshot.is_none() && src_state.is_none_or(|s| s == 0);
+        if is_source {
+            icons::paint(ui, src_rect, "history-brush", 14.0, t.accent);
+        } else if resp.hovered() && ui.input(|i| i.pointer.hover_pos().is_some_and(|p| p.x <= rect.left() + 24.0)) {
+            icons::paint(ui, src_rect, "history-brush", 14.0, t.text_faint);
+        }
         let thumb = Rect::from_min_size(pos2(rect.left() + 28.0, rect.center().y - 14.0), vec2(28.0, 28.0));
         let ctx = ui.ctx().clone();
         if let Some(layer) = doc.layers.first() {
@@ -2888,8 +2902,10 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.painter().rect_stroke(thumb, 0.0, Stroke::new(1.0, t.separator), StrokeKind::Outside);
         ui.painter().text(pos2(thumb.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, &doc.name, egui::FontId::proportional(12.0), t.text);
         ui.painter().line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, t.separator));
+        if resp.clicked() && resp.interact_pointer_pos().is_some_and(|p| p.x <= rect.left() + 26.0) {
+            snap_cmd = Some(("history.setSource", json!({})));
+        }
     }
-    let mut snap_cmd = None;
     let mut target: Option<isize> = None;
     let all = entries.iter().map(|e| (e.clone(), false)).chain(redo.iter().map(|e| (e.clone(), true)));
     // The dock gives History a fixed height: the rows scroll above the footer.
@@ -2898,13 +2914,23 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().id_salt("history-rows").max_height(max_h).auto_shrink([false, false]).show(ui, |ui| {
         // Snapshots head the list and scroll with the states, so many of them never push the
         // footer out of a short dock.
-        snap_cmd = snapshot_rows(app, ui);
+        if let Some(c) = snapshot_rows(app, ui) {
+            snap_cmd = Some(c);
+        }
         for (i, (e, is_redo)) in all.enumerate() {
             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
             if i == current {
                 ui.painter().rect_filled(rect, if t.pro { 0.0 } else { t.radius_sm }, if t.pro { t.row_selected } else { t.accent_soft });
             } else if resp.hovered() {
                 ui.painter().rect_filled(rect, 0.0, t.hover.gamma_multiply(0.5));
+            }
+            let src_rect = Rect::from_min_size(pos2(rect.left() + 4.0, rect.center().y - 8.0), vec2(16.0, 16.0));
+            let is_source = src_snapshot.is_none()
+                && (src_state == Some(i) || (src_state.is_none() && i == 0));
+            if is_source {
+                icons::paint(ui, src_rect, "history-brush", 12.0, t.accent);
+            } else if resp.hovered() && ui.input(|i| i.pointer.hover_pos().is_some_and(|p| p.x <= rect.left() + 24.0)) {
+                icons::paint(ui, src_rect, "history-brush", 12.0, t.text_faint);
             }
             let icon = match e.as_str() {
                 s if s.contains("Brush") || s.contains("Eraser") => "brush",
@@ -2924,7 +2950,11 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             );
             ui.painter().text(pos2(rect.left() + 58.0, rect.center().y), Align2::LEFT_CENTER, &e, egui::FontId::proportional(12.0), color);
             if resp.clicked() {
-                target = Some(i as isize - current as isize);
+                if resp.interact_pointer_pos().is_some_and(|p| p.x <= rect.left() + 24.0) {
+                    snap_cmd = Some(("history.setSource", json!({"state": i})));
+                } else {
+                    target = Some(i as isize - current as isize);
+                }
             }
         }
     });
@@ -2973,6 +3003,7 @@ fn snapshot_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> Option<(&'static
     let t = Tokens::get(ui.ctx());
     let st = app.session.active()?;
     let (doc_id, snaps) = (st.doc.id, st.snapshots.clone());
+    let source_snap_id = st.history_source_snapshot;
     let live: Vec<u64> = snaps.iter().map(|s| s.id).collect();
     // Per document: snapshot ids restart in each, and a tab switch must not carry the edit over.
     let rename_id = egui::Id::new(("history-snapshot-rename", doc_id));
@@ -2984,6 +3015,13 @@ fn snapshot_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> Option<(&'static
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &snap.name));
         if resp.hovered() {
             ui.painter().rect_filled(rect, 0.0, t.hover.gamma_multiply(0.5));
+        }
+        let src_rect = Rect::from_min_size(pos2(rect.left() + 4.0, rect.center().y - 10.0), vec2(20.0, 20.0));
+        let is_source = source_snap_id == Some(snap.id);
+        if is_source {
+            icons::paint(ui, src_rect, "history-brush", 14.0, t.accent);
+        } else if resp.hovered() && ui.input(|i| i.pointer.hover_pos().is_some_and(|p| p.x <= rect.left() + 24.0)) {
+            icons::paint(ui, src_rect, "history-brush", 14.0, t.text_faint);
         }
         let thumb = Rect::from_min_size(pos2(rect.left() + 28.0, rect.center().y - 14.0), vec2(28.0, 28.0));
         widgets::checker(ui.painter(), thumb, 4.0);
@@ -3017,7 +3055,11 @@ fn snapshot_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> Option<(&'static
         if resp.double_clicked() {
             renaming = Some((snap.id, snap.name.clone()));
         } else if resp.clicked() {
-            cmd = Some(("history.selectSnapshot", json!({"snapshot": snap.id})));
+            if resp.interact_pointer_pos().is_some_and(|p| p.x <= rect.left() + 26.0) {
+                cmd = Some(("history.setSource", json!({"snapshot": snap.id})));
+            } else {
+                cmd = Some(("history.selectSnapshot", json!({"snapshot": snap.id})));
+            }
         }
         resp.context_menu(|ui| {
             if ui.button(tl!("Rename…")).clicked() {
