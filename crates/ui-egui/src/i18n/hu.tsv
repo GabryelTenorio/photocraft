@@ -3970,3 +3970,5 @@ cameraRaw	Yellow	Sárga
 	Transform On Drop	Átalakítás elengedéskor
 	Vanishing Point is not active	Az Enyészpont nem aktív
 	Vanishing Point: click four corners to create a plane	Enyészpont: sík létrehozásához kattintson a négy sarokra
+	{name} can't keep everything in this document	Nem őrizhető meg minden a dokumentumból ebben a formátumban: {name}
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Válassz olyan formátumot, amely mindent megőriz, például Photoshop (PSD), vagy ments másolatot.
