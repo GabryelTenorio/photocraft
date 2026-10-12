@@ -10,7 +10,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use photocraft_color::{BlendMode, PixelFormat};
+use photocraft_color::{BlendMode, PixelFormat, SampleType};
 use photocraft_geom::Rect;
 use photocraft_raster::{Surface, from_rgba_into, to_rgba};
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,6 +22,22 @@ use crate::retouch::{Footprint, alpha_index, over_native};
 use crate::rng::hash2;
 use crate::tile::{Mips, PatternImage};
 use crate::{Dab, StrokePoint, dab_coverage, tip_falloff};
+
+/// Salt of the 8-bit dither's per-pixel noise.
+const DITHER_SALT: u64 = 0x0000_6469_7468_6572;
+
+/// Before a stroke's result is quantised to 8 bits, offset every channel of the pixel by the same
+/// deterministic noise of under half a level, so fractional values round up or down in proportion
+/// (a soft, low-flow stroke's fine gradient survives as grain instead of bands). A value already on
+/// an 8-bit level still rounds back to itself, and because the noise depends only on the pixel's
+/// position, the live preview, the commit and a replay all agree.
+#[inline]
+fn dither8(px: &mut [f32], x: i32, y: i32) {
+    let d = (hash2(x, y, DITHER_SALT) - 0.5) / 255.0;
+    for v in px.iter_mut() {
+        *v += d;
+    }
+}
 
 /// Edge of a stroke-buffer tile.
 pub const COV_TILE: i32 = 64;
@@ -203,7 +219,7 @@ impl BrushContext {
         let reach_r = rm + 0.5;
         let reach2 = reach_r * reach_r;
         let is_circle = mips.is_none() && ro >= 0.999 && (!dual && d.proj_scale >= 0.999 || dual);
-        let simple = is_circle && !aliased && rm >= SMALL_TIP_RADIUS && !noise && !tex_tip && !wet;
+        let simple = is_circle && !aliased && rm >= SMALL_TIP_RADIUS && !noise && !tex_tip && !wet && depth.is_none();
         if simple {
             let inner = rm * hardness.clamp(0.0, 1.0);
             let has_falloff = rm - inner >= 1e-3;
@@ -251,10 +267,13 @@ impl BrushContext {
         }
         let (sn, cs) = d.angle.sin_cos();
         let (fx, fy) = (if d.flip_x { -1.0 } else { 1.0 }, if d.flip_y { -1.0 } else { 1.0 });
+        // Brush Projection: stretch the sampling coordinates along the tilt direction, which
+        // foreshortens the tip there by `proj_scale`.
         let proj = (!dual && d.proj_scale < 0.999).then(|| {
             let (ps, pc) = d.proj_angle.sin_cos();
             (pc, ps, 1.0 / d.proj_scale.max(0.05) - 1.0)
         });
+        // Sampled-tip mapping.
         let (level, inv_scale, tw, th) = match mips {
             Some(m) => {
                 let (w0, h0, _) = &m.levels[0];
@@ -263,6 +282,7 @@ impl BrushContext {
             }
             None => (0, 1.0, 1.0, 1.0),
         };
+        // A pixel offset from the dab centre in tip space: to y-up, project, rotate by -angle, flip.
         let to_tip = |dx: f32, dy: f32| -> (f32, f32) {
             let (mut ux, mut uy) = (dx, -dy);
             if let Some((ax, ay, k)) = proj {
@@ -272,9 +292,12 @@ impl BrushContext {
             }
             ((ux * cs + uy * sn) * fx, (-ux * sn + uy * cs) * fy)
         };
+        // A tip a few pixels across takes each pixel's covered area (a 4×4 grid inside it):
+        // sampling only the pixel centre made a tiny dab's total coverage swing with its sub-pixel
+        // position, and thin lines beaded.
         let small = mips.is_none() && !aliased && rm < SMALL_TIP_RADIUS;
         let small_reach2 = (rm + 0.75) * (rm + 0.75);
-        let rasterize_row = |yy: usize, row: &mut [f32]| {
+        let mut rasterize_row = |yy: usize, row: &mut [f32]| {
             let y = rect.y0 + yy as i32;
             let dy = y as f32 + 0.5 - cy;
             for (xx, slot) in row.iter_mut().enumerate() {
@@ -299,6 +322,8 @@ impl BrushContext {
                             for sx in SUBPIXEL {
                                 let (su, sv) = to_tip(dx + sx, dy + sy);
                                 let sd = ((su * ro).powi(2) + sv * sv).sqrt();
+                                // Each sample anti-aliases over its own quarter pixel, so the
+                                // covered area changes smoothly with the dab's position.
                                 let inside = ((rm - sd) * 4.0 + 0.5).clamp(0.0, 1.0);
                                 if inside > 0.0 {
                                     sum += inside * tip_falloff(sd.min(rm), rm, hardness);
@@ -346,15 +371,6 @@ impl BrushContext {
                 *slot = val * d.alpha;
             }
         };
-        #[cfg(not(target_arch = "wasm32"))]
-        if h >= 64 {
-            out.par_chunks_mut(w).enumerate().for_each(|(yy, row)| rasterize_row(yy, row));
-        } else {
-            for yy in 0..h {
-                rasterize_row(yy, &mut out[yy * w..(yy + 1) * w]);
-            }
-        }
-        #[cfg(target_arch = "wasm32")]
         for yy in 0..h {
             rasterize_row(yy, &mut out[yy * w..(yy + 1) * w]);
         }
@@ -662,7 +678,7 @@ impl StrokeRenderer {
         let mut duals = std::mem::take(&mut self.dual_buf);
         let wet = self.ctx.brush.wet_edges;
         #[cfg(not(target_arch = "wasm32"))]
-        if dabs.len() >= 4 {
+        if dabs.len() >= 4 && !wet {
             let ctx = &self.ctx;
             for chunk in dabs.chunks(PAR_DAB_BATCH) {
                 let rasterized: Vec<(Rect, Vec<f32>)> = chunk
@@ -684,7 +700,7 @@ impl StrokeRenderer {
                         }
                         _ => None,
                     };
-                    self.cov.accumulate(*rect, vals, d.opacity, wet, col);
+                    self.cov.accumulate(*rect, vals, d.opacity, col, None);
                     self.cov.bounds = self.cov.bounds.union(rect);
                 }
             }
@@ -708,7 +724,7 @@ impl StrokeRenderer {
                     .collect();
                 if let Some(dm) = self.dual.as_mut() {
                     for (rect, vals) in &rasterized {
-                        dm.accumulate(*rect, vals, 1.0, false, None);
+                        dm.accumulate(*rect, vals, 1.0, None, None);
                     }
                 }
             }
@@ -885,10 +901,11 @@ impl StrokeRenderer {
         if let Some(a) = a_idx {
             base_src[a] = b.color[3];
         }
+        // 8-bit targets: the pixels the stroke changes are dithered as they are quantised, so
+        // soft, low-flow strokes don't band (see `dither8`).
+        let dither = fmt.sample == SampleType::U8;
         let per_dab_color = self.per_dab_color;
         let cov_tiles = &self.cov.tiles;
-        let dual = self.dual.as_ref();
-        let ctx = &self.ctx;
 
         let work: Vec<_> = keys
             .iter()
@@ -930,6 +947,9 @@ impl StrokeRenderer {
                         if let (Some(a), false) = (a_idx, lock_transparency) {
                             px[a] *= 1.0 - k;
                         }
+                        if dither {
+                            dither8(px, x, y);
+                        }
                         continue;
                     }
                     if lock_transparency && a_idx.is_some_and(|a| px[a] <= 0.0) {
@@ -953,6 +973,9 @@ impl StrokeRenderer {
                         let mut enc = [0.0f32; 8];
                         from_rgba_into(&fmt, o, &mut enc);
                         px.copy_from_slice(&enc[..n]);
+                    }
+                    if dither {
+                        dither8(px, x, y);
                     }
                 }
             }
