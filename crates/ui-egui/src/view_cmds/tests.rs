@@ -268,7 +268,18 @@ fn new_guide_layout_does_not_remember_a_failed_command() {
 }
 
 #[test]
+fn new_adjustment_brings_the_properties_tab_forward() {
+    let (mut app, _ctx) = app_with(1);
+    app.ui.panels.properties = false;
+    app.ui.dock_tabs.properties = 1;
+    app.run("layer.newAdjustmentLayer.invert", json!({})).unwrap();
+    assert!(app.ui.panels.properties);
+    assert_eq!(app.ui.dock_tabs.properties, 0);
+}
+
+#[test]
 fn lookup_export_dialog_uses_the_current_adjustment_selection() {
+
     let (mut app, _ctx) = app_with(1);
     app.run("layer.newAdjustmentLayer.invert", json!({})).unwrap();
     let current = app.session.active().unwrap().active_layer.unwrap();

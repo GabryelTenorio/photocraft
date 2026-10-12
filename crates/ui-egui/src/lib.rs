@@ -955,6 +955,12 @@ impl PhotocraftApp {
             // Properties still shows the new adjustment or fill layer's settings, not its mask,
             // as in Photoshop (#3369): clicking the mask thumbnail switches it to the mask.
             self.ui.properties_layer = if creates_adjustment_or_fill { self.session.active().and_then(|st| st.active_layer).map(|l| l.0) } else { None };
+            if creates_adjustment_or_fill {
+                // Properties and Adjustments share a dock group. Photoshop brings Properties
+                // forward so the new layer can be edited at once (#4028).
+                self.ui.panels.properties = true;
+                self.ui.dock_tabs.properties = 0;
+            }
         }
         if r.is_ok() && id == "select.toWorkPath" {
             // Make Work Path selects the new work path in the Paths panel, as in Photoshop.
