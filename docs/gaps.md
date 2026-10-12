@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (G8: Character panel OpenType buttons landed, TYPE-218-5 stays partial; G8: triple-, quadruple- and five-click type selection landed, TYPE-218-8 done; Czech UI localization evidence added to G13; G14: D5100 crop and Camera Raw tuning validation) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G9: UI scale presets done, 105–120% steps, #3222) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -155,7 +155,7 @@ what an agent can't finish alone.
 ### G9. Panels, preferences and workspace
 - **Missing:** 46 of 149 preferences do nothing (scorecard prefs audit); panel groups can't
   float or tear off into OS windows (UI-217-5, #1828, #1213, #2305); Color panel lacks wheel and
-  slider modes (UI-217-17, #2569); UI scale presets (UI-217-9, #2492); more themes (UI-217-11,
+  slider modes (UI-217-17, #2569); more themes (UI-217-11,
   #2661); Stamp Visible (UI-217-22); layer clipboard
   (UI-217-23, #2670); tool-specific context menus beyond brushes, selections and Pen
   ([context-menu-parity.md](context-menu-parity.md)); Libraries, Comments, Contextual Task Bar
@@ -225,6 +225,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | G9: UI scale presets done: 105–120% steps added (UI-217-9, #3222) |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
