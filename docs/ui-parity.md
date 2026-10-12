@@ -130,8 +130,8 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 |---|---|---|
 | Drag outside rotates (⇧ 15°), angle readout; ↵ rotates and crops in one undo step | done | TOOL-214-18 |
 | Straighten button and ⌘-drag line | done | TOOL-214-21 |
-| Default-mode resize snaps handles without camera feedback; image and frame use the same camera in each rendered frame | done | `crop_mode.rs::a_live_resize_snaps_the_handle_without_feedback_from_the_camera`, `tests/crop_default_mode.rs::a_resize_renders_the_frame_and_image_with_the_same_camera` (2026-10-10) |
-| Ratio presets and W × H changes immediately fit the current frame around its centre; Swap button and X share the fitted ratio, Enter needs no resize | done | `crop_ui.rs::choosing_a_ratio_fits_and_commits_without_a_resize`, `crop_size.rs::choosing_a_size_with_the_canvas_ratio_commits_without_a_resize`, `tests/crop_default_mode.rs` (2026-10-10) |
+| Default-mode resize snaps handles without camera feedback; image and frame use the same camera in each rendered frame | done | `crop_mode.rs::a_live_resize_snaps_the_handle_without_feedback_from_the_camera`, `tests/it/crop_default_mode.rs::a_resize_renders_the_frame_and_image_with_the_same_camera` (2026-10-10) |
+| Ratio presets and W × H changes immediately fit the current frame around its centre; Swap button and X share the fitted ratio, Enter needs no resize | done | `crop_ui.rs::choosing_a_ratio_fits_and_commits_without_a_resize`, `crop_size.rs::choosing_a_size_with_the_canvas_ratio_commits_without_a_resize`, `tests/it/crop_default_mode.rs` (2026-10-10) |
 | Roomy Crop options bar does not scroll; narrow tool bars retain horizontal scrolling | done | `panels.rs::a_wide_crop_options_bar_does_not_scroll`, `panels.rs::narrow_tool_options_can_scroll_to_the_last_control` (2026-10-10) |
 | Overlays (thirds, grid, diagonal, triangle, golden ratio/spiral), O / ⇧O | done | TOOL-214-20 |
 | Crop shield, Show Cropped Area (H) | done | TOOL-214-22 |
