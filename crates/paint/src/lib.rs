@@ -166,14 +166,25 @@ pub fn half_coverage_radius(radius: f32, hardness: f32) -> f32 {
     radius * (h + t * (1.0 - h))
 }
 
+/// Half the width, in pixels, of the anti-aliasing ramp at a computed tip's edge: 2 px across.
+/// A 1 px ramp left hard strokes visibly stair-stepped on curves and diagonals next to
+/// Photoshop's, whose hard round edge is about 1.6× as wide (measured from screenshots, #4088).
+pub const EDGE_HALF: f32 = 1.0;
+
+/// The anti-aliased edge of a computed tip of radius `radius` at distance `d` from its centre:
+/// 1 inside, falling linearly to 0 across [`EDGE_HALF`] either side of the radius.
+#[inline]
+pub fn edge_ramp(d: f32, radius: f32) -> f32 {
+    ((radius + EDGE_HALF - d) / (2.0 * EDGE_HALF)).clamp(0.0, 1.0)
+}
+
 /// Coverage of a round dab at distance `d` from its centre (anti-aliased edge, hardness falloff).
 #[inline]
 pub fn dab_coverage(d: f32, radius: f32, hardness: f32) -> f32 {
-    if d >= radius + 0.5 {
+    if d >= radius + EDGE_HALF {
         return 0.0;
     }
-    let edge = ((radius + 0.5 - d).clamp(0.0, 1.0)).min(1.0);
-    edge * tip_falloff(d, radius, hardness)
+    edge_ramp(d, radius) * tip_falloff(d, radius, hardness)
 }
 
 /// Rasterize a stroke onto `target`, optionally limited by a selection (grayscale coverage surface).

@@ -569,8 +569,10 @@ mod tests {
                     }
                     painted += 1;
                     farthest = farthest.max(dist);
+                    // The edge's faint outer half (under 25 %) lies under the ring's own line, which
+                    // is 3 px wide and centred on the radius (`tool_cursor`).
                     assert!(
-                        dist < radius as f64 + 0.5,
+                        dist < f64::from(radius + crate::EDGE_HALF),
                         "hardness {hardness}: pixel ({x}, {y}) at {dist} px from \
                          the centre is painted past the Full Size ring of \
                          {radius} px"

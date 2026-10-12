@@ -173,7 +173,9 @@ fn prepare_pattern(b: &BrushSettings) -> Option<Arc<PatternImage>> {
 /// saturate and the arithmetic saturates, so a far or non-finite centre or reach from a direct
 /// caller gives a (possibly empty) rectangle instead of an `i32` overflow (#977).
 pub(crate) fn rect_around(d: &Dab, reach: f32) -> Rect {
-    let rr = (reach.ceil() as i32).saturating_add(1);
+    // Every pixel whose centre is within `reach + EDGE_HALF` of the dab's centre: the
+    // anti-aliased edge outside the radius (`ceil(r) + 1` holds centres to `r + 0.5`).
+    let rr = ((reach + crate::EDGE_HALF - 0.5).ceil() as i32).saturating_add(1);
     let (cx, cy) = (d.center.x.floor() as i32, d.center.y.floor() as i32);
     Rect::new(cx.saturating_sub(rr), cy.saturating_sub(rr), cx.saturating_add(rr).saturating_add(1), cy.saturating_add(rr).saturating_add(1))
 }
@@ -251,7 +253,7 @@ impl BrushContext {
         let r = d.radius;
         let ro = d.roundness.max(0.5 / r).min(1.0);
         let rm = (r * ro).max(0.5);
-        let reach2 = (rm + 0.5) * (rm + 0.5);
+        let reach2 = (rm + crate::EDGE_HALF) * (rm + crate::EDGE_HALF);
         // Sampled-tip mapping.
         let (level, inv_scale, tw, th) = match mips {
             Some(m) => {
@@ -1073,7 +1075,7 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
     let ro = d.roundness.max(0.5 / d.radius).min(1.0);
     let rm = (d.radius * ro).max(0.5);
     let w = rect.width() as usize;
-    let reach2 = (rm + 0.5) * (rm + 0.5);
+    let reach2 = (rm + crate::EDGE_HALF) * (rm + crate::EDGE_HALF);
     let inner = rm * hardness.clamp(0.0, 1.0);
     for (yy, row) in out.chunks_exact_mut(w).enumerate() {
         let dy = (rect.y0 + yy as i32) as f32 + 0.5 - cy;
@@ -1087,7 +1089,7 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
             for (xx, dst) in row.iter_mut().enumerate() {
                 let dx = (rect.x0 + xx as i32) as f32 + 0.5 - cx;
                 let d2 = (dx * ro).powi(2) + dy * dy;
-                let edge = ((rm + 0.5 - d2.sqrt()).clamp(0.0, 1.0)).min(1.0);
+                let edge = crate::edge_ramp(d2.sqrt(), rm);
                 *dst = if d2 >= reach2 || edge <= 0.0 { 0.0 } else { edge * d.alpha };
             }
         } else {
@@ -1095,7 +1097,7 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
                 let dx = (rect.x0 + xx as i32) as f32 + 0.5 - cx;
                 let d2 = (dx * ro).powi(2) + dy * dy;
                 let dd = d2.sqrt();
-                let edge = ((rm + 0.5 - dd).clamp(0.0, 1.0)).min(1.0);
+                let edge = crate::edge_ramp(dd, rm);
                 let t = ((dd - inner) / (rm - inner)).clamp(0.0, 1.0);
                 let s = 1.0 - t * t;
                 let s2 = s * s;

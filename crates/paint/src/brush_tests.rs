@@ -1250,7 +1250,8 @@ fn huge_scatter_is_capped_and_renders_at_every_depth() {
         let ctx = BrushContext::new(&b);
         for d in &capped.0 {
             let r = ctx.dab_rect(d, false);
-            assert!(!r.is_empty() && r.width() <= 24 && r.height() <= 24, "{r:?}");
+            // 10 px radius, its 1 px edge ramp and the rectangle's margin.
+            assert!(!r.is_empty() && r.width() <= 25 && r.height() <= 25, "{r:?}");
         }
         for sample in [SampleType::U8, SampleType::U16, SampleType::F32] {
             let mut s = Surface::new(PixelFormat::new(ColorMode::Rgb, sample, true));
@@ -1399,4 +1400,58 @@ fn dithering_never_moves_an_exact_colour_or_an_untouched_pixel() {
         assert_eq!((q(p[0]), q(p[1]), q(p[2])), (q(0.2), q(0.4), q(0.6)), "solid paint at x {x}: {p:?}");
     }
     assert_eq!(s.rgba(50, 5), [1.0, 1.0, 1.0, 1.0], "far from the stroke: untouched");
+}
+
+/// The top edge of a hard 30 px stroke along `y = 100 + slope · x`, per column from 60 to 240:
+/// the paint above the centre line (exact for ideal area anti-aliasing) minus the true half-width,
+/// and how many pixels per column are partly painted.
+fn hard_diagonal_edge(slope: f64) -> (Vec<f64>, f64) {
+    let b = BrushSettings { size: 30.0, hardness: 1.0, pressure_size: false, ..Default::default() };
+    let pts: Vec<StrokePoint> = (0..=300).map(|i| StrokePoint::new(i as f64, 100.0 + i as f64 * slope, 1.0)).collect();
+    let mut s = Surface::new(PixelFormat::new(ColorMode::Rgb, SampleType::F32, true));
+    render_stroke(&mut s, &b, &pts, None, false, 1.0);
+    let want = 15.0 * (1.0 + slope * slope).sqrt();
+    let (mut err, mut partial) = (Vec::new(), 0usize);
+    for x in 60..240 {
+        let centre = 100.0 + (f64::from(x) + 0.5) * slope;
+        let c = centre.floor() as i32;
+        let above = (c - 40..c).map(|y| f64::from(s.rgba(x, y)[3])).sum::<f64>() + (centre - f64::from(c)) * f64::from(s.rgba(x, c)[3]);
+        err.push(above - want);
+        partial += (c - 40..c).filter(|y| (0.02..0.98).contains(&s.rgba(x, *y)[3])).count();
+    }
+    (err, partial as f64 / 180.0)
+}
+
+#[test]
+fn a_hard_strokes_edge_is_smooth_not_stair_stepped() {
+    // #4088: a 1 px ramp at the tip's edge left a hard brush's diagonal edges visibly stepped
+    // next to Photoshop's. A 2 px ramp halves the edge's wobble around the true line.
+    for slope in [0.17, 0.4, 1.0] {
+        let (err, partial) = hard_diagonal_edge(slope);
+        let mean = err.iter().sum::<f64>() / err.len() as f64;
+        let sd = (err.iter().map(|e| (e - mean).powi(2)).sum::<f64>() / err.len() as f64).sqrt();
+        assert!(sd < 0.05, "slope {slope}: the edge wobbles {sd:.3} px around the line");
+        assert!(partial > 1.3, "slope {slope}: {partial:.2} partly painted pixels per column");
+        assert!(mean.abs() < 0.5, "slope {slope}: the stroke is {mean:.3} px too wide per side");
+    }
+}
+
+#[test]
+fn a_hard_dab_keeps_its_size_and_a_two_pixel_edge() {
+    use crate::{EDGE_HALF, dab_coverage};
+    // Half covered exactly at the radius (the dab's size, and the cursor's outline, don't move).
+    for r in [3.0, 10.0, 50.0] {
+        assert_eq!(dab_coverage(r, r, 1.0), 0.5);
+        assert_eq!(dab_coverage(r - EDGE_HALF, r, 1.0), 1.0);
+        assert_eq!(dab_coverage(r + EDGE_HALF, r, 1.0), 0.0);
+    }
+    assert_eq!(EDGE_HALF, 1.0);
+    // The dab's rectangle holds the whole ramp at any sub-pixel position.
+    let b = BrushSettings { size: 20.0, hardness: 1.0, pressure_size: false, ..Default::default() };
+    for (x, y) in [(50.0, 50.0), (50.49, 50.99), (50.99, 50.01)] {
+        let s = paint(&b, &[StrokePoint::new(x, y, 1.0)], 100, 100);
+        let painted = (0..100).flat_map(|py| (0..100).map(move |px| (px, py))).filter(|&(px, py)| s.rgba(px, py)[3] > 0.0);
+        let far = painted.map(|(px, py)| (f64::from(px) + 0.5 - x).hypot(f64::from(py) + 0.5 - y)).fold(0.0, f64::max);
+        assert!(far > 10.5 && far < 11.0, "({x}, {y}): paint reaches {far:.2} px");
+    }
 }
