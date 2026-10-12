@@ -337,6 +337,7 @@ pub(crate) fn begin_content_aware(
         tool: app.ui.tool,
         path: None,
         content_aware: Some(live),
+        styled: None,
     });
     app.ui.transform = Some(TransformSession {
         session,
