@@ -641,6 +641,9 @@ pub(crate) fn finish_frame(app: &mut PhotocraftApp, ctx: &egui::Context) {
         candidate.restore(app);
         crate::dock::persist(app, ctx);
     }
+    if app.session.prefs().workspace_locked || ctx.input(|i| !i.focused || !i.pointer.primary_down()) {
+        ctx.data_mut(|data| data.remove::<LiveDockPreview>(egui::Id::new("photocraft-panel-docking").with("live-preview")));
+    }
 }
 
 pub(crate) fn show_document_host(app: &mut PhotocraftApp, ui: &mut egui::Ui, document: u64) {
@@ -750,6 +753,17 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
     }
     let cancelled =
         ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape) || (!input.pointer.primary_down() && !input.pointer.any_released()));
+    if cancelled && craft_ui::docking::is_dragging::<String>(ui.ctx(), area) {
+        craft_ui::docking::cancel_drag::<String>(ui.ctx(), area);
+        ui.ctx().data_mut(|data| {
+            data.remove::<LiveDockPreview>(area.with("live-preview"));
+            data.remove::<HeaderDrag>(area.with("header-drag"));
+        });
+        // Escape cancels the panel gesture before any document/tool UI processes it.
+        ui.input_mut(|input| {
+            input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+        });
+    }
     if cancelled && cancel_legacy_drag(app, ui.ctx()) {
         ui.ctx().data_mut(|data| data.insert_temp(area.with("legacy-suppressed"), true));
         if app.ui.docking.is_none() {
@@ -774,7 +788,8 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             app.ui.dock_regions.floating_memory.entry(panel.clone()).or_insert(group.rect);
         }
     }
-    let workspace = app.ui.dock_regions.enabled;
+    let workspace = workspace_presentation(app, ui.ctx());
+    ui.ctx().data_mut(|data| data.insert_temp(area.with("regional-presentation"), workspace));
     let mut workspace_rect = ui.available_rect_before_wrap();
     // Legacy custom docks render before the icon rail; the regional workspace renders
     // after it. Measure that rail rather than guessing its frame, margin or separator width.
@@ -1318,6 +1333,57 @@ struct DockSnapshot {
     panels: crate::state::Panels,
     reveal: Option<String>,
 }
+#[derive(Clone)]
+struct LiveDockPreview {
+    frame: u64,
+    generation: u64,
+    pointer: egui::Pos2,
+    feedback: craft_ui::docking::DropFeedback,
+    candidate: DockSnapshot,
+    moving: Vec<String>,
+    rearrange: bool,
+}
+
+/// Legacy layouts can temporarily use the regional shell without migrating saved state.
+pub(crate) fn workspace_presentation(app: &PhotocraftApp, ctx: &egui::Context) -> bool {
+    if app.ui.dock_regions.enabled {
+        return true;
+    }
+    if app.session.prefs().workspace_locked
+        || !craft_ui::docking::is_dragging::<String>(ctx, egui::Id::new("photocraft-panel-docking"))
+        || ctx.input(|i| !i.focused || i.key_pressed(egui::Key::Escape) || (!i.pointer.primary_down() && !i.pointer.primary_released()))
+    {
+        return false;
+    }
+    ctx.data(|data| data.get_temp::<LiveDockPreview>(egui::Id::new("photocraft-panel-docking").with("live-preview")))
+        .is_some_and(|preview| preview.generation == app.ui.docking_generation && preview.rearrange && preview.candidate.regions.enabled)
+}
+
+fn live_preview(ctx: &egui::Context, generation: u64) -> Option<LiveDockPreview> {
+    ctx.data(|data| data.get_temp::<LiveDockPreview>(egui::Id::new("photocraft-panel-docking").with("live-preview")))
+        .filter(|preview| preview.frame == ctx.cumulative_frame_nr() && preview.generation == generation)
+}
+
+// Keep existing content selected while the incoming panel's UI follows the pointer.
+fn preview_selection(node: &mut Node<String>, original: &Layout<String>, moving: &[String], depth: usize) {
+    if depth >= craft_ui::docking::MAX_DEPTH {
+        return;
+    }
+    match node {
+        Node::Tabs { panels, active } => {
+            if let Some(anchor) = panels.iter().find(|panel| !moving.contains(panel)) {
+                let selected = selected_member(original, anchor);
+                *active = panels.iter().position(|panel| panel == &selected).or_else(|| panels.iter().position(|panel| !moving.contains(panel))).unwrap_or(0);
+            }
+        }
+        Node::Split { first, second, .. } => {
+            preview_selection(first, original, moving, depth + 1);
+            preview_selection(second, original, moving, depth + 1);
+        }
+        Node::Stack { .. } => {}
+    }
+}
+
 impl DockSnapshot {
     fn capture(app: &PhotocraftApp) -> Self {
         Self {
@@ -1400,6 +1466,16 @@ fn eligible_drag_targets(
         })
         .unwrap_or_default();
     registry.insert(host, targets.to_vec());
+    if !app.ui.dock_regions.enabled
+        && let Some(rect) = ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::new("photocraft-document-area-rect")))
+    {
+        let workspace = registry.entry(DockHost::Workspace).or_default();
+        if !workspace.iter().any(|target| target.anchor == CANVAS) {
+            workspace.push(craft_ui::docking::DropTarget {
+                anchor: CANVAS.into(), rect, tab_strip: None, tabs: Vec::new(), allow_splits: true, accepts_tabs: false,
+            });
+        }
+    }
     registry.retain(|host, _| match host {
         DockHost::DocumentView(doc) => app.ui.floating_documents.contains_key(doc),
         _ => true,
@@ -1425,10 +1501,89 @@ fn eligible_drag_targets(
 }
 
 impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
+    fn preview_layout(
+        &mut self,
+        ctx: &egui::Context,
+        style: &craft_ui::docking::DockStyle,
+        request: Option<&craft_ui::docking::DropRequest<'_, String>>,
+    ) -> Option<Layout<String>> {
+        let key = egui::Id::new("photocraft-panel-docking");
+        ctx.data_mut(|data| data.remove::<Vec<egui::Rect>>(key.with(("affected", self.host))));
+        if self.app.session.prefs().workspace_locked
+            || ctx.input(|i| !i.focused || i.key_pressed(egui::Key::Escape) || (!i.pointer.primary_down() && !i.pointer.primary_released()))
+        {
+            ctx.data_mut(|data| data.remove::<LiveDockPreview>(key.with("live-preview")));
+            return None;
+        }
+        if let Some(request) = request {
+            let _ = self.resolve_drag(ctx, style, request);
+        }
+        let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange) else {
+            if self.host == DockHost::Workspace && !self.app.ui.dock_regions.enabled
+                && ctx.data(|data| data.get_temp::<bool>(key.with("regional-presentation"))).unwrap_or(false)
+            {
+                return self.app.ui.docking.as_ref().map(|layout| self.app.ui.dock_regions.render(layout).layout);
+            }
+            return None;
+        };
+        let candidate = preview.candidate.layout.as_ref()?;
+        if self.host == DockHost::Workspace && preview.candidate.regions.enabled
+            && !ctx.data(|data| data.get_temp::<bool>(key.with("regional-presentation"))).unwrap_or(false)
+        {
+            return None;
+        }
+        let mut layout = match self.host {
+            DockHost::DocumentView(id) => preview.candidate.regions.render_host(candidate, self.host, &crate::document_docking::canvas_id(id)).layout,
+            _ if preview.candidate.regions.enabled => preview.candidate.regions.render(candidate).layout,
+            _ => candidate.clone(),
+        };
+        if let Some(original) = self.app.ui.docking.as_ref() {
+            if let Some(root) = layout.root.as_mut() {
+                preview_selection(root, original, &preview.moving, 0);
+            }
+            for group in &mut layout.floating {
+                if let Some(anchor) = group.panels.iter().find(|panel| !preview.moving.contains(panel)) {
+                    let selected = selected_member(original, anchor);
+                    group.active = group.panels.iter().position(|panel| panel == &selected).unwrap_or(0);
+                }
+            }
+        }
+        Some(layout)
+    }
+    fn preview_targets(&mut self, ctx: &egui::Context, targets: &[craft_ui::docking::DropTarget<String>]) {
+        let Some(mut preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange && preview.feedback.insertion.is_some()) else {
+            return;
+        };
+        let Some(first) = preview.moving.first() else { return };
+        let Some(target) = targets.iter().find(|target| target.tabs.iter().any(|(panel, _)| panel == first)) else { return };
+        preview.feedback.insertion = craft_ui::docking::tab_insertion_marker(target, Some(first));
+        let key = egui::Id::new("photocraft-panel-docking");
+        ctx.data_mut(|data| {
+            data.insert_temp(key.with("resolved-preview"), preview.feedback.clone());
+            data.insert_temp(key.with("live-preview"), preview);
+        });
+    }
+    fn paint_preview(&mut self, ctx: &egui::Context) {
+        if live_preview(ctx, self.app.ui.docking_generation).is_none_or(|preview| !preview.rearrange) {
+            return;
+        }
+        let key = egui::Id::new("photocraft-panel-docking");
+        let rects = ctx.data(|data| data.get_temp::<Vec<egui::Rect>>(key.with(("affected", self.host)))).unwrap_or_default();
+        let layer = egui::LayerId::new(egui::Order::Foreground, key.with("drop-preview"));
+        ctx.move_to_top(layer);
+        let painter = ctx.layer_painter(layer);
+        let color = crate::theme::Tokens::get(ctx).warning;
+        for rect in rects {
+            painter.rect_stroke(rect, 0.0, egui::Stroke::new(2.0, color), egui::StrokeKind::Inside);
+        }
+    }
     fn live_drag(&self) -> bool {
         true
     }
     fn drag_members(&self, ctx: &egui::Context, panel: &String) -> Option<Vec<String>> {
+        if let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.moving.contains(panel)) {
+            return Some(preview.moving);
+        }
         if ctx.data(|d| d.get_temp::<HeaderDrag>(egui::Id::new("photocraft-panel-docking").with("header-drag"))).is_some() {
             self.app.ui.docking.as_ref().map(|layout| group_members(layout, panel))
         } else {
@@ -1452,7 +1607,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 && craft_ui::docking::resolve_drop(request.panel, request.pointer, std::slice::from_ref(target))
                     .is_some_and(|proposal| proposal.insertion.is_some())
         });
-        if strip { 0.3 } else { 1.0 }
+        if strip { 0.4 } else { 1.0 }
     }
     fn drag_opacity_duration(&self) -> f32 {
         0.15
@@ -1477,6 +1632,16 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     ) -> Option<craft_ui::docking::DropFeedback> {
         use craft_ui::docking::{DropFeedback, measure_layout, resolve_drop};
         let key = egui::Id::new("photocraft-panel-docking");
+        if let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.pointer == request.pointer) {
+            if !self.app.session.prefs().workspace_locked {
+                if request.released {
+                    *self.pending_drop = Some(preview.candidate);
+                }
+                ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), preview.feedback.clone()));
+                return Some(preview.feedback);
+            }
+        }
+        ctx.data_mut(|data| data.remove::<LiveDockPreview>(key.with("live-preview")));
         ctx.data_mut(|data| data.remove::<DropFeedback>(key.with("resolved-preview")));
         if self.app.session.prefs().workspace_locked {
             return Some(DropFeedback::default());
@@ -1597,13 +1762,49 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             return Some(DropFeedback::default());
         };
         let feedback = DropFeedback { preview: (!same_group_strip).then_some(rect), insertion };
-        ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), feedback.clone()));
+        let frame = ctx.cumulative_frame_nr();
+        ctx.data_mut(|data| {
+            data.insert_temp(key.with("resolved-preview"), feedback.clone());
+            data.insert_temp(key.with("live-preview"), LiveDockPreview {
+                frame,
+                generation: self.app.ui.docking_generation,
+                pointer: request.pointer,
+                feedback: feedback.clone(),
+                candidate: candidate.clone(),
+                moving: members,
+                rearrange: !same_group_strip && !matches!(id, "window.panel.float")
+                    && params.get("operation").and_then(Value::as_str) != Some("float"),
+            });
+        });
         if request.released {
             *self.pending_drop = Some(candidate);
         }
         Some(feedback)
     }
     fn group_rect(&mut self, ctx: &egui::Context, panels: &[String], rect: egui::Rect) {
+        let key = egui::Id::new("photocraft-panel-docking");
+        if let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange) {
+            let original = ctx.data(|data| {
+                data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
+                    .and_then(|registry| registry.get(&self.host).and_then(|targets| {
+                        targets.iter().find(|target| {
+                            (panels.contains(&target.anchor) && !preview.moving.contains(&target.anchor))
+                                || target.tabs.iter().any(|(panel, _)| panels.contains(panel) && !preview.moving.contains(panel))
+                        }).map(|target| target.rect)
+                    }))
+            }).or_else(|| {
+                (self.host == DockHost::Workspace && panels.iter().any(|panel| panel == CANVAS))
+                    .then(|| ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::new("photocraft-document-area-rect")))).flatten()
+            });
+            if original.is_some_and(|original| (original.min - rect.min).length() > 0.5 || (original.max - rect.max).length() > 0.5) {
+                ctx.data_mut(|data| {
+                    let rects = data.get_temp_mut_or_default::<Vec<egui::Rect>>(key.with(("affected", self.host)));
+                    if !rects.contains(&rect) {
+                        rects.push(rect);
+                    }
+                });
+            }
+        }
         for panel in panels {
             ctx.data_mut(|data| data.insert_temp(egui::Id::new("photocraft-panel-docking").with(("group-rect", panel)), rect));
         }

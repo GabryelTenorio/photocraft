@@ -1669,7 +1669,7 @@ impl eframe::App for PhotocraftApp {
         if chrome && self.ui.panels.toolbar {
             panels::toolbar(self, ui);
         }
-        let canvas_in_dock = chrome && self.ui.panels.dock && self.ui.dock_regions.enabled && self.ui.docking.is_some();
+        let canvas_in_dock = chrome && self.ui.panels.dock && panel_docking::workspace_presentation(self, &ctx) && self.ui.docking.is_some();
         if chrome && self.ui.panels.dock {
             panels::right_dock(self, ui);
         }

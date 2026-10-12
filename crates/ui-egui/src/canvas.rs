@@ -1671,10 +1671,37 @@ pub(crate) fn retain_gpu_documents(app: &mut PhotocraftApp) {
 /// Tabs + canvas for the active document, or the start screen; then drops layers dragged onto
 /// another document (`layer_transfer`).
 pub fn document_area(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if !ui.is_enabled() {
+        document_area_preview(app, ui);
+        return;
+    }
+    let rect = ui.available_rect_before_wrap();
+    ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("photocraft-document-area-rect"), rect));
     documents(app, ui);
     crate::layer_transfer::finish(app, ui.ctx());
     // Once a frame, not per document view: the right-click or options-bar Brush Preset picker.
     crate::paint_mouse::show_picker(app, ui.ctx());
+}
+
+// A docking display pass renders the existing document UI with no camera write-back,
+// tool input, automatic fit, layer transfers or modal dispatch.
+fn document_area_preview(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if !app.ui.view.hides_tabs() {
+        let _ = tabs(app, ui);
+    }
+    let count = app.session.documents().len();
+    let Some(active) = app.session.active_index().filter(|index| !crate::document_docking::detached(app, *index))
+        .or_else(|| (0..count).find(|index| !crate::document_docking::detached(app, *index))) else {
+        return;
+    };
+    let rect = ui.available_rect_before_wrap();
+    let shown = arranged_cells(app, rect).unwrap_or_else(|| vec![(active, rect)]);
+    for (index, rect) in shown {
+        let Some(mut view) = app.ui.views.get(index).cloned() else { continue };
+        view.fit_pending = false;
+        view.fill_pending = false;
+        let _ = canvas_view(app, ui, index, rect, view, false);
+    }
 }
 
 /// Window › Arrange tiles: each document shown with its tile in `rect`, or `None` when the

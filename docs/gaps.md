@@ -153,8 +153,9 @@ what an agent can't finish alone.
 
 ### G9. Panels, preferences and workspace
 - **Progress (2026-10-12):** Document-edge docking nests inside existing surrounding panels;
-  outer-edge docking still spans the workspace. Panel drag opacity fades over 150 ms to 30%
-  over panel strips. Individual panels and whole tab groups float inside the app,
+  outer-edge docking still spans the workspace. Live candidate reflow and orange/amber outlines
+  show affected existing groups. Floating headers have a complete theme background; panel drag
+  opacity fades over 150 ms to 40% over panel strips. Individual panels and whole tab groups float inside the app,
   dock on any of the canvas's four sides, join/split/reorder, and persist with workspaces.
   Floating sizes are remembered independently. Panels also dock inside the main document
   area or a floating document view, and primary document tabs detach inside PhotoCraft.

@@ -120,9 +120,13 @@ pub(crate) fn canvas(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: u64) {
     if ui.is_enabled() && ui.rect_contains_pointer(rect) && ui.input(|i| i.pointer.primary_pressed()) {
         app.session.set_active(doc);
     }
-    let Some(view) = app.ui.views.get(doc).cloned() else {
+    let Some(mut view) = app.ui.views.get(doc).cloned() else {
         return;
     };
+    if !ui.is_enabled() {
+        view.fit_pending = false;
+        view.fill_pending = false;
+    }
     let primary = ui.is_enabled() && app.session.active_index() == Some(doc);
     if primary {
         app.last_canvas_rect = rect;

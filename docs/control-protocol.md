@@ -614,17 +614,30 @@ Dock previews measure the validated candidate arrangement using the renderer's s
 rules, including saved dock sizes, panel/canvas minimums and space released by the source.
 Workspace-edge destinations take precedence over group destinations, except when reordering
 inside the source group's tab strip; document-edge drops preview an inner document-area
-dock. The moving panel UI fades over 150 ms to 30% opacity (70% transparency) over any
+dock. The moving panel UI fades over 150 ms to 40% opacity (60% transparency) over any
 eligible panel tab strip and back to full opacity elsewhere; insertion lines and destination highlights retain their normal opacity.
 Document tab strips are unaffected. Same-group tab-strip destinations show only an insertion line, including unchanged
 positions, with the marker contained inside the visible strip. Unchanged releases preserve
 position. Floating groups move from the grip, empty header or top border; their left, right
 and bottom edges and both bottom corners resize within panel and viewport limits. Workspace
 locking blocks both movement and resizing. The top border retains the normal mouse pointer.
+Stationary floating panels paint a complete opaque theme background beneath the top border and
+header, including themes whose tab-strip color is transparent. Only the intentional moving
+preview becomes translucent.
 
 Dragging renders the panel UI once with controls disabled, leaving the source body filled
-with its theme background. Destination feedback still measures the final candidate; Escape,
-focus loss and workspace changes cancel without committing.
+with its theme background. Docking candidates temporarily resize/reposition existing panel UI
+and the document area, with 2-point orange/amber theme-warning outlines around affected existing
+groups. Incoming destination highlights retain the accent color. The dragged content appears
+only in the moving preview; its reserved destination is background-filled. Source and receiving
+groups keep their remaining existing content selected during preview.
+
+Live layouts are presentation-only: authoritative drag targets remain stable, preview controls
+are disabled, and no temporary panel sizes, floating memory or document cameras are saved.
+Insertion lines follow the measured displayed strip for cross-group joins. Same-group reorder
+feedback remains insertion-line-only, with no live reflow or orange outlines. Destination
+feedback and release share one validated candidate; Escape, focus loss, locking and workspace
+changes discard the display without committing.
 
 Panel side commands also accept `scope:"workspace"|"document"` (default `workspace`).
 Document scope without `documentView` addresses the main document area. With a floating
