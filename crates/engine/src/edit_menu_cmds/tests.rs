@@ -219,6 +219,22 @@ fn delete_and_fill_selection_removes_the_object_in_one_step() {
 }
 
 #[test]
+fn content_aware_fill_on_an_empty_layer_samples_the_composite() {
+    let mut s = blob_session(8);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let empty = s.active().unwrap().active_layer.unwrap();
+    assert_eq!(px(&s, 30, 20)[3], 0.0, "the new layer has no paint");
+    let r = s.execute("edit.contentAwareFill", json!({"colorAdaptation": "none"})).unwrap();
+    assert!(r["filled"].as_u64().unwrap() > 0);
+    assert_eq!(s.active().unwrap().active_layer, Some(empty));
+    assert!(px(&s, 30, 20)[3] > 0.5, "the hole is filled from the layers underneath");
+    s.undo();
+    let missed = s.execute("edit.contentAwareFill", json!({"sampleAllLayers": false, "colorAdaptation": "none"})).unwrap();
+    assert!(missed["filled"].as_u64().unwrap() > 0);
+    assert!(px(&s, 30, 20)[3] < 0.05, "sampling only the empty layer leaves it empty");
+}
+
+#[test]
 fn content_aware_fill_samples_photoshops_window() {
     // A 50 px selection samples the 200 px square centred on it (Photoshop 25.4's overlay);
     // at the canvas edge the square slides inwards. Edit › Fill uses the same window.

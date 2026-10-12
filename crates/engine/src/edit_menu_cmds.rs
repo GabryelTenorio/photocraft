@@ -335,6 +335,29 @@ fn rect_param(p: &Value, key: &str, cmd: &str) -> Result<Rect> {
     Ok(Rect::new(x, y, x.saturating_add(w.max(0)), y.saturating_add(h.max(0))))
 }
 
+/// Visible composite of `window`, in the active layer's channel count, so Content-Aware Fill
+/// can sample every layer and still write the active layer's format.
+fn composite_window(doc: &Document, window: Rect, n: usize) -> Vec<f32> {
+    let buf = photocraft_compose::render(doc, window);
+    let mut out = Vec::new();
+    if n == 0 {
+        return out;
+    }
+    out.reserve(buf.px.len().saturating_mul(n));
+    for px in &buf.px {
+        match n {
+            1 => out.push(px[0]),
+            2 => out.extend_from_slice(&[px[0], px[3]]),
+            3 => out.extend_from_slice(&px[..3]),
+            _ => {
+                out.extend_from_slice(px);
+                out.extend(std::iter::repeat_n(0.0, n - 4));
+            }
+        }
+    }
+    out
+}
+
 fn content_aware_fill(s: &mut Session, p: &Value) -> Result<Value> {
     content_aware_fill_as(s, p, "edit.contentAwareFill", "Content-Aware Fill")
 }
@@ -385,6 +408,9 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
         mirror: bool_or(p, "mirror", false),
         seed: p.get("seed").and_then(Value::as_u64).unwrap_or(1),
     };
+    // Photoshop's Content-Aware Fill workspace samples every visible layer. Without that, a
+    // new empty layer above the photo fills with nothing and still reports success (#4026).
+    let sample_all = bool_or(p, "sampleAllLayers", true);
     let output = str_or(p, "output", "current").to_string();
     if !matches!(output.as_str(), "current" | "new" | "duplicate") {
         return Err(bad(cmd, "`output` must be current|new|duplicate"));
@@ -407,7 +433,11 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
             ctx.progress(0.0, label);
             let cancel = || ctx.cancelled();
             let surf = doc.layer(id).and_then(|l| l.surface()).ok_or(EngineError::NoLayer(id))?;
-            let img = read_window(surf, window, &cancel).ok_or(EngineError::Cancelled)?;
+            let img = if sample_all {
+                composite_window(&doc, window, n)
+            } else {
+                read_window(surf, window, &cancel).ok_or(EngineError::Cancelled)?
+            };
             let hole = read_window_cover(&sel, window, &cancel).ok_or(EngineError::Cancelled)?;
             let mut source = match (sampling.as_str(), custom_rect, custom_mask.as_ref()) {
                 ("custom", Some(r), _) => (0..w * h).into_par_iter().map(|i| r.contains(window.x0 + (i % w) as i32, window.y0 + (i / w) as i32)).collect(),
@@ -1139,7 +1169,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Content-Aware Fill…",
             ["Edit"],
             None,
-            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"output":"current|new|duplicate","seed":u64=1}"##,
+            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"sampleAllLayers":bool=true,"output":"current|new|duplicate","seed":u64=1}"##,
             can_caf,
             content_aware_fill
         ),
