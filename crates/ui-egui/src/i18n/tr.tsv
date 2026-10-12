@@ -3744,3 +3744,41 @@ cameraData	Lens	Lens
 	Fill with {mode}-neutral color (black)	{mode} nötr rengiyle doldur (siyah)
 	Fill with {mode}-neutral color (white)	{mode} nötr rengiyle doldur (beyaz)
 	Use Previous Layer to Create Clipping Mask	Kırpma Maskesi Oluşturmak İçin Önceki Katmanı Kullan
+	Amount:	Miktar:
+	Apply Vanishing Point ({key})	Ufuk Noktasını Uygula ({key})
+	Apply the removal ({key})	Kaldırmayı uygula ({key})
+	Drag to draw the curve · {key}-click draws a straight line	Eğriyi çizmek için sürükle · {key}-tıklama düz çizgi çizer
+	Draw to modify the curve	Eğriyi değiştirmek için çiz
+	Edit points to modify the curve	Eğriyi değiştirmek için noktaları düzenle
+	Fix the red plane first: its corners must form a convex quad	Önce kırmızı düzlemi düzeltin: köşeleri dışbükey bir dörtgen oluşturmalı
+	Grid Size:	Izgara Boyutu:
+	Light Blue	Açık Mavi
+	Light Gray	Açık Gri
+	Light Red	Açık Kırmızı
+	Medium Blue	Orta Mavi
+	Merge Group	Grubu Birleştir
+	Protect skin tones	Ten tonlarını koru
+	Protect:	Koru:
+	Remove after each stroke	Her vuruştan sonra kaldır
+	Saving {percent}	Kaydediliyor {percent}
+	Scale or rotate the moved area, then press {key}	Taşınan alanı ölçeklendirin veya döndürün, ardından {key} tuşuna basın
+	Smooth the curve values	Eğri değerlerini yumuşat
+	Strokes to remove: {n} (Enter applies, Esc cancels)	Kaldırılacak vuruşlar: {n} (Enter uygular, Esc iptal eder)
+	The layer or its mask changed. Drag the mask onto the Trash again.	Katman veya maskesi değişti. Maskeyi yeniden Çöp Kutusu'na sürükleyin.
+	Transform On Drop	Bırakınca Dönüştür
+	Vanishing Point is not active	Ufuk Noktası etkin değil
+	Vanishing Point: click four corners to create a plane	Ufuk Noktası: düzlem oluşturmak için dört köşeye tıklayın
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	{n} renk örneği {file} dosyasına dışa aktarıldı
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{group} grubundan {n} fırça içe aktarıldı
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{file} dosyasından {n} renk örneği içe aktarıldı
+@plural	Played {n} step|Played {n} steps	{n} adım oynatıldı
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Web İçin Kaydedildi: {n} dosya
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	Diskte değişen {n} bağlantılı akıllı nesne güncellendi
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	Bu kompozisyonun kaydettiği {n} katman silindi. Kompozisyonu güncelleyin veya uyarıyı temizleyin.
+@plural	{n} plane|{n} planes	{n} düzlem
+@plural	{n} preset|{n} presets	{n} ön ayar
+@plural	{n} sample point removed|{n} sample points removed	{n} örnek nokta kaldırıldı
+@plural	{n} slice|{n} slices	{n} dilim
+@plural	{n} step|{n} steps	{n} adım
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} fırça ön ayarı uyarısı daha)
+@plural	{what} with {n} warning|{what} with {n} warnings	{what}, {n} uyarı ile
