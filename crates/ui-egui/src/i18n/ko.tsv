@@ -3195,3 +3195,5 @@ cameraData	Lens	렌즈
 	Fill with {mode}-neutral color (black)	{mode} 중립 색상으로 채우기(검정)
 	Fill with {mode}-neutral color (50% gray)	{mode} 중립 색상으로 채우기(50% 회색)
 	(No neutral color exists for {mode} mode.)	({mode} 모드에는 중립 색상이 없습니다.)
+	{name} can't keep everything in this document	{name}에는 이 문서의 모든 내용을 저장할 수 없습니다
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Photoshop(PSD)처럼 모든 내용을 유지하는 형식을 선택하거나 사본을 저장하세요.

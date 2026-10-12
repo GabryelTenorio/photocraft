@@ -3015,3 +3015,5 @@ cameraData	Lens	Lensa
 	Fill with {mode}-neutral color (black)	Isi dengan warna netral {mode} (hitam)
 	Fill with {mode}-neutral color (50% gray)	Isi dengan warna netral {mode} (abu-abu 50%)
 	(No neutral color exists for {mode} mode.)	(Tidak ada warna netral untuk mode {mode}.)
+	{name} can't keep everything in this document	{name} tidak dapat menyimpan semua isi dokumen ini
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Pilih format yang menyimpan semuanya, seperti Photoshop (PSD), atau simpan salinan.

@@ -3710,3 +3710,5 @@ cameraData	Lens	Об'єктив
 	Fill with {mode}-neutral color (black)	Залити нейтральним кольором режиму «{mode}» (чорний)
 	Fill with {mode}-neutral color (50% gray)	Залити нейтральним кольором режиму «{mode}» (50% сірого)
 	(No neutral color exists for {mode} mode.)	(Для режиму «{mode}» немає нейтрального кольору.)
+	{name} can't keep everything in this document	{name} не може зберегти весь вміст цього документа
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Виберіть формат, який збереже все, наприклад Photoshop (PSD), або збережіть копію.

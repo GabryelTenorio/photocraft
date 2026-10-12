@@ -2630,3 +2630,5 @@ cameraData	Lens	镜头
 	Fill with {mode}-neutral color (black)	使用{mode}中性色填充（黑色）
 	Fill with {mode}-neutral color (50% gray)	使用{mode}中性色填充（50% 灰色）
 	(No neutral color exists for {mode} mode.)	（{mode}模式不存在中性色。）
+	{name} can't keep everything in this document	{name} 无法保留此文档中的所有内容
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	请选择能保留全部内容的格式，例如 Photoshop (PSD)，或存储副本。

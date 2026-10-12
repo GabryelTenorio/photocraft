@@ -2691,3 +2691,5 @@ cameraData	Lens	Objetivo
 	Fill with {mode}-neutral color (black)	Rellenar con el color neutro de {mode} (negro)
 	Fill with {mode}-neutral color (50% gray)	Rellenar con el color neutro de {mode} (gris al 50%)
 	(No neutral color exists for {mode} mode.)	(No existe un color neutro para el modo {mode}.)
+	{name} can't keep everything in this document	{name} no puede conservar todo lo que tiene este documento
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Elija un formato que lo conserve todo, como Photoshop (PSD), o guarde una copia.

@@ -3647,3 +3647,5 @@ navigator	Zoom	Zvětšení
 	Fill with {mode}-neutral color (black)	Vyplnit neutrální barvou pro režim {mode} (černá)
 	Fill with {mode}-neutral color (50% gray)	Vyplnit neutrální barvou pro režim {mode} (50% šedá)
 	(No neutral color exists for {mode} mode.)	(Pro režim {mode} neexistuje neutrální barva.)
+	{name} can't keep everything in this document	{name} nedokáže uchovat vše z tohoto dokumentu
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Zvolte formát, který vše zachová, například Photoshop (PSD), nebo uložte kopii.

@@ -3802,3 +3802,5 @@ layerLabel	No Color	Sem cor
 	Fill with {mode}-neutral color (black)	Preencher com a cor neutra de {mode} (preto)
 	Fill with {mode}-neutral color (50% gray)	Preencher com a cor neutra de {mode} (cinza 50%)
 	(No neutral color exists for {mode} mode.)	(Não existe cor neutra para o modo {mode}.)
+	{name} can't keep everything in this document	{name} não consegue manter tudo o que há neste documento
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Escolha um formato que mantenha tudo, como Photoshop (PSD), ou salve uma cópia.

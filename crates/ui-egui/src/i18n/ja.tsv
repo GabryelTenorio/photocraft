@@ -3622,3 +3622,5 @@ cameraData	Lens	レンズ
 	Fill with {mode}-neutral color (black)	{mode} の中間色で塗りつぶす (黒)
 	Fill with {mode}-neutral color (50% gray)	{mode} の中間色で塗りつぶす (50% グレー)
 	(No neutral color exists for {mode} mode.)	({mode} モードには中間色がありません。)
+	{name} can't keep everything in this document	{name} にはこのドキュメントの内容をすべて保存できません
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Photoshop (PSD) などすべてを保持できる形式を選ぶか、コピーを保存してください。
