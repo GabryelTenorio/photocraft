@@ -19,6 +19,7 @@
 pub mod adjust;
 pub mod advanced;
 pub mod bounds;
+pub mod clarity;
 pub mod effects;
 pub mod fill_layout;
 pub mod gradient_fill;
@@ -30,7 +31,7 @@ pub mod psblend;
 pub mod shape_split;
 
 use photocraft_color::blend::BlendMode;
-use photocraft_doc::{Document, Fill, Layer, LayerContent, Pattern};
+use photocraft_doc::{Adjustment, Document, Fill, Layer, LayerContent, Pattern};
 use photocraft_geom::Rect;
 use photocraft_raster::{Rgba8Image, Surface};
 use psblend as blend;
@@ -106,6 +107,10 @@ fn render_tiled_with(doc: &Document, rect: Rect, tile: i32, cx: &Ctx) -> Buffer 
     if rect.is_empty() {
         return Buffer::transparent(rect);
     }
+    // Spatial adjustment layers (Clarity/Dehaze) read their neighbours, so they are computed once
+    // over the whole canvas before any tile renders; a per-tile evaluation would seam at tile and
+    // band boundaries. Must run before `set_fx_clip(rect)` (it needs full-region effect maps).
+    prepare_spatial_adjustments(doc, rect, tile, cx, lab, hdr, cmyk);
     cx.set_fx_clip(rect);
     if rect.width() as i32 <= tile && rect.height() as i32 <= tile {
         return photocraft_color::convert::with_cmyk_space(cmyk, || {
@@ -276,6 +281,9 @@ pub fn render_layer(layer: &Layer, rect: Rect) -> Buffer {
             fx_maps: Default::default(),
             fx_clip: Default::default(),
             doc: None,
+            spatial_maps: Default::default(),
+            spatial_capture: Default::default(),
+            spatial_prepared: Default::default(),
         },
         advanced::Scope::ROOT,
     );
@@ -458,6 +466,15 @@ struct Ctx<'a> {
     fx_clip: std::sync::Mutex<Option<Rect>>,
     /// The document being rendered (deep knockouts reveal its Background); `None` for a lone layer.
     doc: Option<&'a Document>,
+    /// Full-canvas results of spatial adjustment layers (Clarity/Dehaze), by [`spatial_key`],
+    /// built once per render by [`prepare_spatial_adjustments`] so every tile, band and part of
+    /// the render sees the same neighbourhood (see [`adjusted_backdrop`]).
+    spatial_maps: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<Buffer>>>,
+    /// Set while [`prepare_spatial_adjustments`] runs the full-canvas composite: the adjustment
+    /// branch then stores its result (see [`adjusted_backdrop`]).
+    spatial_capture: std::sync::atomic::AtomicBool,
+    /// Set once the full-canvas spatial pass has run for this render.
+    spatial_prepared: std::sync::atomic::AtomicBool,
 }
 
 impl<'a> Ctx<'a> {
@@ -473,6 +490,9 @@ impl<'a> Ctx<'a> {
             vector_masks: RenderVectorMasks::default(),
             fx_maps: Default::default(),
             fx_clip: Default::default(),
+            spatial_maps: Default::default(),
+            spatial_capture: Default::default(),
+            spatial_prepared: Default::default(),
         }
     }
 
@@ -1178,6 +1198,137 @@ fn composite_artboard(layer: &Layer, ab: &photocraft_doc::Artboard, clipped: &[L
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Spatial adjustment layers (Clarity/Dehaze)
+
+/// Documents above this many pixels evaluate a spatial adjustment over each render region instead
+/// of the whole canvas (a full-canvas RGBA f32 buffer for the pre-pass would be too large); see
+/// [`prepare_spatial_adjustments`]. Seams can then appear at band boundaries.
+const MAX_SPATIAL_PIXELS: u64 = 64 << 20;
+
+/// Deepest group nesting the spatial walk descends (deeper layers are treated as non-spatial).
+const SPATIAL_DEPTH: u32 = 64;
+
+/// Whether any layer in `layers` is (or contains) a spatial adjustment.
+fn has_spatial(layers: &[Layer], depth: u32) -> bool {
+    if depth >= SPATIAL_DEPTH {
+        return false;
+    }
+    layers.iter().any(|l| match &l.content {
+        LayerContent::Adjustment(a) => a.is_spatial(),
+        LayerContent::Group(g) => has_spatial(&g.children, depth + 1),
+        _ => false,
+    })
+}
+
+/// The topmost layer of `layers` that is (or contains) a spatial adjustment; the pre-pass
+/// composites the stack up to it.
+fn top_spatial_index(layers: &[Layer]) -> Option<usize> {
+    layers.iter().rposition(|l| match &l.content {
+        LayerContent::Adjustment(a) => a.is_spatial(),
+        LayerContent::Group(g) => has_spatial(&g.children, 0),
+        _ => false,
+    })
+}
+
+/// Identity of a spatial adjustment's cached full-canvas result: the layer (unique within a
+/// render) and its parameters. The value also depends on the layers below, but a layer is
+/// evaluated once per render, so the layer id is enough.
+fn spatial_key(layer: &Layer, adj: &Adjustment) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    layer.id.0.hash(&mut h);
+    format!("{adj:?}").hash(&mut h);
+    h.finish()
+}
+
+/// The part of `buf` covering `rect`, or `None` when `rect` is not fully inside it.
+fn crop_buffer(buf: &Buffer, rect: Rect) -> Option<Buffer> {
+    if !buf.rect.contains_rect(&rect) {
+        return None;
+    }
+    let fw = buf.rect.width() as usize;
+    let w = rect.width() as usize;
+    let mut px = Vec::with_capacity(w * rect.height() as usize);
+    for y in rect.y0..rect.y1 {
+        let o = (y - buf.rect.y0) as usize * fw + (rect.x0 - buf.rect.x0) as usize;
+        px.extend_from_slice(&buf.px[o..o + w]);
+    }
+    Some(Buffer { rect, px })
+}
+
+/// Builds the full-canvas result of every spatial adjustment of `doc` once, before tiles render,
+/// so a tile (or a band, or a part) reads its sub-rectangle instead of re-evaluating the
+/// neighbourhood over just its own pixels. Runs the normal stack compositor over a full-canvas
+/// buffer; the adjustment branch stores each result as it is reached (`spatial_capture`).
+fn prepare_spatial_adjustments(
+    doc: &Document,
+    rect: Rect,
+    tile: i32,
+    cx: &Ctx,
+    lab: bool,
+    hdr: bool,
+    cmyk: Option<&std::sync::Arc<photocraft_color::convert::CmykSpace>>,
+) {
+    use std::sync::atomic::Ordering;
+    // Once per render (bands share the context).
+    if cx.spatial_prepared.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    if !has_spatial(&doc.layers, 0) {
+        return;
+    }
+    // The whole canvas in one pass evaluates spatial adjustments in place: no cache needed.
+    if rect == cx.canvas && rect.width() as i32 <= tile && rect.height() as i32 <= tile {
+        return;
+    }
+    if cx.canvas.size().area() > MAX_SPATIAL_PIXELS {
+        return;
+    }
+    let Some(top) = top_spatial_index(&doc.layers) else { return };
+    cx.spatial_capture.store(true, Ordering::Relaxed);
+    cx.set_fx_clip(cx.canvas);
+    photocraft_color::convert::with_cmyk_space(cmyk, || {
+        in_blend_space(lab, hdr, || {
+            let mut full = multichannel::backdrop(doc, cx.canvas);
+            composite_stack_at(&doc.layers[..=top], &mut full, cx, advanced::Scope::ROOT);
+        })
+    });
+    cx.spatial_capture.store(false, Ordering::Relaxed);
+}
+
+/// `backdrop` with `adj` applied. A spatial adjustment is computed over the whole canvas (see
+/// [`prepare_spatial_adjustments`]) and cropped to `backdrop.rect`, so tiles, bands and parts
+/// agree; while the whole canvas is composited in one pass it is evaluated directly and, during
+/// the pre-pass, stored for the tiles.
+fn adjusted_backdrop(adj: &Adjustment, layer: &Layer, backdrop: &Buffer, cx: &Ctx) -> Buffer {
+    use std::sync::atomic::Ordering;
+    if !adj.is_spatial() {
+        let mut a = backdrop.clone();
+        adjust::apply_depth(adj, &mut a, cx.transfer, Some(cx.depth));
+        return a;
+    }
+    if backdrop.rect == cx.canvas {
+        let mut a = backdrop.clone();
+        adjust::apply_depth(adj, &mut a, cx.transfer, Some(cx.depth));
+        if cx.spatial_capture.load(Ordering::Relaxed) {
+            cx.spatial_maps.lock().unwrap_or_else(|e| e.into_inner()).insert(spatial_key(layer, adj), std::sync::Arc::new(a.clone()));
+        }
+        return a;
+    }
+    let key = spatial_key(layer, adj);
+    let cached = cx.spatial_maps.lock().unwrap_or_else(|e| e.into_inner()).get(&key).cloned();
+    if let Some(full) = cached
+        && let Some(c) = crop_buffer(&full, backdrop.rect)
+    {
+        return c;
+    }
+    // No full-canvas result (a very large canvas, or a rect outside it): evaluate over this rect.
+    let mut a = backdrop.clone();
+    adjust::apply_depth(adj, &mut a, cx.transfer, Some(cx.depth));
+    a
+}
+
 fn composite_layer_plain(layer: &Layer, clipped: &[Layer], backdrop: &mut Buffer, cx: &Ctx, scope: advanced::Scope) {
     let rect = backdrop.rect;
     // A TSL-off stroke base that is transparent here can still have visible clipped siblings;
@@ -1247,8 +1398,7 @@ fn composite_layer_plain(layer: &Layer, clipped: &[Layer], backdrop: &mut Buffer
 
     // Adjustment layers transform the backdrop, then blend the result back in.
     if let LayerContent::Adjustment(adj) = &layer.content {
-        let mut adjusted = backdrop.clone();
-        adjust::apply_depth(adj, &mut adjusted, cx.transfer, Some(cx.depth));
+        let mut adjusted = adjusted_backdrop(adj, layer, backdrop, cx);
         // Clipped layers onto an adjustment are uncommon; they composite atop the adjusted result.
         advanced::composite_clipped(clipped, &mut adjusted, cx);
         let mv = mask_vals(layer, rect, cx);
@@ -1588,8 +1738,7 @@ fn composite_atop(layer: &Layer, base: &mut Buffer, cx: &Ctx) {
 fn composite_atop_any(layer: &Layer, base: &mut Buffer, cx: &Ctx) {
     let rect = base.rect;
     if let LayerContent::Adjustment(adj) = &layer.content {
-        let mut adjusted = base.clone();
-        adjust::apply_depth(adj, &mut adjusted, cx.transfer, Some(cx.depth));
+        let adjusted = adjusted_backdrop(adj, layer, base, cx);
         let mv = mask_vals(layer, rect, cx);
         for (i, p) in base.px.iter_mut().enumerate() {
             let k = layer.opacity * layer.fill_opacity * mask_k(&mv, i);

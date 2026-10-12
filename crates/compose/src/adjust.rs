@@ -217,6 +217,9 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
             map_rgb(buf, |c| std::array::from_fn(|ch| color_balance_channel([*shadows, *midtones, *highlights], *preserve_luminosity, ch, c[ch])))
         }
         Adjustment::SelectiveColor { relative, adjustments } => map_rgb(buf, |c| selective_color(c, *relative, adjustments)),
+        // Spatial: reads neighbours, so it works on the whole buffer at once (the compositor
+        // evaluates it over the full canvas, never per tile; see `crate::clarity`).
+        Adjustment::ClarityDehaze { clarity, dehaze } => crate::clarity::apply(buf, *clarity, *dehaze),
         Adjustment::ColorLookup { lut: Some(table), size, tetrahedral, dither, .. } if lut3d_len(*size).is_some_and(|len| table.len() >= len) => {
             let (n, w, x0, y0) = (*size as usize, buf.rect.width().max(1) as usize, buf.rect.x0, buf.rect.y0);
             for (i, p) in buf.px.iter_mut().enumerate() {

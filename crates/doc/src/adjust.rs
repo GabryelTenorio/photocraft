@@ -281,6 +281,16 @@ pub enum Adjustment {
         relative: bool,
         adjustments: [[f32; 4]; 9],
     },
+    /// Photoshop 2026's combined Clarity and Dehaze adjustment layer: one layer with two
+    /// -100..=100 sliders (0 = off), pulled over from Camera Raw. Unlike every other kind this
+    /// one is *spatial* (neighbourhood-based): clarity boosts midtone local contrast through a
+    /// large-radius guided filter and dehaze removes atmospheric haze with a dark-channel prior,
+    /// so the compositor evaluates it over the whole canvas, never per tile (see
+    /// `photocraft-compose`).
+    ClarityDehaze {
+        clarity: f32,
+        dehaze: f32,
+    },
     /// A PSD adjustment we can't evaluate yet; preserved raw for round-trip.
     Unsupported {
         psd_key: String,
@@ -307,6 +317,7 @@ impl Adjustment {
             Adjustment::Threshold { .. } => "Threshold",
             Adjustment::GradientMap { .. } => "Gradient Map",
             Adjustment::SelectiveColor { .. } => "Selective Color",
+            Adjustment::ClarityDehaze { .. } => "Clarity and Dehaze",
             Adjustment::Unsupported { .. } => "Adjustment",
         }
     }
@@ -322,6 +333,18 @@ impl Adjustment {
 
     pub fn identity_levels() -> Self {
         Adjustment::Levels { master: LevelsChannel::default(), per_channel: Default::default(), space: ToneSpace::Rgb, black: LevelsChannel::default() }
+    }
+
+    /// The neutral Clarity/Dehaze layer (both sliders at 0).
+    pub fn clarity_dehaze() -> Self {
+        Adjustment::ClarityDehaze { clarity: 0.0, dehaze: 0.0 }
+    }
+
+    /// Whether this adjustment reads its neighbours (not just the pixel it writes), so the
+    /// compositor must evaluate it over the whole canvas rather than per tile. Only
+    /// [`Adjustment::ClarityDehaze`] is spatial today.
+    pub fn is_spatial(&self) -> bool {
+        matches!(self, Adjustment::ClarityDehaze { .. })
     }
 }
 

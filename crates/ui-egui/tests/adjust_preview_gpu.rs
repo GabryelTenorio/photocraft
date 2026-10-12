@@ -97,6 +97,7 @@ fn sample(kind: &str) -> Value {
         "curves" => json!({"points": [[0, 20], [90, 150], [255, 230]]}),
         "exposure" => json!({"exposure": 0.8, "offset": 0.02, "gamma": 0.9}),
         "vibrance" => json!({"vibrance": 50, "saturation": 20}),
+        "clarityDehaze" => json!({"clarity": 35, "dehaze": -20}),
         "hueSaturation" => json!({"hue": 25, "saturation": 30, "reds": {"hue": 40}}),
         "colorBalance" => json!({"midtones": [40, 0, -20], "shadows": [0, 20, 0]}),
         "blackWhite" => json!({"reds": 150, "tint": true}),
@@ -143,6 +144,11 @@ fn preview_layer_composites_on_the_gpu_like_the_command() {
                         continue;
                     };
                     assert!(preview.layer(PREVIEW_LAYER).is_some());
+                    if comp.supports(&preview).is_err() {
+                        // A kind the wgpu compositor doesn't cover (Clarity/Dehaze is spatial, so
+                        // the whole document falls back to the CPU): no GPU parity to check.
+                        continue;
+                    }
                     let what = format!("{kind} {mode:?} {depth:?} selection {selection}");
                     let b = preview.bounds();
                     // The GPU holds 16- and 32-bit layers as half floats: Threshold and Posterize
@@ -179,6 +185,10 @@ fn proxy_preview_composites_on_the_gpu() {
         render_to_vec(&mut comp, &device, &queue, &doc, doc.bounds()).unwrap();
         for kind in photocraft_ui_egui::adjust_editors::KINDS {
             let p = proxy_with_settings(&proxy, kind, &sample(kind)).unwrap();
+            if comp.supports(&p).is_err() {
+                // Clarity/Dehaze is spatial: the wgpu compositor falls back to the CPU.
+                continue;
+            }
             let on_gpu = render_to_vec(&mut comp, &device, &queue, &p, p.bounds()).unwrap();
             let on_cpu = photocraft_compose::render(&p, p.bounds()).px;
             let d = max_diff(&on_gpu, &on_cpu, 0);

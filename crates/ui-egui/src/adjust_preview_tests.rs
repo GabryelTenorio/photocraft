@@ -3,7 +3,7 @@ use photocraft_color::{BlendMode, Color, PixelFormat, SampleType};
 use photocraft_doc::Size;
 use serde_json::json;
 
-const KINDS: [&str; 13] = crate::adjust_editors::KINDS;
+const KINDS: [&str; 14] = crate::adjust_editors::KINDS;
 
 /// Settings that move every kind well away from neutral.
 pub(crate) fn sample(kind: &str) -> Value {
@@ -13,6 +13,7 @@ pub(crate) fn sample(kind: &str) -> Value {
         "curves" => json!({"points": [[0, 20], [90, 150], [255, 230]]}),
         "exposure" => json!({"exposure": 0.8, "offset": 0.02, "gamma": 0.9}),
         "vibrance" => json!({"vibrance": 50, "saturation": 20}),
+        "clarityDehaze" => json!({"clarity": 35, "dehaze": -20}),
         "hueSaturation" => json!({"hue": 25, "saturation": 30, "reds": {"hue": 40}}),
         "colorBalance" => json!({"midtones": [40, 0, -20], "shadows": [0, 20, 0]}),
         "blackWhite" => json!({"reds": 150, "tint": true}),
