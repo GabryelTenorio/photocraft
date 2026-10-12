@@ -908,7 +908,7 @@ fn region_dividers_resize_through_commands_and_group_up_down_stay_on_their_side(
     app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
     let mut h = harness(app, vec2(1280.0, 800.0));
     let rendered = h.state().ui.dock_regions.render(h.state().ui.docking.as_ref().unwrap());
-    let left_path = rendered.splits.iter().find(|(_, target)| matches!(target, SplitTarget::Region(DockHost::Workspace, DockSide::Left))).unwrap().0;
+    let left_path = rendered.splits.iter().find(|(_, target)| matches!(target, SplitTarget::Region(DockHost::Workspace, DockSide::Left, 0))).unwrap().0;
     let divider = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("split", left_path))).unwrap().rect.center();
     let width = canvas_region(&h).left();
     drag(&mut h, divider, divider + vec2(40.0, 0.0));
@@ -964,7 +964,7 @@ fn hold_drag(h: &mut Harness<'static, PhotocraftApp>, from: Pos2, to: Pos2) {
         h.event(Event::PointerMoved(from.lerp(to, step as f32 / 8.0)));
         h.run_steps(1);
     }
-    h.run_steps(2);
+    h.run_steps(12);
 }
 fn rendered_group(h: &Harness<'static, PhotocraftApp>, panel: &str) -> egui::Rect {
     h.ctx.data(|data| data.get_temp(egui::Id::new("photocraft-panel-docking").with(("group-rect", panel.to_owned())))).unwrap()
@@ -1096,7 +1096,7 @@ fn first_regional_drop_from_legacy_custom_dock_accounts_for_the_icon_rail() {
 }
 
 fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
-    assert_drag_opacity(h, 0.5);
+    assert_drag_opacity(h, 0.3);
     let feedback = drop_preview(h).expect("tab-strip feedback");
     assert!(feedback.preview.is_none(), "same-group reorder must not highlight the group");
     let marker = feedback.insertion.expect("insertion marker even at unchanged slots");
@@ -1118,7 +1118,7 @@ fn assert_drag_opacity(h: &Harness<'static, PhotocraftApp>, opacity: f32) {
     let card = crate::theme::Tokens::get(&h.ctx).card;
     assert!(h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(opacity))), "moving UI opacity {opacity}");
     if opacity == 1.0 {
-        assert!(!h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(0.5))));
+        assert!(!h.output().shapes.iter().any(|shape| large_fill(&shape.shape, card.gamma_multiply(0.3))));
     }
 }
 
@@ -1139,13 +1139,13 @@ fn drag_opacity_tracks_same_and_cross_group_strips_and_restores_outside() {
         capture_insertion(&mut h, &format!("opacity-own-{floating}"));
         let outside = rendered_group(&h, CANVAS).center();
         h.event(Event::PointerMoved(outside));
-        h.run_steps(2);
+        h.run_steps(12);
         assert_drag_opacity(&h, 1.0);
         capture_insertion(&mut h, &format!("opacity-outside-{floating}"));
         let target = tab_rect(&h, "properties").center();
         h.event(Event::PointerMoved(target));
-        h.run_steps(2);
-        assert_drag_opacity(&h, 0.5);
+        h.run_steps(12);
+        assert_drag_opacity(&h, 0.3);
         let feedback = drop_preview(&h).unwrap();
         assert!(feedback.insertion.is_some() && feedback.preview.is_some());
         assert_eq!(h.state().ui.docking, before);

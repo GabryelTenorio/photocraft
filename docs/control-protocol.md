@@ -601,7 +601,8 @@ side. Group Up/Down operate within the current dock region.
 preferred width (left/right) or height (top/bottom), between 80 and 4096 logical points.
 The renderer constrains actual sizes to the available space and panel/canvas minima.
 Existing `ResizeSplit` paths continue to address the canonical panel tree in `docking`;
-synthetic region dividers are addressed by `side`, not by tree path.
+synthetic region dividers are addressed by `side`, not by tree path. Nested dividers also
+include their `band` identity; resize requests validate the band's host and side.
 
 `ui.inspect` exposes `dockRegions`: `enabled`, `sides` (panel ID to side), and `sizes`
 (left/right widths, top/bottom heights). `docking` retains the shared panel tree and
@@ -613,8 +614,8 @@ Dock previews measure the validated candidate arrangement using the renderer's s
 rules, including saved dock sizes, panel/canvas minimums and space released by the source.
 Workspace-edge destinations take precedence over group destinations, except when reordering
 inside the source group's tab strip; document-edge drops preview an inner document-area
-dock. The moving panel UI is 50% opaque over any eligible panel tab strip and fully opaque
-elsewhere; insertion lines and destination highlights retain their normal opacity.
+dock. The moving panel UI fades over 150 ms to 30% opacity (70% transparency) over any
+eligible panel tab strip and back to full opacity elsewhere; insertion lines and destination highlights retain their normal opacity.
 Document tab strips are unaffected. Same-group tab-strip destinations show only an insertion line, including unchanged
 positions, with the marker contained inside the visible strip. Unchanged releases preserve
 position. Floating groups move from the grip, empty header or top border; their left, right
@@ -628,9 +629,17 @@ focus loss and workspace changes cancel without committing.
 Panel side commands also accept `scope:"workspace"|"document"` (default `workspace`).
 Document scope without `documentView` addresses the main document area. With a floating
 `documentView` identity it addresses that in-app document window. Region resizing accepts
-the same scope and identity. Anchored joins/splits inherit the destination group's host.
+the same scope and identity. Anchored joins/splits inherit the destination group's host and band.
+Side docking additionally accepts `adjacent:true` with document scope to create a new innermost
+band around the remaining document rectangle, preserving surrounding panels. Omission keeps
+the existing side-region command behavior. Document-edge gestures use this option on all four sides.
+The outermost 12 logical pixels of the workspace select outer docking; the document edge has a
+36-point inner hit band, leaving the next 24 points for document docking where edges coincide.
+A bottom document-edge drop spans the remaining document width; the outer bottom row spans
+the workspace. Preview and release measure and commit the same candidate arrangement.
 `dockRegions` additionally exposes `hosts`, `documentSizes`, `viewSizes` and
-`floatingMemory` (panel ID to `[x,y,width,height]`) and `dockReturns` (last docked
+`bands` (panel ID to nesting order, zero for legacy regions), `bandSizes` (band to preferred
+extent), `floatingMemory` (panel ID to `[x,y,width,height]`) and `dockReturns` (last docked
 locations, retained independently of hidden floating locations). Floating dimensions are independent
 of dock dimensions; moving/resizing a floating group records the geometry for its members.
 Named workspaces convert session-specific hosts to the main document area.

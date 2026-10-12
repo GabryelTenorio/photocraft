@@ -72,6 +72,9 @@ pub struct DockRegions {
     /// Left/right widths and top/bottom heights, in logical points.
     pub sizes: [f32; 4],
     pub hosts: BTreeMap<String, DockHost>,
+    /// Zero is the legacy side region; larger bands nest closer to the document.
+    pub bands: BTreeMap<String, u32>,
+    pub band_sizes: BTreeMap<u32, f32>,
     pub document_sizes: [f32; 4],
     pub view_sizes: BTreeMap<u64, [f32; 4]>,
     pub floating_memory: BTreeMap<String, [f32; 4]>,
@@ -85,6 +88,8 @@ impl Default for DockRegions {
             sides: BTreeMap::new(),
             sizes: [290.0, 290.0, 220.0, 220.0],
             hosts: BTreeMap::new(),
+            bands: BTreeMap::new(),
+            band_sizes: BTreeMap::new(),
             document_sizes: [290.0, 290.0, 220.0, 220.0],
             view_sizes: BTreeMap::new(),
             floating_memory: BTreeMap::new(),
@@ -102,6 +107,14 @@ impl DockRegions {
         self.hosts.get(panel).copied().unwrap_or_default()
     }
 
+    pub(crate) fn band(&self, panel: &str) -> u32 {
+        self.bands.get(panel).copied().unwrap_or(0)
+    }
+
+    pub(crate) fn inherit(&mut self, panel: &str, anchor: &str) {
+        self.bands.insert(panel.into(), self.band(anchor));
+    }
+
     pub(crate) fn sizes_for(&self, host: DockHost) -> [f32; 4] {
         match host {
             DockHost::Workspace => self.sizes,
@@ -111,6 +124,7 @@ impl DockRegions {
     }
 
     pub(crate) fn remember(&mut self, layout: &Layout<String>) {
+        self.band_sizes.retain(|band, _| self.bands.values().any(|value| value == band));
         for panel in layout.panels() {
             if let Ok(location) = layout.location(panel)
                 && location.floating.is_none()
@@ -138,7 +152,11 @@ impl DockRegions {
     }
 
     pub(crate) fn valid(&self) -> bool {
-        self.sides.len() <= 64
+        self.bands.len() <= 64
+            && self.bands.keys().all(|id| crate::panel_docking::normalize(id) == Some(id.as_str()))
+            && self.band_sizes.len() <= 64
+            && self.band_sizes.iter().all(|(band, size)| *band > 0 && size.is_finite() && (80.0..=4096.0).contains(size))
+            && self.sides.len() <= 64
             && self.hosts.len() <= 64
             && self.dock_returns.len() <= 64
             && self.dock_returns.keys().all(|id| crate::panel_docking::normalize(id) == Some(id.as_str()))
@@ -164,28 +182,37 @@ impl DockRegions {
         let mut rendered = Projected { node: Node::Tabs { panels: vec![canvas.into()], active: 0 }, splits: BTreeMap::new() };
         let hosts = if host == DockHost::Workspace { vec![DockHost::Document, host] } else { vec![host] };
         for host in hosts {
-            for side in [DockSide::Right, DockSide::Left, DockSide::Bottom, DockSide::Top] {
-                let Some(region) = layout.root.as_ref().and_then(|root| project(root, self, host, side, &mut Vec::new(), 0)) else { continue };
-                let first_region = matches!(side, DockSide::Left | DockSide::Top);
-                let mut splits = BTreeMap::new();
-                for (path, target) in rendered.splits {
-                    splits.insert(prefixed(!first_region, path), target);
+            let mut bands: Vec<_> = self.bands.values().copied().chain(std::iter::once(0)).collect();
+            bands.sort_unstable();
+            bands.dedup();
+            for band in bands.into_iter().rev() {
+                for side in [DockSide::Right, DockSide::Left, DockSide::Bottom, DockSide::Top] {
+                    let Some(region) = layout.root.as_ref().and_then(|root| project(root, self, (host, side, band), &mut Vec::new(), 0)) else { continue };
+                    let first_region = matches!(side, DockSide::Left | DockSide::Top);
+                    let mut splits = BTreeMap::new();
+                    for (path, target) in rendered.splits {
+                        splits.insert(prefixed(!first_region, path), target);
+                    }
+                    for (path, target) in region.splits {
+                        splits.insert(prefixed(first_region, path), target);
+                    }
+                    splits.insert(Vec::new(), SplitTarget::Region(host, side, band));
+                    let size = self
+                        .band_sizes
+                        .get(&band)
+                        .copied()
+                        .unwrap_or_else(|| self.sizes_for(host).get(side.index()).copied().unwrap_or(290.0));
+                    let (first, second) = if first_region { (region.node, rendered.node) } else { (rendered.node, region.node) };
+                    rendered = Projected {
+                        node: Node::Split {
+                            axis: if matches!(side, DockSide::Left | DockSide::Right) { SplitAxis::Horizontal } else { SplitAxis::Vertical },
+                            size: if first_region { SplitSize::FixedFirst(size) } else { SplitSize::FixedSecond(size) },
+                            first: Box::new(first),
+                            second: Box::new(second),
+                        },
+                        splits,
+                    };
                 }
-                for (path, target) in region.splits {
-                    splits.insert(prefixed(first_region, path), target);
-                }
-                splits.insert(Vec::new(), SplitTarget::Region(host, side));
-                let size = self.sizes_for(host).get(side.index()).copied().unwrap_or(290.0);
-                let (first, second) = if first_region { (region.node, rendered.node) } else { (rendered.node, region.node) };
-                rendered = Projected {
-                    node: Node::Split {
-                        axis: if matches!(side, DockSide::Left | DockSide::Right) { SplitAxis::Horizontal } else { SplitAxis::Vertical },
-                        size: if first_region { SplitSize::FixedFirst(size) } else { SplitSize::FixedSecond(size) },
-                        first: Box::new(first),
-                        second: Box::new(second),
-                    },
-                    splits,
-                };
             }
         }
         RenderLayout {
@@ -196,7 +223,7 @@ impl DockRegions {
 }
 
 pub(crate) enum SplitTarget {
-    Region(DockHost, DockSide),
+    Region(DockHost, DockSide, u32),
     Tree(Vec<bool>),
 }
 
@@ -215,14 +242,19 @@ fn prefixed(first: bool, mut path: Vec<bool>) -> Vec<bool> {
     path
 }
 
-fn project(node: &Node<String>, regions: &DockRegions, host: DockHost, side: DockSide, path: &mut Vec<bool>, depth: usize) -> Option<Projected> {
+fn project(node: &Node<String>, regions: &DockRegions, region: (DockHost, DockSide, u32), path: &mut Vec<bool>, depth: usize) -> Option<Projected> {
+    let (host, side, band) = region;
     if depth >= craft_ui::docking::MAX_DEPTH {
         return None;
     }
     match node {
         Node::Tabs { panels, active } => {
             let selected = panels.get(*active);
-            let panels: Vec<_> = panels.iter().filter(|id| regions.side(id) == side && regions.host(id) == host).cloned().collect();
+            let panels: Vec<_> = panels
+                .iter()
+                .filter(|id| regions.side(id) == side && regions.host(id) == host && regions.band(id) == band)
+                .cloned()
+                .collect();
             if panels.is_empty() {
                 return None;
             }
@@ -230,15 +262,19 @@ fn project(node: &Node<String>, regions: &DockRegions, host: DockHost, side: Doc
             Some(Projected { node: Node::Tabs { panels, active }, splits: BTreeMap::new() })
         }
         Node::Stack { entries } => {
-            let entries: Vec<_> = entries.iter().filter(|entry| regions.side(&entry.panel) == side && regions.host(&entry.panel) == host).cloned().collect();
+            let entries: Vec<_> = entries
+                .iter()
+                .filter(|entry| regions.side(&entry.panel) == side && regions.host(&entry.panel) == host && regions.band(&entry.panel) == band)
+                .cloned()
+                .collect();
             (!entries.is_empty()).then_some(Projected { node: Node::Stack { entries }, splits: BTreeMap::new() })
         }
         Node::Split { axis, size, first, second } => {
             path.push(false);
-            let a = project(first, regions, host, side, path, depth + 1);
+            let a = project(first, regions, region, path, depth + 1);
             path.pop();
             path.push(true);
-            let b = project(second, regions, host, side, path, depth + 1);
+            let b = project(second, regions, region, path, depth + 1);
             path.pop();
             match (a, b) {
                 (Some(a), Some(b)) => {
@@ -261,6 +297,10 @@ fn project(node: &Node<String>, regions: &DockRegions, host: DockHost, side: Doc
 
 /// Edge destinations have a small, deterministic hit band. Corners choose the closest edge.
 pub(crate) fn edge_at(rect: egui::Rect, pointer: egui::Pos2) -> Option<DockSide> {
+    edge_within(rect, pointer, 12.0)
+}
+
+pub(crate) fn edge_within(rect: egui::Rect, pointer: egui::Pos2, width: f32) -> Option<DockSide> {
     if !rect.is_finite() || !pointer.is_finite() || !rect.contains(pointer) || rect.width() <= 0.0 || rect.height() <= 0.0 {
         return None;
     }
@@ -272,7 +312,7 @@ pub(crate) fn edge_at(rect: egui::Rect, pointer: egui::Pos2) -> Option<DockSide>
     ]
     .into_iter()
     .min_by(|a, b| a.0.total_cmp(&b.0))?;
-    if distance > 24.0 {
+    if distance > width {
         return None;
     }
     Some(side)

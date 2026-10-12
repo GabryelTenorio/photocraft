@@ -203,6 +203,21 @@ pub(crate) fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Opti
                     return Err("region size must be between 80 and 4096 points".into());
                 }
                 let host = destination_host(app, params)?;
+                if let Some(value) = params.get("band") {
+                    let band = value.as_u64().and_then(|v| u32::try_from(v).ok()).ok_or("band must be an unsigned integer")?;
+                    if band > 0 {
+                        let mut regions = app.ui.dock_regions.clone();
+                        if !regions.bands.iter().any(|(id, value)| *value == band && regions.host(id) == host && regions.side(id) == side) {
+                            return Err("unknown dock band".into());
+                        }
+                        regions.band_sizes.insert(band, size);
+                        if !regions.valid() {
+                            return Err("invalid dock regions".into());
+                        }
+                        app.ui.dock_regions = regions;
+                        return Ok(json!({"dockRegions":app.ui.dock_regions}));
+                    }
+                }
                 let sizes = match host {
                     DockHost::Workspace => &mut app.ui.dock_regions.sizes,
                     DockHost::Document => &mut app.ui.dock_regions.document_sizes,
@@ -301,6 +316,7 @@ fn apply_action(app: &mut PhotocraftApp, action: Action<String>) -> Result<Value
     let mut regions = app.ui.dock_regions.clone();
     regions.remember(&layout);
     if let Action::Move { panel, anchor, .. } | Action::OpenAt { panel, anchor, .. } | Action::Open { panel, anchor: Some(anchor) } = &action {
+        regions.inherit(panel, anchor);
         regions.sides.insert(panel.clone(), regions.side(anchor));
         regions.hosts.insert(panel.clone(), regions.host(anchor));
     }
@@ -389,6 +405,7 @@ fn change(app: &mut PhotocraftApp, operation: &str, params: &Value) -> Result<Va
             };
             let placement = placement(params)?;
             if let Some(anchor) = anchor {
+                regions.inherit(panel, &anchor);
                 let side = regions.side(&anchor);
                 let host = regions.host(&anchor);
                 ensure(&mut layout, panel)?;
@@ -511,7 +528,23 @@ fn side_command(app: &mut PhotocraftApp, params: &Value, whole_group: bool) -> R
     let mut hidden = if app.ui.docking.is_none() { migration_hidden(app, &layout) } else { app.ui.docking_hidden.clone() };
     let mut regions = app.ui.dock_regions.clone();
     regions.remember(&layout);
+    let adjacent = match params.get("adjacent") {
+        Some(value) => value.as_bool().ok_or("adjacent must be a boolean")?,
+        None => false,
+    };
+    if adjacent && host == DockHost::Workspace {
+        return Err("adjacent requires a document destination".into());
+    }
+    let band = if adjacent {
+        regions.bands.values().copied().max().unwrap_or(0).checked_add(1).ok_or("dock nesting limit reached")?
+    } else {
+        0
+    };
+    if band > 0 {
+        regions.band_sizes.insert(band, regions.sizes_for(host).get(side.index()).copied().unwrap_or(290.0));
+    }
     for id in &members {
+        regions.bands.insert(id.clone(), band);
         if layout.contains(id) {
             if let Ok(location) = layout.location(id) {
                 hidden.insert(id.clone(), location);
@@ -534,6 +567,14 @@ fn side_command(app: &mut PhotocraftApp, params: &Value, whole_group: bool) -> R
     }
     regions.enabled = true;
     regions.remember(&layout);
+    if !regions.valid() {
+        return Err("invalid dock regions".into());
+    }
+    let rendered = match host {
+        DockHost::DocumentView(id) => regions.render_host(&layout, host, &crate::document_docking::canvas_id(id)),
+        _ => regions.render(&layout),
+    };
+    rendered.layout.validate().map_err(|error| error.to_string())?;
     app.ui.docking = Some(layout);
     app.ui.dock_regions = regions;
     app.ui.docking_hidden = hidden;
@@ -646,12 +687,12 @@ pub(crate) fn show_document_host(app: &mut PhotocraftApp, ui: &mut egui::Ui, doc
         let result = match action {
             Action::ResizeSplit { ref path, size } => match rendered.splits.get(path) {
                 Some(SplitTarget::Tree(path)) => app.run("window.panel.layout", json!({"action":Action::<String>::ResizeSplit{path:path.clone(),size}})),
-                Some(SplitTarget::Region(host, side)) => {
+                Some(SplitTarget::Region(host, side, band)) => {
                     let extent = match size {
                         SplitSize::FixedFirst(v) | SplitSize::FixedSecond(v) => v,
                         SplitSize::Ratio(_) => 290.0,
                     };
-                    app.run("window.panel.layout", host_params(*host, json!({"side":side,"size":extent.clamp(80.0,4096.0)})))
+                    app.run("window.panel.layout", host_params(*host, json!({"side":side,"band":band,"size":extent.clamp(80.0,4096.0)})))
                 }
                 None => Err("unknown document divider".into()),
             },
@@ -830,12 +871,12 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         let result = match action {
             Action::ResizeSplit { ref path, size } if workspace => match rendered.splits.get(path) {
                 Some(SplitTarget::Tree(path)) => app.run("window.panel.layout", json!({"action":Action::<String>::ResizeSplit {path:path.clone(),size}})),
-                Some(SplitTarget::Region(host, side)) => {
+                Some(SplitTarget::Region(host, side, band)) => {
                     let extent = match size {
                         SplitSize::FixedFirst(value) | SplitSize::FixedSecond(value) => value,
                         SplitSize::Ratio(_) => 290.0,
                     };
-                    app.run("window.panel.layout", host_params(*host, json!({"side":side,"size":extent.clamp(80.0,4096.0)})))
+                    app.run("window.panel.layout", host_params(*host, json!({"side":side,"band":band,"size":extent.clamp(80.0,4096.0)})))
                 }
                 None => Err("unknown workspace divider".into()),
             },
@@ -1091,6 +1132,7 @@ fn group_command(app: &mut PhotocraftApp, params: &Value) -> Result<Value, Strin
         "move" => {
             let anchor = params.get("anchor").and_then(Value::as_str).and_then(normalize).ok_or("anchor must name a registered panel")?;
             for id in &members {
+                regions.inherit(id, anchor);
                 regions.sides.insert(id.clone(), regions.side(anchor));
                 regions.hosts.insert(id.clone(), regions.host(anchor));
             }
@@ -1115,7 +1157,11 @@ fn group_command(app: &mut PhotocraftApp, params: &Value) -> Result<Value, Strin
         "up" | "down" => {
             let groups: Vec<_> = root_groups(&layout)
                 .into_iter()
-                .filter(|ids| !regions.enabled || ids.first().is_some_and(|id| regions.side(id) == regions.side(panel)))
+                .filter(|ids| {
+                    !regions.enabled || ids.first().is_some_and(|id| {
+                        regions.side(id) == regions.side(panel) && regions.host(id) == regions.host(panel) && regions.band(id) == regions.band(panel)
+                    })
+                })
                 .collect();
             let index = groups.iter().position(|g| g.contains(&panel.to_owned())).ok_or("floating groups cannot move within the dock")?;
             let neighbor = if operation == "up" { index.checked_sub(1) } else { index.checked_add(1).filter(|i| *i < groups.len()) };
@@ -1406,7 +1452,10 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 && craft_ui::docking::resolve_drop(request.panel, request.pointer, std::slice::from_ref(target))
                     .is_some_and(|proposal| proposal.insertion.is_some())
         });
-        if strip { 0.5 } else { 1.0 }
+        if strip { 0.3 } else { 1.0 }
+    }
+    fn drag_opacity_duration(&self) -> f32 {
+        0.15
     }
     fn floating_size(&self, panel: &String) -> Option<egui::Vec2> {
         let rect = floating_rect(self.app, panel, &json!({})).ok()?;
@@ -1448,8 +1497,20 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let edge = (!same_group_strip).then(|| crate::workspace_dock::edge_at(self.workspace_rect, request.pointer)).flatten();
         // Inset document targets remain reachable even where document/workspace edges coincide.
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, key.with("document-targets")));
-        let mut document_target = None;
-        for target in eligible.iter().filter(|t| crate::document_docking::is_canvas(&t.anchor)) {
+        let canvas_target = eligible
+            .iter()
+            .rev()
+            .find(|target| target.rect.contains(request.pointer))
+            .filter(|target| crate::document_docking::is_canvas(&target.anchor));
+        let mut document_target = if same_group_strip {
+            None
+        } else {
+            canvas_target.and_then(|target| {
+                crate::workspace_dock::edge_within(target.rect, request.pointer, 36.0)
+                    .map(|side| (crate::document_docking::canvas_host(&target.anchor), side))
+            })
+        };
+        if let Some(target) = canvas_target {
             let inset = target.rect.shrink(32.0_f32.min(target.rect.width().min(target.rect.height()) / 4.0));
             for side in DockSide::ALL {
                 let center = match side {
@@ -1479,7 +1540,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let operation = if let Some(side) = edge {
             Some((if whole { "window.panel.group" } else { "window.panel.dock" }, json!({"panel":panel,"operation":"dock","side":side})))
         } else if let Some((host, side)) = document_target {
-            Some((if whole { "window.panel.group" } else { "window.panel.dock" }, host_params(host, json!({"panel":panel,"operation":"dock","side":side}))))
+            Some((if whole { "window.panel.group" } else { "window.panel.dock" }, host_params(host, json!({"panel":panel,"operation":"dock","side":side,"adjacent":true}))))
         } else if let Some(proposal) = proposal {
             if proposal.noop {
                 let feedback = DropFeedback { preview: None, insertion: proposal.insertion };
@@ -1488,15 +1549,9 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             }
             insertion = proposal.insertion;
             if crate::document_docking::is_canvas(&proposal.anchor) {
-                match proposal.placement {
-                    Placement::Split(zone) => DockSide::from_zone(zone).map(|side| {
-                        (
-                            if whole { "window.panel.group" } else { "window.panel.dock" },
-                            host_params(crate::document_docking::canvas_host(&proposal.anchor), json!({"panel":panel,"operation":"dock","side":side})),
-                        )
-                    }),
-                    _ => None,
-                }
+                request.floating_rect.map(|rect| {
+                    (if whole { "window.panel.group" } else { "window.panel.float" }, json!({"panel":panel,"operation":"float","x":rect.left(),"y":rect.top()}))
+                })
             } else if whole {
                 Some(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":proposal.placement})))
             } else {

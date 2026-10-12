@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (live panel dragging; independent floating memory; inner docks and in-app document tear-off) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (nested document-edge docks; smooth translucent panel dragging) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -209,6 +209,7 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | document-edge bands nest inside surrounding docks; 150 ms fades to 30% panel-preview opacity; validation skipped at user request |
 | 2026-10-12 | minor | live dragging, independent floating memory, inner document docks and in-app document tear-off |
 | 2026-10-12 | minor | bounded insertion lines for all same-group slots; floating header/border movement and edge resizing |
 | 2026-10-12 | minor | four-sided in-app panel docking and whole-group dragging |
