@@ -13,7 +13,7 @@ use crate::PhotocraftApp;
 /// the Swatches panel through [`crate::swatches_ui::import_bytes`]).
 /// `.psp` is Photoshop's live `Keyboard Shortcuts.psp` (the same XML as a `.kys`); other `.psp`
 /// settings files are refused with a clear message.
-pub const PRESET_EXTS: &[&str] = &["abr", "grd", "aco", "ase", "kys", "psp"];
+pub const PRESET_EXTS: &[&str] = &["abr", "grd", "aco", "ase", "kys", "psp", "atn", "pcactions"];
 
 fn ext(name: &str) -> String {
     std::path::Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
@@ -37,6 +37,7 @@ fn source(name: &str, bytes: &[u8]) -> Value {
 /// Import a preset file; `None` when `name` isn't one.
 pub fn open(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Option<Result<(), String>> {
     let (cmd, what) = match ext(name).as_str() {
+        "atn" | "pcactions" => return Some(crate::actions::import_bytes(app, name, bytes).map(|_| ())),
         "abr" => ("brush.presets.importAbr", "brushes"),
         "grd" => ("gradient.presets.importGrd", "gradients"),
         "aco" | "ase" => return Some(crate::swatches_ui::import_bytes(app, name, bytes, false).map(|_| ())),
@@ -91,6 +92,8 @@ mod tests {
         assert!(is_preset_file("sunsets.grd"));
         assert!(is_preset_file("Brand.ACO"));
         assert!(is_preset_file("exchange.ase"));
+        assert!(is_preset_file("Studio.ATN"));
+        assert!(is_preset_file("Actions.pcactions"));
         assert!(!is_preset_file("photo.psd"));
         assert!(!is_preset_file("abr"));
     }

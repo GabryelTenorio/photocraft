@@ -21,9 +21,9 @@ note = "actions.rs:47 copies raw journal entries with explicit layer ids"
 [[item]]
 id = "AUTO-219-2"
 target = "Actions panel: step and dialog toggles, reorder, delete a step, Stop, sets, .atn import"
-status = "missing"
+status = "partial"
 issue = 219
-note = "Panel deletes whole actions only (actions.rs:146)"
+note = "Actions support step toggles/reorder/delete and portable load/save. Version-16 .atn imports a conservative event subset atomically; dialogs, action-set grouping and full Photoshop event coverage remain open. See docs/actions-interchange.md."
 
 [[item]]
 id = "AUTO-219-3"
