@@ -131,23 +131,20 @@ fn dialog_mem(kind: &str) -> egui::Id {
     egui::Id::new(("adjust-dialog", kind))
 }
 
-/// Whether holding Alt turns the dialog's Cancel into Reset, as in Photoshop's Color Balance
-/// (measured in 25.4) and Levels dialogs; other kinds keep Cancel until checked against Photoshop.
+/// Whether holding Alt turns the dialog's Cancel into Reset. Measured in Photoshop 25.4 for Color
+/// Balance; other kinds keep Cancel until checked against Photoshop.
 pub fn resets(fields: &Map<String, Value>) -> bool {
-    matches!(fields.get("__adjust").and_then(Value::as_str), Some("colorBalance" | "levels"))
+    fields.get("__adjust").and_then(Value::as_str) == Some("colorBalance")
 }
 
 /// Alt+Cancel (Reset): back to the defaults Photoshop's Reset restores, dialog stays open.
 pub fn reset(ctx: &egui::Context, fields: &mut Map<String, Value>) {
-    let mut values = crate::filter_dialog::params_of(fields);
-    match fields.get("__adjust").and_then(Value::as_str) {
-        Some("colorBalance") => adjust_editors::reset_color_balance(ctx, dialog_mem("colorBalance"), &mut values),
-        Some("levels") => adjust_editors::reset_levels(ctx, dialog_mem("levels"), &mut values),
-        _ => return,
+    if !resets(fields) {
+        return;
     }
+    let mut values = crate::filter_dialog::params_of(fields);
+    adjust_editors::reset_color_balance(ctx, dialog_mem("colorBalance"), &mut values);
     if let Value::Object(v) = values {
-        // Replace the parameter keys, keep the private ones (as `body` does).
-        fields.retain(|k, _| k.starts_with("__"));
         fields.extend(v);
     }
 }
@@ -397,77 +394,10 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = Harness::builder().with_size(egui::vec2(1200.0, 900.0)).build_ui_state(|ui, app| crate::dialogs::show(app, ui.ctx()), app_with_image());
         PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
-        open(h.state_mut(), "image.adjustments.curves").unwrap();
+        open(h.state_mut(), "image.adjustments.levels").unwrap();
         h.event(egui::Event::ModifiersChanged(egui::Modifiers::ALT));
         h.run_steps(3);
         assert!(h.query_by_label("Cancel").is_some() && h.query_by_label("Reset").is_none());
-    }
-
-    /// #3328: holding Alt turns the Levels dialog's Cancel into Reset, as in Photoshop: every
-    /// channel's levels back to neutral and the Channel choice back to the composite, with the
-    /// dialog still open and the document untouched.
-    #[test]
-    fn levels_dialog_alt_cancel_resets_every_channel() {
-        use egui_kittest::kittest::Queryable;
-        let mut h = Harness::builder()
-            .with_size(egui::vec2(1200.0, 900.0))
-            .with_step_dt(1.0 / 60.0)
-            .build_ui_state(|ui, app| crate::dialogs::show(app, ui.ctx()), app_with_image());
-        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
-        let original = h.state().session.active().unwrap().doc.clone();
-        let id = open(h.state_mut(), "image.adjustments.levels").unwrap();
-        let defaults = crate::filter_dialog::params_of(&h.state_mut().ui.dialog_mut(id).unwrap().fields);
-        let d = h.state_mut().ui.dialog_mut(id).unwrap();
-        d.fields.insert("inBlack".into(), json!(30));
-        d.fields.insert("red".into(), json!({"inBlack": 0, "gamma": 1.0, "inWhite": 200, "outBlack": 0, "outWhite": 255}));
-        d.fields.insert("green".into(), json!({"inBlack": 0, "gamma": 1.4, "inWhite": 255, "outBlack": 0, "outWhite": 255}));
-        d.fields.insert("blue".into(), json!({"inBlack": 0, "gamma": 1.0, "inWhite": 255, "outBlack": 20, "outWhite": 255}));
-        let channel = egui::Id::new(("adjust-dialog", "levels")).with("levels-ch");
-        h.ctx.data_mut(|d| d.insert_temp(channel, 2usize));
-        h.run_steps(3);
-        assert!(h.query_by_label("Cancel").is_some() && h.query_by_label("Reset").is_none());
-        h.event(egui::Event::ModifiersChanged(egui::Modifiers::ALT));
-        h.run_steps(2);
-        let reset = h.get_by_label("Reset").rect();
-        assert!(h.query_by_label("Cancel").is_none());
-        let click =
-            |pressed| egui::Event::PointerButton { pos: reset.center(), button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::ALT };
-        input(&mut h, egui::Modifiers::ALT, &[egui::Event::PointerMoved(reset.center()), click(true), click(false)]);
-        let fields = h.state().ui.dialogs.iter().find(|d| d.id == id).map(|d| d.fields.clone()).expect("Reset keeps the dialog open");
-        assert_eq!(crate::filter_dialog::params_of(&fields), defaults, "every channel back to neutral");
-        assert_eq!(fields.get("__preview"), Some(&json!(true)), "Reset keeps Preview");
-        assert_eq!(h.ctx.data(|d| d.get_temp::<usize>(channel)), Some(0), "Reset shows the composite channel");
-        assert!(std::sync::Arc::ptr_eq(&h.state().session.active().unwrap().doc, &original), "Reset leaves the document alone");
-        // Without Alt it is Cancel again, and it closes.
-        let cancel = h.get_by_label("Cancel").rect();
-        let click =
-            |pressed| egui::Event::PointerButton { pos: cancel.center(), button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
-        input(&mut h, egui::Modifiers::NONE, &[egui::Event::PointerMoved(cancel.center()), click(true), click(false)]);
-        assert!(h.state().ui.dialogs.is_empty(), "Cancel closes");
-        assert!(std::sync::Arc::ptr_eq(&h.state().session.active().unwrap().doc, &original));
-    }
-
-    /// Levels' Reset writes the parameter set the dialog opened with in every colour mode (RGB
-    /// channels, Gray's composite, CMYK's inks, Lab's lightness/a/b), dropping stray keys.
-    #[test]
-    fn levels_reset_restores_the_opening_parameters_in_every_mode() {
-        let ctx = egui::Context::default();
-        for mode in ["rgb", "gray", "cmyk", "lab"] {
-            let mut app = app_in_mode(mode);
-            let id = open(&mut app, "image.adjustments.levels").unwrap();
-            let fields = &mut app.ui.dialog_mut(id).unwrap().fields;
-            let defaults = crate::filter_dialog::params_of(fields);
-            fields.insert("inBlack".into(), json!(40));
-            fields.insert("gray".into(), json!({"inWhite": 100}));
-            for key in ["red", "cyan", "a"] {
-                if fields.contains_key(key) {
-                    fields.insert(key.into(), json!({"inBlack": 10, "gamma": 2.0, "inWhite": 180, "outBlack": 5, "outWhite": 250}));
-                }
-            }
-            reset(&ctx, fields);
-            assert_eq!(crate::filter_dialog::params_of(fields), defaults, "{mode}");
-            assert_eq!(fields.get("__adjust"), Some(&json!("levels")), "{mode}: private keys kept");
-        }
     }
 
     fn sample_params(kind: &str) -> Value {
