@@ -1,5 +1,5 @@
 //! Embeds the Remote Canvas page (`apps/photocraft-remote/dist`, built by
-//! `scripts/build-remote.sh`) and, on Windows, the app icon and version info (VERSIONINFO) into
+//! `cargo xtask remote-page`) and, on Windows, the app icon and version info (VERSIONINFO) into
 //! `photocraft.exe`.
 //!
 //! The icon step does nothing on other targets. A missing resource compiler is a warning, so a
@@ -55,8 +55,8 @@ fn remote_assets() {
             }
         }
     } else {
-        println!("cargo:warning=Remote Canvas page not built (run scripts/build-remote.sh); serving a placeholder");
-        let page = "<!doctype html><meta name=viewport content=width=device-width><body style=font-family:sans-serif>The Remote Canvas page wasn't built into this PhotoCraft. Run <code>scripts/build-remote.sh</code>, then rebuild.";
+        println!("cargo:warning=Remote Canvas page not built (run cargo xtask remote-page); serving a placeholder");
+        let page = "<!doctype html><meta name=viewport content=width=device-width><body style=font-family:sans-serif>The Remote Canvas page wasn't built into this PhotoCraft. Run <code>cargo xtask remote-page</code>, then rebuild.";
         let _ = writeln!(code, "    (\"/index.html\", \"text/html; charset=utf-8\", {:?}.as_bytes()),", page);
     }
     code.push_str("];\n");

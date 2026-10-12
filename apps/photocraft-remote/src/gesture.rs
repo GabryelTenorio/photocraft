@@ -113,6 +113,11 @@ impl Gestures {
         }
     }
 
+    /// No finger is down.
+    pub fn idle(&self) -> bool {
+        self.touches.is_empty()
+    }
+
     pub fn down(&mut self, id: i32, x: f64, y: f64, now_ms: f64) -> Vec<Gesture> {
         if !x.is_finite() || !y.is_finite() || self.touches.len() >= MAX_TOUCHES {
             return Vec::new();

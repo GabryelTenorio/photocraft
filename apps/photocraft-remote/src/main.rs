@@ -1,6 +1,6 @@
 //! PhotoCraft Remote Canvas: the page a tablet (an iPad with Apple Pencil) opens to draw in the
 //! desktop app. The desktop app serves it with `--remote` (`apps/photocraft/src/remote_server.rs`,
-//! `photocraft_ui_egui::remote`); build it with `scripts/build-remote.sh`, which writes `dist/`
+//! `photocraft_ui_egui::remote`); build it with `cargo xtask remote-page`, which writes `dist/`
 //! for the desktop build to embed.
 //!
 //! The page shows the app's window (or only the canvas) and sends input back: the Pencil with
@@ -11,6 +11,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod cursor;
+mod finger;
 mod frame;
 mod gesture;
 mod smooth;
@@ -27,5 +28,5 @@ fn main() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    eprintln!("photocraft-remote runs in a tablet's browser: build it with scripts/build-remote.sh and start PhotoCraft with --remote");
+    eprintln!("photocraft-remote runs in a tablet's browser: build it with cargo xtask remote-page and start PhotoCraft with --remote");
 }

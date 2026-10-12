@@ -109,6 +109,7 @@ By default PhotoCraft's own crates log at `info` and everything else at `warn`. 
 | `PHOTOCRAFT_CONTROL_TOKEN_FILE` | Read, or create for a server, the control bearer-token file |
 | `PHOTOCRAFT_AUTOMATION_READ_ROOT` | Desktop app only: automation read root. Headless CLI modes require the `--automation-read-root` flag |
 | `PHOTOCRAFT_AUTOMATION_WRITE_ROOT` | Desktop app only: automation write root. Headless CLI modes require the `--automation-write-root` flag |
+| `PHOTOCRAFT_REMOTE=<port>` | Same as `--remote [port]`: turn [Remote Canvas](remote-canvas.md) on at launch (`1`: the default port, 9876) |
 | `PHOTOCRAFT_CPU_CANVAS=1` | Force the CPU canvas path instead of the wgpu shader canvas |
 | `PHOTOCRAFT_NATIVE_WAYLAND=1` | Linux: stay on native Wayland when a pen is attached (by default the window then opens through Xwayland, because Wayland gives the app no pen input; #639) |
 | `WGPU_BACKEND=dx12` | Pick the wgpu backend(s) (`vulkan`, `dx12`, `metal`, `gl`); overrides `performance.gpuBackend` and the startup fallback |
@@ -127,6 +128,11 @@ By default PhotoCraft's own crates log at `info` and everything else at `warn`. 
 ```
 
 Keys are the field names of `theme::Tokens` (`crates/ui-egui/src/theme.rs`). Edit and save the file while the app runs to see changes immediately, with no recompile. This is compiled out of release builds.
+
+## Remote Canvas (tablet drawing)
+
+Window › Remote Canvas… lets a tablet or phone draw in PhotoCraft from its browser. Build the page
+with `cargo xtask remote-page` before building the app; see [remote-canvas.md](remote-canvas.md).
 
 ## Driving the app programmatically
 

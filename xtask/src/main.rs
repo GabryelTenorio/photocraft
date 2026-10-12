@@ -10,6 +10,7 @@ mod ico;
 mod layers;
 mod perf;
 mod pinned;
+mod remote_page;
 mod scorecard;
 mod sha256;
 mod stats;
@@ -44,6 +45,8 @@ commands:
                   regenerate docs/scorecard.md (--check: fail if it is stale)
   version [set X.Y.Z[-pre]]
                   print the workspace version, or set it (Cargo.toml + Cargo.lock)
+  remote-page     build the Remote Canvas page (apps/photocraft-remote) into its dist/, which the
+                  desktop app embeds (needs the wasm32 target and wasm-bindgen-cli)
   ico <out.ico> <in.png>...
                   pack square PNGs (<= 256 px) into a Windows .ico (see packaging/icons.sh)
 ";
@@ -64,6 +67,7 @@ fn main() -> ExitCode {
         Some("scorecard") => scorecard::run(&root(), &rest),
         Some("version") => version::run(&root(), &rest),
         Some("ico") => ico::run(&rest),
+        Some("remote-page") => remote_page::run_cmd(&root()),
         Some("-h" | "--help" | "help") | None => {
             print!("{USAGE}");
             Ok(())

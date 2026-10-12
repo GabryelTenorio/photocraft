@@ -373,14 +373,14 @@ pub(crate) fn window(app: &mut crate::PhotocraftApp, ctx: &egui::Context) {
             ui.set_width(300.0);
             match (&app.remote.served, &app.remote.link) {
                 (Some(served), Some(link)) => {
-                    let (status, color) = if link.connected() { ("● iPad connected", t.accent) } else { ("Waiting for your iPad…", t.text_dim) };
+                    let (status, color) = if link.connected() { ("● Tablet connected", t.accent) } else { ("Waiting for your tablet or phone…", t.text_dim) };
                     ui.label(egui::RichText::new(status).color(color).strong());
                     ui.add_space(6.0);
                     if let Some(qr) = &served.qr {
                         ui.vertical_centered(|ui| draw_qr(ui, qr, 220.0));
                         ui.add_space(6.0);
                     }
-                    ui.add(egui::Label::new("Scan this with the iPad's camera (or open the address in Safari), then tap Share › Add to Home Screen.").wrap());
+                    ui.add(egui::Label::new("Scan this with the tablet's or phone's camera, or open the address in its browser. Then add it to the home screen (Safari: Share › Add to Home Screen; Chrome: menu › Add to Home screen).").wrap());
                     ui.add_space(4.0);
                     for url in &served.urls {
                         ui.horizontal(|ui| {
@@ -390,9 +390,17 @@ pub(crate) fn window(app: &mut crate::PhotocraftApp, ctx: &egui::Context) {
                             ui.add(egui::Label::new(egui::RichText::new(url).monospace().small().color(t.text_dim)).truncate());
                         });
                     }
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new("Not connecting? Both need the same Wi-Fi, and the firewall must let PhotoCraft in (Windows asks the first time; allow Private networks).")
+                                .small()
+                                .color(t.text_faint),
+                        )
+                        .wrap(),
+                    );
                     ui.add_space(8.0);
                     ui.label(
-                        egui::RichText::new("Pencil draws • one finger pans • pinch zooms and turns • hold a finger to pick a colour • two-finger tap undoes")
+                        egui::RichText::new("Pen draws (the page's finger button lets a finger draw too) • one finger pans • pinch zooms and turns • hold a finger to pick a colour • two-finger tap undoes")
                             .small()
                             .color(t.text_faint),
                     );
@@ -402,7 +410,7 @@ pub(crate) fn window(app: &mut crate::PhotocraftApp, ctx: &egui::Context) {
                     }
                 }
                 _ => {
-                    ui.add(egui::Label::new("Draw in PhotoCraft from an iPad with Apple Pencil, over your Wi-Fi.").wrap());
+                    ui.add(egui::Label::new("Draw in PhotoCraft from a tablet or phone (iPad, Android, Windows) with a pen or a finger, over your Wi-Fi.").wrap());
                     if let Some(e) = &app.remote.error {
                         ui.add_space(4.0);
                         ui.add(egui::Label::new(egui::RichText::new(e).color(t.warning)).wrap());

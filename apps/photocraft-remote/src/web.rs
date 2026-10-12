@@ -1,4 +1,7 @@
-//! The page: draws the frames on a canvas and sends the Pencil, finger and toolbar input back.
+//! The page: draws the frames on a canvas and sends the pen, finger and toolbar input back. It
+//! runs in any modern browser: Safari on iPad and iPhone, Chrome, Samsung Internet and Firefox on
+//! Android, and Edge or Chrome on a Windows tablet. A pen arrives as `pointerType == "pen"` (an
+//! Apple Pencil also as `touchType == "stylus"` touches); fingers are `"touch"`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,6 +12,7 @@ use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlElement, MessageEvent, PointerEvent, WebSocket};
 
 use crate::cursor::{self, Mark, Outline};
+use crate::finger::{FingerStroke, Step};
 use crate::frame::Frame;
 use crate::gesture::{Gesture, Gestures};
 use crate::smooth::{Sample, Smoother};
@@ -19,12 +23,12 @@ const MODES: [(&str, &str); 2] = [("view.screenMode.standard", "Full window"), (
 struct Page {
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
-    /// Drawn over the frames: the brush outline under a hovering Pencil.
+    /// Drawn over the frames: the brush outline under a hovering pen.
     overlay: HtmlCanvasElement,
     overlay_ctx: CanvasRenderingContext2d,
     /// The canvas cursor's outline, as the desktop last reported it.
     outline: Option<Outline>,
-    /// Where the Pencil hovers (page pixels), or `None` when it's touching or out of range.
+    /// Where the pen hovers (page pixels), or `None` when it's touching or out of range.
     hover: Option<(f64, f64)>,
     /// A held finger picking a colour: the ring under it.
     picking: Option<Picking>,
@@ -32,13 +36,22 @@ struct Page {
     foreground: Option<[u8; 3]>,
     status: HtmlElement,
     mode_button: Option<HtmlElement>,
+    finger_button: Option<HtmlElement>,
     ws: Option<WebSocket>,
     key: String,
     width: u32,
     height: u32,
     gestures: Gestures,
-    /// The Pencil is touching the screen (a stroke is in progress).
+    /// The pen (or the drawing finger) is touching the screen: a stroke is in progress.
     pen_down: bool,
+    /// The stroke in progress is the pen's (not a finger's): it counts for palm rejection.
+    stroke_by_pen: bool,
+    /// The pen's eraser end (or eraser button) started the stroke in progress.
+    eraser: bool,
+    /// One finger draws (the toolbar toggle, remembered by the browser).
+    finger_draws: bool,
+    /// The finger that may be drawing, while `finger_draws` is on.
+    finger: Option<FingerStroke>,
     /// The Pencil arrives as touch events (`touchType == "stylus"`): Safari reports it there at a
     /// higher rate than as pointer events, whose pen strokes come out as straight segments. Once
     /// seen, the pen's pointer events only move the hover cursor.
@@ -83,6 +96,11 @@ pub fn start() -> Result<(), JsValue> {
     let overlay_ctx: CanvasRenderingContext2d = overlay.get_context("2d")?.ok_or("no 2d context")?.dyn_into()?;
     let status: HtmlElement = document.get_element_by_id("status").ok_or("no #status")?.dyn_into()?;
     let mode_button = document.get_element_by_id("mode").and_then(|e| e.dyn_into().ok());
+    let finger_button: Option<HtmlElement> = document.get_element_by_id("finger").and_then(|e| e.dyn_into().ok());
+    let finger_draws = stored(FINGER_KEY).as_deref() == Some("1");
+    if let Some(b) = &finger_button {
+        let _ = b.class_list().toggle_with_force("on", finger_draws);
+    }
     let search = window.location().search().unwrap_or_default();
     let key = search.trim_start_matches('?').split('&').find_map(|kv| kv.strip_prefix("k=")).unwrap_or("").to_string();
     if key.is_empty() {
@@ -100,12 +118,17 @@ pub fn start() -> Result<(), JsValue> {
         foreground: None,
         status,
         mode_button,
+        finger_button,
         ws: None,
         key,
         width: 0,
         height: 0,
         gestures: Gestures::default(),
         pen_down: false,
+        stroke_by_pen: false,
+        eraser: false,
+        finger_draws,
+        finger: None,
         touch_stylus: false,
         smoother: Smoother::default(),
         pen_at: (0.0, 0.0),
@@ -264,10 +287,15 @@ impl Page {
     }
 
     fn pen_begin(&mut self, s: Sample) {
+        // A pen landing ends a finger stroke (the hand was resting) or a finger still deciding.
+        if self.finger.take().is_some_and(|f| f.started) {
+            self.pen_end();
+        }
         if self.pen_down {
             return;
         }
         self.pen_down = true;
+        self.stroke_by_pen = true;
         self.set_hover(None);
         self.gestures.pen(true, now());
         let out = self.smoother.down(s);
@@ -350,7 +378,10 @@ impl Page {
             return;
         }
         self.pen_down = false;
-        self.gestures.pen(false, now());
+        if self.stroke_by_pen {
+            self.gestures.pen(false, now());
+        }
+        self.eraser = false;
         let out = self.smoother.up();
         self.send_pen(&out, "m");
         // The lift, where the stroke ended (the desktop adds no point for it).
@@ -368,11 +399,57 @@ impl Page {
             .enumerate()
             .map(|(i, s)| {
                 let phase = if i == 0 { first_phase } else { "m" };
-                json!({"t": "pen", "p": phase, "x": s.x, "y": s.y, "f": s.pressure, "tx": s.tilt_x, "ty": s.tilt_y, "r": s.twist})
+                json!({"t": "pen", "p": phase, "x": s.x, "y": s.y, "f": s.pressure, "tx": s.tilt_x, "ty": s.tilt_y, "r": s.twist, "e": self.eraser})
             })
             .collect();
         if !msgs.is_empty() {
             self.send(Value::Array(msgs));
+        }
+    }
+
+    /// A finger as a full-pressure sample (fingers report no real pressure).
+    fn finger_sample(&self, x: f64, y: f64) -> Option<Sample> {
+        let (x, y) = self.to_window(x, y)?;
+        Some(Sample { x, y, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0, twist: 0.0 })
+    }
+
+    /// Draw what the drawing finger decided.
+    fn finger_step(&mut self, step: Step) {
+        match step {
+            Step::Wait => {}
+            Step::Begin(samples) => {
+                let Some((first, rest)) = samples.split_first() else { return };
+                if self.pen_down {
+                    return;
+                }
+                self.pen_down = true;
+                self.stroke_by_pen = false;
+                let out = self.smoother.down(*first);
+                self.send_pen(&out, "d");
+                self.pen_move(rest);
+            }
+            Step::Move(samples) => self.pen_move(&samples),
+        }
+    }
+
+    /// The drawing finger turns out to be part of a gesture (a second finger landed, or it was
+    /// held to pick a colour): hand it to the gestures.
+    fn finger_to_gestures(&mut self) {
+        let Some(f) = self.finger.take() else { return };
+        if f.started {
+            // A stroke was drawn: keep it, and don't let this gesture count as a tap (undo).
+            if !self.stroke_by_pen {
+                self.pen_end();
+            }
+            let out = self.gestures.down(f.id, f.at.0, f.at.1, f64::NEG_INFINITY);
+            self.gestures(out);
+        } else {
+            let out = self.gestures.down(f.id, f.start.0, f.start.1, f.down_ms);
+            self.gestures(out);
+            if f.at != f.start {
+                let out = self.gestures.moved(f.id, f.at.0, f.at.1);
+                self.gestures(out);
+            }
         }
     }
 
@@ -392,6 +469,10 @@ impl Page {
         let p = page.clone();
         let check = Closure::once_into_js(move || {
             let mut pg = p.borrow_mut();
+            // A drawing finger held still picks a colour, as without finger drawing.
+            if pg.finger.as_ref().is_some_and(|f| f.held(now(), crate::gesture::HOLD_MS)) {
+                pg.finger_to_gestures();
+            }
             let out = pg.gestures.tick(now());
             pg.gestures(out);
         });
@@ -519,12 +600,23 @@ fn pointer_listeners(page: &Shared, canvas: &HtmlCanvasElement) -> Result<(), Js
                 if !pg.touch_stylus
                     && let Some(s) = pg.pointer_sample(&e)
                 {
+                    // The eraser end (Surface Pen, Wacom) or a held eraser button.
+                    pg.eraser = e.buttons() & 32 != 0;
                     pg.pen_begin(s);
                 }
             }
             "touch" => {
-                let out = pg.gestures.down(e.pointer_id(), x, y, now());
-                pg.gestures(out);
+                if pg.finger_draws && pg.finger.is_none() && !pg.pen_down && pg.gestures.idle() {
+                    if let Some(s) = pg.finger_sample(x, y) {
+                        let _ = c.set_pointer_capture(e.pointer_id());
+                        pg.finger = Some(FingerStroke::new(e.pointer_id(), now(), (x, y), s));
+                    }
+                } else {
+                    // A second finger: the first was the start of a pinch or pan.
+                    pg.finger_to_gestures();
+                    let out = pg.gestures.down(e.pointer_id(), x, y, now());
+                    pg.gestures(out);
+                }
                 Page::watch_hold(&p);
             }
             _ => {
@@ -558,8 +650,20 @@ fn pointer_listeners(page: &Shared, canvas: &HtmlCanvasElement) -> Result<(), Js
             }
             "touch" => {
                 let (x, y) = client(&e);
-                let out = pg.gestures.moved(e.pointer_id(), x, y);
-                pg.gestures(out);
+                if pg.finger.as_ref().is_some_and(|f| f.id == e.pointer_id()) {
+                    let samples: Vec<Sample> = coalesced(&e)
+                        .iter()
+                        .filter_map(|s| {
+                            let (x, y) = client(s);
+                            pg.finger_sample(x, y)
+                        })
+                        .collect();
+                    let step = pg.finger.as_mut().map_or(Step::Wait, |f| f.moved((x, y), samples));
+                    pg.finger_step(step);
+                } else {
+                    let out = pg.gestures.moved(e.pointer_id(), x, y);
+                    pg.gestures(out);
+                }
             }
             _ => {
                 if let Some((x, y)) = pg.to_window(client(&e).0, client(&e).1) {
@@ -580,6 +684,18 @@ fn pointer_listeners(page: &Shared, canvas: &HtmlCanvasElement) -> Result<(), Js
                 "pen" => {
                     if !pg.touch_stylus {
                         pg.pen_end();
+                    }
+                }
+                "touch" if pg.finger.as_ref().is_some_and(|f| f.id == e.pointer_id()) => {
+                    if let Some(mut f) = pg.finger.take() {
+                        // A cancelled finger that never drew draws nothing.
+                        if !cancel || f.started {
+                            let step = f.lift();
+                            pg.finger_step(step);
+                            if !pg.stroke_by_pen {
+                                pg.pen_end();
+                            }
+                        }
                     }
                 }
                 "touch" => {
@@ -673,6 +789,18 @@ fn toolbar_listeners(page: &Shared, document: &web_sys::Document) -> Result<(), 
         let p = page.clone();
         listen(&b, "click", true, move |_| p.borrow().send(json!({"t": "menu", "id": id})))?;
     }
+    if let Some(finger) = document.get_element_by_id("finger") {
+        let p = page.clone();
+        listen(&finger, "click", true, move |_| {
+            let mut pg = p.borrow_mut();
+            pg.finger_draws = !pg.finger_draws;
+            store(FINGER_KEY, if pg.finger_draws { "1" } else { "0" });
+            if let Some(b) = &pg.finger_button {
+                let _ = b.class_list().toggle_with_force("on", pg.finger_draws);
+                b.set_title(if pg.finger_draws { "One finger draws (tap to pan with one finger)" } else { "One finger pans (tap to draw with a finger)" });
+            }
+        })?;
+    }
     if let Some(mode) = document.get_element_by_id("mode") {
         let p = page.clone();
         listen(&mode, "click", true, move |_| {
@@ -689,7 +817,20 @@ fn toolbar_listeners(page: &Shared, document: &web_sys::Document) -> Result<(), 
     Ok(())
 }
 
-/// Stop Safari scrolling, zooming or selecting the page under the fingers.
+/// Where the browser remembers the finger toggle.
+const FINGER_KEY: &str = "photocraft-remote-finger-draws";
+
+fn stored(key: &str) -> Option<String> {
+    web_sys::window()?.local_storage().ok()??.get_item(key).ok()?
+}
+
+fn store(key: &str, value: &str) {
+    if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = s.set_item(key, value);
+    }
+}
+
+/// Stop the browser scrolling, zooming or selecting the page under the fingers.
 fn block_browser_gestures(document: &web_sys::Document) -> Result<(), JsValue> {
     for name in ["touchstart", "touchmove", "gesturestart", "gesturechange", "dblclick", "contextmenu", "selectstart"] {
         listen(document, name, false, |e| {
@@ -702,7 +843,7 @@ fn block_browser_gestures(document: &web_sys::Document) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Keep the iPad's screen on while drawing (Screen Wake Lock, Safari 16.4+), again whenever the
+/// Keep the screen on while drawing (Screen Wake Lock: Safari 16.4+, Chrome 84+), again whenever the
 /// page comes back to the front.
 fn keep_awake(document: &web_sys::Document) -> Result<(), JsValue> {
     fn request() {
@@ -715,7 +856,7 @@ fn keep_awake(document: &web_sys::Document) -> Result<(), JsValue> {
     }
     request();
     listen(document, "visibilitychange", true, |_| request())?;
-    // Safari grants the lock only after a user gesture: ask again on the first touch.
+    // Browsers grant the lock only after a user gesture: ask again on the first touch.
     listen(document, "pointerdown", true, |_| request())?;
     Ok(())
 }

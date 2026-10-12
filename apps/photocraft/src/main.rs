@@ -506,7 +506,7 @@ fn main() -> eframe::Result {
             if remote_port.is_some() || left_on {
                 match photocraft_ui_egui::remote::turn_on(&mut app, &cc.egui_ctx) {
                     Ok(()) => {
-                        let lines = vec!["Your iPad can connect. Window › Remote Canvas… shows the QR code.".to_string()];
+                        let lines = vec!["Your tablet or phone can connect. Window › Remote Canvas… shows the QR code.".to_string()];
                         photocraft_ui_egui::notices::post(&mut app, "Remote Canvas is on", lines, false, None);
                     }
                     Err(e) => {
