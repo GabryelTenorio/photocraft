@@ -581,7 +581,7 @@ fn hide_or_show(s: &mut Session, p: &Value) -> Result<Value> {
 fn toggle_lock_transparency(s: &mut Session, p: &Value) -> Result<Value> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let targets: Vec<LayerId> = if crate::layer_multi_cmds::multi(s, p) { crate::layer_multi_cmds::selected(s) } else { vec![layer_param(s, p)?] };
-    let targets: Vec<LayerId> = targets.into_iter().filter(|id| st.doc.layer(*id).is_some_and(|l| !is_background(l))).collect();
+    let targets: Vec<LayerId> = targets.into_iter().filter(|id| st.doc.layer(*id).is_some_and(|l| !st.doc.is_background(l.id))).collect();
     if targets.is_empty() {
         return Err(EngineError::Other("the Background layer can't lock transparent pixels".into()));
     }
@@ -1568,7 +1568,7 @@ mod tests {
     fn slash_toggles_lock_transparent_pixels_but_not_on_the_background() {
         let mut s = session(8);
         let bg = doc(&s).layers[0].id;
-        assert!(is_background(doc(&s).layer(bg).unwrap()));
+        assert!(doc(&s).is_background(bg));
         s.execute("layer.new.layer", json!({})).unwrap();
         let top = active(&s).id;
         let locked = |s: &Session, id: LayerId| doc(s).layer(id).unwrap().locks.transparency;
