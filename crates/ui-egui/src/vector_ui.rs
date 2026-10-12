@@ -2157,14 +2157,9 @@ mod tests {
         PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
         h.run_steps(4);
         let click_fill = |h: &mut egui_kittest::Harness<'_, PhotocraftApp>| {
-            let label = h.query_all(egui_kittest::kittest::by().label("Fill:").include_labels()).next().expect("the Fill label").rect();
-            let at = egui::pos2(label.right() + h.ctx.global_style().spacing.item_spacing.x + 7.0, label.center().y);
-            h.hover_at(at);
-            h.step();
-            for pressed in [true, false] {
-                h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
-                h.step();
-            }
+            h.get_by_label("Fill color").click();
+            h.run_steps(3);
+            h.get_by_label("No Color").click();
             h.run_steps(2);
         };
         // Stroke width field is available on Path Selection bar too.
@@ -2181,7 +2176,7 @@ mod tests {
         assert_eq!(stroke.paint, photocraft_doc::Fill::Solid(photocraft_doc::Color::rgba(0.0, 0.0, 1.0, 1.0)));
         // Fill toggle.
         click_fill(&mut h);
-        assert_eq!(shape(h.state()).0, None, "unchecking Fill removed the shape's fill");
+        assert_eq!(shape(h.state()).0, None, "No Color removed the shape's fill");
         // No shape selected: renders hint text instead.
         h.state_mut().run("layer.new.layer", json!({})).unwrap();
         h.run_steps(2);
