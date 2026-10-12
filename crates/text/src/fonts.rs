@@ -483,11 +483,114 @@ pub fn face_count(bytes: &[u8]) -> usize {
     }
 }
 
+fn is_style_token(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let lower = s.to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "thin"
+            | "hairline"
+            | "extralight"
+            | "ultralight"
+            | "light"
+            | "regular"
+            | "roman"
+            | "book"
+            | "medium"
+            | "semibold"
+            | "demibold"
+            | "demi"
+            | "bold"
+            | "extrabold"
+            | "ultrabold"
+            | "heavy"
+            | "black"
+            | "normal"
+            | "plain"
+            | "italic"
+            | "oblique"
+            | "slanted"
+            | "it"
+            | "obl"
+            | "w1"
+            | "w2"
+            | "w3"
+            | "w4"
+            | "w5"
+            | "w6"
+            | "w7"
+            | "w8"
+            | "w9"
+            | "el"
+            | "l"
+            | "r"
+            | "m"
+            | "db"
+            | "b"
+            | "eb"
+            | "ub"
+            | "h"
+    ) || lower.contains("bold")
+        || lower.contains("italic")
+        || lower.contains("oblique")
+        || lower.contains("light")
+        || lower.contains("black")
+        || lower.contains("medium")
+        || lower.contains("thin")
+        || lower.contains("heavy")
+        || lower.contains("regular")
+        || lower.contains("roman")
+        || lower.contains("book")
+        || lower.contains("demi")
+}
+
+fn is_vendor_prefix(s: &str) -> bool {
+    matches!(
+        s.to_ascii_uppercase().as_str(),
+        "FOT" | "A-OTF" | "OTF" | "DF" | "DFP" | "DFG" | "TP" | "TB" | "HG" | "HGP" | "HGS" | "AR" | "UD"
+    )
+}
+
+fn split_postscript(ps: &str) -> (&str, &str) {
+    if !ps.contains('-') {
+        return (ps, "");
+    }
+    let (prefix, rest) = if let Some(stripped) = ps.strip_prefix("A-OTF-") {
+        ("A-OTF-", stripped)
+    } else {
+        ("", ps)
+    };
+    if let Some((f, s)) = rest.rsplit_once('-') {
+        let is_style = is_style_token(s);
+        if is_style || (prefix.is_empty() && ps.matches('-').count() > 1) || !prefix.is_empty() {
+            if !is_style && is_vendor_prefix(f) {
+                return (ps, "");
+            }
+            let fam_len = prefix.len() + f.len();
+            return (&ps[..fam_len], s);
+        }
+    }
+    if let Some((fam, style)) = ps.split_once('-') {
+        if is_vendor_prefix(fam) && !is_style_token(style) {
+            return (ps, "");
+        }
+        return (fam, style);
+    }
+    (ps, "")
+}
+
 /// Heuristic PostScript-name split: `MyriadPro-BoldIt` → ("Myriad Pro", 700, italic).
 pub fn guess_from_postscript(ps: &str) -> ResolvedFont {
-    let (fam, style) = ps.split_once('-').unwrap_or((ps, ""));
-    let fam = fam.trim_end_matches("MT").trim_end_matches("PS").trim_end_matches("Std").trim_end_matches("Pro");
-    let pro = ps.split_once('-').map_or(ps, |p| p.0);
+    let (fam, style) = split_postscript(ps);
+    let pro = fam;
+    let fam = fam
+        .trim_end_matches("MT")
+        .trim_end_matches("PS")
+        .trim_end_matches("Std")
+        .trim_end_matches("Pro")
+        .trim_end();
     let suffix = if pro.ends_with("Pro") {
         " Pro"
     } else if pro.ends_with("Std") {
@@ -499,28 +602,32 @@ pub fn guess_from_postscript(ps: &str) -> ResolvedFont {
     let mut family = String::new();
     let chars: Vec<char> = fam.chars().collect();
     for (i, &c) in chars.iter().enumerate() {
-        if i > 0 && c.is_uppercase() && (chars[i - 1].is_lowercase() || chars.get(i + 1).is_some_and(|n| n.is_lowercase()) && chars[i - 1].is_uppercase()) {
+        if i > 0
+            && c.is_uppercase()
+            && (chars[i - 1].is_lowercase()
+                || (chars.get(i + 1).is_some_and(|n| n.is_lowercase()) && chars[i - 1].is_uppercase()))
+        {
             family.push(' ');
         }
         family.push(c);
     }
     family.push_str(suffix);
     let s = style.to_lowercase();
-    let weight = if s.contains("thin") || s.contains("hairline") {
+    let weight = if s.contains("thin") || s.contains("hairline") || s == "w1" {
         100
-    } else if s.contains("extralight") || s.contains("ultralight") {
+    } else if s.contains("extralight") || s.contains("ultralight") || s == "el" || s == "w2" {
         200
-    } else if s.contains("light") {
+    } else if s.contains("light") || s == "l" || s == "w3" {
         300
-    } else if s.contains("medium") {
+    } else if s.contains("medium") || s == "m" || s == "w5" {
         500
-    } else if s.contains("semibold") || s.contains("demibold") || s.contains("demi") {
+    } else if s.contains("semibold") || s.contains("demibold") || s.contains("demi") || s == "db" || s == "w6" {
         600
-    } else if s.contains("extrabold") || s.contains("ultrabold") || s.contains("heavy") {
+    } else if s.contains("extrabold") || s.contains("ultrabold") || s.contains("heavy") || s == "eb" || s == "w8" {
         800
-    } else if s.contains("black") {
+    } else if s.contains("black") || s == "ub" || s == "w9" {
         900
-    } else if s.contains("bold") {
+    } else if s.contains("bold") || s == "b" || s == "w7" {
         700
     } else {
         400

@@ -513,6 +513,17 @@ fn postscript_names() {
     assert_eq!((g.family.as_str(), g.weight, g.italic), ("Times New Roman", 400, false));
     let g = fonts::guess_from_postscript("Arial-BoldMT");
     assert_eq!((g.family.as_str(), g.weight), ("Arial", 700));
+    // Vendor prefixes and CJK styles (#3833)
+    let g = fonts::guess_from_postscript("FOT-NewRodinPro-Regular");
+    assert_eq!((g.family.as_str(), g.weight), ("FOT-New Rodin Pro", 400));
+    let g = fonts::guess_from_postscript("FOT-NewRodinPro-B");
+    assert_eq!((g.family.as_str(), g.weight), ("FOT-New Rodin Pro", 700));
+    let g = fonts::guess_from_postscript("FOT-NewRodin Pro");
+    assert_eq!((g.family.as_str(), g.weight), ("FOT-New Rodin Pro", 400));
+    let g = fonts::guess_from_postscript("A-OTF-ShinGoPro-Regular");
+    assert_eq!((g.family.as_str(), g.weight), ("A-OTF-Shin Go Pro", 400));
+    let g = fonts::guess_from_postscript("DF-Hei-W7");
+    assert_eq!((g.family.as_str(), g.weight), ("DF-Hei", 700));
     let mut db = fonts::FontDb::new();
     let r = db.resolve_postscript("Inter-SemiBold");
     assert_eq!((r.family.as_str(), r.weight, r.exact), ("Inter", 600, true));
