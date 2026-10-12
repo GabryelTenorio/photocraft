@@ -10,7 +10,10 @@
 //! - `session.list`, `doc.open {path}`, `doc.new {…file.new params}`,
 //!   `doc.place {path, scale?, fit?, center?, index?}` (#2810: the read root is the scope,
 //!   the counterpart of the refused ambient `file.placeEmbedded`),
-//!   `doc.save {path?, format?, quality?, index?}`, `doc.inspect {index?}`,
+//!   `doc.exportLayers {dir, format?, prefix?, visibleOnly?, quality?, index?}`,
+//!   `doc.exportDataSets {dir, format?, dataSets?, naming?, index?}`,
+//!   `doc.importDataSets {path, delimiter?, index?}` (#3216: the same treatment for the export
+//!   and CSV half of #2810), `doc.save {path?, format?, quality?, index?}`, `doc.inspect {index?}`,
 //!   `doc.render {index?, maxSide?, path?}` (writes a PNG to `path`, else
 //!   returns it base64-encoded), `doc.select {index}`, `doc.close {index?}`
 //! - `batch {steps: [{command, params?, wait?} | {method, params?}], stopOnError?}`
@@ -27,7 +30,7 @@ use serde_json::{Value, json};
 use crate::budgets::{BatchReplyBudget, write_reply};
 use crate::security::{
     ConnectionLimiter, LineRead, MAX_BATCH_STEPS, MAX_CONNECTIONS, MAX_REQUEST_BYTES, authentication_reply, configure_stream, discard_rest_of_line,
-    read_bounded_line,
+    read_bounded_line, repeat_auth_reply,
 };
 use crate::{AutomationError, Headless};
 
@@ -42,6 +45,9 @@ pub const METHODS: &[&str] = &[
     "doc.place",
     "doc.new",
     "doc.save",
+    "doc.exportLayers",
+    "doc.exportDataSets",
+    "doc.importDataSets",
     "doc.inspect",
     "doc.render",
     "doc.select",
@@ -100,11 +106,10 @@ impl Headless {
             }
             "doc.place" => {
                 let path = str_of(&p, "path").ok_or_else(|| bad("doc.place needs `path`"))?;
-                let index = p.get("index").and_then(Value::as_u64).map(|i| i as usize);
                 let mut opts = p.as_object().cloned().unwrap_or_default();
                 opts.remove("path");
                 opts.remove("index");
-                self.place(index, path, &Value::Object(opts))
+                self.place(index_of(&p), path, &Value::Object(opts))
             }
             "doc.new" => self.command_run("file.new", p),
             "doc.save" => {
@@ -118,6 +123,21 @@ impl Headless {
                 }
                 let path = str_of(&p, "path").map(PathBuf::from);
                 self.save(index_of(&p), path.as_deref(), str_of(&p, "format"), &opts)
+            }
+            "doc.exportLayers" | "doc.exportDataSets" => {
+                let dir = str_of(&p, "dir").ok_or_else(|| bad(format!("{method} needs `dir`")))?;
+                let mut opts = p.as_object().cloned().unwrap_or_default();
+                opts.remove("dir");
+                opts.remove("index");
+                let opts = Value::Object(opts);
+                if method == "doc.exportLayers" { self.export_layers(index_of(&p), dir, &opts) } else { self.export_data_sets(index_of(&p), dir, &opts) }
+            }
+            "doc.importDataSets" => {
+                let path = str_of(&p, "path").ok_or_else(|| bad("doc.importDataSets needs `path`"))?;
+                let mut opts = p.as_object().cloned().unwrap_or_default();
+                opts.remove("path");
+                opts.remove("index");
+                self.import_data_sets(index_of(&p), path, &Value::Object(opts))
             }
             "doc.inspect" => self.inspect(index_of(&p)),
             "doc.render" => {
@@ -268,7 +288,7 @@ fn serve_tcp_connection(h: &Mutex<Headless>, stream: std::net::TcpStream, token:
             LineRead::Line => {}
         }
         let reply = if authenticated {
-            respond(h, &line)
+            repeat_auth_reply(&line).unwrap_or_else(|| respond(h, &line))
         } else {
             let (reply, ok) = authentication_reply(&line, token);
             authenticated = ok;
@@ -623,6 +643,81 @@ mod tests {
     }
 
     #[test]
+    fn doc_export_layers_writes_only_beneath_the_write_root() {
+        let base = std::env::temp_dir().join(format!("pc-doc-export-layers-{}", std::process::id()));
+        let root = base.join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut h = Headless::with_workspace(crate::AuthorizedWorkspace::new(Some(&root), Some(&root)).unwrap());
+        h.handle("doc.new", json!({"width": 12, "height": 8, "background": "white", "name": "card"})).unwrap();
+        h.handle("engine.execute", json!({"command": "layer.new.layer", "params": {"name": "Badge"}})).unwrap();
+
+        let out = root.join("out");
+        let exported = h.handle("doc.exportLayers", json!({"dir": out.to_string_lossy(), "format": "png", "prefix": "card"})).unwrap();
+        assert_eq!(exported["count"].as_u64(), Some(2), "{exported}");
+        let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names.len(), 2, "{exported}");
+        for name in names {
+            assert!(name.starts_with("card_") && name.ends_with(".png"), "{name}");
+            let bytes = std::fs::read(out.join(&name)).unwrap();
+            assert_eq!(photocraft_codecs::decode(&bytes).unwrap().dimensions(), (12, 8), "{name}");
+        }
+        // Outside the write root nothing is created, not even the directory.
+        let escaped = base.join("escaped");
+        let refused = h.handle("doc.exportLayers", json!({"dir": escaped.to_string_lossy()})).unwrap_err().to_string();
+        assert!(refused.contains("must be inside the automation root"), "{refused}");
+        assert!(!escaped.exists());
+        // The ambient command keeps its refusal for the very same directory.
+        let ambient =
+            h.handle("engine.execute", json!({"command": "file.export.layersToFiles", "params": {"dir": out.to_string_lossy()}})).unwrap_err().to_string();
+        assert!(ambient.contains("ambient filesystem paths"), "{ambient}");
+        // Release directory capabilities before cleanup on Windows.
+        drop(h);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn doc_export_data_sets_refuse_collisions_and_import_reads_the_root() {
+        let base = std::env::temp_dir().join(format!("pc-doc-data-sets-{}", std::process::id()));
+        let root = base.join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut h = Headless::with_workspace(crate::AuthorizedWorkspace::new(Some(&root), Some(&root)).unwrap());
+        h.handle("doc.new", json!({"width": 8, "height": 8, "background": "white", "name": "card"})).unwrap();
+        let inspected = h.handle("doc.inspect", json!({})).unwrap();
+        let layer = inspected["layers"][0]["id"].as_u64().expect("the layer id");
+        h.handle("engine.execute", json!({"command": "image.variables.define", "params": {"defs": [{"name": "show", "layer": layer, "type": "visibility"}]}}))
+            .unwrap();
+        h.handle(
+            "engine.execute",
+            json!({"command": "image.variables.dataSets", "params": {"dataSets": [
+                {"name": "one", "values": [{"variable": "show", "kind": "visibility", "value": true}]},
+                {"name": "two", "values": [{"variable": "show", "kind": "visibility", "value": false}]},
+            ]}}),
+        )
+        .unwrap();
+
+        let sets = root.join("sets");
+        let exported = h.handle("doc.exportDataSets", json!({"dir": sets.to_string_lossy(), "format": "png"})).unwrap();
+        assert_eq!(exported["count"].as_u64(), Some(2), "{exported}");
+        assert_eq!(std::fs::read_dir(&sets).unwrap().count(), 2, "{exported}");
+        // Colliding names are refused as in the command, before any file is written.
+        let clash = root.join("clash");
+        let refused = h.handle("doc.exportDataSets", json!({"dir": clash.to_string_lossy(), "naming": "{document}"})).unwrap_err().to_string();
+        assert!(refused.contains("{index}"), "{refused}");
+        assert_eq!(std::fs::read_dir(&clash).unwrap().count(), 0, "no file of the refused batch");
+        // A CSV from the read root, and one outside it.
+        std::fs::write(root.join("sets.csv"), "Data Set,show\none,true\ntwo,false\n").unwrap();
+        let imported = h.handle("doc.importDataSets", json!({"path": "sets.csv"})).unwrap();
+        assert_eq!(imported["imported"].as_u64(), Some(2), "{imported}");
+        std::fs::write(base.join("outside.csv"), "Data Set,show\none,true\n").unwrap();
+        let outside = h.handle("doc.importDataSets", json!({"path": base.join("outside.csv").to_string_lossy()})).unwrap_err().to_string();
+        assert!(outside.contains("must be inside the automation root"), "{outside}");
+        // Release directory capabilities before cleanup on Windows.
+        drop(h);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn trusted_local_render_keeps_full_size_behavior() {
         let mut h = Headless::trusted_local();
         h.handle("doc.new", json!({"width": 2049, "height": 1})).unwrap();
@@ -683,6 +778,36 @@ mod tests {
         let v: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(v["id"], "a");
         assert!(v["result"].as_array().unwrap().iter().any(|m| m == "batch"));
+    }
+
+    #[test]
+    fn tcp_repeat_auth_reports_already_authenticated_and_keeps_serving() {
+        use std::io::{BufReader, Write as _};
+        const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let h = Arc::new(Mutex::new(Headless::new()));
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = serve_tcp("127.0.0.1:0", h, TOKEN.into(), move |a| tx.send(a).unwrap());
+        });
+        let addr = rx.recv().unwrap();
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        let mut reader = BufReader::new(s.try_clone().unwrap());
+        let mut line = String::new();
+        for id in ["auth", "again"] {
+            writeln!(s, r#"{{"id":"{id}","method":"auth","params":{{"token":"{TOKEN}"}}}}"#).unwrap();
+            line.clear();
+            reader.read_line(&mut line).unwrap();
+        }
+        let again: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(again["id"], "again");
+        assert_eq!(again["ok"], false);
+        assert_eq!(again["error"], "already authenticated");
+        writeln!(s, r#"{{"id":"m","method":"methods"}}"#).unwrap();
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["id"], "m");
+        assert_eq!(v["ok"], true);
     }
 
     #[test]
