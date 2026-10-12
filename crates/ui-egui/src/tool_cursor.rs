@@ -106,6 +106,7 @@ fn hand_with(ctx: &egui::Context, closed: bool, bitmap: bool) -> CursorIcon {
 
 fn show(painter: &Painter, at: Pos2, shape: Shape) -> CursorIcon {
     let ctx = painter.ctx();
+    remember(ctx, shape.clone());
     // Where cursor images can't be uploaded (immediate viewports, the web), paint the shape.
     if native(ctx) {
         let scale = native_scale(ctx);
@@ -123,6 +124,56 @@ fn show(painter: &Painter, at: Pos2, shape: Shape) -> CursorIcon {
     }
     paint(painter, at, &shape);
     CursorIcon::None
+}
+
+/// The outline a canvas cursor showed, in points, for the Remote Canvas page (which draws it under
+/// a hovering Pencil itself: an OS cursor never appears in the window capture).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Outline {
+    Circle {
+        radius: f32,
+        centre: bool,
+    },
+    Crosshair {
+        length: f32,
+        gap: f32,
+    },
+    /// A brush tip's closed rings of point offsets from the hotspot.
+    Rings {
+        rings: Arc<[Vec<Vec2>]>,
+        centre: bool,
+    },
+}
+
+#[derive(Clone)]
+struct Shown {
+    pass: u64,
+    shape: Shape,
+}
+
+fn shown_id() -> egui::Id {
+    egui::Id::new("photocraft-tool-cursor-shown")
+}
+
+fn remember(ctx: &egui::Context, shape: Shape) {
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| d.insert_temp(shown_id(), Shown { pass, shape }));
+}
+
+/// The outline the canvas showed in this pass or the one before (`None`: the pointer is off the
+/// canvas, or the tool has no outline).
+pub(crate) fn last_outline(ctx: &egui::Context) -> Option<Outline> {
+    let shown = ctx.data(|d| d.get_temp::<Shown>(shown_id()))?;
+    if shown.pass.saturating_add(1) < ctx.cumulative_pass_nr() {
+        return None;
+    }
+    extent(&shown.shape)?;
+    match shown.shape {
+        Shape::Circle { radius, centre } => Some(Outline::Circle { radius, centre }),
+        Shape::Crosshair { length, gap } => Some(Outline::Crosshair { length, gap }),
+        Shape::Outline { rings, centre } => Some(Outline::Rings { rings, centre }),
+        Shape::Hand { .. } => None,
+    }
 }
 
 fn cached_image(ctx: &egui::Context, shape: &Shape, scale: f32) -> Option<CustomCursorImage> {
