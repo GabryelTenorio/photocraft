@@ -14,8 +14,12 @@ use serde_json::{Value, json};
 type Harness = egui_kittest::Harness<'static, PhotocraftApp>;
 
 fn harness() -> Option<Harness> {
+    harness_with_size(egui::vec2(900.0, 640.0))
+}
+
+fn harness_with_size(size: egui::Vec2) -> Option<Harness> {
     let built = std::panic::catch_unwind(|| {
-        egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 640.0)).with_max_steps(64).wgpu().build_eframe(|cc| {
+        egui_kittest::Harness::builder().with_size(size).with_max_steps(64).wgpu().build_eframe(|cc| {
             PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
             let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
             if let Some(rs) = cc.wgpu_render_state.as_ref() {
@@ -131,4 +135,49 @@ fn a_drag_inside_the_canvas_does_not_scroll() {
     }
     assert_eq!(xf(&h).center, start.center);
     button_at(&mut h, from + egui::vec2(90.0, 60.0), false);
+}
+
+#[test]
+fn rotated_marquee_scrolls_on_the_axis_that_is_visibly_clipped() {
+    let Some(mut h) = harness_with_size(egui::vec2(1200.0, 640.0)) else { return };
+    setup(&mut h, "rectMarquee");
+    let rect = xf(&h).rect;
+    assert!(rect.width() > rect.height());
+    // Fits horizontally before rotation, but at 90 degrees it overflows vertically.
+    let width = ((rect.width() + rect.height()) / 2.0) as u32;
+    let height = (rect.width() * 2.0) as u32;
+    for overscroll in [true, false] {
+        {
+            let app = h.state_mut();
+            app.run("file.close", json!({"discard": true})).expect("close");
+            app.run("file.new", json!({"width": width, "height": height, "background": "white"})).expect("new");
+            app.run("prefs.set", json!({"path": "tools.overscroll", "value": overscroll})).expect("overscroll");
+            app.sync_views();
+        }
+        control(&mut h, "ui.set", json!({"tool": "rectMarquee", "zoom": 1.0, "center": [width / 2, height / 2]}));
+        h.state_mut().ui.views[0].rotation = 90.0;
+        h.run_steps(3);
+        let start = xf(&h);
+        let from = start.rect.center();
+        let outside = egui::pos2(from.x + 30.0, start.rect.bottom() + 40.0);
+        pointer_at(&mut h, from);
+        button_at(&mut h, from, true);
+        pointer_at(&mut h, outside);
+        h.run_steps(30);
+        let moved = xf(&h).center[0] - start.center[0];
+        if let Some(dir) = std::env::var_os("CRAFT_UI_VISUAL_FIXTURES") {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir).expect("fixture directory");
+            h.render().expect("render").save(dir.join(format!("rotated-marquee-overscroll-{overscroll}.png"))).expect("save fixture");
+        }
+        assert!(moved > 10.0, "rotated vertical overflow must scroll document x, overscroll={overscroll}, moved={moved}");
+        let limit = width as f32 - start.rect.height() / (2.0 * start.zoom);
+        assert!((xf(&h).center[0] - limit).abs() < 0.01, "stops at the rotated image edge, overscroll={overscroll}");
+        assert!((xf(&h).center[1] - start.center[1]).abs() < 0.01);
+        button_at(&mut h, outside, false);
+        h.run_steps(3);
+        let after = xf(&h).center;
+        h.run_steps(10);
+        assert_eq!(xf(&h).center, after);
+    }
 }

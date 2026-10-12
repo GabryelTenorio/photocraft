@@ -3,6 +3,7 @@
 //! toward the pointer, so a selection can be larger than what is on screen. The view stops at the
 //! scroll limits (it never auto-scrolls an image that already fits into empty pasteboard).
 
+use crate::canvas::ViewXform;
 use crate::state::View;
 use egui::{Pos2, Rect, Vec2, vec2};
 
@@ -35,33 +36,37 @@ pub fn edge_step(pointer: Pos2, rect: Rect, dt: f32) -> Vec2 {
     vec2(axis(past(pointer.x, rect.left(), rect.right())), axis(past(pointer.y, rect.top(), rect.bottom())))
 }
 
-/// Move `view.center` by `doc_step` (document pixels), never past the scroll limits in the
+/// Move the camera by `step` in screen points, never past the image's on-screen bounds in the
 /// direction of travel. A view the user already panned past a limit (Overscroll on) is not pulled
-/// back: it just doesn't scroll further out. `size` is the canvas in points, already divided by
-/// the pixel aspect. True when the view moved.
-pub fn scroll(view: &mut View, doc_step: Vec2, size: Vec2, ppp: f32) -> bool {
-    if !doc_step.x.is_finite() || !doc_step.y.is_finite() || doc_step == Vec2::ZERO {
+/// back: it just doesn't scroll further out. True when the view moved.
+pub fn scroll(view: &mut View, step: Vec2, xf: ViewXform) -> bool {
+    if !step.is_finite() || step == Vec2::ZERO || !xf.zoom.is_finite() || xf.zoom <= 0.0 {
         return false;
     }
-    // Only an axis where the image is larger than the view scrolls: one that fits stays put.
-    let zoom = view.zoom / if ppp.is_finite() && ppp > 0.0 { ppp } else { 1.0 };
-    let larger = |len: u32, size: f32| zoom.is_finite() && zoom > 0.0 && len as f32 * zoom > size;
-    let doc_step = vec2(if larger(view.doc_size[0], size.x) { doc_step.x } else { 0.0 }, if larger(view.doc_size[1], size.y) { doc_step.y } else { 0.0 });
-    if doc_step == Vec2::ZERO {
+    let image = xf.image_bounds(view.doc_size);
+    if !image.is_finite() || !xf.rect.is_finite() {
         return false;
     }
-    let current = view.center;
-    let mut limited = view.clone();
-    limited.center = [current[0] + doc_step.x, current[1] + doc_step.y];
-    let wanted = limited.center;
-    crate::scrollbars::clamp_view(&mut limited, size, ppp);
-    let axis = |cur: f32, want: f32, lim: f32| {
-        if want > cur { want.min(cur.max(lim)) } else { want.max(cur.min(lim)) }
+    // Compare screen axes before unrotating: a document axis that fits before rotation may
+    // be clipped afterwards, and a vertical screen drag must remain vertical at any angle.
+    let axis = |step: f32, lo: f32, hi: f32, v0: f32, v1: f32| {
+        if hi - lo <= v1 - v0 {
+            0.0
+        } else if step > 0.0 {
+            step.min((hi - v1).max(0.0))
+        } else {
+            step.max((lo - v0).min(0.0))
+        }
     };
-    let next = [axis(current[0], wanted[0], limited.center[0]), axis(current[1], wanted[1], limited.center[1])];
-    let moved = (next[0] - current[0]).abs() > 1e-3 || (next[1] - current[1]).abs() > 1e-3;
+    let step = vec2(
+        axis(step.x, image.left(), image.right(), xf.rect.left(), xf.rect.right()),
+        axis(step.y, image.top(), image.bottom(), xf.rect.top(), xf.rect.bottom()),
+    );
+    let d = xf.unmap_vec(step) / xf.zoom;
+    let moved = d.is_finite() && (d.x.abs() > 1e-3 || d.y.abs() > 1e-3);
     if moved {
-        view.center = next;
+        view.center[0] += d.x;
+        view.center[1] += d.y;
     }
     moved
 }
@@ -70,6 +75,19 @@ pub fn scroll(view: &mut View, doc_step: Vec2, size: Vec2, ppp: f32) -> bool {
 mod tests {
     use super::*;
     use egui::pos2;
+
+    // Existing unrotated cases express their requested movement in document pixels.
+    fn scroll(view: &mut View, doc_step: Vec2, size: Vec2, ppp: f32) -> bool {
+        let xf = ViewXform {
+            rect: Rect::from_min_size(Pos2::ZERO, size),
+            zoom: view.zoom / ppp,
+            center: view.center,
+            flip: false,
+            rotation: view.rotation,
+            aspect: 1.0,
+        };
+        super::scroll(view, doc_step * xf.zoom, xf)
+    }
 
     fn rect() -> Rect {
         Rect::from_min_max(pos2(100.0, 50.0), pos2(500.0, 350.0))
@@ -159,5 +177,47 @@ mod tests {
         let mut v = view(1.0, [1000.0, 500.0]);
         assert!(!scroll(&mut v, vec2(f32::NAN, 0.0), vec2(400.0, 300.0), 1.0));
         assert_eq!(v.center, [1000.0, 500.0]);
+    }
+
+    #[test]
+    fn quarter_turn_limits_follow_the_displayed_image_with_hidpi_and_pixel_aspect() {
+        for rotation in [-90.0, 90.0] {
+            for flip in [false, true] {
+                let mut v = View { zoom: 2.0, center: [300.0, 600.0], doc_size: [600, 1200], rotation, ..Default::default() };
+                let xf = ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 400.0)), zoom: 1.0, center: v.center, flip, rotation, aspect: 2.0 };
+                assert!(super::scroll(&mut v, vec2(0.0, 10_000.0), xf));
+                // At 2:1 pixel aspect the document's 600-pixel width is 1200 screen points
+                // tall after rotation. The 400-point viewport exposes 200 document pixels.
+                let want = if rotation > 0.0 { 500.0 } else { 100.0 };
+                assert!((v.center[0] - want).abs() < 0.01, "{rotation}, flip={flip}: {:?}", v.center);
+                assert!((v.center[1] - 600.0).abs() < 0.01);
+                assert!(!crate::scrollbars::clamp_view_with_aspect(&mut v, xf.rect.size(), 2.0, 2.0), "the next frame preserves the auto-scroll limit");
+                let xf = ViewXform { center: v.center, ..xf };
+                assert!(!super::scroll(&mut v, vec2(0.0, 20.0), xf));
+                v.center = [300.0, 600.0];
+                let xf = ViewXform { center: v.center, ..xf };
+                assert!(super::scroll(&mut v, vec2(10_000.0, 0.0), xf));
+                let want_y = if (rotation > 0.0) == flip { 800.0 } else { 400.0 };
+                assert!((v.center[1] - want_y).abs() < 0.01 && (v.center[0] - 300.0).abs() < 0.01, "mirrored horizontal limit: {:?}", v.center);
+                assert!(!crate::scrollbars::clamp_view_with_aspect(&mut v, xf.rect.size(), 2.0, 2.0));
+            }
+        }
+    }
+
+    #[test]
+    fn oblique_rotation_keeps_a_vertical_scroll_vertical_and_a_fitting_axis_still() {
+        for flip in [false, true] {
+            let mut v = View { zoom: 1.0, center: [300.0, 300.0], doc_size: [600, 600], rotation: 45.0, ..Default::default() };
+            let xf =
+                ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(900.0, 400.0)), zoom: 1.0, center: v.center, flip, rotation: v.rotation, aspect: 1.0 };
+            // A 600-pixel square at 45 degrees is about 849 points across: it fits horizontally
+            // but is clipped vertically. Gating document axes would produce a diagonal drift.
+            assert!(!super::scroll(&mut v, vec2(30.0, 0.0), xf));
+            assert!(super::scroll(&mut v, vec2(0.0, 30.0), xf));
+            let after = ViewXform { center: v.center, ..xf };
+            let displacement = after.to_screen(300.0, 300.0) - xf.to_screen(300.0, 300.0);
+            assert!(displacement.x.abs() < 0.01 && (displacement.y + 30.0).abs() < 0.01, "{displacement:?}");
+            assert!(!crate::scrollbars::clamp_view_with_aspect(&mut v, xf.rect.size(), 1.0, 1.0));
+        }
     }
 }

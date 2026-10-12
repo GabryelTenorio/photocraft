@@ -855,6 +855,14 @@ impl ViewXform {
         let u = self.unmap_vec(d);
         [(u.x + self.center[0]) as f64, (u.y + self.center[1]) as f64]
     }
+    /// On-screen bounds of the image, including camera rotation and pixel aspect correction.
+    pub fn image_bounds(self, size: [u32; 2]) -> Rect {
+        let (c, s) = self.sincos();
+        let w = size[0] as f32 * self.sx() * self.zoom;
+        let h = size[1] as f32 * self.zoom;
+        let center = self.to_screen(size[0] as f32 / 2.0, size[1] as f32 / 2.0);
+        Rect::from_center_size(center, vec2(c.abs() * w + s.abs() * h, s.abs() * w + c.abs() * h))
+    }
     pub fn doc_rect(&self, r: DRect) -> Rect {
         let pts = [
             self.to_screen(r.x0 as f32, r.y0 as f32),
@@ -2599,7 +2607,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         fill_view(&mut view, &doc, rect.size(), ppp, aspect);
     }
     // Preferences › Tools › Overscroll off: clamp before anything is drawn (scrollbars.rs).
-    if !app.session.prefs().tools.overscroll && crate::scrollbars::clamp_view(&mut view, rect.size() / vec2(aspect, 1.0), ppp) {
+    if !app.session.prefs().tools.overscroll && crate::scrollbars::clamp_view_with_aspect(&mut view, rect.size(), ppp, aspect) {
         ctx.request_repaint();
     }
     let flip = app.ui.view.flip_horizontal;
@@ -2993,7 +3001,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             view.center[1] -= d.y;
         }
         // Overscroll off: the glide stops at the pan limit, as the scrollbars do.
-        if !app.session.prefs().tools.overscroll && crate::scrollbars::clamp_view(&mut view, rect.size() / vec2(aspect, 1.0), ppp) {
+        if !app.session.prefs().tools.overscroll && crate::scrollbars::clamp_view_with_aspect(&mut view, rect.size(), ppp, aspect) {
             ctx.data_mut(|m| m.get_temp_mut_or_default::<crate::flick_pan::Flick>(flick_id).stop());
         }
     }
@@ -3621,8 +3629,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         && let Some(p) = ui.input(|i| i.pointer.primary_down().then(|| i.pointer.latest_pos()).flatten())
     {
         let step = crate::canvas_autoscroll::edge_step(p, rect, ui.input(|i| i.stable_dt));
-        let d = xf.unmap_vec(step) / (view.zoom / ppp);
-        if crate::canvas_autoscroll::scroll(&mut view, d, rect.size() / vec2(aspect, 1.0), ppp) {
+        if crate::canvas_autoscroll::scroll(&mut view, step, xf) {
             ctx.request_repaint();
         }
     }
