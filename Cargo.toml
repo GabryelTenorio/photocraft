@@ -116,6 +116,13 @@ opt-level = "z"
 [profile.wasm-release.package.photocraft-psd]
 opt-level = "z"
 
+# Size-optimize the browser's shared UI and tessellation code. Native profiles and
+# the pixel-processing crates below keep their current optimization levels.
+[profile.wasm-release.package.egui]
+opt-level = "z"
+[profile.wasm-release.package.epaint]
+opt-level = "z"
+
 [profile.wasm-release.package.photocraft-raster]
 opt-level = 3
 [profile.wasm-release.package.photocraft-color]
