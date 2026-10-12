@@ -1585,7 +1585,8 @@ fn a_served_script_fallback_joins_the_fallback_stack_once_it_arrives() {
         return;
     };
     crate::served::add_fonts(&crate::served::parse_manifest("Cairo | Regular | fonts/cairo/Cairo.ttf | Arab,Latn\n").0);
-    let mut db = fonts::FontDb::new();
+    // Served fonts are the web build's, which embeds no craft-fonts; the desktop embeds Cairo.
+    let mut db = fonts::FontDb::bundled();
     assert!(!db.fallback_stack().any(|f| f == "Cairo"), "not before it arrives");
     db.register_font_data(cairo.bytes.to_vec());
     assert!(db.fallback_stack().any(|f| f == "Cairo"), "{:?}", db.fallback_stack().collect::<Vec<_>>());
