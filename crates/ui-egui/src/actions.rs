@@ -21,6 +21,9 @@ pub struct ActionsUi {
     pub selected: Option<usize>,
     pub selected_step: Option<usize>,
     pub expanded: Vec<bool>,
+    /// Photoshop's Button Mode: actions are coloured buttons, and a click plays one.
+    #[serde(default)]
+    pub button_mode: bool,
     #[serde(skip)]
     reveal_recording: Option<(usize, usize)>,
     /// The action whose name is being edited in place (double-click on its name).
@@ -205,6 +208,20 @@ fn step_count(steps: usize, disabled: usize) -> String {
     }
 }
 
+fn button_fill(color: &str, t: &Tokens) -> Color32 {
+    // Photoshop's Actions button colours. Empty uses the panel card so an uncoloured action stays readable.
+    match color {
+        "red" => Color32::from_rgb(196, 64, 64),
+        "orange" => Color32::from_rgb(204, 120, 40),
+        "yellow" => Color32::from_rgb(196, 176, 48),
+        "green" => Color32::from_rgb(56, 140, 72),
+        "blue" => Color32::from_rgb(48, 104, 176),
+        "violet" => Color32::from_rgb(120, 72, 168),
+        "gray" => t.text_dim,
+        _ => t.card,
+    }
+}
+
 fn paint_check(ui: &egui::Ui, rect: Rect, on: bool, t: &Tokens) {
     let b = Rect::from_center_size(rect.center(), vec2(11.0, 11.0));
     ui.painter().rect_stroke(b, 2.0, Stroke::new(1.0, t.text_faint), egui::StrokeKind::Inside);
@@ -333,7 +350,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .list
         .iter()
         .enumerate()
-        .map(|(i, a)| (a.name.clone(), visible_steps(app, i), a.disabled.clone(), a.enabled, app.session.actions.folder(i).to_string()))
+        .map(|(i, a)| (a.name.clone(), visible_steps(app, i), a.disabled.clone(), a.enabled, app.session.actions.folder(i).to_string(), a.color.clone()))
         .collect();
     if app
         .ui
@@ -358,7 +375,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let mut action_toggled = None;
     let mut set_toggled = None;
     let mut dialog_toggled = None;
-    let recording_row = recording.and_then(|(_, i)| rows.get(i).map(|(_, steps, _, _, _)| (i, steps.len())));
+    let recording_row = recording.and_then(|(_, i)| rows.get(i).map(|(_, steps, _, _, _, _)| (i, steps.len())));
     let reveal = recording_row.filter(|row| app.ui.actions.reveal_recording != Some(*row));
     app.ui.actions.reveal_recording = recording_row;
     if let Some((i, _)) = reveal {
@@ -388,12 +405,12 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
         }
         let mut previous_folder = String::new();
-        for (i, (name, steps, disabled, enabled, folder)) in rows.iter().enumerate() {
+        for (i, (name, steps, disabled, enabled, folder, color)) in rows.iter().enumerate() {
             if !folder.is_empty() && folder != &previous_folder {
                 previous_folder.clone_from(folder);
                 let (hrect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::hover());
                 ui.painter().text(pos2(hrect.left() + 28.0, hrect.center().y), Align2::LEFT_CENTER, folder, egui::FontId::proportional(11.0), t.text_dim);
-                let all_on = rows.iter().filter(|(_, _, _, _, f)| f == folder).all(|(_, _, _, on, _)| *on);
+                let all_on = rows.iter().filter(|(_, _, _, _, f, _)| f == folder).all(|(_, _, _, on, _, _)| *on);
                 let set_check = ui.interact(
                     Rect::from_center_size(pos2(hrect.left() + 12.0, hrect.center().y), vec2(16.0, 16.0)),
                     ui.id().with(("action-set-check", folder)),
@@ -412,7 +429,9 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
             let sel = app.ui.actions.selected == Some(i) && app.ui.actions.selected_step.is_none();
             resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, name));
-            if sel {
+            if app.ui.actions.button_mode {
+                ui.painter().rect_filled(rect, 3.0, button_fill(color, &t));
+            } else if sel {
                 ui.painter().rect_filled(rect, 0.0, t.row_selected);
             } else if resp.hovered() {
                 ui.painter().rect_filled(rect, 0.0, t.hover.gamma_multiply(0.5));
@@ -466,7 +485,9 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             if resp.clicked() {
                 app.ui.actions.selected = Some(i);
                 app.ui.actions.selected_step = None;
-                if resp.interact_pointer_pos().is_some_and(|p| p.x < rect.left() + 20.0) {
+                if app.ui.actions.button_mode {
+                    play_idx = Some(i);
+                } else if resp.interact_pointer_pos().is_some_and(|p| p.x < rect.left() + 20.0) {
                     if app.ui.actions.expanded.len() <= i {
                         app.ui.actions.expanded.resize(i + 1, false);
                     }
@@ -601,6 +622,10 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             };
             let _ = app.run("actions.setPlayback", json!({"mode": mode}));
         }
+        let mode_label = if app.ui.actions.button_mode { tl!("Button Mode On") } else { tl!("Button Mode") };
+        if ui.add_enabled(!recording_now, egui::Button::new(mode_label).small()).on_hover_text(tl!("Button Mode")).clicked() {
+            app.ui.actions.button_mode = !app.ui.actions.button_mode;
+        }
         let can_delete = app.ui.actions.selected.is_some() && (!recording_now || app.ui.actions.selected_step.is_some());
         ui.add_enabled_ui(can_delete, |ui| {
             let response = crate::icons::button(ui, "trash", 24.0, false, tl!("Delete"));
@@ -641,6 +666,7 @@ mod tests {
                     steps: vec![],
                     disabled: Default::default(),
                     step_dialog: Vec::new(),
+                    color: String::new(),
                     enabled: true,
                 });
             }
@@ -664,6 +690,7 @@ mod tests {
             steps: vec![("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let layers = app.session.active().unwrap().doc.layers.len();
@@ -704,6 +731,7 @@ mod tests {
             steps: vec![("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         app.session.actions.list.push(Action {
@@ -711,6 +739,7 @@ mod tests {
             steps: vec![("view.fitOnScreen".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         assert_eq!(playback_selection(&app), Some(0));
@@ -765,6 +794,7 @@ mod tests {
             steps: vec![("not.a.command".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let mut h = Harness::builder().with_size(vec2(400.0, 320.0)).build_ui_state(|ui, app| panel(app, ui), app);
@@ -786,6 +816,7 @@ mod tests {
                 steps: vec![],
                 disabled: Default::default(),
                 step_dialog: Vec::new(),
+                color: String::new(),
                 enabled: true,
             });
         }
@@ -813,9 +844,17 @@ mod tests {
             steps: vec![("view.zoomOut".into(), json!({})), ("view.fitOnScreen".into(), json!({})), ("view.actualPixels".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
-        app.session.actions.list.push(Action { name: "Second".into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
+        app.session.actions.list.push(Action {
+            name: "Second".into(),
+            steps: vec![],
+            disabled: Default::default(),
+            step_dialog: Vec::new(),
+            color: String::new(),
+            enabled: true,
+        });
         app.ui.actions.expanded = vec![true, false];
         let mut h = Harness::builder().with_size(vec2(320.0, 400.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(4);
@@ -856,6 +895,7 @@ mod tests {
             steps: vec![("layer.new.layer".into(), json!({})), ("view.fitOnScreen".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         app.run("actions.record", json!({"name":"Parent"})).unwrap();
@@ -950,6 +990,7 @@ mod tests {
             steps: vec![("view.fitOnScreen".into(), json!({})), ("view.actualPixels".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let result = app.run("actions.play", json!({"action": "Fit"})).unwrap();

@@ -2517,6 +2517,7 @@ mod tests {
                 steps: vec![(command.into(), json!({"layer": smart.0}))],
                 disabled: Default::default(),
                 step_dialog: Vec::new(),
+                color: String::new(),
                 enabled: true,
             }];
             let r = call(&mut app, &ctx, "engine.execute", json!({"command": "actions.play", "params": {"action": "Linked contents"}}));
@@ -2549,6 +2550,7 @@ mod tests {
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let ctx = egui::Context::default();
@@ -2570,6 +2572,7 @@ mod tests {
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         app.automation_input = true;

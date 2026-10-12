@@ -345,6 +345,7 @@ fn a_failed_step_inside_a_called_action_fails_scripts_and_batch() {
         steps: vec![("image.imageRotation.90cw".into(), json!({}))],
         disabled: Default::default(),
         step_dialog: Vec::new(),
+        color: String::new(),
         enabled: true,
     });
     s.actions.list.push(Action {
@@ -352,6 +353,7 @@ fn a_failed_step_inside_a_called_action_fails_scripts_and_batch() {
         steps: vec![("layer.delete".into(), json!({"layer": 999_999}))],
         disabled: Default::default(),
         step_dialog: Vec::new(),
+        color: String::new(),
         enabled: true,
     });
     // A script stops at the failed call and reports it.
@@ -375,6 +377,7 @@ fn a_failed_step_inside_a_called_action_fails_scripts_and_batch() {
         steps: vec![("file.automate.batch".into(), inner)],
         disabled: Default::default(),
         step_dialog: Vec::new(),
+        color: String::new(),
         enabled: true,
     });
     batch(&mut s, "Loop");

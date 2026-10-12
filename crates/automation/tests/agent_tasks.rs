@@ -332,6 +332,7 @@ async fn agent_play_refuses_a_recorded_file_open() {
         steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
         disabled: Default::default(),
         step_dialog: Vec::new(),
+        color: String::new(),
         enabled: true,
     });
     let (c, server) = connect_headless(headless).await;

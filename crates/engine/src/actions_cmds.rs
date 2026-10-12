@@ -48,11 +48,14 @@ pub struct Action {
     /// Playback still uses the recorded parameters; the flag tells the panel to open the dialog.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_dialog: Vec<bool>,
+    /// Button-mode colour. Empty is none; otherwise one of [`BUTTON_COLORS`].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub color: String,
 }
 
 impl Default for Action {
     fn default() -> Self {
-        Self { name: String::new(), steps: Vec::new(), disabled: BTreeSet::new(), enabled: true, step_dialog: Vec::new() }
+        Self { name: String::new(), steps: Vec::new(), disabled: BTreeSet::new(), enabled: true, step_dialog: Vec::new(), color: String::new() }
     }
 }
 
@@ -87,6 +90,14 @@ pub struct ActionsFile {
     /// Folder of each action, parallel to `actions`. Empty string means ungrouped.
     #[serde(default)]
     pub folders: Vec<String>,
+}
+
+/// Button-mode colours, in Photoshop's order. Empty is no colour.
+pub const BUTTON_COLORS: [&str; 8] = ["", "red", "orange", "yellow", "green", "blue", "violet", "gray"];
+
+/// Colour name for a `.atn` colour index. Unknown indexes are no colour.
+pub fn color_from_index(index: u16) -> &'static str {
+    BUTTON_COLORS.get(usize::from(index)).copied().unwrap_or("")
 }
 
 /// The panel label for actions that are not in a folder, once the list has named sets.
@@ -324,7 +335,9 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
     let action = &s.actions.list[idx];
     let steps: Vec<Value> = action.steps.iter().map(|(id, params)| json!([id, params])).collect();
     let dialogs: Vec<usize> = (0..action.steps.len()).filter(|i| action.step_dialog_on(*i)).collect();
-    Ok(json!({"name": action.name, "steps": steps, "disabled": action.disabled, "enabled": action.enabled, "set": s.actions.folder(idx), "dialogs": dialogs}))
+    Ok(
+        json!({"name": action.name, "steps": steps, "disabled": action.disabled, "enabled": action.enabled, "set": s.actions.folder(idx), "dialogs": dialogs, "color": action.color}),
+    )
 }
 
 fn record(s: &mut Session, p: &Value) -> Result<Value> {
@@ -861,6 +874,22 @@ fn set_playback(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"playback": s.actions.playback_mode(), "pauseSeconds": s.actions.pause_seconds()}))
 }
 
+fn set_color(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "actions.setColor";
+    not_playing(s, cmd)?;
+    let idx = resolve(&s.actions.list, p, cmd)?;
+    let Some(color) = p.get("color").and_then(Value::as_str) else {
+        return Err(bad(cmd, "needs \"color\""));
+    };
+    if !BUTTON_COLORS.contains(&color) {
+        return Err(bad(cmd, "color must be none, red, orange, yellow, green, blue, violet or gray"));
+    }
+    s.actions.list[idx].color = color.to_string();
+    let name = s.actions.list[idx].name.clone();
+    s.actions.touch();
+    Ok(json!({"action": name, "color": color}))
+}
+
 fn apply_enabled(action: &mut Action, on: bool) {
     if on {
         action.disabled.clear();
@@ -1022,6 +1051,16 @@ pub fn specs() -> Vec<CommandSpec> {
             run: set_playback,
             journal: false,
         },
+        CommandSpec {
+            id: "actions.setColor",
+            label: "Set Action Color",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"action":name|index, "color":""|"red"|"orange"|"yellow"|"green"|"blue"|"violet"|"gray"} → {action, color}. The button-mode colour. Empty clears it."##,
+            enabled: always,
+            run: set_color,
+            journal: false,
+        },
     ]
 }
 
@@ -1085,6 +1124,7 @@ mod tests {
             steps: vec![("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         s.actions.list.push(Action {
@@ -1092,6 +1132,7 @@ mod tests {
             steps: vec![("actions.play".into(), json!({"action": "Action 1"}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         s.edit_prefs(|p| p.shortcuts.insert(format!("{PLAY_SHORTCUT_PREFIX}Action 1"), "F2".into()));
@@ -1364,6 +1405,7 @@ mod tests {
             steps: vec![("actions.play".into(), json!({"action": "Loop"}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "Loop"})).unwrap();
@@ -1385,6 +1427,7 @@ mod tests {
             steps: vec![("file.open".into(), json!({"path": "/etc/passwd"})), ("layer.new.layer".into(), json!({}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "Open"})).unwrap();
@@ -1464,6 +1507,7 @@ mod tests {
             steps: vec![("layer.new.layer".into(), json!({"name": "Child layer"}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         s.execute("actions.record", json!({"name": "Parent"})).unwrap();
@@ -1495,6 +1539,7 @@ mod tests {
             steps: vec![("actions.play".into(), json!({"action": "B"})), ("file.new".into(), json!({"width": 2,"height": 2}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         s.actions.list.push(Action {
@@ -1502,6 +1547,7 @@ mod tests {
             steps: vec![("actions.play".into(), json!({"action": "A"}))],
             disabled: Default::default(),
             step_dialog: Vec::new(),
+            color: String::new(),
             enabled: true,
         });
         let r = s.execute("actions.play", json!({"action": "A"})).unwrap();
@@ -1520,6 +1566,7 @@ mod tests {
                 steps: if i < 16 { vec![("actions.play".into(), json!({"action":format!("N{}", i + 1)}))] } else { vec![] },
                 disabled: Default::default(),
                 step_dialog: Vec::new(),
+                color: String::new(),
                 enabled: true,
             });
         }
@@ -1565,7 +1612,14 @@ mod tests {
     #[test]
     fn new_names_do_not_collide_with_named_calls() {
         let mut s = Session::new();
-        s.actions.list.push(Action { name: "Action 2".into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
+        s.actions.list.push(Action {
+            name: "Action 2".into(),
+            steps: vec![],
+            disabled: Default::default(),
+            step_dialog: Vec::new(),
+            color: String::new(),
+            enabled: true,
+        });
         assert_eq!(s.execute("actions.record", json!({})).unwrap()["action"], "Action 3");
         s.execute("actions.stop", json!({})).unwrap();
         assert!(s.execute("actions.record", json!({"name":"Action 2"})).is_err());
@@ -1577,7 +1631,14 @@ mod tests {
         let mut s = Session::new();
         s.execute("file.new", json!({"width":4,"height":4})).unwrap();
         for name in ["A", "B", "C"] {
-            s.actions.list.push(Action { name: name.into(), steps: vec![], disabled: Default::default(), step_dialog: Vec::new(), enabled: true });
+            s.actions.list.push(Action {
+                name: name.into(),
+                steps: vec![],
+                disabled: Default::default(),
+                step_dialog: Vec::new(),
+                color: String::new(),
+                enabled: true,
+            });
         }
         s.execute("actions.record", json!({"action":"B"})).unwrap();
         s.execute("layer.new.layer", json!({"name":"before"})).unwrap();
@@ -1814,5 +1875,23 @@ mod tests {
         let listed = s.execute("actions.list", json!({})).unwrap();
         assert_eq!(listed["playback"], "pause");
         assert_eq!(listed["pauseSeconds"], 2.0);
+    }
+
+    #[test]
+    fn button_color_is_one_of_the_photoshop_swatches() {
+        let mut s = Session::new();
+        s.execute("actions.record", json!({"name": "Print"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        let set = s.execute("actions.setColor", json!({"action": "Print", "color": "blue"})).unwrap();
+        assert_eq!(set["color"], "blue");
+        assert_eq!(s.actions.list[0].color, "blue");
+        assert_eq!(s.execute("actions.get", json!({"action": 0})).unwrap()["color"], "blue");
+        s.execute("actions.setColor", json!({"action": 0, "color": ""})).unwrap();
+        assert!(s.actions.list[0].color.is_empty());
+        assert!(s.execute("actions.setColor", json!({"action": 0, "color": "pink"})).is_err());
+        assert!(s.execute("actions.setColor", json!({"action": 0})).is_err());
+        assert!(s.execute("actions.setColor", json!({"action": 4, "color": "red"})).is_err());
+        assert_eq!(color_from_index(5), "blue");
+        assert_eq!(color_from_index(99), "");
     }
 }
