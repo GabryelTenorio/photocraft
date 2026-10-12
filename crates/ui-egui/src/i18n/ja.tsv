@@ -3661,3 +3661,45 @@ curves	Smooth	スムーズ
 	Remove after each stroke	ストロークごとに削除
 	Apply the removal ({key})	削除を適用 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	削除するストローク: {n}（Enter で適用、Esc で取り消し）
+
+# File › Send to Telegram
+	Send to Telegram…	Telegram に送る…
+	Send to Telegram	Telegram に送る
+	Bot token	ボットトークン
+	Sent {name} to Telegram.	{name} を Telegram に送りました。
+	That file is larger than Telegram accepts (50 MB).	このファイルは Telegram が受け取れる大きさ（50 MB）を超えています。
+	Could not read {name}: {error}	{name} を読み取れませんでした: {error}
+	The bot token should look like 123456789:ABC…	ボットトークンは 123456789:ABC… のような形です。
+	Enter a chat id (a number) or a public @channelname.	チャット ID（数字）か、公開の @channelname を入力します。
+	Telegram sending needs the desktop app.	Telegram への送信はデスクトップアプリだけで使えます。
+	Telegram is set up. Save or export a file, then send it.	Telegram の設定ができました。ファイルを保存または書き出してから送ります。
+
+# File › Send to Telegram
+	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	BotFather でボットを作り、そのボットに何かメッセージを送ります。チャットを探すで ID を入れるか、数字か @channelname を貼り付けます。
+	Open the official bot guide	公式ボットガイドを開く
+	Find chats for this token	このトークンのチャットを探す
+	No chats yet. Send your bot a message, then try again.	まだチャットがありません。ボットにメッセージを送ってから、もう一度試します。
+	Also send when I Save	保存するときも送る
+	Also send when I Save As	別名で保存するときも送る
+	Also send when I Export	書き出すときも送る
+	Sent {name}. {url}	送信しました: {name}。{url}
+	Sending {name} to Telegram…	{name} を Telegram に送っています…
+	Sent to Telegram	Telegram に送りました
+	A Telegram send is already running.	Telegram への送信がすでに進行中です。
+	Could not prepare a file to send: {error}	送るファイルを用意できませんでした: {error}
+	Send as	送信形式
+	Saved file	保存済みのファイル
+	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	保存済みのファイルはディスク上のコピーです。PSD と PNG は、未保存の変更を含む、開いているドキュメントの新しいコピーです。
+	Chats or channels. Several are allowed, separated by commas.	チャットまたはチャンネル。複数はカンマで区切ります。
+	There is no saved file to send. Choose PSD or PNG.	送れる保存済みのファイルがありません。PSD か PNG を選んでください。
+	Also send when I Save a Copy	コピーを保存するときも送る
+	Also send a PNG preview with a PSD	PSD と一緒に PNG プレビューも送る
+	Send automatically	自動で送る
+	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	ボットトークンはシステムのキーチェーンに保存され、PhotoCraft の設定ファイルには入りません。
+	Sending needs an internet connection.	送信にはインターネット接続が必要です。
+	Copied the chat id.	チャット ID をコピーしました。
+	*File:* `{name}`	*ファイル:* `{name}`
+	*Format:* {format}	*Format:* {format}
+	*Size:* {size}	*サイズ:* {size}
+	*Time:* {time}	*時刻:* {time}
+	*Path:* `{path}`	*パス:* `{path}`

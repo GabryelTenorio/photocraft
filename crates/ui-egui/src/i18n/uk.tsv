@@ -3749,3 +3749,45 @@ curves	Smooth	Згладити
 	Remove after each stroke	Видаляти після кожного штриха
 	Apply the removal ({key})	Застосувати видалення ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихів для видалення: {n} (Enter застосовує, Esc скасовує)
+
+# File › Send to Telegram
+	Send to Telegram…	Надіслати в Telegram…
+	Send to Telegram	Надіслати в Telegram
+	Bot token	Токен бота
+	Sent {name} to Telegram.	{name} надіслано в Telegram.
+	That file is larger than Telegram accepts (50 MB).	Цей файл більший, ніж приймає Telegram (50 МБ).
+	Could not read {name}: {error}	Не вдалося прочитати {name}: {error}
+	The bot token should look like 123456789:ABC…	Токен бота має виглядати як 123456789:ABC…
+	Enter a chat id (a number) or a public @channelname.	Введіть id чату (число) або публічне @channelname.
+	Telegram sending needs the desktop app.	Надсилання в Telegram є лише в програмі для комп'ютера.
+	Telegram is set up. Save or export a file, then send it.	Telegram налаштовано. Збережіть або експортуйте файл, потім надішліть його.
+
+# File › Send to Telegram
+	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Створіть бота в BotFather і надішліть йому будь-яке повідомлення. Id заповнює «Знайти чати», або вставте число чи @channelname.
+	Open the official bot guide	Відкрити офіційний посібник ботів
+	Find chats for this token	Знайти чати для цього токена
+	No chats yet. Send your bot a message, then try again.	Чатів ще немає. Надішліть боту повідомлення і спробуйте знову.
+	Also send when I Save	Також надсилати під час збереження
+	Also send when I Save As	Також надсилати під час «Зберегти як»
+	Also send when I Export	Також надсилати під час експорту
+	Sent {name}. {url}	Надіслано: {name}. {url}
+	Sending {name} to Telegram…	Надсилання {name} в Telegram…
+	Sent to Telegram	Надіслано в Telegram
+	A Telegram send is already running.	Надсилання в Telegram уже триває.
+	Could not prepare a file to send: {error}	Не вдалося підготувати файл для надсилання: {error}
+	Send as	Надіслати як
+	Saved file	Збережений файл
+	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Збережений файл — це копія на диску. PSD і PNG — нова копія відкритого документа, включно з незбереженими змінами.
+	Chats or channels. Several are allowed, separated by commas.	Чати або канали. Можна кілька, через кому.
+	There is no saved file to send. Choose PSD or PNG.	Немає збереженого файла для надсилання. Виберіть PSD або PNG.
+	Also send when I Save a Copy	Також надсилати під час «Зберегти копію»
+	Also send a PNG preview with a PSD	Разом із PSD надсилати і PNG-перегляд
+	Send automatically	Надсилати автоматично
+	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	Токен бота зберігається у в'язці ключів системи, а не у файлі налаштувань PhotoCraft.
+	Sending needs an internet connection.	Для надсилання потрібне з'єднання з інтернетом.
+	Copied the chat id.	Id чату скопійовано.
+	*File:* `{name}`	*Файл:* `{name}`
+	*Format:* {format}	*Format:* {format}
+	*Size:* {size}	*Розмір:* {size}
+	*Time:* {time}	*Час:* {time}
+	*Path:* `{path}`	*Шлях:* `{path}`

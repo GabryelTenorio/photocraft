@@ -2996,3 +2996,45 @@ curves	Smooth	Сгладить
 	Remove after each stroke	Удалять после каждого штриха
 	Apply the removal ({key})	Применить удаление ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)
+
+# File › Send to Telegram
+	Send to Telegram…	Отправить в Telegram…
+	Send to Telegram	Отправить в Telegram
+	Bot token	Токен бота
+	Sent {name} to Telegram.	{name} отправлен в Telegram.
+	That file is larger than Telegram accepts (50 MB).	Файл больше, чем принимает Telegram (50 МБ).
+	Could not read {name}: {error}	Не удалось прочитать {name}: {error}
+	The bot token should look like 123456789:ABC…	Токен бота должен выглядеть как 123456789:ABC…
+	Enter a chat id (a number) or a public @channelname.	Введите id чата (число) или публичное @channelname.
+	Telegram sending needs the desktop app.	Отправка в Telegram есть только в приложении для компьютера.
+	Telegram is set up. Save or export a file, then send it.	Telegram настроен. Сохраните или экспортируйте файл, затем отправьте его.
+
+# File › Send to Telegram
+	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Создайте бота у BotFather и отправьте ему любое сообщение. Id можно подставить кнопкой «Найти чаты» или вставить число или @channelname.
+	Open the official bot guide	Открыть официальное руководство по ботам
+	Find chats for this token	Найти чаты для этого токена
+	No chats yet. Send your bot a message, then try again.	Чатов пока нет. Отправьте боту сообщение и попробуйте снова.
+	Also send when I Save	Также отправлять при сохранении
+	Also send when I Save As	Также отправлять при «Сохранить как»
+	Also send when I Export	Также отправлять при экспорте
+	Sent {name}. {url}	Отправлено: {name}. {url}
+	Sending {name} to Telegram…	Отправка {name} в Telegram…
+	Sent to Telegram	Отправлено в Telegram
+	A Telegram send is already running.	Отправка в Telegram уже выполняется.
+	Could not prepare a file to send: {error}	Не удалось подготовить файл для отправки: {error}
+	Send as	Отправить как
+	Saved file	Сохранённый файл
+	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Сохранённый файл — это копия на диске. PSD и PNG — новая копия открытого документа, включая несохранённые изменения.
+	Chats or channels. Several are allowed, separated by commas.	Чаты или каналы. Можно несколько, через запятую.
+	There is no saved file to send. Choose PSD or PNG.	Нет сохранённого файла для отправки. Выберите PSD или PNG.
+	Also send when I Save a Copy	Также отправлять при «Сохранить копию»
+	Also send a PNG preview with a PSD	Вместе с PSD отправлять и PNG-превью
+	Send automatically	Отправлять автоматически
+	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	Токен бота хранится в связке ключей системы, а не в файле настроек PhotoCraft.
+	Sending needs an internet connection.	Для отправки нужно подключение к интернету.
+	Copied the chat id.	Id чата скопирован.
+	*File:* `{name}`	*Файл:* `{name}`
+	*Format:* {format}	*Format:* {format}
+	*Size:* {size}	*Размер:* {size}
+	*Time:* {time}	*Время:* {time}
+	*Path:* `{path}`	*Путь:* `{path}`

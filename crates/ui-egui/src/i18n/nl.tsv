@@ -3811,3 +3811,45 @@ curves	Smooth	Vloeiend maken
 	Remove after each stroke	Verwijderen na elke streek
 	Apply the removal ({key})	Verwijdering toepassen ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Streken om te verwijderen: {n} (Enter past toe, Esc annuleert)
+
+# File › Send to Telegram
+	Send to Telegram…	Naar Telegram sturen…
+	Send to Telegram	Naar Telegram sturen
+	Bot token	Bottoken
+	Sent {name} to Telegram.	{name} naar Telegram gestuurd.
+	That file is larger than Telegram accepts (50 MB).	Dit bestand is groter dan Telegram aanneemt (50 MB).
+	Could not read {name}: {error}	{name} kon niet worden gelezen: {error}
+	The bot token should look like 123456789:ABC…	Het bottoken hoort eruit te zien als 123456789:ABC…
+	Enter a chat id (a number) or a public @channelname.	Vul een chat-id (een getal) of een openbare @channelname in.
+	Telegram sending needs the desktop app.	Naar Telegram sturen kan alleen in de desktop-app.
+	Telegram is set up. Save or export a file, then send it.	Telegram is ingesteld. Sla een bestand op of exporteer het, en stuur het dan.
+
+# File › Send to Telegram
+	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Maak een bot met BotFather en stuur die bot een bericht. Vul het id via Chats zoeken, of plak een getal of @channelname.
+	Open the official bot guide	Officiële botgids openen
+	Find chats for this token	Chats bij dit token zoeken
+	No chats yet. Send your bot a message, then try again.	Nog geen chats. Stuur je bot een bericht en probeer het opnieuw.
+	Also send when I Save	Ook bij Opslaan sturen
+	Also send when I Save As	Ook bij Opslaan als sturen
+	Also send when I Export	Ook bij Exporteren sturen
+	Sent {name}. {url}	Verstuurd: {name}. {url}
+	Sending {name} to Telegram…	{name} naar Telegram sturen…
+	Sent to Telegram	Naar Telegram gestuurd
+	A Telegram send is already running.	Er loopt al een verzending naar Telegram.
+	Could not prepare a file to send: {error}	Kon geen bestand klaarmaken om te sturen: {error}
+	Send as	Versturen als
+	Saved file	Opgeslagen bestand
+	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Het opgeslagen bestand is de kopie op schijf. PSD en PNG zijn een nieuwe kopie van het open document, inclusief niet-opgeslagen wijzigingen.
+	Chats or channels. Several are allowed, separated by commas.	Chats of kanalen. Meerdere mogen, gescheiden door komma's.
+	There is no saved file to send. Choose PSD or PNG.	Er is geen opgeslagen bestand om te sturen. Kies PSD of PNG.
+	Also send when I Save a Copy	Ook bij Kopie opslaan sturen
+	Also send a PNG preview with a PSD	Met een PSD ook een PNG-voorbeeld sturen
+	Send automatically	Automatisch sturen
+	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	Het bottoken staat in de sleutelhanger van het systeem, niet in het instellingenbestand van PhotoCraft.
+	Sending needs an internet connection.	Versturen heeft een internetverbinding nodig.
+	Copied the chat id.	Chat-id gekopieerd.
+	*File:* `{name}`	*Bestand:* `{name}`
+	*Format:* {format}	*Format:* {format}
+	*Size:* {size}	*Grootte:* {size}
+	*Time:* {time}	*Tijd:* {time}
+	*Path:* `{path}`	*Pad:* `{path}`

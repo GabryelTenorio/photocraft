@@ -2691,3 +2691,45 @@ curves	Smooth	Glätten
 	Remove after each stroke	Nach jedem Strich entfernen
 	Apply the removal ({key})	Entfernen anwenden ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Striche zum Entfernen: {n} (Eingabe wendet an, Esc bricht ab)
+
+# File › Send to Telegram
+	Send to Telegram…	An Telegram senden…
+	Send to Telegram	An Telegram senden
+	Bot token	Bot-Token
+	Sent {name} to Telegram.	{name} an Telegram gesendet.
+	That file is larger than Telegram accepts (50 MB).	Die Datei ist größer, als Telegram annimmt (50 MB).
+	Could not read {name}: {error}	{name} konnte nicht gelesen werden: {error}
+	The bot token should look like 123456789:ABC…	Der Bot-Token sollte aussehen wie 123456789:ABC…
+	Enter a chat id (a number) or a public @channelname.	Eine Chat-ID (eine Zahl) oder einen öffentlichen @channelname eingeben.
+	Telegram sending needs the desktop app.	Telegram-Versand gibt es nur in der Desktop-App.
+	Telegram is set up. Save or export a file, then send it.	Telegram ist eingerichtet. Speichere oder exportiere eine Datei und sende sie dann.
+
+# File › Send to Telegram
+	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Lege einen Bot bei BotFather an und schick ihm irgendeine Nachricht. Die ID füllst du über Chats suchen, oder du fügst eine Zahl oder @channelname ein.
+	Open the official bot guide	Offizielle Bot-Anleitung öffnen
+	Find chats for this token	Chats zu diesem Token suchen
+	No chats yet. Send your bot a message, then try again.	Noch keine Chats. Schick deinem Bot eine Nachricht und versuch es noch einmal.
+	Also send when I Save	Auch beim Speichern senden
+	Also send when I Save As	Auch bei „Speichern unter“ senden
+	Also send when I Export	Auch beim Exportieren senden
+	Sent {name}. {url}	Gesendet: {name}. {url}
+	Sending {name} to Telegram…	Sende {name} an Telegram…
+	Sent to Telegram	An Telegram gesendet
+	A Telegram send is already running.	Ein Telegram-Versand läuft schon.
+	Could not prepare a file to send: {error}	Die Datei zum Senden konnte nicht vorbereitet werden: {error}
+	Send as	Senden als
+	Saved file	Gespeicherte Datei
+	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Die gespeicherte Datei ist die Kopie auf der Platte. PSD und PNG sind eine neue Kopie des offenen Dokuments, samt ungespeicherter Änderungen.
+	Chats or channels. Several are allowed, separated by commas.	Chats oder Kanäle. Mehrere sind erlaubt, durch Kommas getrennt.
+	There is no saved file to send. Choose PSD or PNG.	Es gibt keine gespeicherte Datei. Wähle PSD oder PNG.
+	Also send when I Save a Copy	Auch bei „Kopie speichern“ senden
+	Also send a PNG preview with a PSD	Mit einem PSD auch eine PNG-Vorschau senden
+	Send automatically	Automatisch senden
+	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	Der Bot-Token liegt im Schlüsselbund des Systems, nicht in PhotoCrafts Einstellungsdatei.
+	Sending needs an internet connection.	Zum Senden braucht es eine Internetverbindung.
+	Copied the chat id.	Chat-ID kopiert.
+	*File:* `{name}`	*Datei:* `{name}`
+	*Format:* {format}	*Format:* {format}
+	*Size:* {size}	*Größe:* {size}
+	*Time:* {time}	*Zeit:* {time}
+	*Path:* `{path}`	*Pfad:* `{path}`
