@@ -124,3 +124,7 @@ sync_github_name = true
 
 [people.arthurdeka]
 sync_github_name = true
+
+[people.megaDon101]
+display_name = "megadon"
+sync_github_name = false
