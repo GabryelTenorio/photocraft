@@ -1193,7 +1193,7 @@ fn follow_shape(app: &mut PhotocraftApp) {
     if !active && (shape.active || shape.revision != revision) {
         let b = photocraft_engine::transform_cmds::transform_bounds(&source, layer);
         // Warp or a rejected quad retains the existing texture preview.
-        let (image, uv) = preview_image(&source, id, None, b, shape.max_side);
+        let (image, uv) = preview_image(&source, id, None, b, shape.max_side, false);
         pv.texture = crate::transform_tex::PreviewTextures::new(&shape.context, format!("transform-{}", pv.session), image, uv);
     }
     if shape.revision != revision {
