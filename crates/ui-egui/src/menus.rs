@@ -167,6 +167,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if let Some(r) = crate::tool_reset::invoke(app, id, &params) {
         return r;
     }
+    // A filter on a type layer asks to rasterize it first (#4303).
+    if let Some(r) = crate::rasterize_prompt::intercept_filter(app, id, &params) {
+        return r;
+    }
     // A pending Pen anchor is gesture state; Edit › Undo must match the keyboard.
     if id == "edit.undo" && crate::vector_ui::pen_undo_last_point(app) {
         return Ok(Value::Null);
@@ -343,7 +347,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             let doc = app.session.active_index().ok_or("no document")?;
             let wid = app.ui.alloc_id();
             let view = app.ui.views[doc].clone();
-            app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true });
+            app.ui.windows.push(crate::state::DocWindow { id: wid, document: doc, view, open: true, position: None });
             Ok(json!({"window": wid}))
         }
         "window.theme.toggle" => {
@@ -396,6 +400,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         l if matches!(l, "layer.exportAs" | "layer.quickExportAsPng") && params.as_object().is_none_or(|o| o.is_empty()) => {
             let layer = app.session.active().and_then(|d| d.active_layer).ok_or("no active layer")?;
             if l == "layer.exportAs" {
+                // Several layers (artboards, say) selected: one file each (#3629).
+                let layers = app.session.active().map(|d| d.selected_layers()).unwrap_or_default();
+                if layers.len() > 1 {
+                    return Ok(json!({"dialog": crate::export_dialog::open_layers(app, &layers)?}));
+                }
                 Ok(json!({"dialog": crate::export_dialog::open_layer(app, layer)?}))
             } else {
                 crate::export_dialog::quick_export_selected_layers_png(app)
@@ -665,6 +674,10 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     // A pending crop greys what Photoshop greys during one (#1918).
     if crate::crop_ui::blocks(app, id) {
         return false;
+    }
+    // Filters stay live on a type layer: choosing one asks to rasterize it (#4303).
+    if crate::rasterize_prompt::filter_needs(app, id).is_some() {
+        return true;
     }
     if let Some(e) = crate::workspace_ui::is_enabled(app, id) {
         return e;
@@ -960,6 +973,14 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
         && let Some(item) = items.iter_mut().find(|i| i.id == "layer.layerMask.enabled")
     {
         item.label = crate::layer_menu_ui::mask_toggle_label(mask.enabled).into();
+    }
+    // Layer › Merge Layers reads Merge Group with just a group selected, as in Photoshop (#3832).
+    if let Some(st) = app.session.active()
+        && st.selected_layers().len() <= 1
+        && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| matches!(l.content, photocraft_doc::LayerContent::Group(_)))
+        && let Some(item) = items.iter_mut().find(|i| i.id == "layer.mergeLayers")
+    {
+        item.label = "Merge Group".into();
     }
     // The File quick-export command uses the format selected in Export Preferences.
     // On the web it intentionally downloads PNG until the quick-export service supports

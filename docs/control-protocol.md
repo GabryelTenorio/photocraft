@@ -23,6 +23,8 @@ The first request on every TCP connection must authenticate. No other method is 
 {"id": "auth", "method": "auth", "params": {"token": "<64 hexadecimal characters>"}}
 ```
 
+Authenticate once per connection. A later `auth` frame on the same connection gets `{"ok": false, "error": "already authenticated"}` and the connection keeps serving.
+
 After the successful authentication reply, each request is one JSON line:
 
 ```json
@@ -88,7 +90,7 @@ Change the UI language without restarting with `prefs.set`:
 are documented in [UI localisation](localization.md). `prefs.get` and the existing preference
 store expose and persist the same setting; scripts keep using canonical command IDs.
 
-`engine.execute` runs any command by id. `engine.commands` (or the engine command `command.list`) lists them all, with labels, menu paths, shortcuts, a parameter description, and whether each is currently enabled. Examples:
+`engine.execute` runs any command by id. `engine.commands` (or the engine command `command.list`) lists them all, with labels, menu paths, shortcuts, a parameter description, and whether each is currently enabled. Each row carries `enabled` (bool), `disabledReason` (`null` when enabled, otherwise the precondition that failed, such as `"no document open"`, `"no selection"` or `"the clipboard is empty"`) and `needsDocument` (true when the command is off because no document is open, so the first step is to create or open one; a command may still have its own precondition after that, such as an active text layer. False when enabled or off for another reason). With no document open, nearly every document command reports `enabled: false, needsDocument: true`; plan around `needsDocument` rather than reading `enabled` alone (#3664). Examples:
 
 | Command | Params |
 |---|---|
@@ -261,7 +263,7 @@ How each MCP tool maps onto control methods in bridge mode:
 |---|---|
 | `command_run {id, params, wait?}` | `engine.execute {command: id, params, wait}` |
 | `jobs_list` / `jobs_cancel {job?}` | `jobs.list` / `jobs.cancel {job?}` |
-| `command_list {filter?, enabled_only?}` | `engine.commands` (filtered by the MCP server) |
+| `command_list {filter?, enabled_only?}` | `engine.commands` (filtered by the MCP server; rows keep `disabledReason` and `needsDocument`) |
 | `doc_new {…}` | `engine.execute {command: "file.new", params}` |
 | `doc_inspect` | `engine.execute {command: "document.inspect"}` |
 | `doc_open {path}` | `app.open {path}` |
@@ -319,7 +321,7 @@ no MCP framing, no app start-up per command. Configure its file access with the 
 |---|---|
 | `engine.execute` | `{command, params?, wait?}`: any engine command (`wait: false` starts a long one as a background job: `{job, pending}`) |
 | `jobs.list` / `jobs.cancel` | `{}` / `{job?}`: background jobs; cancel one or all. Every request (and MCP tool call) first applies the jobs that finished, so `doc.save`, `doc.inspect`, `doc.render` and `session.list` include a finished job's result without polling `jobs.list` first |
-| `engine.commands` | `{filter?}`: registry with params docs and enablement |
+| `engine.commands` | `{filter?}`: registry with params docs and enablement (`enabled`, `disabledReason`, `needsDocument`) |
 | `session.list` | open documents and the active index |
 | `doc.open` / `doc.new` | `{path}` / `file.new` params |
 | `doc.place` | `{path, scale? (percent), fit? (true), center? ([x, y]), index?}`: places a file as a Smart Object layer above the active one and returns `{layer, scale, bounds}`. `path` resolves beneath the read root, so this is the capability-scoped `file.placeEmbedded` — that command itself still refuses an ambient path |
@@ -427,8 +429,9 @@ keeps the dialog open for correction. Nothing else writes document history.
 command line) of a camera raw developed from its sensor data shows this dialog first, titled
 "Camera Raw (name)", with **Open** and **Cancel**, as Photoshop opens raws in Adobe Camera Raw.
 `ui.inspect.cameraRaw.openingRaw` is then `{name, path}`. Commit (Open) re-develops the raw when
-Temperature, Tint or Exposure changed (as-shot white-balance gains and develop exposure on the
-sensor data; without an as-shot white balance, or without the file's bytes, they stay RGB
+Temperature, Tint, Exposure, Shadows, Highlights, Clarity, Texture or Dehaze changed (as-shot
+white-balance gains, develop exposure, and the other five in linear light before the camera's
+tone curve, as Camera Raw does for raw files; without an as-shot white balance, or without the file's bytes, they stay RGB
 adjustments), applies the remaining settings as one `filter.cameraRaw` step and leaves the
 document unmodified; its result is `{document, redeveloped, filter?}`. Cancel closes the
 document. `app.open` and other automation opens never show the dialog. The preference
@@ -522,6 +525,20 @@ Missing actions, recursive calls and nesting beyond 16 levels fail visibly; a ch
 the parent before its next step. Every nested command retains the normal automation permission check.
 Existing recordings containing expanded commands remain unchanged; remove those steps and record
 the named call again if desired.
+
+Actions sit in **set folders** (`set` on `actions.list` / `actions.get`, filled by Load Actions,
+written by Save Actions, changed with `actions.assignSet`): the panel shows loose actions first,
+then each set as a collapsible folder (`ui.actions.collapsedSets`); dropping an action among
+another set's rows moves it into that set. Each step has Photoshop's two toggles: the check
+(`actions.toggle`, skipped when off) and the **dialog** toggle (`actions.dialog`). Playing a
+step with its dialog on opens that command's dialog seeded with the recorded values and pauses:
+the play result carries `paused: {step, id, dialog}`, OK runs the dialog's values and continues
+from the next step, Cancel stops the action. Agents (`automation_input`) play headlessly with the
+recorded values. The panel menu's **Insert Stop…** adds an `actions.stopMessage` step after the
+selected step (`actions.insert` takes any command id and params). `actions.conditional {if, then,
+else}` is Photoshop's Insert Conditional as a step: it tests the document or active layer
+(`always`, `landscape`, `modeIsRGB`, `hasLayers`, `isBackground`, `hasPixelMask`… see its params)
+and plays the matching action by name, failing the caller when that action fails.
 
 Layer-panel **Quick Export as PNG** exports every selected layer as a separate PNG. A single
 Save dialog chooses the first filename; remaining files are numbered siblings with sanitized

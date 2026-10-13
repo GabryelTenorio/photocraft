@@ -328,9 +328,20 @@ fn native_pixels(doc: &Document, layer: Option<LayerId>) -> Result<(Vec<f32>, us
     }
 }
 
-/// `"layer"` param of a source: a layer id, or `"merged"` (default).
-fn source_layer(p: &Value) -> Option<LayerId> {
-    p.get("layer").and_then(Value::as_u64).map(LayerId)
+/// `"layer"` param of a source: a layer id, a layer name (the topmost of that name, as a loaded
+/// Photoshop action refers to it), or `"merged"` (default). An unknown name is an error.
+fn source_layer(doc: &Document, p: &Value, cmd: &str) -> Result<Option<LayerId>> {
+    match p.get("layer") {
+        Some(Value::Number(n)) => Ok(n.as_u64().map(LayerId)),
+        Some(Value::String(name)) if !name.is_empty() && name != "merged" => doc
+            .walk()
+            .into_iter()
+            .rev()
+            .find(|(_, _, l)| l.name == *name)
+            .map(|(_, _, l)| Some(l.id))
+            .ok_or_else(|| bad(cmd, format!("no source layer named \"{name}\""))),
+        _ => Ok(None),
+    }
 }
 
 /// Planes of channel `r` from document `doc` (`layer` = None: merged). A composite gives one
@@ -425,7 +436,7 @@ fn source(s: &Session, p: &Value, cmd: &str, gray: bool) -> Result<Vec<Vec<f32>>
         return Err(bad(cmd, format!("source document \"{}\" is {}×{}; it must match the target size", st.doc.name, st.doc.size.width, st.doc.size.height)));
     }
     let r = p.get("channel").map_or(Some(ChanRef::Composite), |v| parse_ref(v, &st.doc)).ok_or_else(|| bad(cmd, "unknown `channel`"))?;
-    let layer = source_layer(p);
+    let layer = source_layer(&st.doc, p, cmd)?;
     let mut planes = if gray { vec![gray_plane(&st.doc, layer, st.active_layer, r)?] } else { ref_planes(&st.doc, layer, st.active_layer, r)? };
     // Guard every caller (`.remove(0)` / `src[0]`) against an empty source.
     if planes.is_empty() {
@@ -608,7 +619,8 @@ pub(crate) fn mask_target_enabled(s: &Session, id: &str, p: &Value) -> Option<st
 /// (filters, adjustments, paint and fill commands); the shell adds its mask target to these.
 pub fn follows_target(id: &str) -> bool {
     // Moving the selected pixels (⌘-drag, Move tool) moves the targeted mask's, not the layer's.
-    routed(id) || id == "select.float"
+    // Moving a layer with its unlinked mask targeted moves the mask alone (`layer.translate`).
+    routed(id) || id == "select.float" || id == "layer.translate"
 }
 
 /// Commands whose target follows the Channels panel.
@@ -1125,11 +1137,15 @@ fn delete_channel(s: &mut Session, p: &Value) -> Result<Value> {
             _ => return Err(bad(cmd, "missing `channel`")),
         },
     };
+    // `edit` validates the view against the shorter channel list before we can remap it.
+    // Keep the original indices and eyes so a surviving final channel is not discarded.
+    let view = s.active().ok_or(EngineError::NoDocument)?.channel_view.clone();
     s.edit("Delete Channel", |doc, _| {
         doc.channels.remove(i);
         Ok(())
     })?;
     if let Some(st) = s.active_mut() {
+        st.channel_view = view;
         let v = &mut st.channel_view;
         if i < v.alpha_visible.len() {
             v.alpha_visible.remove(i);
@@ -1711,7 +1727,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Apply Image…",
             ["Image"],
             None,
-            r##"{"source":{"document":index?,"layer":id|"merged"="merged","channel":"composite"|"red|…"|index|"selection"|"transparency"|"mask"="composite","invert":bool=false},"blending":"normal|multiply|screen|overlay|softLight|hardLight|colorDodge|colorBurn|darken|lighten|difference|exclusion|linearBurn|linearDodge|add|subtract|…"="multiply","opacity":0..100=100,"scale":1..2=1,"offset":-255..255=0,"preserveTransparency":bool=false,"mask":{"document","layer","channel","invert"}?,"sourceChannel|sourceDocument|sourceLayer|sourceInvert|maskChannel|…":flat form of source/mask?}"##,
+            r##"{"source":{"document":index?,"layer":id|name|"merged"="merged","channel":"composite"|"red|…"|index|"selection"|"transparency"|"mask"="composite","invert":bool=false},"blending":"normal|multiply|screen|overlay|softLight|hardLight|colorDodge|colorBurn|darken|lighten|difference|exclusion|linearBurn|linearDodge|add|subtract|…"="multiply","opacity":0..100=100,"scale":1..2=1,"offset":-255..255=0,"preserveTransparency":bool=false,"mask":{"document","layer","channel","invert"}?,"sourceChannel|sourceDocument|sourceLayer|sourceInvert|maskChannel|…":flat form of source/mask?}"##,
             has_apply_target,
             apply_image
         ),
@@ -1803,6 +1819,16 @@ pub fn specs() -> Vec<CommandSpec> {
             journal: false,
         },
         spec!("channel.target.composite", "Target Composite Channel", [], Some("Cmd+2"), "{}", has_doc, |s, _| target_slot(s, 2)),
+        // ⌘\ targets the active layer's mask, as clicking its thumbnail does.
+        spec!("channel.target.layerMask", "Target Layer Mask", [], Some("Cmd+\\"), "{}", has_layer_mask, |s, _| target_cmd(
+            s,
+            &serde_json::json!({"channel": "mask"})
+        )),
+        // ⌘⌥2 loads the image's luminosity as a selection (⌘-click on the composite channel).
+        spec!("select.loadLuminosity", "Load Luminosity", [], Some("Cmd+Alt+2"), "{}", has_doc, |s, _| load_selection(
+            s,
+            &serde_json::json!({"channel": "composite"})
+        )),
         spec!("channel.target.slot3", "Target Channel 3", [], Some("Cmd+3"), "{}", slot_ok::<3>, |s, _| target_slot(s, 3)),
         spec!("channel.target.slot4", "Target Channel 4", [], Some("Cmd+4"), "{}", slot_ok::<4>, |s, _| target_slot(s, 4)),
         spec!("channel.target.slot5", "Target Channel 5", [], Some("Cmd+5"), "{}", slot_ok::<5>, |s, _| target_slot(s, 5)),
@@ -1811,6 +1837,13 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!("channel.target.slot8", "Target Channel 8", [], Some("Cmd+8"), "{}", slot_ok::<8>, |s, _| target_slot(s, 8)),
         spec!("channel.target.slot9", "Target Channel 9", [], Some("Cmd+9"), "{}", slot_ok::<9>, |s, _| target_slot(s, 9)),
     ]
+}
+
+/// Target Layer Mask: the active layer has a mask.
+fn has_layer_mask(s: &Session) -> std::result::Result<(), String> {
+    let st = s.active().ok_or("no document open")?;
+    let layer = st.active_layer.and_then(|id| st.doc.layer(id)).ok_or("no active layer")?;
+    layer.mask.as_ref().map(|_| ()).ok_or_else(|| "the active layer has no layer mask".to_string())
 }
 
 fn slot_ok<const N: usize>(s: &Session) -> std::result::Result<(), String> {

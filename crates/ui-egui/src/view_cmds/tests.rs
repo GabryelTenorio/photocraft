@@ -60,6 +60,34 @@ fn show_snap_extras_and_screen_modes_are_state() {
 }
 
 #[test]
+fn full_screen_and_maximized_never_overlap_on_windows() {
+    use egui::ViewportCommand::{Fullscreen, Maximized};
+    // Maximized → full screen: un-maximize first, and remember it.
+    let (cmds, remember) = screen_mode_commands(true, false, true, false, "fullScreenWithMenuBar");
+    assert_eq!(cmds, vec![Maximized(false), Fullscreen(true)]);
+    assert!(remember);
+    // Full screen → the other full-screen mode: nothing about maximized changes.
+    let (cmds, remember) = screen_mode_commands(true, true, false, true, "fullScreen");
+    assert_eq!(cmds, vec![Fullscreen(true)]);
+    assert!(remember);
+    // Full screen → Standard: maximize again after leaving, then forget.
+    let (cmds, remember) = screen_mode_commands(true, true, false, true, "standard");
+    assert_eq!(cmds, vec![Fullscreen(false), Maximized(true)]);
+    assert!(!remember);
+    // A window that was not maximized goes in and out untouched.
+    let (cmds, remember) = screen_mode_commands(true, false, false, false, "fullScreen");
+    assert_eq!((cmds, remember), (vec![Fullscreen(true)], false));
+    let (cmds, remember) = screen_mode_commands(true, true, false, false, "standard");
+    assert_eq!((cmds, remember), (vec![Fullscreen(false)], false));
+    // Standard while already standard never maximizes.
+    let (cmds, _) = screen_mode_commands(true, false, false, true, "standard");
+    assert_eq!(cmds, vec![Fullscreen(false)]);
+    // Elsewhere the commands are as before.
+    let (cmds, remember) = screen_mode_commands(false, false, true, false, "fullScreen");
+    assert_eq!((cmds, remember), (vec![Fullscreen(true)], false));
+}
+
+#[test]
 fn zoom_presets_and_fit_layers() {
     let (mut app, ctx) = app_with(1);
     menu(&mut app, &ctx, "view.twoHundredPercent", json!({})).unwrap();
@@ -292,6 +320,32 @@ fn lookup_export_dialog_uses_the_current_adjustment_selection() {
     assert!(direct["cube"].as_str().unwrap().contains("LUT_3D_SIZE 3"));
 }
 
+/// Float in Window takes the document and the screen position a dragged-off tab was dropped at
+/// (#3733); bad params are errors, not panics.
+#[test]
+fn float_in_window_takes_a_document_and_position() {
+    let (mut app, ctx) = app_with(3);
+    let r = menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({"document": 1, "position": [1950.0, 40.5]})).unwrap();
+    let w = app.ui.windows.last().unwrap();
+    assert_eq!(r, json!({"window": w.id}));
+    assert_eq!((w.document, w.position), (1, Some([1950.0, 40.5])));
+    assert_eq!(app.session.active_index(), Some(1));
+    menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({})).unwrap();
+    assert_eq!(app.ui.windows.last().map(|w| (w.document, w.position)), Some((1, None)), "defaults: the active document, placed by the OS");
+    for bad in [
+        json!({"document": 3}),
+        json!({"document": -1}),
+        json!({"document": "b"}),
+        json!({"position": [1.0]}),
+        json!({"position": [1.0, "x"]}),
+        json!({"position": [1.0e30, 0.0]}),
+        json!({"position": 5}),
+    ] {
+        assert!(menu(&mut app, &ctx, "window.arrange.floatInWindow", bad.clone()).is_err(), "{bad}");
+    }
+    assert_eq!(app.ui.windows.len(), 2, "rejected params open no window");
+}
+
 #[test]
 fn save_selection_opens_its_dialog_and_saves_on_confirm() {
     // #3713: Select › Save Selection… asks for the channel, name and operation first.
@@ -342,4 +396,48 @@ fn load_selection_without_alpha_channels_offers_the_composite() {
     let dialog = menu(&mut app, &ctx, "select.loadSelection", json!({})).unwrap()["dialog"].as_u64().unwrap();
     assert_eq!(app.ui.dialog_mut(dialog).unwrap().fields["channel"], "RGB");
     crate::dialogs::confirm(&mut app, dialog).unwrap();
+}
+
+/// One frame of the shortcut handler with a plain Esc press.
+fn press_esc(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    let key = egui::Key::Escape;
+    let input = egui::RawInput {
+        focused: true,
+        events: vec![egui::Event::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }],
+        ..Default::default()
+    };
+    ctx.run_ui(input, |ui| crate::shortcuts::handle(app, ui.ctx())).textures_delta.clear();
+}
+
+#[test]
+fn esc_leaves_full_screen_modes_unless_something_else_owns_it() {
+    let (mut app, ctx) = app_with(1);
+    // Both full screen modes return to Standard, and the menu check follows (#4116).
+    for mode in ["fullScreen", "fullScreenWithMenuBar"] {
+        menu(&mut app, &ctx, &format!("view.screenMode.{mode}"), json!({})).unwrap();
+        press_esc(&mut app, &ctx);
+        assert_eq!(app.ui.view.screen_mode, "standard", "{mode}");
+        assert_eq!(checked(&app, "view.screenMode.standard"), Some(true));
+    }
+    // In Standard, Esc leaves the mode alone.
+    press_esc(&mut app, &ctx);
+    assert_eq!(app.ui.view.screen_mode, "standard");
+    // An open dialog takes Esc first.
+    menu(&mut app, &ctx, "view.screenMode.fullScreen", json!({})).unwrap();
+    menu(&mut app, &ctx, "image.canvasSize", json!({})).unwrap();
+    assert_eq!(app.ui.dialogs.len(), 1);
+    press_esc(&mut app, &ctx);
+    assert_eq!(app.ui.view.screen_mode, "fullScreen");
+    app.ui.dialogs.clear();
+    // So does Free Transform: Esc cancels it and the mode stays.
+    app.run("select.all", json!({})).unwrap();
+    crate::transform_tool::begin(&mut app, &ctx).unwrap();
+    assert!(app.ui.transform.is_some());
+    press_esc(&mut app, &ctx);
+    assert!(app.ui.transform.is_none());
+    assert_eq!(app.ui.view.screen_mode, "fullScreen");
+    // A selection stays while Esc leaves full screen; the next Esc deselects.
+    press_esc(&mut app, &ctx);
+    assert_eq!(app.ui.view.screen_mode, "standard");
+    assert!(app.session.active().unwrap().doc.selection.is_some());
 }
