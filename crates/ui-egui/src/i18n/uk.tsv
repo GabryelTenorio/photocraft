@@ -9,6 +9,36 @@
 # Licensed MIT OR Apache-2.0. See LICENSE-translations.txt and ATTRIBUTION.md.
 
 # Menus
+# Plural status messages (complete catalog coverage)
+
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	Перетягніть зображення, PSD або PDF будь-куди, щоб відкрити його.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Кожна монтажна область стає сторінкою PDF. Шари об’єднуються; прозорість зберігається.
+	Export All Tabs to PDF…	Експортувати всі вкладки в PDF…
+	Open PDF pages	Відкрити сторінки PDF
+	{count} pages • Each selected page opens in its own tab	{count} сторінок • Кожна вибрана сторінка відкриється в окремій вкладці
+	Click to select pages. Shift-click selects a range.	Клацніть для вибору. Shift-клацання вибирає діапазон.
+	Page {number}	Сторінка {number}
+	Page {number} — {width} × {height} in	Сторінка {number} — {width} × {height} дюймів
+	Loading preview…	Завантаження попереднього перегляду…
+	Resolution (ppi)	Роздільність (ppi)
+	Preview page: {width} × {height} pixels	Сторінка перегляду: {width} × {height} пікселів
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Сторінки відкриваються як 8-бітні зображення RGB. Текст і векторні об’єкти PDF растеризуються.
+	Open all {count} pages	Відкрити всі сторінки ({count})
+	Open selected ({count})	Відкрити вибрані ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} вкладок буде об’єднано в порядку зліва направо.
+	Current edits are included. Each page keeps its size and resolution.	Поточні зміни враховуються. Кожна сторінка зберігає розмір і роздільність.
+	Close exported tabs after successful export	Закрити експортовані вкладки після успішного експорту
+	Canceled or failed exports leave every tab open.	У разі скасування або помилки експорту всі вкладки залишаються відкритими.
+	PDF saves the visible pages with flattened layers.	PDF зберігає видимі сторінки зі зведеними шарами.
+	Thumbnail size	Розмір мініатюр
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd-клацання додає сторінки. Shift-клацання вибирає діапазон.
+	Place PDF pages as smart objects	Розмістити сторінки PDF як смарт-об’єкти
+	{count} pages • Each selected page becomes a smart object layer	{count} сторінок • Кожна вибрана сторінка стає шаром смарт-об’єкта
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Смарт-об’єкти містять растрові сторінки з цією роздільністю. Текст і вектори PDF залишаються растровими.
+	Place all {count} pages	Розмістити всі сторінки ({count})
+	Place selected ({count})	Розмістити вибрані ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Не можна малювати безпосередньо на смарт-об’єктах. Раструйте шар вручну або малюйте на новому піксельному шарі.
 
 # Guide layout dialog
 
@@ -195,9 +225,6 @@
 	Enable Layer Mask	Увімкнути маску шару
 	Disable Layer Mask	Вимкнути маску шару
 	Apply Layer Mask	Застосувати маску шару
-	Add Mask to Selection	Додати маску до виділення
-	Subtract Mask from Selection	Відняти маску від виділення
-	Intersect Mask with Selection	Перетнути маску з виділенням
 	Link Layer Mask	Зв'язати маску шару
 	Unlink Layer Mask	Відв'язати маску шару
 	Vector Mask	Векторна маска
@@ -3651,6 +3678,12 @@ cameraRaw	Masking	Маскування
 	Quick Selection found nothing there	Швидке виділення нічого тут не знайшло
 	Object Selection found nothing there — try a tighter rectangle	Виділення об'єктів нічого тут не знайшло — спробуйте вужчий прямокутник
 	No subject found — try a rectangle around the object	Об'єкт не знайдено — спробуйте прямокутник навколо об'єкта
+
+
+
+
+
+
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Клацніть першу точку або натисніть {key}, щоб замкнути · {del} видаляє точку · Esc скасовує
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Клацніть і ведіть уздовж краю · клацання закріплює точку · {alt}-клацання — прямий відрізок · подвійне клацання замикає
 	Follows only edges this close to the pointer ([ and ] change it)	Відстежує лише краї на такій відстані від вказівника ([ і ] змінюють її)

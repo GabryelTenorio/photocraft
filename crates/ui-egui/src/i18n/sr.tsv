@@ -22,6 +22,35 @@
 # are; the trailing "…" of dialog commands is kept. A count that is not an @plural entry is kept
 # out of noun agreement ("Broj: {n}", "slojeva: {n}") so every number reads correctly.
 
+# PDF import, export and Smart Object painting. Serbian Latin, Ekavian.
+	Drop an image, PSD or PDF anywhere to open it.	Prevuci sliku, PSD ili PDF bilo gde da ga otvoriš.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Svaka radna tabla postaje jedna PDF stranica. Slojevi se spljoštavaju; providnost se zadržava.
+	Export All Tabs to PDF…	Izvezi sve kartice u PDF…
+	Open PDF pages	Otvori PDF stranice
+	{count} pages • Each selected page opens in its own tab	Broj stranica: {count} • Svaka izabrana stranica otvara se u zasebnoj kartici
+	Click to select pages. Shift-click selects a range.	Klikni da izabereš stranice. Shift-klik bira opseg.
+	Page {number}	Stranica {number}
+	Page {number} — {width} × {height} in	Stranica {number} — {width} × {height} inča
+	Loading preview…	Učitavanje pregleda…
+	Resolution (ppi)	Rezolucija (ppi)
+	Preview page: {width} × {height} pixels	Pregled stranice: {width} × {height} piksela
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Stranice se otvaraju kao 8-bitne RGB slike. PDF tekst i vektorski objekti se rasterizuju.
+	Open all {count} pages	Otvori sve stranice ({count})
+	Open selected ({count})	Otvori izabrane ({count})
+	{count} tabs will be combined in left-to-right tab order.	Broj kartica koje će biti spojene: {count}, redom sleva nadesno.
+	Current edits are included. Each page keeps its size and resolution.	Tekuće izmene su uključene. Svaka stranica zadržava svoju veličinu i rezoluciju.
+	Close exported tabs after successful export	Zatvori izvezene kartice nakon uspešnog izvoza
+	Canceled or failed exports leave every tab open.	Pri otkazanom ili neuspešnom izvozu sve kartice ostaju otvorene.
+	PDF saves the visible pages with flattened layers.	PDF čuva vidljive stranice sa spljoštenim slojevima.
+	Thumbnail size	Veličina sličica
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd-klik dodaje stranice. Shift-klik bira opseg.
+	Place PDF pages as smart objects	Postavi PDF stranice kao pametne objekte
+	{count} pages • Each selected page becomes a smart object layer	Broj stranica: {count} • Svaka izabrana stranica postaje sloj pametnog objekta
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Pametni objekti sadrže rasterizovane stranice u ovoj rezoluciji. PDF tekst i vektori ostaju rasterizovani.
+	Place all {count} pages	Postavi sve stranice ({count})
+	Place selected ({count})	Postavi izabrane ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Pametni objekti ne mogu direktno da se slikaju. Ručno rasterizuj sloj ili slikaj na novom pikselnom sloju.
+
 # Guide layout dialog
 	Rows	Redovi
 	Number	Broj

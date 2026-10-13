@@ -62,7 +62,7 @@ pub(crate) struct OpenBatch {
     /// The tab position of the set's first document: after the documents and opens there when it
     /// started.
     base: usize,
-    /// The `seq` of every member whose document is in place.
+    /// The `seq` of every document in place (one member can open several PDF pages).
     opened: Vec<usize>,
 }
 
@@ -195,7 +195,7 @@ pub fn start_open(app: &mut PhotocraftApp, name: &str, path: Option<String>, sou
     let name = &app.open_name(name);
     match app.session.start_open(name, source).map_err(|e| e.to_string())? {
         // Inline (wasm): finish now, like a background open that ended at once.
-        Started::Done(v) => finish_open(app, name, path.as_deref(), &v, None),
+        Started::Done(v) => finish_open(app, name, path.as_deref(), &v, None, None),
         Started::Job(job) => {
             app.jobs.opens.push(OpenTab { job, name: name.to_string(), path, slot: None, order: None });
             app.jobs.focus = Some(job);
@@ -212,7 +212,7 @@ pub fn start_open(app: &mut PhotocraftApp, name: &str, path: Option<String>, sou
 pub(crate) fn begin_batch(app: &mut PhotocraftApp) -> u64 {
     let id = app.jobs.next_batch;
     app.jobs.next_batch = app.jobs.next_batch.wrapping_add(1);
-    let base = app.session.documents().len() + app.jobs.opens.len();
+    let base = app.session.documents().len() + app.jobs.opens.len() + app.pdf_pickers.iter().filter(|p| p.order.is_some()).count();
     app.jobs.batches.push(OpenBatch { id, base, opened: Vec::new() });
     id
 }
@@ -226,26 +226,64 @@ pub(crate) fn opened_in_order(jobs: &mut JobsUi, order: OpenOrder) {
 }
 
 /// Every member of the set has been started: forget it unless some are still opening.
-pub(crate) fn end_batch(jobs: &mut JobsUi) {
-    let opens = &jobs.opens;
-    jobs.batches.retain(|b| opens.iter().any(|o| o.order.is_some_and(|x| x.batch == b.id)));
+pub(crate) fn end_batch(app: &mut PhotocraftApp) {
+    let opens = &app.jobs.opens;
+    let pickers = &app.pdf_pickers;
+    app.jobs
+        .batches
+        .retain(|b| opens.iter().any(|o| o.order.is_some_and(|x| x.batch == b.id)) || pickers.iter().any(|p| p.order.is_some_and(|x| x.batch == b.id)));
 }
 
 /// The tab position for a member of a set that just opened: after the members before it that
 /// have opened, so the set reads in order whichever order the opens finish in.
-fn batch_slot(jobs: &mut JobsUi, order: OpenOrder) -> Option<usize> {
-    let batch = jobs.batches.iter_mut().find(|b| b.id == order.batch)?;
+fn batch_slot(jobs: &mut JobsUi, order: OpenOrder, count: usize) -> Option<usize> {
+    let index = jobs.batches.iter().position(|b| b.id == order.batch)?;
+    let batch = &mut jobs.batches[index];
     let slot = batch.base + batch.opened.iter().filter(|s| **s < order.seq).count();
-    batch.opened.push(order.seq);
+    batch.opened.extend(std::iter::repeat_n(order.seq, count));
+    // Later sets reserved one tab for this pending file. Replace that reservation with the
+    // actual number of pages, or release it when opening was cancelled or failed.
+    for later in &mut jobs.batches[index + 1..] {
+        later.base = if count == 0 { later.base.saturating_sub(1) } else { later.base + count - 1 };
+    }
     Some(slot)
+}
+
+pub(crate) fn discarded_open(jobs: &mut JobsUi, order: Option<OpenOrder>) {
+    if let Some(order) = order {
+        batch_slot(jobs, order, 0);
+    }
+}
+
+/// Put newly appended documents in their input order, keeping a PDF's pages together.
+pub(crate) fn position_opened_tabs(app: &mut PhotocraftApp, first: usize, count: usize, slot: Option<usize>, order: Option<OpenOrder>) -> usize {
+    let count = count.min(app.session.documents().len().saturating_sub(first));
+    if count == 0 {
+        discarded_open(&mut app.jobs, order);
+        return first;
+    }
+    let Some(slot) = slot.or_else(|| order.and_then(|o| batch_slot(&mut app.jobs, o, count))) else { return first };
+    // The group was appended: a requested position beyond its start means keep it at the end.
+    let slot = slot.min(first);
+    let mut index = first;
+    for offset in 0..count {
+        if let Ok(moved) = app.run("document.move", json!({"document": first + offset, "to": slot + offset}))
+            && offset == 0
+        {
+            index = moved.get("document").and_then(Value::as_u64).map_or(index, |i| i as usize);
+        }
+    }
+    index
 }
 
 /// A background open's result (`{document, warnings, color}`) for `tab`, already taken out of
 /// [`JobsUi::opens`]: the document goes to the tab's slot, or to its place in its set.
 pub(crate) fn finish_open_tab(app: &mut PhotocraftApp, tab: &OpenTab, v: &Value) -> Result<(), String> {
-    let slot = tab.slot.or_else(|| tab.order.and_then(|o| batch_slot(&mut app.jobs, o)));
-    let r = finish_open(app, &tab.name, tab.path.as_deref(), v, slot);
-    end_batch(&mut app.jobs);
+    let r = finish_open(app, &tab.name, tab.path.as_deref(), v, tab.slot, tab.order);
+    if r.is_err() {
+        discarded_open(&mut app.jobs, tab.order);
+    }
+    end_batch(app);
     r
 }
 
@@ -480,13 +518,17 @@ fn on_event(app: &mut PhotocraftApp, ctx: &egui::Context, e: JobEvent) {
                     app.open_failed(&tab.name, &err);
                 }
             }
-            JobOutcome::Failed(err) => app.open_failed(&tab.name, &err),
+            JobOutcome::Failed(err) => {
+                discarded_open(&mut app.jobs, tab.order);
+                app.open_failed(&tab.name, &err);
+            }
             JobOutcome::Cancelled => {
+                discarded_open(&mut app.jobs, tab.order);
                 app.ui.status = crate::i18n::fmt(tl!("Cancelled opening {name}"), &[("name", &tab.name)]);
                 app.ui.status_error = false;
             }
         }
-        end_batch(&mut app.jobs);
+        end_batch(app);
         return;
     }
     match e.outcome {
@@ -526,13 +568,10 @@ fn on_event(app: &mut PhotocraftApp, ctx: &egui::Context, e: JobEvent) {
 
 /// What [`crate::PhotocraftApp::open_bytes`] does after decoding, for a background open's result
 /// (`{document, warnings, color}`).
-fn finish_open(app: &mut PhotocraftApp, name: &str, path: Option<&str>, v: &Value, slot: Option<usize>) -> Result<(), String> {
-    let mut index = v.get("document").and_then(Value::as_u64).ok_or("the open job returned no document")? as usize;
-    if let Some(slot) = slot
-        && let Ok(moved) = app.run("document.move", json!({"document": index, "to": slot}))
-    {
-        index = moved.get("document").and_then(Value::as_u64).map_or(index, |i| i as usize);
-    }
+fn finish_open(app: &mut PhotocraftApp, name: &str, path: Option<&str>, v: &Value, slot: Option<usize>, order: Option<OpenOrder>) -> Result<(), String> {
+    let first = v.get("document").and_then(Value::as_u64).ok_or("the open job returned no document")? as usize;
+    let count = v.get("documents").and_then(Value::as_array).map_or(1, Vec::len);
+    let index = position_opened_tabs(app, first, count, slot, order);
     let warnings: Vec<String> =
         v.get("warnings").and_then(Value::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
     app.session.set_active(index);

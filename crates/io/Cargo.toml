@@ -42,6 +42,7 @@ roxmltree = "0.20"
 # SVG import (svg.rs): usvg parses, resvg rasterises what the shape model can't hold. Both are
 # already in the tree through the UI's icon loader; text shaping needs the fonts feature set.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+hayro = "=0.7.1"
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -50,7 +51,15 @@ resvg = { version = "0.45", default-features = false, features = ["text", "raste
 [dev-dependencies]
 crc32fast = "1.5"
 photocraft-affinity = { workspace = true, features = ["synth"] }
-flate2 = { workspace = true }
 photocraft-psd = { workspace = true, features = ["testgen"] }
 photocraft-raw = { workspace = true, features = ["testgen"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen = "0.2"
+
+[[example]]
+name = "pdf_web_smoke"
+crate-type = ["cdylib"]

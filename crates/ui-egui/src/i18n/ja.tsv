@@ -3796,3 +3796,51 @@ curves	Smooth	スムーズ
 	Clear Brush Controls	ブラシのコントロールを消去
 	Reset All Locked Settings	ロックされた設定をすべて初期化
 	Copy Texture to Other Tools	テクスチャを他のツールにコピー
+
+# Japanese (ja) catalog. Columns, separated by a TAB:  context <TAB> source <TAB> translation
+#
+#   context  empty                a plain UI string; `source` is the English text in the code
+#            @id                  a command id (e.g. file.saveAs): wins over the English text for
+#                                 that menu item, so one id can read differently from its twin
+#            @plural              `source` is "one|other" (English forms); the translation lists the
+#                                 language's forms separated by "|" (see `plural` in i18n/mod.rs)
+#            anything else        a disambiguating context passed to `tr_ctx`
+#   escapes  \n  \t  \\  inside a column. `{name}` placeholders must appear in both columns.
+#   lines starting with # and blank lines are ignored.
+#
+# Clean-room: every entry was written from the plain meaning of the English label using ordinary
+# Japanese computing vocabulary (レイヤー, ぼかし, 選択範囲 ...). No proprietary localisation
+# resource, string table or product UI was consulted or copied; add entries the same way.
+# Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
+# letters; the trailing "…" of dialog commands is kept.
+
+# Plural status messages (complete catalog coverage)
+
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	画像、PSD、PDFをここにドロップすると開きます。
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	各アートボードが1つのPDFページになります。レイヤーは統合され、透明度は保持されます。
+	Export All Tabs to PDF…	すべてのタブをPDFに書き出し…
+	Open PDF pages	PDF ページを開く
+	{count} pages • Each selected page opens in its own tab	{count} ページ • 選択した各ページは個別のタブで開きます
+	Click to select pages. Shift-click selects a range.	クリックで選択します。Shift キーを押しながらクリックすると範囲を選択します。
+	Page {number}	ページ {number}
+	Page {number} — {width} × {height} in	ページ {number} — {width} × {height} インチ
+	Loading preview…	プレビューを読み込み中…
+	Resolution (ppi)	解像度 (ppi)
+	Preview page: {width} × {height} pixels	プレビューページ: {width} × {height} ピクセル
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	ページは 8 ビット RGB 画像として開きます。PDF のテキストとベクトルオブジェクトはラスタライズされます。
+	Open all {count} pages	全 {count} ページを開く
+	Open selected ({count})	選択したページを開く ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} 個のタブを左から右の順に結合します。
+	Current edits are included. Each page keeps its size and resolution.	現在の編集内容が含まれます。各ページのサイズと解像度は保持されます。
+	Close exported tabs after successful export	エクスポート成功後にエクスポートしたタブを閉じる
+	Canceled or failed exports leave every tab open.	エクスポートの中止や失敗時は、すべてのタブを開いたままにします。
+	PDF saves the visible pages with flattened layers.	PDF は表示中のページをレイヤーを統合して保存します。
+	Thumbnail size	サムネイルサイズ
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd キーを押しながらクリックでページを追加し、Shift キーを押しながらクリックで範囲を選択します。
+	Place PDF pages as smart objects	PDFページをスマートオブジェクトとして配置
+	{count} pages • Each selected page becomes a smart object layer	{count}ページ • 選択した各ページがスマートオブジェクトレイヤーになります
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	スマートオブジェクトにはこの解像度でラスタライズしたページが含まれます。PDFのテキストとベクトルはラスタライズされたままです。
+	Place all {count} pages	全{count}ページを配置
+	Place selected ({count})	選択を配置 ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	スマートオブジェクトには直接描画できません。レイヤーを手動でラスタライズするか、新しいピクセルレイヤーに描画してください。

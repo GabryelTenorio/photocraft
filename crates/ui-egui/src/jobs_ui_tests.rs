@@ -778,7 +778,7 @@ fn background_open_warns_about_missing_fonts() {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     // What the open job leaves behind: the decoded document in the session, then its result.
     let (index, _) = app.session.open_document(doc, None);
-    super::finish_open(&mut app, "poster.psd", None, &json!({"document": index, "warnings": []}), None).unwrap();
+    super::finish_open(&mut app, "poster.psd", None, &json!({"document": index, "warnings": []}), None, None).unwrap();
     let want = vec!["font 'NoSuchFamily4559' is not installed; text may render using a fallback face".to_string()];
     assert!(app.ui.notices.last().is_some_and(|n| n.title.contains("poster.psd") && n.lines == want), "{:?}", app.ui.notices);
 }

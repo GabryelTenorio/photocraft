@@ -11,6 +11,34 @@
 # Licensed MIT OR Apache-2.0, as the code.
 # Product and technology names retain their spelling. See docs/localization-zh-hans.md.
 
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	将图像、PSD 或 PDF 拖放到任意位置即可打开。
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	每个画板成为一页 PDF。图层将合并，透明度会保留。
+	Export All Tabs to PDF…	将所有标签页导出为 PDF…
+	Open PDF pages	打开 PDF 页面
+	{count} pages • Each selected page opens in its own tab	{count} 页 • 每个选中的页面将在独立标签页中打开
+	Click to select pages. Shift-click selects a range.	单击选择页面。按住 Shift 单击可选择范围。
+	Page {number}	第 {number} 页
+	Page {number} — {width} × {height} in	第 {number} 页 — {width} × {height} 英寸
+	Loading preview…	正在加载预览…
+	Resolution (ppi)	分辨率 (ppi)
+	Preview page: {width} × {height} pixels	预览页面：{width} × {height} 像素
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	页面将作为 8 位 RGB 图像打开。PDF 文本和矢量对象将栅格化。
+	Open all {count} pages	打开全部 {count} 页
+	Open selected ({count})	打开所选页面 ({count})
+	{count} tabs will be combined in left-to-right tab order.	将按从左到右的顺序合并 {count} 个标签页。
+	Current edits are included. Each page keeps its size and resolution.	包含当前编辑内容。每页保留其尺寸和分辨率。
+	Close exported tabs after successful export	成功导出后关闭已导出的标签页
+	Canceled or failed exports leave every tab open.	取消或失败的导出会保留所有标签页。
+	PDF saves the visible pages with flattened layers.	PDF 将可见页面以拼合图层的方式保存。
+	Thumbnail size	缩略图大小
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd-单击添加页面。Shift-单击选择范围。
+	Place PDF pages as smart objects	将 PDF 页面置入为智能对象
+	{count} pages • Each selected page becomes a smart object layer	{count} 页 • 每个选中的页面成为一个智能对象图层
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	智能对象包含按此分辨率栅格化的页面。PDF 文本和矢量仍保持栅格化。
+	Place all {count} pages	置入全部 {count} 页
+	Place selected ({count})	置入选中页面 ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	无法直接在智能对象上绘画。请手动栅格化图层，或在新的像素图层上绘画。
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -850,9 +878,6 @@
 	Appearance	外观
 	Appearance (Layer Style)	外观（图层样式）
 	Apply Layer Mask	应用图层蒙版
-	Add Mask to Selection	添加蒙版到选区
-	Subtract Mask from Selection	从选区中减去蒙版
-	Intersect Mask with Selection	蒙版与选区交叉
 	Apply Per Tip	应用于每个笔尖
 	Apply next selected layer comp	应用下一个选中的图层复合
 	Apply previous selected layer comp	应用上一个选中的图层复合
@@ -2559,6 +2584,12 @@ fontWeight	Italic	斜体
 	Quick Selection found nothing there	快速选择在该处未找到任何内容
 	Object Selection found nothing there — try a tighter rectangle	对象选择在该处未找到任何内容 — 请尝试更紧凑的矩形
 	No subject found — try a rectangle around the object	未找到主体 — 请尝试在对象周围绘制矩形
+
+
+
+
+
+
 	Auto Erase	自动抹除
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	点按第一个点或按 {key} 闭合 · {del} 删除一个点 · Esc 取消
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	点按，然后沿边缘移动 · 点按固定一个点 · {alt}-点按画直线段 · 双击闭合

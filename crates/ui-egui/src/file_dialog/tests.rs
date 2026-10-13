@@ -335,6 +335,7 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
         FileDialogRequest::Save { suggested } => suggested.clone(),
         other => panic!("save dialog expected, got {other:?}"),
     };
+    // Suggestions are built with `Path::join`, which uses `\` on Windows (#2745).
     // An export starts beside the document; the user saves it under /renders instead.
     app.pick_save("result.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
@@ -719,9 +720,12 @@ fn export_as_with_several_artboards_selected_writes_one_file_each() {
     assert!(!app.ui.status_error, "{}", app.ui.status);
     assert_eq!(written.borrow().len(), 2);
     assert_eq!(written.borrow()[0], "/out/boards.jpg");
-    // The sibling path is joined with the platform separator (`/out\boards-2-…` on Windows).
-    let second = written.borrow()[1].replace('\\', "/");
-    assert!(second.starts_with("/out/boards-2-") && second.ends_with(".jpg"), "{:?}", written.borrow());
+    // Compare native paths structurally: Windows joins siblings with a backslash.
+    let paths = written.borrow();
+    let second = std::path::Path::new(&paths[1]);
+    assert_eq!(second.parent(), Some(std::path::Path::new("/out")), "{paths:?}");
+    let name = second.file_name().unwrap().to_str().unwrap();
+    assert!(name.starts_with("boards-2-") && name.ends_with(".jpg"), "{paths:?}");
     let mut got = sizes.borrow().iter().map(|(_, w, h)| (*w, *h)).collect::<Vec<_>>();
     got.sort_unstable();
     assert_eq!(got, [(10, 25), (20, 15)], "each board at its own size, scaled to 50 %");

@@ -50,7 +50,24 @@ fn setup(h: &mut Harness, width: u32, height: u32, zoom: f32, center: [f32; 2]) 
 }
 
 fn open(h: &mut Harness) -> u64 {
-    control(h, "ui.menu.invoke", json!({"id":"image.rotation.arbitrary"}))["dialog"].as_u64().expect("rotation dialog")
+    let id = control(h, "ui.menu.invoke", json!({"id":"image.rotation.arbitrary"}))["dialog"].as_u64().expect("rotation dialog");
+    // The in-dialog preview makes this modal tall enough to cover the rotated image's
+    // upper edge. Move it aside so blue() measures both canvas extrema, not an occluded half.
+    let modal = h.ctx.memory(|m| m.area_rect(egui::Id::new(("dialog", id)))).expect("laid-out dialog");
+    let target_x = h.ctx.content_rect().right() - modal.width() - 12.0;
+    let from = h.get_by_label("Arbitrary").rect().center();
+    let by = egui::vec2(target_x - modal.left(), 0.0);
+    h.event(egui::Event::PointerMoved(from));
+    h.event(egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+    for k in 1..=6 {
+        h.event(egui::Event::PointerMoved(from + by * (k as f32 / 6.0)));
+        h.step();
+    }
+    h.event(egui::Event::PointerButton { pos: from + by, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+    h.run_steps(3);
+    let moved = h.ctx.memory(|m| m.area_rect(egui::Id::new(("dialog", id)))).expect("moved dialog");
+    assert!((moved.left() - target_x).abs() < 2.0, "dialog moved away from the canvas: {moved:?}");
+    id
 }
 
 fn angle(h: &mut Harness, id: u64, value: f64) {

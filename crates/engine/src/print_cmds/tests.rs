@@ -57,7 +57,7 @@ fn print_dry_run_renders_a_pdf_and_reports_the_platform_backend() {
         assert_eq!(r["pdf"], out);
         let pdf = std::fs::read(&out).unwrap();
         assert!(pdf.starts_with(b"%PDF-1.4"));
-        assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 595.28 841.89]"));
+        assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 595.280000 841.890000]"));
         let (w, h, cs, data) = pdf_image(&pdf);
         assert_eq!((w, h), (300, 150));
         assert_eq!(cs, "/DeviceRGB");
@@ -310,7 +310,13 @@ fn spool_transport_streams_pdf_and_propagates_refusal() {
         assert!(out["pdf"].is_null(), "spool-only printing leaves no diagnostic PDF");
         let pdf = std::fs::read(format!("{dir}/received.pdf")).unwrap();
         assert!(pdf.starts_with(b"%PDF-1.4"));
-        assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 595.28 841.89]"));
+        let pdf_text = String::from_utf8_lossy(&pdf);
+        let media_box = pdf_text.split_once("/MediaBox [").expect("print PDF has a MediaBox").1.split_once(']').expect("MediaBox is terminated").0;
+        let bounds: Vec<f64> = media_box.split_whitespace().map(|n| n.parse().expect("MediaBox coordinates are numbers")).collect();
+        assert_eq!(bounds.len(), 4, "MediaBox has exactly four coordinates");
+        for (actual, expected) in bounds.into_iter().zip([0.0, 0.0, 595.28, 841.89]) {
+            assert!((actual - expected).abs() < 1e-6, "unexpected A4 MediaBox coordinate: {actual} versus {expected}");
+        }
         let args = std::fs::read_to_string(format!("{dir}/args")).unwrap();
         assert!(args.contains("fit-to-page=false"));
         assert!(args.contains("-n\n3\n"));

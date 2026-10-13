@@ -20,14 +20,20 @@ const H: i32 = 2000;
 
 fn harness() -> Option<Harness> {
     let built = std::panic::catch_unwind(|| {
-        egui_kittest::Harness::builder().with_size(egui::vec2(1100.0, 760.0)).with_pixels_per_point(1.0).with_max_steps(64).wgpu().build_eframe(|cc| {
-            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
-            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
-            if let Some(rs) = cc.wgpu_render_state.as_ref() {
-                app.set_wgpu(rs.clone());
-            }
-            app
-        })
+        let mut max_texture_side = None;
+        let mut h =
+            egui_kittest::Harness::builder().with_size(egui::vec2(1100.0, 760.0)).with_pixels_per_point(1.0).with_max_steps(64).wgpu().build_eframe(|cc| {
+                PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+                let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+                if let Some(rs) = cc.wgpu_render_state.as_ref() {
+                    max_texture_side = Some(rs.device.limits().max_texture_dimension_2d as usize);
+                    app.set_wgpu(rs.clone());
+                }
+                app
+            });
+        // Match eframe's input limit to the device: kittest otherwise keeps egui's 2048 default.
+        h.input_mut().max_texture_side = max_texture_side;
+        h
     });
     match built {
         Ok(h) => Some(h),

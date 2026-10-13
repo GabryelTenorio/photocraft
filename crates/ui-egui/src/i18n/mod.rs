@@ -36,8 +36,8 @@ pub struct LangInfo {
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
-    /// Catalog file contents, raw-deflated by build.rs (empty for the built-in English); see
-    /// [`LangInfo::text`].
+    /// Opaque build-generated packed catalog storage (empty for built-in English).
+    /// Obtain the complete original TSV through [`LangInfo::text`].
     pub source: &'static [u8],
     /// Plural form index for a count (English: 0 = one, 1 = other; Japanese, Chinese and Hungarian: always 0;
     /// Czech: 0 = one, 1 = few (2–4), 2 = other; French: 0 = one (0 and 1), 1 = other). A catalog's `@plural` entries list one form per
@@ -158,10 +158,17 @@ fn unpack(source: &[u8]) -> Result<String, String> {
 /// [`unpack`]'s second step: replace each packed entry line with its key and translation.
 fn expand(packed: &str, keys: &[&str]) -> Result<String, String> {
     let mut text = String::with_capacity(packed.len().saturating_mul(2));
+    let mut append = |value: &str| {
+        if text.len().checked_add(value.len()).is_none_or(|len| len as u64 > MAX_CATALOG_BYTES) {
+            return Err(format!("over {MAX_CATALOG_BYTES} bytes"));
+        }
+        text.push_str(value);
+        Ok(())
+    };
     let mut next = 0usize;
     for (n, line) in packed.split('\n').enumerate() {
         if n > 0 {
-            text.push('\n');
+            append("\n")?;
         }
         let bad = || format!("packed line {}: bad key reference", n + 1);
         let (index, tr) = if let Some(tr) = line.strip_prefix('\x01') {
@@ -172,16 +179,13 @@ fn expand(packed: &str, keys: &[&str]) -> Result<String, String> {
             let index = i64::try_from(next).ok().and_then(|n| n.checked_add(offset)).and_then(|i| usize::try_from(i).ok()).ok_or_else(bad)?;
             (index, tr)
         } else {
-            text.push_str(line.strip_prefix('\x03').unwrap_or(line));
+            append(line.strip_prefix('\x03').unwrap_or(line))?;
             continue;
         };
-        text.push_str(keys.get(index).ok_or_else(bad)?);
-        text.push('\t');
-        text.push_str(tr);
+        append(keys.get(index).ok_or_else(bad)?)?;
+        append("\t")?;
+        append(tr)?;
         next = index.saturating_add(1);
-        if text.len() as u64 > MAX_CATALOG_BYTES {
-            return Err(format!("over {MAX_CATALOG_BYTES} bytes"));
-        }
     }
     Ok(text)
 }
@@ -852,6 +856,21 @@ mod tests {
         for bad in ["\x02-1\tx", "\x02 3\tx", "\x023", "\x029223372036854775807\tx", "\x02-9223372036854775808\tx", "\x01a\n\x01b\n\x01c\n\x01d"] {
             assert!(expand(bad, &keys).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn packed_raw_lines_and_newlines_respect_the_expanded_limit() {
+        let limit = MAX_CATALOG_BYTES as usize;
+        let key = "k".repeat(100);
+        let mut packed = String::from("\x01a\n");
+        packed.push_str(&"x".repeat(limit - 3));
+        assert_eq!(packed.len(), limit);
+        // Replacing the marker with a 100-byte key and tab adds 100 bytes.
+        assert_eq!(expand(&packed, &[&key]).unwrap_err(), format!("over {MAX_CATALOG_BYTES} bytes"));
+        packed.truncate(packed.len() - 100);
+        assert_eq!(expand(&packed, &[&key]).unwrap().len(), limit);
+        packed.push('\n');
+        assert!(expand(&packed, &[&key]).is_err(), "newlines are bounded before append too");
     }
 
     /// Every bundled catalog is well-formed and consistent with its sources.

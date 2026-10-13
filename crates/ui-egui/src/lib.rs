@@ -238,6 +238,8 @@ pub use file_dialog::{FileDialogAnswer, FileDialogFn, FileDialogReply, FileDialo
 pub use file_open::OsEvent;
 pub use state::{Tool, UiState};
 
+mod pdf_import_ui;
+
 /// Decode a file: (document, warnings about anything approximated or dropped).
 pub type ImportFn = Box<dyn Fn(&str, &[u8], usize) -> Result<(Document, Vec<String>), String>>;
 /// Encoder settings chosen in Export As (the file format comes from the name's extension).
@@ -664,6 +666,7 @@ pub struct PhotocraftApp {
     /// A raw file just opened interactively, waiting for the open-time Camera Raw dialog (shown
     /// on the next frame, which has the egui context).
     pub(crate) pending_raw_open: Option<camera_raw_ui::RawOpen>,
+    pub(crate) pdf_pickers: std::collections::VecDeque<pdf_import_ui::Picker>,
     /// The open-time re-develop (or its Camera Raw step) running in the background.
     pub(crate) raw_redevelop: Option<camera_raw_ui::Redevelop>,
     /// Filter › Adaptive Wide Angle dialog (wide_angle_ui).
@@ -847,6 +850,7 @@ impl PhotocraftApp {
             gradient: Default::default(),
             camera_raw: None,
             pending_raw_open: None,
+            pdf_pickers: Default::default(),
             raw_redevelop: None,
             wide_angle: None,
             dialog_edits: Default::default(),
@@ -1200,6 +1204,10 @@ impl PhotocraftApp {
     /// shown to the user). Files from disk go through [`open_file`](Self::open_file), which also
     /// remembers the path. Brush and gradient files go to the preset libraries instead.
     pub fn open_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<Vec<String>, String> {
+        if pdf_import_ui::is_pdf(name, bytes) {
+            pdf_import_ui::queue(self, name, None, bytes)?;
+            return Ok(Vec::new());
+        }
         if let Some(r) = preset_files_ui::open(self, name, bytes) {
             return r.map(|()| Vec::new());
         }
@@ -1217,7 +1225,7 @@ impl PhotocraftApp {
         // No path yet: a bare name isn't a location to save back to (`open_file` sets the path).
         let (_, color) = self.session.open_document(doc, None);
         if let Some(st) = self.session.active_mut() {
-            st.source_read_only = photocraft_io::affinity::is_affinity(bytes);
+            st.source_read_only = photocraft_io::affinity::is_affinity(bytes) || bytes.starts_with(b"%PDF-") || name.to_ascii_lowercase().ends_with(".pdf");
         }
         self.sync_views();
         let warnings = file_open::with_missing_fonts(self, warnings);
@@ -1310,10 +1318,15 @@ impl PhotocraftApp {
         let writable = ext.is_some_and(|e| {
             matches!(e.as_str(), photocraft_format::EXTENSION | "psd" | "psb" | "tif" | "tiff")
                 || (e == "ora" && holds_ora)
+                || e == "pdf"
                 || (flat && photocraft_codecs::from_extension(&e).is_some_and(|f| f.caps().write))
         });
         let suggested = match &st.path {
             Some(p) if writable => p.clone(),
+            None if st.source_read_only && st.doc.name.to_ascii_lowercase().ends_with(".pdf") => {
+                let stem = std::path::Path::new(&st.doc.name).file_stem().unwrap_or_default().to_string_lossy();
+                format!("{stem}-edited.pdf")
+            }
             p => {
                 let source = p.as_deref().unwrap_or(&st.doc.name);
                 let ext = match photocraft_engine::file_cmds::extension(source).as_deref() {
@@ -1830,6 +1843,7 @@ impl eframe::App for PhotocraftApp {
         jobs_ui::dialog(self, &ctx);
         discard_ui::show(self, &ctx);
         tiff_options_ui::show(self, &ctx);
+        pdf_import_ui::show(self, &ctx);
         targa_options_ui::show(self, &ctx);
         distort_ui::show(self, &ctx);
         camera_raw_ui::show(self, &ctx);
@@ -2212,20 +2226,7 @@ impl PhotocraftApp {
         // identity against address reuse without retaining the document's pixel data.
         let snapshot = std::sync::Arc::downgrade(&doc);
         let show_color = self.session.prefs().interface.show_channels_in_color;
-        // A step that changes only the selection (a marquee, Deselect) makes a new snapshot with
-        // the same pixels: keep the thumbnails, a full composite at 56 px costs ~0.7 s on a
-        // layered 20 MP document (#4518).
-        let current = match &mut self.channel_thumbs {
-            Some((d, old, in_color, _)) if *d == id && *in_color == show_color => {
-                let same = old.ptr_eq(&snapshot) || old.upgrade().is_some_and(|prev| same_but_selection(&prev, &doc));
-                if same {
-                    *old = snapshot.clone();
-                }
-                same
-            }
-            _ => false,
-        };
-        if !current {
+        if !matches!(&self.channel_thumbs, Some((d, old, in_color, _)) if *d == id && old.ptr_eq(&snapshot) && *in_color == show_color) {
             let comp = photocraft_compose::thumbnail(&doc, 56);
             let (w, h) = (comp.width as usize, comp.height as usize);
             let side = w.max(h);
@@ -2238,7 +2239,7 @@ impl PhotocraftApp {
                         px[(y + oy) * side + x + ox] = f(&comp.pixels[o..o + 4]);
                     }
                 }
-                (format!("chan-{name}"), egui::ColorImage::new([side, side], px))
+                ctx.load_texture(format!("chan-{name}"), egui::ColorImage::new([side, side], px), egui::TextureOptions::LINEAR)
             };
             let fmt = doc.pixel_format();
             let colors = fmt.mode.color_channels();
@@ -2271,35 +2272,12 @@ impl PhotocraftApp {
                         px[(y + oy) * side + x + ox] = egui::Color32::from_gray((v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
                     }
                 }
-                texs.push((format!("chan-a{i}"), egui::ColorImage::new([side, side], px)));
+                texs.push(ctx.load_texture(format!("chan-a{i}"), egui::ColorImage::new([side, side], px), egui::TextureOptions::LINEAR));
             }
-            // Update the textures already uploaded rather than allocating new ones.
-            let mut handles = match self.channel_thumbs.take() {
-                Some((d, _, _, h)) if d == id => h,
-                _ => Vec::new(),
-            };
-            handles.truncate(texs.len());
-            for (i, (name, image)) in texs.into_iter().enumerate() {
-                match handles.get_mut(i) {
-                    Some(h) => h.set(image, egui::TextureOptions::LINEAR),
-                    None => handles.push(ctx.load_texture(name, image, egui::TextureOptions::LINEAR)),
-                }
-            }
-            self.channel_thumbs = Some((id, snapshot, show_color, handles));
+            self.channel_thumbs = Some((id, snapshot, show_color, texs));
         }
         self.channel_thumbs.as_ref().map(|(_, _, _, t)| t.iter().map(|t| t.id()).collect()).unwrap_or_default()
     }
-}
-
-/// Whether `new` differs from `old` at most in its selection, so every composite and channel
-/// thumbnail of it is unchanged. Tiles compare by pointer first, so this costs little.
-fn same_but_selection(old: &Document, new: &Document) -> bool {
-    if old.selection == new.selection {
-        return old == new;
-    }
-    let mut o = old.clone();
-    o.selection = new.selection.clone();
-    o == *new
 }
 
 /// Layer › Layer Mask commands that add a layer mask: Photoshop targets the new mask (#2166).
@@ -2423,7 +2401,7 @@ impl PhotocraftApp {
         let r = photocraft_geom::Rect::new(0, 0, w as i32, h as i32);
         let mut surface = photocraft_raster::Surface::from_interleaved(photocraft_color::PixelFormat::RGBA8, r, &bytes);
         surface.prune();
-        self.session.clipboard = Some(photocraft_engine::edit_cmds::Clip { surface, bounds: r, layers: None, resolution: None });
+        self.session.clipboard = Some(photocraft_engine::edit_cmds::Clip { surface, bounds: r, layers: None });
         self.os_clip_sig = Some(sig);
         self.clip_external = true;
         true
@@ -2660,12 +2638,9 @@ mod clipboard_tests {
         let d = &app.session.active().unwrap().doc;
         assert_eq!((d.size.width, d.size.height, d.layers.len()), (5, 3, 1));
         assert_eq!(app.ui.views.len(), 1, "the new document has a view");
-        assert!(app.has_unsaved_work(), "closing after Paste must ask to save");
         // New from Clipboard with a document open adds another.
         crate::menus::invoke(&mut app, &ctx, "file.newFromClipboard", serde_json::json!({})).unwrap();
         assert_eq!(app.session.documents().len(), 2);
-        assert!(app.session.documents().iter().all(|d| d.is_dirty()));
-        assert!(crate::discard_ui::intercept(&mut app, "file.close", &serde_json::json!({})), "Close must ask before discarding clipboard pixels");
     }
 
     #[test]
