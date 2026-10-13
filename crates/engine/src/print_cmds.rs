@@ -396,6 +396,7 @@ fn render_and_spool(doc: &Document, p: &Value, cmd: &str) -> Result<Value> {
         // PhotoCraft already placed and scaled the image on its physical sheet. Scaling again
         // in the driver would change the preview, print resolution and crop-mark positions.
         scaling: craft_print::Scaling::Exact,
+        options: driver_options(p, cmd)?,
         ..Default::default()
     };
     let command = if send { json!(craft_print::command_preview(&job).map_err(other)?) } else { Value::Null };
@@ -448,6 +449,71 @@ pub fn disable_printing() {
 /// Whether spooling is blocked by [`disable_printing`] or `PHOTOCRAFT_NO_PRINT`.
 pub fn printing_disabled() -> bool {
     PRINTING_DISABLED.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("PHOTOCRAFT_NO_PRINT").is_some_and(|v| !v.is_empty() && v != "0")
+}
+
+/// The printers the system spooler knows (Print's Printer menu): CUPS queues and driverless
+/// destinations on macOS and Linux, `Win32_Printer` on Windows, none in the browser.
+fn printers(_: &mut Session, _: &Value) -> Result<Value> {
+    let list = craft_print::printers();
+    let default = list.iter().find(|p| p.default).map(|p| p.name.clone());
+    let printers: Vec<Value> = list.into_iter().map(|p| json!({"name": p.name, "default": p.default})).collect();
+    Ok(json!({"printers": printers, "default": default}))
+}
+
+/// The printer whose options `p` asks about: its `"printer"`, else the system default.
+fn printer_or_default(p: &Value) -> Option<String> {
+    p.get("printer")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .or_else(|| craft_print::printers().into_iter().find(|p| p.default).map(|p| p.name))
+}
+
+/// Print Settings…: the printer driver's own job options (CUPS: from its PPD), such as the paper
+/// type, tray, quality or a photo printer's finish and cutter. Empty on Windows, where the
+/// driver's preferences window holds them, and when there is no printer.
+fn printer_options(_: &mut Session, p: &Value) -> Result<Value> {
+    let Some(printer) = printer_or_default(p) else {
+        return Ok(json!({"printer": null, "options": []}));
+    };
+    let options: Vec<Value> = craft_print::printer_options(&printer)
+        .into_iter()
+        .map(|o| {
+            let choices: Vec<Value> = o.choices.iter().map(|(value, label)| json!({"value": value, "label": label})).collect();
+            json!({"key": o.key, "label": o.label, "group": o.group, "default": o.default, "choices": choices})
+        })
+        .collect();
+    Ok(json!({"printer": printer, "options": options}))
+}
+
+/// Print Settings… on Windows: opens the printer driver's Printing Preferences window, whose
+/// settings apply to every print from this computer.
+fn printer_preferences(_: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "file.printerPreferences";
+    if !craft_print::HAS_PRINTER_PREFERENCES {
+        return Err(bad(cmd, "the driver's preferences window is Windows only; use file.printerOptions and Print's \"options\""));
+    }
+    if printing_disabled() {
+        return Err(other("printing is disabled in this process"));
+    }
+    let printer = printer_or_default(p).ok_or_else(|| bad(cmd, "no printer (and no system default printer)"))?;
+    craft_print::open_printer_preferences(&printer).map_err(other)?;
+    Ok(json!({"printer": printer, "opened": true}))
+}
+
+/// Print's `"options"`: driver option keys → chosen values (from `file.printerOptions`).
+fn driver_options(p: &Value, cmd: &str) -> Result<Vec<(String, String)>> {
+    match p.get("options") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Object(m)) => m
+            .iter()
+            .map(|(k, v)| match v.as_str() {
+                Some(v) => Ok((k.clone(), v.to_string())),
+                None => Err(bad(cmd, format!("options.{k} must be a string (a choice from file.printerOptions)"))),
+            })
+            .collect(),
+        Some(_) => Err(bad(cmd, "\"options\" must be an object of driver option keys and choices (file.printerOptions)")),
+    }
 }
 
 fn print(s: &mut Session, p: &Value) -> Result<Value> {
@@ -618,9 +684,39 @@ pub fn specs() -> Vec<CommandSpec> {
             CommandSpec { id: $id, label: $label, menu: $menu, shortcut: $sc, params: $params, enabled: $enabled, journal: true, run: $run }
         };
     }
-    const PRINT_PARAMS: &str = r##"{"printer":name? (default printer),"copies":1..999=1,"paper":"letter|legal|tabloid|a3|a4|a5|4x6|5x7"|[w,h] pt="letter","orientation":"portrait|landscape"="portrait","center":bool=true,"top":in?,"left":in?,"scale":%=100,"scaleToFit":bool=false,"colorHandling":"printerManages|photocraftManages|noColorManagement"="printerManages","printerProfile":profile? (photocraftManages),"intent":"perceptual|relative|saturation|absolute"="relative","bpc":bool=true,"cornerCropMarks":bool,"centerCropMarks":bool,"registrationMarks":bool,"description":bool,"labels":bool,"emulsionDown":bool=false (mirror the page left to right, for sublimation and other transfer printing),"output":pdf path? (print to PDF; then "send" defaults to false),"send":bool?,"dryRun":bool=false (render the PDF, report the backend command, don't spool; write a PDF only at an explicit output path)} → {pdf:path|null (null without explicit output), imageRect, command:diagnostic array|null, sent}"##;
+    const PRINT_PARAMS: &str = r##"{"printer":name? (default printer),"copies":1..999=1,"paper":"letter|legal|tabloid|a3|a4|a5|4x6|5x7"|[w,h] pt="letter","orientation":"portrait|landscape"="portrait","center":bool=true,"top":in?,"left":in?,"scale":%=100,"scaleToFit":bool=false,"colorHandling":"printerManages|photocraftManages|noColorManagement"="printerManages","printerProfile":profile? (photocraftManages),"intent":"perceptual|relative|saturation|absolute"="relative","bpc":bool=true,"cornerCropMarks":bool,"centerCropMarks":bool,"registrationMarks":bool,"description":bool,"labels":bool,"emulsionDown":bool=false (mirror the page left to right, for sublimation and other transfer printing),"options":{key:choice}? (printer driver options from file.printerOptions; CUPS),"output":pdf path? (print to PDF; then "send" defaults to false),"send":bool?,"dryRun":bool=false (render the PDF, report the backend command, don't spool; write a PDF only at an explicit output path)} → {pdf:path|null (null without explicit output), imageRect, command:diagnostic array|null, sent}"##;
     vec![
         spec!("file.print", "Print…", &["File"], Some("Cmd+P"), PRINT_PARAMS, native_doc, print),
+        CommandSpec {
+            id: "file.printers",
+            label: "Printers",
+            menu: &[],
+            shortcut: None,
+            params: r##"{} → {printers:[{name, default}], default:name|null} (the system spooler's printers; a name is Print's "printer")"##,
+            enabled: crate::commands::always,
+            journal: false,
+            run: printers,
+        },
+        CommandSpec {
+            id: "file.printerOptions",
+            label: "Printer Options",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"printer":name? (default printer)} → {printer:name|null, options:[{key, label, group, default, choices:[{value, label}]}]} (the driver's own job options, e.g. paper type, tray, finish; pass choices as Print's "options"; empty on Windows, see file.printerPreferences)"##,
+            enabled: crate::commands::always,
+            journal: false,
+            run: printer_options,
+        },
+        CommandSpec {
+            id: "file.printerPreferences",
+            label: "Printer Preferences",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"printer":name? (default printer)} → {printer, opened} (Windows: opens the driver's Printing Preferences window; an error elsewhere)"##,
+            enabled: crate::commands::always,
+            journal: false,
+            run: printer_preferences,
+        },
         spec!(
             "file.printOneCopy",
             "Print One Copy",

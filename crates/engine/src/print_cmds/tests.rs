@@ -368,3 +368,45 @@ fn disabled_printing_never_spools() {
     assert_eq!(r["sent"], false);
     assert!(r["command"].is_array(), "{r}");
 }
+
+#[test]
+fn printers_lists_the_spooler_destinations_without_a_document() {
+    let mut s = Session::new();
+    let r = s.execute("file.printers", json!({})).unwrap();
+    let list = r["printers"].as_array().unwrap();
+    assert!(list.iter().all(|p| p["name"].is_string() && p["default"].is_boolean()));
+    match r["default"].as_str() {
+        Some(d) => assert!(list.iter().any(|p| p["name"] == d && p["default"] == true)),
+        None => assert!(list.iter().all(|p| p["default"] == false)),
+    }
+}
+
+#[test]
+fn driver_options_reach_the_spooler_and_bad_ones_are_refused() {
+    let mut s = session("rgb", 8);
+    let r = s
+        .execute("file.print", json!({"send": true, "dryRun": true, "printer": "DNP_DP_DS620", "options": {"Finish": "Matte", "Cutter": "Normal"}}))
+        .unwrap();
+    let cmd: Vec<String> = serde_json::from_value(r["command"].clone()).unwrap();
+    #[cfg(unix)]
+    {
+        assert!(cmd.windows(2).any(|w| w == ["-o", "Finish=Matte"]), "{cmd:?}");
+        assert!(cmd.windows(2).any(|w| w == ["-o", "Cutter=Normal"]), "{cmd:?}");
+    }
+    let _ = cmd;
+    // Print One Copy keeps the driver options with the rest of the last settings.
+    assert_eq!(s.file_menu.last_print.as_ref().unwrap()["options"]["Finish"], "Matte");
+    assert!(s.execute("file.print", json!({"dryRun": true, "options": "Finish=Matte"})).is_err());
+    assert!(s.execute("file.print", json!({"dryRun": true, "options": {"Finish": 2}})).is_err());
+}
+
+#[test]
+fn printer_options_and_preferences_never_fail_on_an_unknown_printer() {
+    let mut s = Session::new();
+    let r = s.execute("file.printerOptions", json!({"printer": "No_Such_Queue_PhotoCraft"})).unwrap();
+    assert_eq!(r["printer"], "No_Such_Queue_PhotoCraft");
+    assert_eq!(r["options"], json!([]));
+    assert!(s.execute("file.printerOptions", json!({})).unwrap()["options"].is_array());
+    #[cfg(not(windows))]
+    assert!(s.execute("file.printerPreferences", json!({"printer": "No_Such_Queue_PhotoCraft"})).is_err());
+}
