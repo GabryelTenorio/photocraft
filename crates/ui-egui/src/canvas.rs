@@ -40,8 +40,17 @@ fn draw_clone_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &Vie
     let rect = DRect::new((at[0] - radius).floor() as i32, (at[1] - radius).floor() as i32, (at[0] + radius).ceil() as i32, (at[1] + radius).ceil() as i32);
     let Some(st) = app.session.active() else { return };
     let (display, display_key) = canvas_display(app, &st.doc, output);
+    // A shaped tip (sampled bitmap, or a rotated / flattened round one) clips the overlay to its
+    // outline instead of a circle, as Photoshop does with Clipped on.
+    let tip_rings = if overlay.clipped { crate::brush_cursor::rings(painter.ctx(), &app.session.tools.brush, true) } else { None };
+    let tip_key = tip_rings.as_ref().map(|r| {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        r.iter().flatten().for_each(|p| (p[0].to_bits(), p[1].to_bits()).hash(&mut h));
+        (h.finish(), radius.to_bits(), at.map(f64::to_bits))
+    });
     let key = format!(
-        "{:?}:{}:{:?}:{rect:?}:{map:?}:{}:{}:{}:{}",
+        "{:?}:{}:{:?}:{rect:?}:{map:?}:{}:{}:{}:{}:{tip_key:?}",
         st.doc.id, st.revision, st.active_layer, app.ui.tool_options.clone_sample, display_key, overlay.invert, overlay.blend
     );
     if app.clone_preview.as_ref().is_none_or(|c| c.key != key) {
@@ -62,6 +71,14 @@ fn draw_clone_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &Vie
                 *px = overlay_blend(&overlay.blend, *px, *d);
             }
         }
+        if let Some(rings) = &tip_rings {
+            let mask = crate::brush_cursor::tip_mask(rings, at, radius, [rect.x0, rect.y0, rect.x1, rect.y1]);
+            for (px, inside) in buf.px.iter_mut().zip(mask) {
+                if !inside {
+                    *px = [0.0; 4];
+                }
+            }
+        }
         let image = display_image(display.as_deref(), &buf);
         match app.clone_preview.as_mut() {
             Some(cache) => {
@@ -80,7 +97,7 @@ fn draw_clone_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &Vie
         uv: pos2((x - f64::from(rect.x0)) as f32 / rect.width() as f32, (y - f64::from(rect.y0)) as f32 / rect.height() as f32),
         color: tint,
     };
-    if !overlay.clipped {
+    if !overlay.clipped || tip_rings.is_some() {
         for (x, y) in [(rect.x0, rect.y0), (rect.x1, rect.y0), (rect.x1, rect.y1), (rect.x0, rect.y1)] {
             mesh.vertices.push(vertex(f64::from(x), f64::from(y)));
         }
@@ -1059,6 +1076,10 @@ pub(crate) fn display_doc(app: &mut PhotocraftApp, idx: usize) -> (std::sync::Ar
     if let Some(shown) = crate::patch_preview::display_doc(app, idx) {
         return shown;
     }
+    // Content-Aware Move drag or box: the result, once computed in the background.
+    if let Some(shown) = crate::cam_preview::display_doc(app, idx) {
+        return shown;
+    }
     // A blend mode hovered in the Layers panel.
     if let Some(shown) = crate::blend_preview::display_doc(app, idx) {
         return shown;
@@ -1129,7 +1150,7 @@ const NAVIGATOR_SETTLE_MS: f64 = 200.0;
 /// of document `idx` and catches up on release: each step of the drag is a new preview, and a
 /// thumbnail composite of the whole document per step makes painting lag on large images.
 fn navigator_waits_for_drag(app: &PhotocraftApp, idx: usize) -> bool {
-    crate::move_ui::showing(app) || crate::patch_preview::showing(app) || live_stroke(app, idx).is_some()
+    crate::move_ui::showing(app) || crate::patch_preview::showing(app) || crate::cam_preview::showing(app) || live_stroke(app, idx).is_some()
 }
 
 /// The Navigator panel's image of document `idx`. With the CPU canvas that is the canvas texture
@@ -2823,6 +2844,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             crate::pixel_grid::paint(app, &painter, &xf, idx, output, visible_doc_rect(&xf));
         }
 
+        // Developer tile grid (`ui.set {"tileGrid": true}`): the active layer's storage tiles.
+        // Not tied to View › Extras (⌘H), which hides only the View › Show overlays.
+        if app.ui.view.tile_grid {
+            crate::tile_overlay::paint(app, &ctx, &painter, &xf, idx, visible_doc_rect(&xf));
+        }
+
         // View › Show › Layer Edges: drawn at this depth, but only once this frame's tool events are
         // in (`layer_edges_rect`), so a press that Auto-Selects a layer outlines that layer.
         let layer_edges = painter.add(egui::Shape::Noop);
@@ -2999,10 +3026,11 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
 
     if under_dialog {
         // With a colour dialog picker armed the image is its eyedropper, whatever the tool; Space
-        // and the middle button still pan. Curves uses the same merged-composite sampler as the
-        // Color Picker, never the reduced adjustment preview.
+        // and the middle button still pan. Curves and Replace Color use the same merged-composite
+        // sampler as the Color Picker, never the reduced adjustment preview.
         let curves_picking = crate::adjust_dialog::picker_armed(app);
-        let picking = primary && (crate::color_picker_ui::top(app).is_some() || curves_picking);
+        let replace_picking = crate::filter_dialog::color_eyedropper_armed(app);
+        let picking = primary && (crate::color_picker_ui::top(app).is_some() || curves_picking || replace_picking);
         let range_picking =
             primary && app.ui.dialogs.last().is_some_and(|d| crate::color_range_ui::owns(&d.fields) && crate::color_range_ui::controls(&d.fields).sampling);
         // Select and Mask's Refine Edge Brush paints on the image.
@@ -3026,6 +3054,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 let d = xf.to_doc(p);
                 if curves_picking {
                     crate::adjust_dialog::sample_at(app, d[0], d[1]);
+                } else if replace_picking {
+                    crate::filter_dialog::color_eyedropper_sample(app, d[0], d[1]);
                 } else {
                     crate::color_picker_ui::sample_at(app, d[0], d[1]);
                 }
@@ -3177,7 +3207,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                     crate::canvas_tool_menu::open_view(app, &ctx, tool, [p.x, p.y], xf.to_doc(p));
                 }
             } else {
-                crate::canvas_tool_menu::open(app, &ctx, tool, [p.x, p.y]);
+                crate::canvas_tool_menu::open_at(app, &ctx, tool, [p.x, p.y], Some(xf.to_doc(p)));
             }
         }
         // The (temporary) Hand pans above; its gestures never reach the tool underneath. While a
@@ -3459,6 +3489,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         crate::type_tool::draw_overlay(app, &painter, &xf);
         crate::transform_tool::draw_overlay(app, &painter, &xf);
         crate::cam_transform::draw(app, &painter, &xf);
+        crate::cam_preview::wake(app, painter.ctx());
         crate::distort_ui::draw_overlay(app, &painter, &xf);
         crate::perspective_crop_ui::draw_overlay(app, &painter, &xf);
         crate::retouch_ui::draw_source_marker(app, &painter, &xf);
@@ -6129,6 +6160,39 @@ mod tests {
         assert_eq!(centre("normal"), Color32::WHITE);
         assert_eq!(centre("difference"), Color32::BLACK, "Difference turns black where source and image match");
         assert_eq!(centre("lighten"), Color32::WHITE);
+    }
+
+    /// A shaped tip clips the Clone Source overlay to its outline, not to the brush circle.
+    #[test]
+    fn clone_overlay_is_clipped_to_a_shaped_tip() {
+        let ctx = egui::Context::default();
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 64, "height": 64})).unwrap();
+        app.run("cloneSource.set", json!({"source": [16,16]})).unwrap();
+        app.ui.tool = Tool::CloneStamp;
+        app.session.tools.brush.size = 20.0;
+        app.session.tools.brush.roundness = 0.25;
+        let xf =
+            ViewXform { rect: Rect::from_min_size(Pos2::ZERO, vec2(100.0, 100.0)), zoom: 1.0, center: [32.0, 32.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("clone-test")));
+            draw_clone_preview(&mut app, &painter, &xf, [32.0, 32.0], None);
+        });
+        let image = output
+            .textures_delta
+            .set
+            .values()
+            .flatten()
+            .find_map(|d| match &d.image {
+                egui::ImageData::Color(c) if c.size == [20, 20] => Some(c.clone()),
+                _ => None,
+            })
+            .expect("the overlay uploads a texture");
+        output.textures_delta.clear();
+        let alpha = |x: usize, y: usize| image.pixels[y * image.width() + x].a();
+        assert_eq!(alpha(10, 10), 255, "the tip's centre shows the source");
+        assert_eq!(alpha(10, 2), 0, "inside the circle but outside the flat tip: clipped");
+        assert_eq!(alpha(1, 10), 255, "the tip's long axis stays");
     }
 
     #[test]
