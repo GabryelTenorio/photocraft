@@ -250,11 +250,16 @@ pub fn apply_in(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth: O
         apply_lab(adj, buf, depth);
     } else if mode == ColorMode::Cmyk && cmyk_channel_adjustment(adj) {
         use photocraft_color::convert::{cmyk_to_rgb, rgb_to_cmyk};
-        map_rgb(buf, |c| {
-            let mut ink = rgb_to_cmyk(c);
-            stored_channels(adj, mode, depth, &mut ink, rgb_to_gray(c));
-            cmyk_to_rgb(ink)
-        });
+        if let Adjustment::BrightnessContrast { brightness, contrast, legacy } = adj {
+            let table = brightness_contrast_lut(*brightness, *contrast, *legacy);
+            map_rgb(buf, |c| cmyk_to_rgb(rgb_to_cmyk(c).map(|v| ink_through(&table, v))));
+        } else {
+            map_rgb(buf, |c| {
+                let mut ink = rgb_to_cmyk(c);
+                stored_channels(adj, mode, depth, &mut ink, rgb_to_gray(c));
+                cmyk_to_rgb(ink)
+            });
+        }
     } else {
         apply_depth(adj, buf, transfer, depth);
     }
@@ -276,13 +281,30 @@ pub fn lab_channel_adjustment(adj: &Adjustment) -> bool {
 }
 
 /// Whether a CMYK document evaluates `adj` on its inks rather than on the screen colour: Invert
-/// and Posterize (each ink, black included, so paper inverts to 400% ink) and Threshold (paper or
-/// 100% black ink alone). Photoshop corpus cmyk8 and cmyk16 invert, posterize-4 and threshold-128
-/// follow these rules on the files' own inks on every pixel; here the inks are the screen colour
-/// separated through the document's CMYK profile, so neutrals carry the black that profile
-/// generates rather than the file's.
+/// and Posterize (each ink, black included, so paper inverts to 400% ink), Threshold (paper or
+/// 100% black ink alone) and Brightness/Contrast (each ink's stored value, 1 - ink, through the
+/// tone curve; see [`ink_through`]). Photoshop corpus cmyk8 and cmyk16 invert, posterize-4,
+/// threshold-128 and brightness-contrast(-legacy) follow these rules on the files' own inks on
+/// every pixel; here the inks are the screen colour separated through the document's CMYK
+/// profile, so neutrals carry the black that profile generates rather than the file's.
 pub fn cmyk_channel_adjustment(adj: &Adjustment) -> bool {
-    stored_channel_adjustment(adj)
+    stored_channel_adjustment(adj) || matches!(adj, Adjustment::BrightnessContrast { .. })
+}
+
+/// Brightness/Contrast as one channel's lookup table (4096 samples over 0..1): [`modern_lut`],
+/// or the legacy linear curve.
+pub fn brightness_contrast_lut(brightness: f32, contrast: f32, legacy: bool) -> Vec<f32> {
+    if !legacy {
+        return modern_lut(brightness, contrast);
+    }
+    let curve = legacy_brightness_contrast(brightness, contrast);
+    (0..LUT_SIZE).map(|k| curve(k as f32 / (LUT_SIZE - 1) as f32)).collect()
+}
+
+/// One CMYK ink (0: none) through a channel tone curve the way Photoshop applies one in CMYK: to
+/// the stored value, `1 - ink`, so raising brightness takes ink away.
+pub fn ink_through(table: &[f32], ink: f32) -> f32 {
+    1.0 - lut(table, 1.0 - ink)
 }
 
 /// Whether [`stored_channels`] evaluates `adj`: Invert, Posterize and Threshold.
@@ -1661,6 +1683,31 @@ mod tone_tests {
         let t = Adjustment::Threshold { level: 0.5 };
         assert!(near(in_cmyk(&t, [0.2; 3]), cmyk_to_rgb([0.0, 0.0, 0.0, 1.0]), 2e-3));
         assert!(near(in_cmyk(&t, [0.8; 3]), cmyk_to_rgb([0.0; 4]), 2e-3));
+    }
+
+    #[test]
+    fn cmyk_brightness_contrast_curves_each_ink_from_paper() {
+        use photocraft_color::convert::{cmyk_to_rgb, rgb_to_cmyk};
+        // The tone curve runs on each ink's stored value, 1 - ink (photoshop corpus cmyk8
+        // brightness-contrast.psd and -legacy.psd): raising brightness takes ink away, and paper
+        // and solid ink stay put.
+        let red = [0.9, 0.2, 0.1];
+        for legacy in [false, true] {
+            let adj = Adjustment::BrightnessContrast { brightness: 25.0, contrast: 30.0, legacy };
+            let table = brightness_contrast_lut(25.0, 30.0, legacy);
+            let want = cmyk_to_rgb(rgb_to_cmyk(red).map(|v| 1.0 - lut(&table, 1.0 - v)));
+            assert!(near(in_cmyk(&adj, red), want, 2e-3), "legacy {legacy}");
+            assert!(near(in_cmyk(&adj, [1.0; 3]), [1.0; 3], 2e-3), "legacy {legacy}: paper");
+            let solid = cmyk_to_rgb([1.0; 4]);
+            assert!(near(in_cmyk(&adj, solid), cmyk_to_rgb(rgb_to_cmyk(solid).map(|v| ink_through(&table, v))), 2e-3));
+        }
+        let brighter = Adjustment::BrightnessContrast { brightness: 60.0, contrast: 0.0, legacy: false };
+        let ink = brightness_contrast_lut(60.0, 0.0, false);
+        assert!(ink_through(&ink, 0.5) < 0.5 && ink_through(&ink, 0.0) == 0.0 && (ink_through(&ink, 1.0) - 1.0).abs() < 1e-6);
+        // On the screen colour it would land elsewhere.
+        let mut rgb = Buffer::filled(crate::Rect::new(0, 0, 1, 1), [red[0], red[1], red[2], 1.0]);
+        apply(&brighter, &mut rgb);
+        assert!(!near(in_cmyk(&brighter, red), [rgb.px[0][0], rgb.px[0][1], rgb.px[0][2]], 0.01));
     }
 
     #[test]
