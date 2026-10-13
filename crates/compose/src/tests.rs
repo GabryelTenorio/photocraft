@@ -1624,6 +1624,43 @@ fn modern_contrast_matches_photoshop() {
     }
 }
 
+/// Over the whole slider range the curve stays monotone and inside 0..1, lowering it undoes
+/// raising it by as much, and odd input never panics.
+#[test]
+fn modern_brightness_is_monotone_and_lowering_inverts_raising() {
+    for b in (-150..=150).step_by(5).map(|b| b as f32) {
+        let mut prev = 0.0f32;
+        for k in 0..=1020 {
+            let v = adjust::modern_brightness(k as f32 / 1020.0, b);
+            assert!((0.0..=1.0).contains(&v) && v >= prev - 1e-6, "brightness {b} at {k}/1020: {v} after {prev}");
+            prev = v;
+        }
+        assert!(
+            (adjust::modern_brightness(1.0, b) - 1.0).abs() < 1e-5 && adjust::modern_brightness(0.0, b).abs() < 1e-5,
+            "brightness {b} pins black and white"
+        );
+        for k in 0..=50 {
+            let x = k as f32 / 50.0;
+            let back = adjust::modern_brightness(adjust::modern_brightness(x, b), -b);
+            assert!((back - x).abs() < 2e-3, "brightness {b}: {x} -> {back}");
+        }
+    }
+    for v in [f32::NAN, f32::INFINITY, -3.0, 7.0] {
+        let _ = adjust::modern_brightness(v, 40.0);
+        let _ = adjust::modern_brightness(0.5, v);
+    }
+    assert_eq!(adjust::modern_lut(0.0, 0.0).len(), 4096);
+    // The table agrees with the curves it samples, lowered (inverted in one pass) or raised.
+    for (b, c) in [(-50.0, 30.0), (-150.0, -50.0), (40.0, 0.0), (0.0, 100.0)] {
+        let t = adjust::modern_lut(b, c);
+        for k in (0..4096).step_by(37) {
+            let x = k as f32 / 4095.0;
+            let want = adjust::modern_contrast(adjust::modern_brightness(x, b), c);
+            assert!((t[k] - want).abs() < 1e-3, "({b}, {c}) at {k}: {} vs {want}", t[k]);
+        }
+    }
+}
+
 #[test]
 fn modern_brightness_matches_photoshop() {
     let cases: [(f32, [u8; 10]); 2] = [(50.0, [0, 22, 44, 88, 132, 171, 203, 228, 246, 255]), (-50.0, [0, 12, 23, 47, 70, 93, 118, 148, 186, 255])];
@@ -1632,9 +1669,33 @@ fn modern_brightness_matches_photoshop() {
         for (i, &x) in xs.iter().enumerate() {
             let got = adjust::modern_brightness(x as f32 / 255.0, b) * 255.0;
             let err = (got - out[i] as f32).abs();
-            // The brightness roll-off is a spline; our fit is close but approximate at the top.
-            assert!(err <= 6.0, "brightness {b} x={x}: got {got:.1} want {} (err {err:.1})", out[i]);
+            // Within about a level of Photoshop's (rounded) output everywhere.
+            assert!(err <= 1.2, "brightness {b} x={x}: got {got:.1} want {} (err {err:.1})", out[i]);
         }
+    }
+    // Photoshop 27.11's brightness +25 with contrast +30 (photoshop corpus rgb8
+    // brightness-contrast.psd): what the oracle's levels become.
+    let oracle = [
+        (8, 7),
+        (24, 23),
+        (48, 49),
+        (72, 78),
+        (88, 99),
+        (104, 120),
+        (128, 154),
+        (144, 174),
+        (160, 192),
+        (176, 208),
+        (192, 222),
+        (200, 228),
+        (216, 239),
+        (232, 247),
+        (240, 250),
+        (248, 253),
+    ];
+    for (x, want) in oracle {
+        let got = adjust::modern_contrast(adjust::modern_brightness(x as f32 / 255.0, 25.0), 30.0) * 255.0;
+        assert!((got - want as f32).abs() <= 1.0, "+25/+30 x={x}: got {got:.2} want {want}");
     }
     // Endpoints and the zero slider are exact.
     assert_eq!(adjust::modern_brightness(0.0, 120.0), 0.0);
@@ -2537,4 +2598,14 @@ fn effect_cache_follows_a_group_childs_blend_if() {
     let cold = render(&d, d.bounds());
     assert!(before.px != cold.px, "Blend If should change the group's shadow");
     assert!(warm.px == cold.px, "stale group effect maps after a child's Blend If changed");
+}
+
+#[test]
+#[ignore = "timing: cargo test --release -p photocraft-compose modern_lut_timing -- --ignored --nocapture"]
+fn modern_lut_timing() {
+    let t = std::time::Instant::now();
+    for _ in 0..100 {
+        std::hint::black_box(adjust::modern_lut(-50.0, 30.0));
+    }
+    println!("modern_lut(-50, 30): {:?} each", t.elapsed() / 100);
 }
