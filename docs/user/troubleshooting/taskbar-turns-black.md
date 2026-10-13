@@ -1,40 +1,29 @@
 ---
 title: The Windows taskbar turns black when PhotoCraft is maximized
-description: On Windows 11, the taskbar can turn black or disappear when PhotoCraft 0.7.0 is maximized or full screen. A related fix came after 0.7.0.
+description: On Windows 11, PhotoCraft 0.7.0 can turn the taskbar black or hide it when maximized. PhotoCraft 0.8.2 fixes this; update.
 order: 10
-verified: 0.7.0
+verified: 0.8.2
 ---
 
-This is a known bug in PhotoCraft 0.7.0 on Windows 11. A related fix is already merged but is not in 0.7.0, so update when a newer release is out. Until then, you can try the **System title bar** setting below, which is not confirmed to help.
+Update PhotoCraft. Version 0.7.0 on Windows 11 could turn the taskbar black or hide it while the window was maximized. PhotoCraft 0.8.2 includes the fix.
 
 ## Symptoms
 
 - You maximize the PhotoCraft window, or switch it to full screen, and the Windows taskbar turns completely black or is hidden.
 - After you resize the window and maximize it again, a black bar the height of the taskbar stays at the bottom of the screen.
-- One reporter tested FilmCraft, LightCraft and VectorCraft on the same PC and did not see it there.
 
 ## Fix
 
-1. Check your version with **Help › System Info…**, which starts with "PhotoCraft" and the version. If it is 0.7.0, the related fix is not in your build.
-2. Download a newer release from the [releases page](https://github.com/storytold/photocraft/releases) once one is published after 0.7.0, or update with [ArtCraft Launcher](https://getartcraft.com/docs/craft-launcher).
+1. Check your version with **Help › System Info…**, which starts with "PhotoCraft" and the version.
+2. If it is older than 0.8.2, download the [latest release](https://github.com/storytold/photocraft/releases/latest) or update with [ArtCraft Launcher](https://getartcraft.com/docs/craft-launcher). See [Install PhotoCraft](../getting-started/install.md).
+3. Start PhotoCraft again and maximize the window.
 
-One user reported that maximizing, closing and reopening PhotoCraft keeps the taskbar normal until the window is resized again ([issue 3144](https://github.com/storytold/photocraft/issues/3144)).
-
-## Try the system title bar
-
-PhotoCraft normally draws its own title bar. With **System title bar** switched on, Windows draws it instead. This is only a workaround to try. Nobody has confirmed that it fixes the black taskbar.
-
-1. Choose **Edit › Preferences › Interface…**.
-2. Switch on **System title bar**. The dialog says "Applies at next launch."
-3. Click **Apply**, then close and start PhotoCraft again.
-4. Maximize the window and check the taskbar.
-
-If it does not help, switch **System title bar** off again the same way.
+A user who saw the black taskbar on 0.7.0 confirmed that it is gone in 0.8.2 ([issue 3864](https://github.com/storytold/photocraft/issues/3864)).
 
 ## Why this happens
 
-A fix for the taskbar going missing when a window is maximized (issue 3144, which looks closely related) was merged into PhotoCraft's main branch on 11 October 2026 ([pull request 3308](https://github.com/storytold/photocraft/pull/3308)). PhotoCraft 0.7.0 was published before that, so it does not include the change.
+PhotoCraft draws its own title bar. When such a window was maximized, Windows sized it to cover the whole screen, taskbar included, took it for a full-screen app and dropped the taskbar's background. The fix keeps a maximized PhotoCraft window clear of the taskbar ([issue 3144](https://github.com/storytold/photocraft/issues/3144), [pull request 3308](https://github.com/storytold/photocraft/pull/3308)).
 
 ## Still stuck?
 
-Add your Windows version and PhotoCraft version to [issue 3864](https://github.com/storytold/photocraft/issues/3864) or [issue 3550](https://github.com/storytold/photocraft/issues/3550), or ask in [Discord](https://discord.gg/artcraft). See [Get help with a problem](get-help.md) for what to include.
+If you still see it on 0.8.2, add your Windows version and PhotoCraft version to [issue 3864](https://github.com/storytold/photocraft/issues/3864), or ask in [Discord](https://discord.gg/artcraft). As a test, you can switch on **System title bar** under **Edit › Preferences › Interface…**, click **Apply** and restart PhotoCraft; Windows then draws the title bar. See [Get help with a problem](get-help.md) for what to include.

@@ -2,7 +2,7 @@
 title: FAQ
 description: Short answers about PhotoCraft's price, Photoshop files and how it compares with Photoshop.
 order: 40
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 - [Is PhotoCraft free?](is-photocraft-free.md)

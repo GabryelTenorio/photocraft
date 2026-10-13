@@ -1,11 +1,11 @@
 ---
 title: PhotoCraft does not start
-description: PhotoCraft closes or crashes at startup on Windows PCs with Intel graphics (0.7.0 uses DirectX 12 and picks a safer graphics mode after a crash) or on older Intel Macs (no fix yet).
+description: PhotoCraft closes or crashes at startup on Windows PCs with Intel graphics (it uses DirectX 12 and picks a safer graphics mode after a crash) or on older Intel Macs (0.8.2 fixes one cause; no fix yet for Macs patched with OpenCore Legacy Patcher).
 order: 30
-verified: 0.7.0
+verified: 0.8.2
 ---
 
-On Windows with PhotoCraft 0.7.0, Intel graphics already start on DirectX 12. If PhotoCraft closed while it was starting, start it again: it picks a safer graphics mode after a crash. On an older Intel Mac that shows a `Device(Lost)` error, there is no fix yet.
+On Windows, PhotoCraft starts Intel graphics on DirectX 12. If PhotoCraft closed while it was starting, start it again: it picks a safer graphics mode after a crash. On an older Intel Mac that shows a `Device(Lost)` error, update to 0.8.2, which fixes one cause; on Macs patched with OpenCore Legacy Patcher there is no fix yet.
 
 ## Symptoms
 
@@ -35,7 +35,10 @@ The last line clears the setting so later launches use the default again. You ne
 
 ### Intel Mac
 
-There is no fix yet. People on stock Intel Macs and on Macs patched with OpenCore Legacy Patcher report the same error, and setting `WGPU_BACKEND`, `--safe-gpu` and `PHOTOCRAFT_CPU_CANVAS=1` did not change it ([issue 1859](https://github.com/storytold/photocraft/issues/1859)). Add your Mac model and PhotoCraft version to that issue.
+1. Update to PhotoCraft 0.8.2 or later. On Intel Macs it skips a set of graphics checks that macOS could not compile on older Intel graphics, such as Intel Iris Pro on macOS Monterey ([issue 3107](https://github.com/storytold/photocraft/issues/3107)).
+2. Start PhotoCraft again.
+
+If it still fails, there is no fix yet. This is the case reported on Macs patched with OpenCore Legacy Patcher, where setting `WGPU_BACKEND`, `--safe-gpu` and `PHOTOCRAFT_CPU_CANVAS=1` did not change the error ([issue 1859](https://github.com/storytold/photocraft/issues/1859)). Add your Mac model, macOS version and PhotoCraft version to that issue.
 
 ## Why this happens
 

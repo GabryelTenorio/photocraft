@@ -2,7 +2,7 @@
 title: Adjust colors without changing your pixels
 description: Add a Curves, Levels or other adjustment layer in PhotoCraft so you can change or switch it off later.
 order: 20
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 Use **Layer › New Adjustment Layer** and pick an adjustment. The change sits on its own layer above your image, so your original pixels stay as they were and you can edit or hide the adjustment later.

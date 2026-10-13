@@ -2,7 +2,7 @@
 title: Select part of an image and mask it
 description: Make a selection with the marquee tools or Select Subject, soften its edge, and turn it into a layer mask in PhotoCraft.
 order: 30
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 Pick a selection tool, drag around the area, then choose **Layer › Layer Mask › Reveal Selection** to show only that area. A mask hides part of a layer without erasing any pixels.

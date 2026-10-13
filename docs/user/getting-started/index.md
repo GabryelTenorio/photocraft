@@ -2,7 +2,7 @@
 title: Getting started
 description: Install PhotoCraft and open your first image.
 order: 10
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 Install PhotoCraft, then open an image with **File › Open…**. The panels you use most are **Layers**, **Properties** and **History**.

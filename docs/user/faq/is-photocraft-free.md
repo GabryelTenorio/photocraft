@@ -2,7 +2,7 @@
 title: Is PhotoCraft free?
 description: PhotoCraft is free and open source under the MIT or Apache 2.0 license, and works offline.
 order: 10
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 Yes. PhotoCraft is one of the Crafting Apps, which the project describes as free, open-source creative tools. The code is licensed under MIT or Apache 2.0, your choice, and is on [GitHub](https://github.com/storytold/photocraft).

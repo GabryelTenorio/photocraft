@@ -1,7 +1,7 @@
 ---
 title: PhotoCraft
 description: PhotoCraft is a free, open-source image editor with layers, masks, type and real PSD files, built as an alternative to Adobe Photoshop.
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 PhotoCraft is a free, open-source image editor with layers, masks, adjustment layers, layer styles, type, vector shapes and brushes. It is an alternative to Adobe Photoshop: the menus, panels, tools and shortcuts follow Photoshop's layout, so Photoshop users find things where they expect them.

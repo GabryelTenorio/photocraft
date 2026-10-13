@@ -2,7 +2,7 @@
 title: Troubleshooting
 description: Fixes and workarounds for known PhotoCraft problems.
 order: 30
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 - [PhotoCraft does not start](photocraft-does-not-start.md)

@@ -2,7 +2,7 @@
 title: Can PhotoCraft replace Photoshop?
 description: Not yet. PhotoCraft is in early alpha and is not ready for daily professional work, but it follows Photoshop's menus and shortcuts.
 order: 30
-verified: 0.7.0
+verified: 0.8.2
 ---
 
 Not yet. PhotoCraft is in early alpha. Much of Photoshop's feature surface exists in some form, but the project says plainly that it is not yet a Photoshop replacement for daily professional work.
