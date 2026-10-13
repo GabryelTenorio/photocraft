@@ -67,7 +67,12 @@ fn toolbar_shortcut_overrides_remove_old_keys_and_skip_removed_group_members() {
     let ctx = egui::Context::default();
     let press = |app: &mut PhotocraftApp, key, modifiers| {
         ctx.begin_pass(egui::RawInput {
-            events: vec![Event::ModifiersChanged(modifiers), Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }],
+            // A tap: press and release, so the next press isn't a held key's repeat.
+            events: vec![
+                Event::ModifiersChanged(modifiers),
+                Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers },
+                Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers },
+            ],
             ..Default::default()
         });
         crate::shortcuts::handle(app, &ctx);
