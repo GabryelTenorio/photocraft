@@ -23,11 +23,7 @@ fn run_photocraft(args: &[&str]) -> (std::process::ExitStatus, String, String) {
         .output()
         .expect("failed to run photocraft binary");
     std::fs::remove_dir_all(&dir).ok();
-    (
-        output.status,
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    )
+    (output.status, String::from_utf8_lossy(&output.stdout).into_owned(), String::from_utf8_lossy(&output.stderr).into_owned())
 }
 
 /// The usage must list every flag the argument loop accepts, and point at the headless sibling
