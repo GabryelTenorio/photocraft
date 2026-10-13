@@ -97,23 +97,41 @@ fn profile(h: &Harness<'static, PhotocraftApp>, name: &str) -> Option<String> {
     st.doc.icc_profile.as_ref().map(|b| photocraft_engine::color_cmds::profile_from_bytes(b).unwrap().description.clone())
 }
 
+/// The file the prompt on screen asks about.
+fn asked(h: &Harness<'static, PhotocraftApp>) -> &'static str {
+    let msg = prompt(h);
+    ["a.png", "b.png", "c.png", "d.png"]
+        .into_iter()
+        .find(|n| msg.starts_with(&format!("The document “{n}” has an embedded color profile that does not match the current RGB working space.")))
+        .unwrap_or_else(|| panic!("the prompt names its file: {msg}"))
+}
+
+/// Files read on the spot ask in the order they were given. Read in the background, they ask in
+/// the order their reads finish, which is the same order unless a later read overtakes an earlier
+/// one: the tests hold either way.
+fn in_order(background: bool, order: &[&str]) {
+    if !background {
+        assert_eq!(order, &["a.png", "b.png", "c.png"][..order.len()]);
+    }
+}
+
 #[test]
 fn files_opened_together_ask_one_at_a_time_before_each_opens() {
     for background in [false, true] {
         let mut h = harness(background);
         open_three(&mut h);
-        for (name, opened) in [("a.png", vec![]), ("b.png", vec!["a.png"]), ("c.png", vec!["a.png", "b.png"])] {
-            assert_eq!(docs(&h), opened, "background {background}: {name} opens only after its prompt");
-            let msg = prompt(&h);
-            assert!(
-                msg.starts_with(&format!("The document “{name}” has an embedded color profile that does not match the current RGB working space.")),
-                "background {background}: {msg}"
-            );
+        let mut answered: Vec<&str> = Vec::new();
+        for _ in 0..3 {
+            assert_eq!(docs(&h), answered, "background {background}: a file opens only after its prompt");
+            let name = asked(&h);
+            assert!(!answered.contains(&name), "background {background}: {name} asked twice");
             answer(&mut h, USE);
+            answered.push(name);
         }
+        in_order(background, &answered);
         assert!(h.state().ui.dialogs.is_empty());
-        assert_eq!(docs(&h), ["a.png", "b.png", "c.png"], "background {background}");
-        assert_eq!(h.state().session.active().map(|d| d.doc.name.as_str()), Some("c.png"));
+        assert_eq!(docs(&h), answered, "background {background}: each opened when it was answered");
+        assert_eq!(h.state().session.active().map(|d| d.doc.name.as_str()), answered.last().copied());
     }
 }
 
@@ -168,15 +186,49 @@ fn the_prompt_is_translated_and_still_names_its_file() {
     }
 }
 
+/// #4559 with a held file: type in a font that isn't installed is reported with the import
+/// warnings while the file still waits for its profile prompt, and shown once when it opens.
+#[test]
+fn a_held_file_still_reports_its_missing_fonts() {
+    const MISSING: &str = "NoSuchFamily3471";
+    let warning = format!("font '{MISSING}' is not installed; text may render using a fallback face");
+    let mut s = Session::new();
+    s.execute("file.new", serde_json::json!({"width": 40, "height": 20})).unwrap();
+    s.execute("type.create", serde_json::json!({"text": "Hi", "x": 2, "y": 12, "size": 10, "font": MISSING})).unwrap();
+    let mut doc = (*s.active().unwrap().doc).clone();
+    doc.icc_profile = Some(photocraft_cms::Builtin::from_id("adobe-rgb-compat").unwrap().profile().to_bytes());
+    let services = Services { import: Some(Box::new(move |_: &str, _: &[u8], _: usize| Ok((doc.clone(), Vec::new())))), ..Default::default() };
+    let mut app = PhotocraftApp::new(Session::new(), services);
+    app.run("edit.colorSettings", serde_json::json!({"askOnMismatch": true, "policyRgb": "preserve"})).unwrap();
+    assert_eq!(app.open_bytes("poster.psd", b"x").unwrap(), vec![warning.clone()]);
+    assert!(app.session.documents().is_empty() && app.ui.notices.is_empty(), "held: nothing shown yet");
+    crate::open_prompt::answer(&mut app, Some("preserve")).unwrap();
+    assert_eq!(app.session.documents().len(), 1);
+    assert_eq!(app.ui.notices.len(), 1);
+    assert_eq!(app.ui.notices[0].lines, vec![warning]);
+}
+
 #[test]
 fn each_answer_applies_to_its_own_file() {
     for background in [false, true] {
         let mut h = harness(background);
         open_three(&mut h);
-        answer(&mut h, CONVERT);
-        answer(&mut h, DISCARD);
-        answer(&mut h, USE);
-        assert_eq!(docs(&h), ["a.png", "b.png", "c.png"]);
+        // Whichever file a prompt names gets that file's own answer.
+        let mut answered: Vec<&str> = Vec::new();
+        for _ in 0..3 {
+            let name = asked(&h);
+            answer(
+                &mut h,
+                match name {
+                    "a.png" => CONVERT,
+                    "b.png" => DISCARD,
+                    _ => USE,
+                },
+            );
+            answered.push(name);
+        }
+        in_order(background, &answered);
+        assert_eq!(docs(&h), answered);
         assert_eq!(profile(&h, "a.png").as_deref(), Some("sRGB IEC61966-2.1"), "background {background}: a converted");
         assert_eq!(profile(&h, "b.png"), None, "background {background}: b discarded");
         assert!(profile(&h, "c.png").unwrap().starts_with("Adobe RGB"), "background {background}: c kept");
@@ -188,14 +240,16 @@ fn cancel_opens_neither_the_file_nor_the_ones_still_to_come() {
     for background in [false, true] {
         let mut h = harness(background);
         open_three(&mut h);
+        let first = asked(&h);
+        in_order(background, &[first]);
         answer(&mut h, USE);
         click(&mut h, "Cancel");
         settle(&mut h);
         assert!(h.state().ui.dialogs.is_empty(), "background {background}: no prompt left");
-        assert_eq!(docs(&h), ["a.png"], "background {background}");
+        assert_eq!(docs(&h), [first], "background {background}");
         // A later open asks again.
         h.state_mut().open_file("/pics/d.png", &adobe_png()).unwrap();
         settle(&mut h);
-        assert!(prompt(&h).contains("“d.png”"));
+        assert_eq!(asked(&h), "d.png");
     }
 }
