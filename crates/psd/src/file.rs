@@ -412,34 +412,24 @@ mod write_tests {
         for version in [Version::Psd, Version::Psb] {
             for depth in [16, 32] {
                 let file = testgen::layered(version, ColorMode::Rgb, depth, Compression::Raw);
-                let bytes = file.to_bytes().unwrap();
-                // A 16/32-bit file saved by Photoshop can have an empty (or 8-bit compatibility)
-                // layer info section before the global Lr16/Lr32 block (#4928).
-                // Splice 4 bytes of empty section layer info (count = 0) into the layer mask section.
-                let psb = version.is_psb();
-                let cmd_len = u32::from_be_bytes(bytes[26..30].try_into().unwrap()) as usize;
-                let res_pos = 30 + cmd_len;
-                let res_len = u32::from_be_bytes(bytes[res_pos..res_pos + 4].try_into().unwrap()) as usize;
-                let lm_pos = res_pos + 4 + res_len;
-                let lm_len_size = if psb { 8 } else { 4 };
-                let li_pos = lm_pos + lm_len_size;
-
-                let mut modified = bytes.clone();
-                if psb {
-                    let old_lm_len = u64::from_be_bytes(modified[lm_pos..lm_pos + 8].try_into().unwrap());
-                    modified[lm_pos..lm_pos + 8].copy_from_slice(&(old_lm_len + 4).to_be_bytes());
-                    modified[li_pos..li_pos + 8].copy_from_slice(&4u64.to_be_bytes());
-                    modified.splice(li_pos + 8..li_pos + 8, [0u8, 0, 0, 0]);
-                } else {
-                    let old_lm_len = u32::from_be_bytes(modified[lm_pos..lm_pos + 4].try_into().unwrap());
-                    modified[lm_pos..lm_pos + 4].copy_from_slice(&(old_lm_len + 4).to_be_bytes());
-                    modified[li_pos..li_pos + 4].copy_from_slice(&4u32.to_be_bytes());
-                    modified.splice(li_pos + 4..li_pos + 4, [0u8, 0, 0, 0]);
-                }
-
-                let parsed = PsdFile::from_bytes(&modified).unwrap();
-                assert_eq!(parsed.layers().len(), file.layers().len());
                 let key = if depth == 16 { *b"Lr16" } else { *b"Lr32" };
+                let mut lr_data = Vec::new();
+                file.layer_info.as_ref().unwrap().write_body(&mut lr_data, version).unwrap();
+
+                // Photoshop writes an empty (or 8-bit compatibility) Layer Info section
+                // alongside the global Lr16/Lr32 block (#4928).
+                let mut compat_file = file.clone();
+                compat_file.layer_info =
+                    Some(LayerInfo { layers: vec![LayerRecord { name: b"CompatibilityLayer".to_vec(), ..Default::default() }], ..Default::default() });
+                compat_file.layer_info_placement = LayerInfoPlacement::Section;
+                compat_file.global_blocks.insert(0, TaggedBlock::new(key, lr_data));
+
+                let bytes = compat_file.to_bytes().unwrap();
+                let parsed = PsdFile::from_bytes(&bytes).unwrap();
+
+                assert_eq!(parsed.layers().len(), file.layers().len());
+                assert_ne!(parsed.layers()[0].name(), "CompatibilityLayer");
+                assert_eq!(parsed.layers()[0].name(), file.layers()[0].name());
                 assert!(matches!(parsed.layer_info_placement, LayerInfoPlacement::GlobalBlock { key: k, .. } if k == key));
             }
         }
