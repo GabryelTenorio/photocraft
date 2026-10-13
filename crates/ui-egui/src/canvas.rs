@@ -3545,18 +3545,27 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             }
             command_guide_at(app, tool, d, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)))
         });
-        if let Some(c) = response.hover_pos().filter(|_| crate::shape_canvas::supports_tool(tool)).and_then(|p| crate::shape_canvas::cursor(app, xf.to_doc(p)))
+        if let Some((vertical, _)) = guide_hover {
+            ui.ctx().set_cursor_icon(if vertical { egui::CursorIcon::ResizeHorizontal } else { egui::CursorIcon::ResizeVertical });
+        } else if let Some(p) = response.hover_pos()
+            && let Some(c) = crate::transform_tool::cursor(app, xf.to_doc(p), ui.input(|i| i.modifiers.alt || i.modifiers.command))
+        {
+            ui.ctx().set_cursor_icon(c);
+            // CursorIcon::None hides the pointer; the curved arrow has to be drawn or the
+            // rotate zone looks like a plain cursor (#4050).
+            let d = xf.to_doc(p);
+            if let Some(k) = crate::transform_tool::rotate_cursor_dir(app, d) {
+                let toward = xf.to_screen((d[0] + k[0] * 16.0) as f32, (d[1] + k[1] * 16.0) as f32) - p;
+                crate::crop_ui::draw_turn_cursor(&ctx, p, toward);
+            }
+        } else if let Some(c) = response.hover_pos().filter(|_| crate::shape_canvas::supports_tool(tool)).and_then(|p| crate::shape_canvas::cursor(app, xf.to_doc(p)))
         {
             ui.ctx().set_cursor_icon(c);
         } else if let Some(c) = response.hover_pos().and_then(|p| crate::cam_transform::cursor(app, &ctx, &xf, p)) {
             ui.ctx().set_cursor_icon(c);
-        } else if let Some((vertical, _)) = guide_hover {
-            ui.ctx().set_cursor_icon(if vertical { egui::CursorIcon::ResizeHorizontal } else { egui::CursorIcon::ResizeVertical });
         } else if let Some(c) =
             response.hover_pos().filter(|_| !matches!(tool, Tool::Hand | Tool::Zoom | Tool::RotateView)).and_then(|p| transform_controls_cursor(app, &xf, p))
         {
-            ui.ctx().set_cursor_icon(c);
-        } else if let Some(c) = response.hover_pos().and_then(|p| transform_cursor_in_view(app, &xf, p, ui.input(|i| i.modifiers.alt || i.modifiers.command))) {
             ui.ctx().set_cursor_icon(c);
         } else if let Some(c) = response.hover_pos().filter(|_| tool.is_type()).and_then(|p| {
             let mods = crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers));
@@ -3743,6 +3752,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             }
             // ⇧ after a stroke: the straight line a click would paint (#257).
             crate::stroke_constraint::draw_line_preview(app, &painter, &xf, p, tool, held.shift);
+        }
+        // Keep resize directions in the displayed view after the shared cursor path has run.
+        if guide_hover.is_none()
+            && let Some(c) = response.hover_pos().and_then(|p| transform_cursor_in_view(app, &xf, p, ui.input(|i| i.modifiers.alt || i.modifiers.command)))
+        {
+            ui.ctx().set_cursor_icon(c);
         }
     }
     if primary && hand_pan && response.dragged() {
@@ -5336,7 +5351,7 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
         Tool::FreeformPen => crate::vector_ui::freeform_finish(app, &d.points, d.lasso.as_ref().map_or(&[], |l| l.straight())),
         // Photoshop: a click without dragging opens Create Rectangle / Ellipse / … instead.
         t if crate::vector_ui::is_shape_tool(t)
-            && crate::shape_dialog::is_click(d.start, &d.points, app.current_zoom())
+            && crate::shape_dialog::is_click(d.start, &d.points, app.point_zoom())
             && crate::shape_dialog::open_gesture(app, t, d.start, d.modifiers).is_some() => {}
         t if crate::vector_ui::is_shape_tool(t) => crate::vector_ui::finish_shape_gesture(app, t, d.start, [end[0], end[1]], d.modifiers, d.live),
         Tool::PathSelection => crate::vector_ui::path_selection_finish(app, d.start, [end[0], end[1]]),

@@ -2227,7 +2227,9 @@ fn rotation_degrees(quad: [[f64; 2]; 4]) -> f64 {
 /// just outside a corner, or anywhere while a rotate drag is on. It points into the box along the
 /// bisector of the nearest corner, so each corner gets its own arrow and they turn with the box.
 pub(crate) fn rotate_cursor_dir(app: &PhotocraftApp, p: [f64; 2]) -> Option<[f64; 2]> {
-    rotate_dir(app.ui.transform.as_ref()?, app.transform_preview.as_ref(), p, handle_tolerance(app))
+    let shown = shown_shape_transform(app);
+    let t = shown.as_ref().or(app.ui.transform.as_ref())?;
+    rotate_dir(t, app.transform_preview.as_ref(), p, handle_tolerance(app))
 }
 
 fn rotate_dir(t: &TransformSession, pv: Option<&TransformPreview>, p: [f64; 2], tol: f64) -> Option<[f64; 2]> {
@@ -2392,14 +2394,6 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
     painter.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], Stroke::new(1.0, Color32::WHITE));
     painter.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], Stroke::new(1.0, Color32::WHITE));
     if let Some(at) = painter.ctx().pointer_hover_pos().filter(|p| xf.rect.contains(*p)) {
-        let p = xf.to_doc(at);
-        let tol = HANDLE_PX / f64::from(xf.zoom.max(0.01));
-        if let Some(k) = rotate_dir(t, Some(pv), p, tol) {
-            // Through the view, so the arc bends round the corner as it shows under a turned or
-            // flipped view.
-            let toward = xf.to_screen((p[0] + k[0] * 16.0) as f32, (p[1] + k[1] * 16.0) as f32) - at;
-            crate::crop_ui::draw_turn_cursor(painter.ctx(), at, toward);
-        }
         // Preferences › Tools › Show Transformation Values off hides it, as in Photoshop (#204).
         if let Some(r) = live_readout(app).filter(|_| app.session.prefs().tools.show_transformation_values) {
             draw_live_readout(painter.ctx(), at, r);
