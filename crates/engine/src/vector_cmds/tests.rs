@@ -774,6 +774,18 @@ fn shape_info_bounds_of_curved_shapes_are_exact() {
     }
 }
 
+#[test]
+fn negative_origin_rect_is_stored_verbatim_and_bounds_are_canvas_clipped() {
+    // An ellipse centred at the bottom-left canvas corner: the live rect keeps its off-canvas
+    // origin verbatim, and bounds report only the painted pixels, clipped to the canvas.
+    for depth in [8, 16, 32] {
+        let mut s = session(1080, 1440, depth);
+        let r = s.execute("shape.create", json!({"kind": "ellipse", "rect": [-180.0, 1260.0, 360.0, 360.0], "fill": "#ff0000"})).unwrap();
+        assert_eq!(r["live"]["rect"], json!([-180.0, 1260.0, 360.0, 360.0]), "{depth}-bit: live rect is stored verbatim");
+        assert_eq!(r["bounds"], json!([0, 1260, 180, 180]), "{depth}-bit: painted quarter-ellipse clipped to the canvas");
+    }
+}
+
 /// Two overlapping 40×40 rectangle shape layers ("Rectangle 1" black below, "Rectangle 2" grey
 /// above, overlapping by 20×20) with both selected, like the Layers panel in #2400.
 fn two_selected_rects(depth: u32) -> (Session, u64, u64) {
