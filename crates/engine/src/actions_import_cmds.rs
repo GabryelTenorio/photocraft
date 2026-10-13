@@ -113,11 +113,11 @@ fn translate(step: &photocraft_psd::atn::Step) -> Result<(String, Value)> {
 }
 
 fn validate(actions: &[Action], existing: &[Action]) -> Result<()> {
-    if actions.is_empty() || actions.len() > MAX_ACTIONS {
-        return Err(bad("an action set must contain 1..10000 actions"));
+    if actions.is_empty() || actions.len().saturating_add(existing.len()) > MAX_ACTIONS {
+        return Err(bad("an action library must contain 1..10000 actions"));
     }
     let mut names: BTreeSet<&str> = existing.iter().map(|a| a.name.as_str()).collect();
-    let mut count = 0usize;
+    let mut count = existing.iter().fold(0usize, |count, action| count.saturating_add(action.steps.len()));
     for action in actions {
         if action.name.len() > MAX_NAME_BYTES {
             return Err(bad("action names exceed 4096 UTF-8 bytes"));
@@ -127,7 +127,7 @@ fn validate(actions: &[Action], existing: &[Action]) -> Result<()> {
         }
         count = count.saturating_add(action.steps.len());
         if count > MAX_STEPS {
-            return Err(bad("action set exceeds 10000 steps"));
+            return Err(bad("action library exceeds 10000 steps"));
         }
         if action.disabled.iter().any(|i| *i >= action.steps.len()) {
             return Err(bad(format!("invalid disabled step in `{}`", action.name)));
@@ -268,6 +268,26 @@ mod tests {
 
     fn params(file: &ActionsFile) -> Value {
         json!({"format":"json", "data":crate::paint::tile::b64_encode(&serde_json::to_vec(file).unwrap())})
+    }
+
+    #[test]
+    fn appending_cannot_make_the_library_exceed_export_limits() {
+        let empty = Action::new("Existing", vec![]);
+        let incoming = vec![Action::new("Incoming", vec![])];
+        assert!(validate(&incoming, &vec![empty.clone(); MAX_ACTIONS - 1]).is_ok());
+        assert!(validate(&incoming, &vec![empty; MAX_ACTIONS]).is_err());
+
+        let step = ("image.adjustments.invert".into(), json!({}));
+        let mut s = Session::new();
+        s.actions.list.push(Action::new("Existing", vec![step.clone(); MAX_STEPS - 1]));
+        let file = ActionsFile { version: 1, actions: vec![Action::new("Incoming", vec![step])] };
+        s.execute(IMPORT, params(&file)).unwrap();
+        assert!(s.execute("actions.export", json!({})).is_ok());
+        let before = s.actions.clone();
+        let overflow = ActionsFile { version: 1, actions: vec![Action::new("Overflow", vec![("image.adjustments.invert".into(), json!({}))])] };
+        assert!(s.execute(IMPORT, params(&overflow)).is_err());
+        assert_eq!(s.actions, before);
+        assert!(s.execute("actions.export", json!({})).is_ok());
     }
 
     #[test]
