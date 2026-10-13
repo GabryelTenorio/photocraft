@@ -7,8 +7,6 @@
 //! revision and view state and updated per damage rectangle while painting, so nothing is
 //! recomposited per frame.
 
-use std::sync::{Arc, Weak};
-
 use egui::{Color32, TextureOptions};
 use photocraft_doc::{AlphaChannel, ColorMode, Document};
 use photocraft_engine::channel_cmds::{ChannelView, color_count};
@@ -24,9 +22,15 @@ const MAX_SIDE: u32 = 4096;
 const MAX_COMPOSITE_CACHE_PIXELS: usize = 8 * 1024 * 1024;
 
 struct SampledComposite {
-    doc: Weak<Document>,
+    revision: u64,
+    preview_key: u64,
     factor: u32,
     pixels: Vec<[f32; 4]>,
+}
+
+struct CompositeSource<'a> {
+    cached: Option<&'a [[f32; 4]]>,
+    fresh: &'a mut Option<Vec<[f32; 4]>>,
 }
 
 pub struct Cache {
@@ -84,7 +88,7 @@ fn composite(doc: &Document, r: Rect, factor: u32) -> Vec<[f32; 4]> {
 /// channels tinted instead of grayscale (Photoshop's "Show Channels in Color").
 pub fn render(doc: &Document, v: &ChannelView, r: Rect, factor: u32, in_color: bool, active: Option<photocraft_doc::LayerId>) -> Option<Vec<Color32>> {
     let mut unused = None;
-    render_with_source(doc, v, r, factor, in_color, active, None, &mut unused)
+    render_with_source(doc, v, r, factor, in_color, active, CompositeSource { cached: None, fresh: &mut unused })
 }
 
 fn render_with_source(
@@ -94,8 +98,7 @@ fn render_with_source(
     factor: u32,
     in_color: bool,
     active: Option<photocraft_doc::LayerId>,
-    cached: Option<&[[f32; 4]]>,
-    fresh: &mut Option<Vec<[f32; 4]>>,
+    source: CompositeSource<'_>,
 ) -> Option<Vec<Color32>> {
     if v.is_plain(doc) || r.is_empty() {
         return None;
@@ -145,9 +148,9 @@ fn render_with_source(
         let fmt = doc.pixel_format();
         let mode = fmt.mode;
         let shown: Vec<usize> = (0..colors).filter(|k| v.color_visible(*k)).collect();
-        let computed = if cached.is_some_and(|px| px.len() == n) { None } else { Some(composite(doc, r, factor)) };
-        let source = cached.filter(|px| px.len() == n).or_else(|| computed.as_deref())?;
-        let converted = source
+        let computed = if source.cached.is_some_and(|px| px.len() == n) { None } else { Some(composite(doc, r, factor)) };
+        let pixels = source.cached.filter(|px| px.len() == n).or(computed.as_deref())?;
+        let converted = pixels
             .iter()
             .copied()
             .map(|rgba| {
@@ -171,7 +174,7 @@ fn render_with_source(
             })
             .collect();
         if n <= MAX_COMPOSITE_CACHE_PIXELS {
-            *fresh = computed;
+            *source.fresh = computed;
         }
         converted
     } else {
@@ -267,11 +270,10 @@ pub fn ensure(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize) -> Optio
     // Never exceed what the GPU accepts (egui panics on oversized textures).
     let max_side = (ctx.input(|i| i.max_texture_side) as u32).clamp(256, MAX_SIDE);
     let factor = doc.size.width.max(doc.size.height).div_ceil(max_side).max(1);
-    // Document edits replace the Arc, so a weak identity invalidates stale flattened pixels
-    // without pinning old tiles in memory.
-    let source_id = Arc::downgrade(&doc);
+    // A live preview can mutate the same Arc in place. Revision and preview_key, not
+    // pointer identity, determine whether these flattened pixels are still current.
     if let Some(c) = app.channel_views.get_mut(&id)
-        && c.source.as_ref().is_some_and(|s| s.factor != factor || !s.doc.ptr_eq(&source_id))
+        && c.source.as_ref().is_some_and(|s| s.factor != factor || s.revision != revision || s.preview_key != preview_key)
     {
         c.source = None;
     }
@@ -310,7 +312,7 @@ pub fn ensure(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize) -> Optio
     let b = doc.bounds();
     let cached = app.channel_views.get(&id).and_then(|c| c.source.as_ref()).map(|s| s.pixels.as_slice());
     let mut fresh = None;
-    let px = render_with_source(&doc, &view, b, factor, in_color, active, cached, &mut fresh)?;
+    let px = render_with_source(&doc, &view, b, factor, in_color, active, CompositeSource { cached, fresh: &mut fresh })?;
     let new_source = fresh.is_some();
     let size = [b.width().div_ceil(factor) as usize, b.height().div_ceil(factor) as usize];
     let img = egui::ColorImage::new(size, px);
@@ -323,12 +325,12 @@ pub fn ensure(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize) -> Optio
             c.factor = factor;
             c.valid = true;
             if let Some(pixels) = fresh.take() {
-                c.source = Some(SampledComposite { doc: source_id.clone(), factor, pixels });
+                c.source = Some(SampledComposite { revision, preview_key, factor, pixels });
             }
         }
         _ => {
             let tex = ctx.load_texture(format!("channel-view-{id}"), img, TextureOptions::LINEAR);
-            let source = fresh.map(|pixels| SampledComposite { doc: source_id, factor, pixels });
+            let source = fresh.map(|pixels| SampledComposite { revision, preview_key, factor, pixels });
             app.channel_views.insert(id, Cache { revision, key, preview_key, factor, valid: true, tex, source });
         }
     }
@@ -366,15 +368,15 @@ mod tests {
         let full_ref = &full;
         for factor in [1, 2, 3, 5] {
             let expected: Vec<_> = (0..rect.height())
-            .step_by(factor as usize)
-            .flat_map(|y| {
-                (0..rect.width()).step_by(factor as usize).map(move |x| {
-                    let p = full_ref.get(rect.x0 + x as i32, rect.y0 + y as i32);
-                    let a = p[3].clamp(0.0, 1.0);
-                    [p[0] * a + 1.0 - a, p[1] * a + 1.0 - a, p[2] * a + 1.0 - a, 1.0]
+                .step_by(factor as usize)
+                .flat_map(|y| {
+                    (0..rect.width()).step_by(factor as usize).map(move |x| {
+                        let p = full_ref.get(rect.x0 + x as i32, rect.y0 + y as i32);
+                        let a = p[3].clamp(0.0, 1.0);
+                        [p[0] * a + 1.0 - a, p[1] * a + 1.0 - a, p[2] * a + 1.0 - a, 1.0]
+                    })
                 })
-            })
-            .collect();
+                .collect();
             assert_eq!(composite(doc, rect, factor), expected, "factor {factor}");
         }
     }
@@ -390,7 +392,7 @@ mod tests {
         assert!(ensure(&mut app, &ctx, 0).is_some());
         let id = app.session.active().unwrap().doc.id.0;
         let first = app.channel_views.get(&id).unwrap().source.as_ref().unwrap();
-        let first_doc = first.doc.clone();
+        let original_sample = first.pixels[0];
         let ptr = first.pixels.as_ptr();
 
         app.run("channel.setVisible", json!({"channel": "green", "visible": false})).unwrap();
@@ -400,12 +402,29 @@ mod tests {
 
         app.run("edit.fill", json!({"color": "#e02010"})).unwrap();
         assert!(ensure(&mut app, &ctx, 0).is_some());
+        // The damage path updates only a texture rectangle, not the full composite.
+        // Keep the pixels uncached until the next channel visibility change.
+        assert!(app.channel_views.get(&id).unwrap().source.is_none(), "pixel edits invalidate the cached source");
+        app.run("channel.setVisible", json!({"channel": "red", "visible": true})).unwrap();
+        assert!(ensure(&mut app, &ctx, 0).is_some());
         let refreshed = app.channel_views.get(&id).unwrap().source.as_ref().unwrap();
-        assert!(!first_doc.ptr_eq(&refreshed.doc), "pixel edits invalidate the source");
         let st = app.session.active().unwrap();
+        assert_eq!(refreshed.revision, st.revision);
+        assert_ne!(refreshed.pixels[0], original_sample, "new pixels must be recomposited");
         let expected = render(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer).unwrap();
-        let actual = render_with_source(&st.doc, &st.channel_view, st.doc.bounds(), 1, false, st.active_layer, Some(&refreshed.pixels), &mut None).unwrap();
+        let mut unused = None;
+        let actual = render_with_source(
+            &st.doc,
+            &st.channel_view,
+            st.doc.bounds(),
+            1,
+            false,
+            st.active_layer,
+            CompositeSource { cached: Some(&refreshed.pixels), fresh: &mut unused },
+        )
+        .unwrap();
         assert_eq!(actual, expected, "reused pixels must preserve channel colours");
+        assert!(unused.is_none(), "reuse must not create a second composite");
     }
 
     #[test]
