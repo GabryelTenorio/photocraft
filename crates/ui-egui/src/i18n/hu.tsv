@@ -3983,7 +3983,6 @@ cameraRaw	Yellow	Sárga
 	Telegram sending needs the desktop app.	A Telegramra küldés csak az asztali alkalmazásban van.
 	Telegram is set up. Save or export a file, then send it.	A Telegram be van állítva. Mentsen vagy exportáljon egy fájlt, majd küldje el.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Hozz létre egy botot a BotFatherrel, és küldj neki egy üzenetet. Az azonosítót a Csevegések keresése tölti ki, vagy illessz be egy számot vagy @channelname nevet.
 	Open the official bot guide	A hivatalos botútmutató megnyitása
 	Find chats for this token	Csevegések keresése ehhez a tokenhez
@@ -3995,12 +3994,10 @@ cameraRaw	Yellow	Sárga
 	Sending {name} to Telegram…	{name} küldése a Telegramra…
 	Sent to Telegram	Elküldve a Telegramra
 	A Telegram send is already running.	Már fut egy küldés a Telegramra.
-	Could not prepare a file to send: {error}	A küldendő fájl nem készíthető elő: {error}
 	Send as	Küldés mint
 	Saved file	Mentett fájl
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	A mentett fájl a lemezen lévő másolat. A PSD és a PNG az nyitott dokumentum új másolata, a nem mentett módosításokkal együtt.
 	Chats or channels. Several are allowed, separated by commas.	Csevegések vagy csatornák. Több is megadható, vesszővel elválasztva.
-	There is no saved file to send. Choose PSD or PNG.	Nincs mentett fájl a küldéshez. Válassz PSD-t vagy PNG-t.
 	Also send when I Save a Copy	Küldés a Másolat mentése során is
 	Also send a PNG preview with a PSD	PNG-előnézet küldése a PSD mellé
 	Send automatically	Automatikus küldés
@@ -4012,3 +4009,8 @@ cameraRaw	Yellow	Sárga
 	*Size:* {size}	*Méret:* {size}
 	*Time:* {time}	*Idő:* {time}
 	*Path:* `{path}`	*Útvonal:* `{path}`
+	Pin the message	Üzenet kitűzése
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	A kitűzéshez a botnak adminnak kell lennie. Különben a fájl így is elküldődik.
+	Could not pin the message. The file was still sent.	Az üzenetet nem sikerült kitűzni. A fájl elküldve.
+	Get from Telegram	Letöltés a Telegramból
+	No files yet. Send your bot a file or a photo, then try again.	Még nincsenek fájlok. Küldjön a botnak egy fájlt vagy fényképet, majd próbálja újra.

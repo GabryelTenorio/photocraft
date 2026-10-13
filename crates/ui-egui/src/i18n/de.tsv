@@ -2704,7 +2704,6 @@ curves	Smooth	Glätten
 	Telegram sending needs the desktop app.	Telegram-Versand gibt es nur in der Desktop-App.
 	Telegram is set up. Save or export a file, then send it.	Telegram ist eingerichtet. Speichere oder exportiere eine Datei und sende sie dann.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Lege einen Bot bei BotFather an und schick ihm irgendeine Nachricht. Die ID füllst du über Chats suchen, oder du fügst eine Zahl oder @channelname ein.
 	Open the official bot guide	Offizielle Bot-Anleitung öffnen
 	Find chats for this token	Chats zu diesem Token suchen
@@ -2716,12 +2715,10 @@ curves	Smooth	Glätten
 	Sending {name} to Telegram…	Sende {name} an Telegram…
 	Sent to Telegram	An Telegram gesendet
 	A Telegram send is already running.	Ein Telegram-Versand läuft schon.
-	Could not prepare a file to send: {error}	Die Datei zum Senden konnte nicht vorbereitet werden: {error}
 	Send as	Senden als
 	Saved file	Gespeicherte Datei
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Die gespeicherte Datei ist die Kopie auf der Platte. PSD und PNG sind eine neue Kopie des offenen Dokuments, samt ungespeicherter Änderungen.
 	Chats or channels. Several are allowed, separated by commas.	Chats oder Kanäle. Mehrere sind erlaubt, durch Kommas getrennt.
-	There is no saved file to send. Choose PSD or PNG.	Es gibt keine gespeicherte Datei. Wähle PSD oder PNG.
 	Also send when I Save a Copy	Auch bei „Kopie speichern“ senden
 	Also send a PNG preview with a PSD	Mit einem PSD auch eine PNG-Vorschau senden
 	Send automatically	Automatisch senden
@@ -2733,3 +2730,8 @@ curves	Smooth	Glätten
 	*Size:* {size}	*Größe:* {size}
 	*Time:* {time}	*Zeit:* {time}
 	*Path:* `{path}`	*Pfad:* `{path}`
+	Pin the message	Nachricht anheften
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Anheften geht nur, wenn der Bot Admin ist. Sonst wird die Datei trotzdem gesendet.
+	Could not pin the message. The file was still sent.	Die Nachricht konnte nicht angeheftet werden. Die Datei wurde trotzdem gesendet.
+	Get from Telegram	Von Telegram holen
+	No files yet. Send your bot a file or a photo, then try again.	Noch keine Dateien. Schick deinem Bot eine Datei oder ein Foto und versuch es noch einmal.

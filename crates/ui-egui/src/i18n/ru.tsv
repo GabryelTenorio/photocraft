@@ -3009,7 +3009,6 @@ curves	Smooth	Сгладить
 	Telegram sending needs the desktop app.	Отправка в Telegram есть только в приложении для компьютера.
 	Telegram is set up. Save or export a file, then send it.	Telegram настроен. Сохраните или экспортируйте файл, затем отправьте его.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Создайте бота у BotFather и отправьте ему любое сообщение. Id можно подставить кнопкой «Найти чаты» или вставить число или @channelname.
 	Open the official bot guide	Открыть официальное руководство по ботам
 	Find chats for this token	Найти чаты для этого токена
@@ -3021,12 +3020,10 @@ curves	Smooth	Сгладить
 	Sending {name} to Telegram…	Отправка {name} в Telegram…
 	Sent to Telegram	Отправлено в Telegram
 	A Telegram send is already running.	Отправка в Telegram уже выполняется.
-	Could not prepare a file to send: {error}	Не удалось подготовить файл для отправки: {error}
 	Send as	Отправить как
 	Saved file	Сохранённый файл
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Сохранённый файл — это копия на диске. PSD и PNG — новая копия открытого документа, включая несохранённые изменения.
 	Chats or channels. Several are allowed, separated by commas.	Чаты или каналы. Можно несколько, через запятую.
-	There is no saved file to send. Choose PSD or PNG.	Нет сохранённого файла для отправки. Выберите PSD или PNG.
 	Also send when I Save a Copy	Также отправлять при «Сохранить копию»
 	Also send a PNG preview with a PSD	Вместе с PSD отправлять и PNG-превью
 	Send automatically	Отправлять автоматически
@@ -3038,3 +3035,8 @@ curves	Smooth	Сгладить
 	*Size:* {size}	*Размер:* {size}
 	*Time:* {time}	*Время:* {time}
 	*Path:* `{path}`	*Путь:* `{path}`
+	Pin the message	Закрепить сообщение
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Закрепление требует, чтобы бот был администратором. Иначе файл всё равно отправится.
+	Could not pin the message. The file was still sent.	Не удалось закрепить сообщение. Файл всё равно отправлен.
+	Get from Telegram	Взять из Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Файлов пока нет. Отправьте боту файл или фото и попробуйте снова.

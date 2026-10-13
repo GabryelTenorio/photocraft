@@ -3678,7 +3678,6 @@ navigator	Zoom	Zvětšení
 	Telegram sending needs the desktop app.	Odesílání do Telegramu je jen v desktopové aplikaci.
 	Telegram is set up. Save or export a file, then send it.	Telegram je nastavený. Ulož nebo exportuj soubor a potom ho odešli.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Vytvoř bota přes BotFather a pošli mu jakoukoli zprávu. Id doplň přes Najít chaty, nebo vlož číslo či @channelname.
 	Open the official bot guide	Otevřít oficiální návod k botům
 	Find chats for this token	Najít chaty pro tento token
@@ -3690,12 +3689,10 @@ navigator	Zoom	Zvětšení
 	Sending {name} to Telegram…	Odesílám {name} do Telegramu…
 	Sent to Telegram	Odesláno do Telegramu
 	A Telegram send is already running.	Odesílání do Telegramu už běží.
-	Could not prepare a file to send: {error}	Soubor k odeslání se nepodařilo připravit: {error}
 	Send as	Odeslat jako
 	Saved file	Uložený soubor
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Uložený soubor pošle kopii na disku. PSD a PNG jsou nová kopie otevřeného dokumentu včetně neuložených změn.
 	Chats or channels. Several are allowed, separated by commas.	Chaty nebo kanály. Více jich může být, oddělených čárkami.
-	There is no saved file to send. Choose PSD or PNG.	Není uložený soubor k odeslání. Zvol PSD nebo PNG.
 	Also send when I Save a Copy	Poslat také při Uložit kopii
 	Also send a PNG preview with a PSD	S PSD poslat i náhled PNG
 	Send automatically	Posílat automaticky
@@ -3707,3 +3704,8 @@ navigator	Zoom	Zvětšení
 	*Size:* {size}	*Velikost:* {size}
 	*Time:* {time}	*Čas:* {time}
 	*Path:* `{path}`	*Cesta:* `{path}`
+	Pin the message	Připnout zprávu
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Připnutí vyžaduje, aby byl bot správce. Jinak se soubor stejně odešle.
+	Could not pin the message. The file was still sent.	Zprávu se nepodařilo připnout. Soubor byl přesto odeslán.
+	Get from Telegram	Vzít z Telegramu
+	No files yet. Send your bot a file or a photo, then try again.	Zatím žádné soubory. Pošlete botovi soubor nebo fotku a zkuste to znovu.

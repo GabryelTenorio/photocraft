@@ -4028,7 +4028,6 @@ navigator	Zoom	Zoom
 	Telegram sending needs the desktop app.	L'invio a Telegram c'è solo nell'app desktop.
 	Telegram is set up. Save or export a file, then send it.	Telegram è configurato. Salva o esporta un file, poi invialo.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Crea un bot con BotFather e mandagli un messaggio qualsiasi. Compila l'id con Trova chat, oppure incolla un numero o @channelname.
 	Open the official bot guide	Apri la guida ufficiale dei bot
 	Find chats for this token	Trova chat per questo token
@@ -4040,12 +4039,10 @@ navigator	Zoom	Zoom
 	Sending {name} to Telegram…	Invio di {name} a Telegram…
 	Sent to Telegram	Inviato a Telegram
 	A Telegram send is already running.	Un invio a Telegram è già in corso.
-	Could not prepare a file to send: {error}	Impossibile preparare un file da inviare: {error}
 	Send as	Invia come
 	Saved file	File salvato
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Il file salvato è la copia su disco. PSD e PNG sono una nuova copia del documento aperto, comprese le modifiche non salvate.
 	Chats or channels. Several are allowed, separated by commas.	Chat o canali. Se ne possono indicare diversi, separati da virgole.
-	There is no saved file to send. Choose PSD or PNG.	Non c'è un file salvato da inviare. Scegli PSD o PNG.
 	Also send when I Save a Copy	Invia anche quando salvo una copia
 	Also send a PNG preview with a PSD	Invia anche un'anteprima PNG con un PSD
 	Send automatically	Invio automatico
@@ -4057,3 +4054,8 @@ navigator	Zoom	Zoom
 	*Size:* {size}	*Dimensione:* {size}
 	*Time:* {time}	*Ora:* {time}
 	*Path:* `{path}`	*Percorso:* `{path}`
+	Pin the message	Fissa il messaggio
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Fissare richiede che il bot sia amministratore. Altrimenti il file viene inviato lo stesso.
+	Could not pin the message. The file was still sent.	Il messaggio non è stato fissato. Il file è stato inviato.
+	Get from Telegram	Prendi da Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Ancora nessun file. Invia al bot un file o una foto, poi riprova.

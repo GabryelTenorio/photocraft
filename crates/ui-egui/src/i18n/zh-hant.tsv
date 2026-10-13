@@ -2654,7 +2654,6 @@ curves	Smooth	平滑
 	Telegram sending needs the desktop app.	傳送到 Telegram 僅在桌面應用程式中可用。
 	Telegram is set up. Save or export a file, then send it.	Telegram 已設定。請先儲存或匯出檔案，然後再傳送。
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	用 BotFather 建立一個機器人，然後傳給它任意一則訊息。用「尋找聊天」填入 ID，或貼上數字或 @channelname。
 	Open the official bot guide	開啟官方機器人指南
 	Find chats for this token	尋找此權杖的聊天
@@ -2666,12 +2665,10 @@ curves	Smooth	平滑
 	Sending {name} to Telegram…	正在把 {name} 傳送到 Telegram…
 	Sent to Telegram	已傳送到 Telegram
 	A Telegram send is already running.	已有一次 Telegram 傳送正在進行。
-	Could not prepare a file to send: {error}	無法準備要傳送的檔案：{error}
 	Send as	傳送為
 	Saved file	已儲存的檔案
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	已儲存的檔案是磁碟上的那份。PSD 和 PNG 是目前開啟文件的新副本，包含尚未儲存的修改。
 	Chats or channels. Several are allowed, separated by commas.	聊天或頻道。可以填多個，用逗號分開。
-	There is no saved file to send. Choose PSD or PNG.	沒有可傳送的已儲存檔案。請選擇 PSD 或 PNG。
 	Also send when I Save a Copy	儲存副本時也傳送
 	Also send a PNG preview with a PSD	傳送 PSD 時一併傳送 PNG 預覽
 	Send automatically	自動傳送
@@ -2683,3 +2680,8 @@ curves	Smooth	平滑
 	*Size:* {size}	*大小：* {size}
 	*Time:* {time}	*時間：* {time}
 	*Path:* `{path}`	*路徑：* `{path}`
+	Pin the message	置頂訊息
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	置頂需要機器人是管理員。否則檔案仍會傳送。
+	Could not pin the message. The file was still sent.	無法置頂訊息。檔案仍已傳送。
+	Get from Telegram	從 Telegram 取得
+	No files yet. Send your bot a file or a photo, then try again.	還沒有檔案。請先傳檔案或照片給機器人，然後再試。

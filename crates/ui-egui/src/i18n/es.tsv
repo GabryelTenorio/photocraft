@@ -2745,7 +2745,6 @@ curves	Smooth	Suavizar
 	Telegram sending needs the desktop app.	El envío a Telegram solo está en la aplicación de escritorio.
 	Telegram is set up. Save or export a file, then send it.	Telegram está configurado. Guarda o exporta un archivo y luego envíalo.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Crea un bot con BotFather y envíale cualquier mensaje. Rellena el id con Buscar chats, o pega un número o @channelname.
 	Open the official bot guide	Abrir la guía oficial de bots
 	Find chats for this token	Buscar chats de este token
@@ -2757,12 +2756,10 @@ curves	Smooth	Suavizar
 	Sending {name} to Telegram…	Enviando {name} a Telegram…
 	Sent to Telegram	Enviado a Telegram
 	A Telegram send is already running.	Ya hay un envío a Telegram en curso.
-	Could not prepare a file to send: {error}	No se pudo preparar un archivo para enviar: {error}
 	Send as	Enviar como
 	Saved file	Archivo guardado
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	El archivo guardado es la copia en el disco. PSD y PNG son una copia nueva del documento abierto, incluidos los cambios sin guardar.
 	Chats or channels. Several are allowed, separated by commas.	Chats o canales. Se permiten varios, separados por comas.
-	There is no saved file to send. Choose PSD or PNG.	No hay un archivo guardado para enviar. Elige PSD o PNG.
 	Also send when I Save a Copy	Enviar también al Guardar una copia
 	Also send a PNG preview with a PSD	Enviar también una vista PNG con un PSD
 	Send automatically	Enviar automáticamente
@@ -2774,3 +2771,8 @@ curves	Smooth	Suavizar
 	*Size:* {size}	*Tamaño:* {size}
 	*Time:* {time}	*Hora:* {time}
 	*Path:* `{path}`	*Ruta:* `{path}`
+	Pin the message	Fijar el mensaje
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Fijar exige que el bot sea administrador. Si no lo es, el archivo se envía igual.
+	Could not pin the message. The file was still sent.	No se pudo fijar el mensaje. El archivo sí se envió.
+	Get from Telegram	Traer de Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Aún no hay archivos. Envía a tu bot un archivo o una foto y vuelve a intentarlo.

@@ -446,6 +446,7 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
         save_telegram: Some(Box::new(|text: &str| save_telegram_file(text))),
         telegram_send: Some(std::sync::Arc::new(crate::telegram_api::post_send_document)),
         telegram_get: Some(std::sync::Arc::new(crate::telegram_api::get)),
+        telegram_download: Some(std::sync::Arc::new(crate::telegram_api::download_file_id)),
         ..recovery_services(recovery_dir())
     }
 }

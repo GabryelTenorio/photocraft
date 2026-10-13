@@ -3052,7 +3052,6 @@ curves	Smooth	Haluskan
 	Telegram sending needs the desktop app.	Pengiriman Telegram hanya ada di aplikasi desktop.
 	Telegram is set up. Save or export a file, then send it.	Telegram sudah disiapkan. Simpan atau ekspor berkas, lalu kirim.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Buat bot dengan BotFather, lalu kirim pesan apa saja ke bot itu. Isi id lewat Cari obrolan, atau tempel angka atau @channelname.
 	Open the official bot guide	Buka panduan bot resmi
 	Find chats for this token	Cari obrolan untuk token ini
@@ -3064,12 +3063,10 @@ curves	Smooth	Haluskan
 	Sending {name} to Telegram…	Mengirim {name} ke Telegram…
 	Sent to Telegram	Terkirim ke Telegram
 	A Telegram send is already running.	Pengiriman Telegram sudah berjalan.
-	Could not prepare a file to send: {error}	Tidak dapat menyiapkan berkas untuk dikirim: {error}
 	Send as	Kirim sebagai
 	Saved file	Berkas tersimpan
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Berkas tersimpan adalah salinan di disk. PSD dan PNG adalah salinan baru dokumen yang terbuka, termasuk perubahan yang belum disimpan.
 	Chats or channels. Several are allowed, separated by commas.	Obrolan atau kanal. Beberapa boleh, dipisah koma.
-	There is no saved file to send. Choose PSD or PNG.	Tidak ada berkas tersimpan untuk dikirim. Pilih PSD atau PNG.
 	Also send when I Save a Copy	Kirim juga saat Simpan Salinan
 	Also send a PNG preview with a PSD	Kirim juga pratinjau PNG bersama PSD
 	Send automatically	Kirim otomatis
@@ -3081,3 +3078,8 @@ curves	Smooth	Haluskan
 	*Size:* {size}	*Ukuran:* {size}
 	*Time:* {time}	*Waktu:* {time}
 	*Path:* `{path}`	*Jalur:* `{path}`
+	Pin the message	Sematkan pesan
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Menyematkan butuh bot sebagai admin. Jika tidak, berkas tetap terkirim.
+	Could not pin the message. The file was still sent.	Pesan tidak dapat disematkan. Berkas tetap terkirim.
+	Get from Telegram	Ambil dari Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Belum ada berkas. Kirim berkas atau foto ke bot, lalu coba lagi.

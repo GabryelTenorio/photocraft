@@ -37,6 +37,8 @@ pub struct Settings {
     pub send_on_save_copy: bool,
     /// When the file sent is a PSD, also send a PNG of the same document.
     pub also_png: bool,
+    /// Pin the sent message. Off until the user opts in. Needs the bot to be an admin.
+    pub pin_message: bool,
 }
 
 impl Settings {
@@ -68,6 +70,7 @@ pub fn settings_from_json(text: &str) -> Settings {
         send_on_export: v.get("sendOnExport").and_then(Value::as_bool).unwrap_or_else(|| v.get("sendAfterExport").and_then(Value::as_bool).unwrap_or(false)),
         send_on_save_copy: v.get("sendOnSaveCopy").and_then(Value::as_bool).unwrap_or(false),
         also_png: v.get("alsoPng").and_then(Value::as_bool).unwrap_or(false),
+        pin_message: v.get("pinMessage").and_then(Value::as_bool).unwrap_or(false),
     }
 }
 
@@ -80,6 +83,7 @@ fn settings_json(s: &Settings) -> String {
         "sendOnExport": s.send_on_export,
         "sendOnSaveCopy": s.send_on_save_copy,
         "alsoPng": s.also_png,
+        "pinMessage": s.pin_message,
     }))
     .unwrap_or_else(|_| "{}".to_string())
 }
@@ -138,7 +142,7 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
             return;
         }
-        Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Err(tl!("Telegram sending needs the desktop app.").to_string())),
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Err("The Telegram send stopped before it finished.".to_string())),
     };
     let Some(job) = app.telegram_job.take() else { return };
     if job.temporary {
@@ -149,10 +153,29 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     match finished {
         Some(Ok(body)) => {
+            if let Some(path) = body.strip_prefix("OPEN\t") {
+                let opened = std::fs::read(path).ok();
+                let name = file_name(path);
+                let _ = std::fs::remove_file(path);
+                if let Some(bytes) = opened {
+                    if let Err(error) = app.open_bytes(&name, &bytes) {
+                        app.ui.status = error;
+                        app.ui.status_error = true;
+                    } else {
+                        app.ui.status = format!("Opened {name}.");
+                        app.ui.status_error = false;
+                    }
+                } else {
+                    app.ui.status = format!("Could not read {name}.");
+                    app.ui.status_error = true;
+                }
+                return;
+            }
+            let (body, pin_failed) = body.split_once("\nPINFAIL").map(|(ok, _)| (ok.to_string(), true)).unwrap_or((body, false));
             let url = if body.starts_with("http") { Some(body.clone()) } else { message_link(&body) };
             let status = match &url {
-                Some(url) => crate::i18n::fmt(tl!("Sent {name}. {url}"), &[("name", &job.name), ("url", url)]),
-                None => crate::i18n::fmt(tl!("Sent {name} to Telegram."), &[("name", &job.name)]),
+                Some(url) => format!("Sent {}. {url}", job.name),
+                None => format!("Sent {} to Telegram.", job.name),
             };
             app.ui.status = status.clone();
             app.ui.status_error = false;
@@ -160,7 +183,12 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
             if let Some(url) = url {
                 lines.push(url);
             }
-            crate::notices::post(app, tl!("Sent to Telegram"), lines, false, None);
+            if pin_failed {
+                let note = "Could not pin the message. The file was still sent.".to_string();
+                app.ui.status = format!("{}\n{note}", app.ui.status);
+                lines.push(note);
+            }
+            crate::notices::post(app, "Sent to Telegram", lines, false, None);
         }
         Some(Err(error)) => {
             app.ui.status = redact(&error, &job.token);
@@ -189,6 +217,7 @@ fn open_dialog(app: &mut PhotocraftApp, pending: Option<String>) -> u64 {
     fields.insert("onExport".into(), json!(app.telegram.send_on_export));
     fields.insert("onSaveCopy".into(), json!(app.telegram.send_on_save_copy));
     fields.insert("alsoPng".into(), json!(app.telegram.also_png));
+    fields.insert("pin".into(), json!(app.telegram.pin_message));
     let saved = pending.as_ref().is_some_and(|path| std::fs::metadata(path).is_ok_and(|meta| meta.is_file()))
         || app.session.active().and_then(|d| d.path.as_deref()).is_some_and(|path| std::fs::metadata(path).is_ok_and(|meta| meta.is_file()));
     fields.insert("format".into(), json!(if saved { "file" } else { "psd" }));
@@ -248,8 +277,39 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut serde_json::Map<
             if ui.selectable_label(chat_selected(f.get("chat").and_then(Value::as_str).unwrap_or(""), &id), label).clicked() {
                 f.insert("chat".into(), json!(append_chat(f.get("chat").and_then(Value::as_str).unwrap_or(""), &id)));
                 ui.ctx().copy_text(id);
-                app.ui.status = tl!("Copied the chat id.").to_string();
+                app.ui.status = "Copied the chat id.".to_string();
                 app.ui.status_error = false;
+            }
+        }
+    }
+    ui.add_space(4.0);
+    if crate::widgets::secondary_button(ui, tl!("Get from Telegram"), 220.0).clicked() {
+        match fetch_inbox(app, &token) {
+            Ok(files) => {
+                f.insert("inbox".into(), json!(files));
+                f.remove("findError");
+            }
+            Err(error) => {
+                f.insert("findError".into(), json!(error));
+            }
+        }
+    }
+    if let Some(files) = f.get("inbox").and_then(Value::as_array).cloned() {
+        if files.is_empty() {
+            ui.label(tl!("No files yet. Send your bot a file or a photo, then try again."));
+        }
+        for file in files {
+            let id = file.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+            let name = file.get("name").and_then(Value::as_str).unwrap_or("file").to_string();
+            let label = file.get("label").and_then(Value::as_str).unwrap_or(&name).to_string();
+            if id.is_empty() {
+                continue;
+            }
+            if ui.selectable_label(false, label).clicked()
+                && let Err(error) = start_download(app, &token, &id, &name)
+            {
+                app.ui.status = error;
+                app.ui.status_error = true;
             }
         }
     }
@@ -277,6 +337,11 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut serde_json::Map<
     if crate::widgets::checkbox(ui, &mut also_png, tl!("Also send a PNG preview with a PSD")).changed() {
         f.insert("alsoPng".into(), json!(also_png));
     }
+    let mut pin = f.get("pin").and_then(Value::as_bool).unwrap_or(false);
+    if crate::widgets::checkbox(ui, &mut pin, tl!("Pin the message")).changed() {
+        f.insert("pin".into(), json!(pin));
+    }
+    ui.label(egui::RichText::new(tl!("Pinning needs the bot to be an admin. If it is not, the file is still sent.")).color(t.text_dim));
     ui.add_space(8.0);
     crate::widgets::section_label(ui, "Send automatically");
     ui.add_space(4.0);
@@ -307,16 +372,17 @@ pub fn confirm(app: &mut PhotocraftApp, f: &serde_json::Map<String, Value>) -> R
         send_on_export: f.get("onExport").and_then(Value::as_bool).unwrap_or(false),
         send_on_save_copy: f.get("onSaveCopy").and_then(Value::as_bool).unwrap_or(false),
         also_png: f.get("alsoPng").and_then(Value::as_bool).unwrap_or(false),
+        pin_message: f.get("pin").and_then(Value::as_bool).unwrap_or(false),
     };
     let text = settings_json(&next);
     let pending = f.get("pending").and_then(Value::as_str).map(str::to_string);
     let Some(save) = app.services.save_telegram.as_mut() else {
-        return Err(tl!("Telegram sending needs the desktop app.").to_string());
+        return Err("Telegram sending needs the desktop app.".to_string());
     };
     save(&text)?;
     app.telegram = next;
     if app.session.active().is_none() && pending.is_none() {
-        app.ui.status = tl!("Telegram is set up. Save or export a file, then send it.").to_string();
+        app.ui.status = "Telegram is set up. Save or export a file, then send it.".to_string();
         app.ui.status_error = false;
         return Ok(Value::Null);
     }
@@ -351,6 +417,15 @@ pub fn arm_after_save(app: &mut PhotocraftApp, path: &str, kind: WriteKind, resu
     after_written(app, path, kind);
 }
 
+fn forget_unsent(temporary: bool, path: &str, preview: &Option<String>) {
+    if temporary {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(preview) = preview {
+        let _ = std::fs::remove_file(preview);
+    }
+}
+
 fn start_send(app: &mut PhotocraftApp, path: String, temporary: bool, chats: Vec<String>, preview: Option<String>) -> Result<(), String> {
     if app.telegram_job.is_some() {
         if temporary {
@@ -359,29 +434,43 @@ fn start_send(app: &mut PhotocraftApp, path: String, temporary: bool, chats: Vec
         if let Some(preview) = &preview {
             let _ = std::fs::remove_file(preview);
         }
-        return Err(tl!("A Telegram send is already running.").to_string());
+        return Err("A Telegram send is already running.".to_string());
     }
     let Some(send) = app.services.telegram_send.clone() else {
-        return Err(tl!("Telegram sending needs the desktop app.").to_string());
+        forget_unsent(temporary, &path, &preview);
+        return Err("Telegram sending needs the desktop app.".to_string());
     };
-    let (name, bytes) = read_file(&path)?;
+    let (name, bytes) = match read_file(&path) {
+        Ok(read) => read,
+        Err(error) => {
+            forget_unsent(temporary, &path, &preview);
+            return Err(error);
+        }
+    };
     let preview_file = match preview.as_deref() {
         Some(preview_path) => {
-            let (preview_name, preview_bytes) = read_file(preview_path)?;
+            let (preview_name, preview_bytes) = match read_file(preview_path) {
+                Ok(read) => read,
+                Err(error) => {
+                    forget_unsent(temporary, &path, &preview);
+                    return Err(error);
+                }
+            };
             let preview_caption = caption(preview_path, &preview_name, preview_bytes.len() as u64, file_secs(preview_path));
             Some((preview_name, preview_bytes, preview_caption))
         }
         None => None,
     };
     let caption = caption(&path, &name, bytes.len() as u64, file_secs(&path));
-    let url = format!("https://api.telegram.org/bot{}/sendDocument", app.telegram.bot_token);
     let token = app.telegram.bot_token.clone();
+    let pin = app.telegram.pin_message;
     let (tx, rx) = std::sync::mpsc::channel();
     let report_token = token.clone();
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = (send, url, bytes, caption, chats, report_token, tx, preview_file);
-        return Err(tl!("Telegram sending needs the desktop app.").to_string());
+        let _ = (send, bytes, caption, chats, report_token, tx, preview_file, pin);
+        forget_unsent(temporary, &path, &preview);
+        return Err("Telegram sending needs the desktop app.".to_string());
     }
     #[cfg(not(target_arch = "wasm32"))]
     std::thread::Builder::new()
@@ -389,12 +478,15 @@ fn start_send(app: &mut PhotocraftApp, path: String, temporary: bool, chats: Vec
         .spawn({
             let name = name.clone();
             move || {
-                let result = send_to_chats(&send, &url, &report_token, &chats, &caption, &name, &bytes, preview_file.as_ref());
+                let result = send_to_chats(&send, &report_token, &chats, &caption, &name, &bytes, preview_file.as_ref(), pin);
                 let _ = tx.send(result);
             }
         })
-        .map_err(|error| error.to_string())?;
-    app.ui.status = crate::i18n::fmt(tl!("Sending {name} to Telegram…"), &[("name", &name)]);
+        .map_err(|error| {
+            forget_unsent(temporary, &path, &preview);
+            error.to_string()
+        })?;
+    app.ui.status = format!("Sending {name} to Telegram…");
     app.ui.status_error = false;
     app.telegram_job = Some(Job { rx, path, temporary, preview, name, token });
     Ok(())
@@ -404,7 +496,7 @@ fn resolve_payload(app: &mut PhotocraftApp, format: &str, pending: Option<String
     match format {
         "png" => export_temp(app, "png").map(|path| (path, true)),
         "psd" => export_temp(app, "psd").map(|path| (path, true)),
-        _ => saved_file(app, pending).ok_or_else(|| tl!("There is no saved file to send. Choose PSD or PNG.").to_string()),
+        _ => saved_file(app, pending).ok_or_else(|| "There is no saved file to send. Choose PSD or PNG.".to_string()),
     }
 }
 
@@ -417,24 +509,76 @@ fn saved_file(app: &PhotocraftApp, pending: Option<String>) -> Option<(String, b
 
 fn export_temp(app: &mut PhotocraftApp, extension: &str) -> Result<String, String> {
     let doc = app.session.active().ok_or_else(|| "no document".to_string())?.doc.clone();
-    let export = app.services.export.as_ref().ok_or_else(|| tl!("Telegram sending needs the desktop app.").to_string())?;
+    let export = app.services.export.as_ref().ok_or_else(|| "Telegram sending needs the desktop app.".to_string())?;
     let stem = file_name(&doc.name);
     let path = std::env::temp_dir().join(format!("photocraft-telegram-{}-{stem}.{extension}", std::process::id()));
     let path_str = path.display().to_string();
     let settings = crate::ExportSettings { xmp_all: false, tiff_layers: false, ..crate::ExportSettings::default() };
     let (bytes, _) =
-        export(&doc, &path_str, &settings).map_err(|error| crate::i18n::fmt(tl!("Could not prepare a file to send: {error}"), &[("error", &error)]))?;
+        export(&doc, &path_str, &settings).map_err(|error| format!("Could not prepare a file to send: {error}"))?;
     if bytes.len() as u64 > MAX_BYTES {
-        return Err(tl!("That file is larger than Telegram accepts (50 MB).").to_string());
+        let _ = std::fs::remove_file(&path);
+        return Err("That file is larger than Telegram accepts (50 MB).".to_string());
     }
     std::fs::write(&path, &bytes).map_err(|error| read_error(&path_str, &error.to_string()))?;
     Ok(path_str)
 }
 
+fn fetch_inbox(app: &PhotocraftApp, token: &str) -> Result<Vec<Value>, String> {
+    validate_token(token)?;
+    let Some(get) = app.services.telegram_get.as_ref() else {
+        return Err("Telegram sending needs the desktop app.".to_string());
+    };
+    let url = format!("https://api.telegram.org/bot{token}/getUpdates");
+    let body = get(&url).map_err(|error| redact(&error, token))?;
+    Ok(files_from_updates(&body))
+}
+
+fn start_download(app: &mut PhotocraftApp, token: &str, file_id: &str, name: &str) -> Result<(), String> {
+    if app.telegram_job.is_some() {
+        return Err("A Telegram send is already running.".to_string());
+    }
+    let Some(download) = app.services.telegram_download.clone() else {
+        return Err("Telegram sending needs the desktop app.".to_string());
+    };
+    let token = token.to_string();
+    let file_id = file_id.to_string();
+    let name = name.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let token_for_job = token.clone();
+    let name_for_status = name.clone();
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (download, token, file_id, name, tx);
+        return Err("Telegram sending needs the desktop app.".to_string());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    std::thread::Builder::new()
+        .name("pc-tg-get".into())
+        .spawn(move || {
+            let result = match download(&token, &file_id) {
+                Ok(bytes) => {
+                    let path = std::env::temp_dir().join(format!("photocraft-telegram-in-{}-{name}", std::process::id()));
+                    match std::fs::write(&path, &bytes) {
+                        Ok(()) => Ok(format!("OPEN\t{}", path.display())),
+                        Err(error) => Err(error.to_string()),
+                    }
+                }
+                Err(error) => Err(redact(&error, &token)),
+            };
+            let _ = tx.send(result);
+        })
+        .map_err(|error| error.to_string())?;
+    app.ui.status = format!("Opening {name_for_status}…");
+    app.ui.status_error = false;
+    app.telegram_job = Some(Job { rx, path: String::new(), temporary: false, preview: None, name: name_for_status, token: token_for_job });
+    Ok(())
+}
+
 fn fetch_chats(app: &PhotocraftApp, token: &str) -> Result<Vec<Value>, String> {
     validate_token(token)?;
     let Some(get) = app.services.telegram_get.as_ref() else {
-        return Err(tl!("Telegram sending needs the desktop app.").to_string());
+        return Err("Telegram sending needs the desktop app.".to_string());
     };
     let url = format!("https://api.telegram.org/bot{token}/getUpdates");
     let body = get(&url).map_err(|error| redact(&error, token))?;
@@ -484,7 +628,7 @@ fn read_file(path: &str) -> Result<(String, Vec<u8>), String> {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = path;
-        return Err(tl!("Telegram sending needs the desktop app.").to_string());
+        return Err("Telegram sending needs the desktop app.".to_string());
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -493,11 +637,11 @@ fn read_file(path: &str) -> Result<(String, Vec<u8>), String> {
             return Err(read_error(path, "not a file"));
         }
         if meta.len() > MAX_BYTES {
-            return Err(tl!("That file is larger than Telegram accepts (50 MB).").to_string());
+            return Err("That file is larger than Telegram accepts (50 MB).".to_string());
         }
         let bytes = std::fs::read(path).map_err(|e| read_error(path, &e.to_string()))?;
         if bytes.len() as u64 > MAX_BYTES {
-            return Err(tl!("That file is larger than Telegram accepts (50 MB).").to_string());
+            return Err("That file is larger than Telegram accepts (50 MB).".to_string());
         }
         Ok((file_name(path), bytes))
     }
@@ -505,7 +649,7 @@ fn read_file(path: &str) -> Result<(String, Vec<u8>), String> {
 
 fn read_error(path: &str, error: &str) -> String {
     let name = file_name(path);
-    crate::i18n::fmt(tl!("Could not read {name}: {error}"), &[("name", &name), ("error", &redact(error, ""))])
+    format!("Could not read {name}: {}", redact(error, ""))
 }
 
 fn file_secs(path: &str) -> u64 {
@@ -599,7 +743,7 @@ fn boundary_for(bytes: &[u8]) -> String {
 
 pub fn validate_token(token: &str) -> Result<(), String> {
     let Some((id, secret)) = token.split_once(':') else {
-        return Err(tl!("The bot token should look like 123456789:ABC…").to_string());
+        return Err("The bot token should look like 123456789:ABC…".to_string());
     };
     if (6..=12).contains(&id.len())
         && id.chars().all(|c| c.is_ascii_digit())
@@ -609,7 +753,7 @@ pub fn validate_token(token: &str) -> Result<(), String> {
     {
         return Ok(());
     }
-    Err(tl!("The bot token should look like 123456789:ABC…").to_string())
+    Err("The bot token should look like 123456789:ABC…".to_string())
 }
 
 /// One id, or several separated by commas, semicolons or spaces.
@@ -625,7 +769,7 @@ pub fn parse_chats(text: &str) -> Result<Vec<String>, String> {
             out.push(part.to_string());
         }
     }
-    if out.is_empty() { Err(tl!("Enter a chat id (a number) or a public @channelname.").to_string()) } else { Ok(out) }
+    if out.is_empty() { Err("Enter a chat id (a number) or a public @channelname.".to_string()) } else { Ok(out) }
 }
 
 fn chat_selected(current: &str, id: &str) -> bool {
@@ -653,32 +797,158 @@ fn png_preview(app: &mut PhotocraftApp, path: &str) -> Result<Option<String>, St
     export_temp(app, "png").map(Some)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn send_to_chats(
     send: &crate::TelegramSendFn,
-    url: &str,
     token: &str,
     chats: &[String],
     caption: &str,
     name: &str,
     bytes: &[u8],
     preview: Option<&(String, Vec<u8>, String)>,
+    pin: bool,
 ) -> Result<String, String> {
     let mut links = Vec::new();
+    let mut pin_failed = false;
     for chat in chats {
-        let (content_type, body) = multipart(chat, caption, name, bytes, None);
-        let text = send(url, &content_type, &body).map_err(|error| redact(&error, token))?;
+        let (method, content_type, body) = if let Some((preview_name, preview_bytes, _)) = preview {
+            let (content_type, body) = media_group(chat, caption, &[(name, bytes), (preview_name.as_str(), preview_bytes.as_slice())]);
+            ("sendMediaGroup", content_type, body)
+        } else if is_image_name(name) {
+            let (content_type, body) = photo(chat, caption, name, bytes);
+            ("sendPhoto", content_type, body)
+        } else {
+            let (content_type, body) = multipart(chat, caption, name, bytes, None);
+            ("sendDocument", content_type, body)
+        };
+        let url = format!("https://api.telegram.org/bot{token}/{method}");
+        let text = match send(&url, &content_type, &body) {
+            Ok(text) => text,
+            Err(error) => {
+                let error = redact(&error, token);
+                if links.is_empty() {
+                    return Err(error);
+                }
+                return Err(format!("Sent to the earlier chats. The next chat failed: {error}"));
+            }
+        };
         if let Some(link) = message_link(&text) {
             links.push(link);
         }
-        if let Some((preview_name, preview_bytes, preview_caption)) = preview {
-            let (content_type, body) = multipart(chat, preview_caption, preview_name, preview_bytes, sent_message_id(&text));
-            let text = send(url, &content_type, &body).map_err(|error| redact(&error, token))?;
-            if let Some(link) = message_link(&text) {
-                links.push(link);
+        if pin {
+            if let Some(message_id) = first_message_id(&text) {
+                let pin_url = format!("https://api.telegram.org/bot{token}/pinChatMessage");
+                let pin_body = format!("chat_id={chat}&message_id={message_id}");
+                if send(&pin_url, "application/x-www-form-urlencoded", pin_body.as_bytes()).is_err() {
+                    pin_failed = true;
+                }
+            } else {
+                pin_failed = true;
             }
         }
     }
-    Ok(links.join("\n"))
+    let mut out = links.join("\n");
+    if pin_failed {
+        out.push_str("\nPINFAIL");
+    }
+    Ok(out)
+}
+
+fn is_image_name(name: &str) -> bool {
+    let ext = std::path::Path::new(name).extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp")
+}
+
+/// Album of two documents. Telegram will not mix a document with a photo.
+pub fn media_group(chat_id: &str, caption: &str, files: &[(&str, &[u8])]) -> (String, Vec<u8>) {
+    let boundary = format!("PcTelegramAlbum{}", files.iter().map(|(_, bytes)| bytes.len()).sum::<usize>());
+    let mut media = String::from("[");
+    for (index, _) in files.iter().enumerate() {
+        if index > 0 {
+            media.push(',');
+        }
+        if index == 0 {
+            media.push_str(&format!(
+                "{{\"type\":\"document\",\"media\":\"attach://f{index}\",\"caption\":{},\"parse_mode\":\"Markdown\"}}",
+                serde_json::to_string(caption).unwrap_or_else(|_| "\"\"".to_string())
+            ));
+        } else {
+            media.push_str(&format!("{{\"type\":\"document\",\"media\":\"attach://f{index}\"}}"));
+        }
+    }
+    media.push(']');
+    let mut body = Vec::new();
+    part(&mut body, &boundary, "chat_id", chat_id);
+    part(&mut body, &boundary, "media", &media);
+    for (index, (name, bytes)) in files.iter().enumerate() {
+        let safe = file_name(name);
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"f{index}\"; filename=\"{safe}\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+                .as_bytes(),
+        );
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+pub fn photo(chat_id: &str, caption: &str, filename: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+    let boundary = format!("PcTelegramPhoto{}", bytes.len());
+    let mut body = Vec::new();
+    part(&mut body, &boundary, "chat_id", chat_id);
+    part(&mut body, &boundary, "caption", caption);
+    part(&mut body, &boundary, "parse_mode", "Markdown");
+    body.extend_from_slice(
+        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+            .as_bytes(),
+    );
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+/// The 10 newest photos and documents a bot was sent. Newest first.
+pub fn files_from_updates(text: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    let Ok(value) = serde_json::from_str::<Value>(text) else { return out };
+    let Some(items) = value.get("result").and_then(Value::as_array) else { return out };
+    for item in items.iter().rev() {
+        let Some(message) = item.get("message").or_else(|| item.get("channel_post")) else { continue };
+        let message_id = message.get("message_id").and_then(Value::as_i64).unwrap_or(0);
+        if let Some(document) = message.get("document") {
+            let file_id = document.get("file_id").and_then(Value::as_str).unwrap_or("");
+            let size = document.get("file_size").and_then(Value::as_u64).unwrap_or(0);
+            if file_id.is_empty() || size > 20 * 1024 * 1024 {
+                continue;
+            }
+            let name = document.get("file_name").and_then(Value::as_str).unwrap_or("file");
+            out.push(json!({"id": file_id, "name": name, "label": format!("{name} ({message_id})")}));
+        } else if let Some(photos) = message.get("photo").and_then(Value::as_array) {
+            let photo = photos.iter().max_by_key(|p| p.get("file_size").and_then(Value::as_u64).unwrap_or(0));
+            let Some(photo) = photo else { continue };
+            let file_id = photo.get("file_id").and_then(Value::as_str).unwrap_or("");
+            let size = photo.get("file_size").and_then(Value::as_u64).unwrap_or(0);
+            if file_id.is_empty() || size > 20 * 1024 * 1024 {
+                continue;
+            }
+            let name = format!("telegram-{message_id}.jpg");
+            out.push(json!({"id": file_id, "name": name, "label": name}));
+        }
+        if out.len() == 10 {
+            break;
+        }
+    }
+    out
+}
+
+pub fn first_message_id(body: &str) -> Option<i64> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    let result = value.get("result")?;
+    result
+        .get("message_id")
+        .and_then(Value::as_i64)
+        .or_else(|| result.as_array().and_then(|items| items.first()).and_then(|item| item.get("message_id")).and_then(Value::as_i64))
 }
 
 /// `message_id` from a successful `sendDocument` reply. Absent when the body is not that shape.
@@ -713,7 +983,7 @@ pub fn validate_chat(chat: &str) -> Result<(), String> {
         let digits = chat.strip_prefix('-').unwrap_or(chat);
         (1..=20).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit()) && chat != "-"
     };
-    if ok { Ok(()) } else { Err(tl!("Enter a chat id (a number) or a public @channelname.").to_string()) }
+    if ok { Ok(()) } else { Err("Enter a chat id (a number) or a public @channelname.".to_string()) }
 }
 
 /// Drop the bot token if a transport error repeated the request URL.
@@ -810,14 +1080,30 @@ mod tests {
     }
 
     #[test]
-    fn preview_replies_to_the_document_message() {
-        let (_, body) = multipart("99", "preview", "photo.png", b"PNG", Some(42));
+    fn album_sends_two_documents_and_a_photo_is_a_photo() {
+        let (_, body) = media_group("99", "cap", &[("a.psd", b"PSD"), ("a.png", b"PNG")]);
         let text = String::from_utf8_lossy(&body);
-        assert!(text.contains("name=\"reply_parameters\""));
-        assert!(text.contains("\"message_id\":42"));
-        assert!(text.contains("allow_sending_without_reply"));
-        assert_eq!(sent_message_id(r#"{"ok":true,"result":{"message_id":42,"chat":{"id":1}}}"#), Some(42));
-        assert_eq!(sent_message_id("{}"), None);
+        assert!(text.contains("sendMediaGroup") || text.contains("attach://f0"));
+        assert!(text.contains("attach://f1"));
+        assert!(text.contains("\"type\":\"document\""));
+        assert!(!text.contains("reply_parameters"));
+        let (_, photo_body) = photo("99", "cap", "a.png", b"PNG");
+        let photo_text = String::from_utf8_lossy(&photo_body);
+        assert!(photo_text.contains("name=\"photo\""));
+        assert!(!photo_text.contains("name=\"document\""));
+        assert_eq!(first_message_id(r#"{"ok":true,"result":[{"message_id":7}]}"#), Some(7));
+    }
+
+    #[test]
+    fn inbox_keeps_the_ten_newest_files() {
+        let mut messages = Vec::new();
+        for n in 0..12 {
+            messages.push(format!(r#"{{"message":{{"message_id":{n},"document":{{"file_id":"id{n}","file_name":"f{n}.psd","file_size":10}}}}}}"#));
+        }
+        let text = format!(r#"{{"ok":true,"result":[{}]}}"#, messages.join(","));
+        let files = files_from_updates(&text);
+        assert_eq!(files.len(), 10);
+        assert_eq!(files[0].get("name").and_then(|v| v.as_str()), Some("f11.psd"));
     }
 
     #[test]
@@ -976,7 +1262,6 @@ mod tests {
             "Saved file",
             "Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.",
             "Chats or channels. Several are allowed, separated by commas.",
-            "There is no saved file to send. Choose PSD or PNG.",
             "Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.",
             "Open the official bot guide",
             "Find chats for this token",
@@ -988,24 +1273,15 @@ mod tests {
             "Also send a PNG preview with a PSD",
             "Send automatically",
             "The bot token is kept in the system keychain, not in PhotoCraft's settings file.",
-            "Sent {name}. {url}",
-            "Sending {name} to Telegram…",
-            "Sent to Telegram",
-            "A Telegram send is already running.",
-            "Could not prepare a file to send: {error}",
-            "Telegram sending needs the desktop app.",
-            "Telegram is set up. Save or export a file, then send it.",
-            "Sent {name} to Telegram.",
-            "That file is larger than Telegram accepts (50 MB).",
-            "Could not read {name}: {error}",
             "Sending needs an internet connection.",
-            "Copied the chat id.",
+            "Pin the message",
+            "Pinning needs the bot to be an admin. If it is not, the file is still sent.",
+            "Get from Telegram",
+            "No files yet. Send your bot a file or a photo, then try again.",
             "*File:* `{name}`",
             "*Size:* {size}",
             "*Time:* {time}",
             "*Path:* `{path}`",
-            "The bot token should look like 123456789:ABC…",
-            "Enter a chat id (a number) or a public @channelname.",
         ];
         for lang in crate::i18n::Lang::all().filter(|l| l.complete_menus()) {
             for source in STRINGS {

@@ -3824,7 +3824,6 @@ curves	Smooth	Vloeiend maken
 	Telegram sending needs the desktop app.	Naar Telegram sturen kan alleen in de desktop-app.
 	Telegram is set up. Save or export a file, then send it.	Telegram is ingesteld. Sla een bestand op of exporteer het, en stuur het dan.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Maak een bot met BotFather en stuur die bot een bericht. Vul het id via Chats zoeken, of plak een getal of @channelname.
 	Open the official bot guide	Officiële botgids openen
 	Find chats for this token	Chats bij dit token zoeken
@@ -3836,12 +3835,10 @@ curves	Smooth	Vloeiend maken
 	Sending {name} to Telegram…	{name} naar Telegram sturen…
 	Sent to Telegram	Naar Telegram gestuurd
 	A Telegram send is already running.	Er loopt al een verzending naar Telegram.
-	Could not prepare a file to send: {error}	Kon geen bestand klaarmaken om te sturen: {error}
 	Send as	Versturen als
 	Saved file	Opgeslagen bestand
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Het opgeslagen bestand is de kopie op schijf. PSD en PNG zijn een nieuwe kopie van het open document, inclusief niet-opgeslagen wijzigingen.
 	Chats or channels. Several are allowed, separated by commas.	Chats of kanalen. Meerdere mogen, gescheiden door komma's.
-	There is no saved file to send. Choose PSD or PNG.	Er is geen opgeslagen bestand om te sturen. Kies PSD of PNG.
 	Also send when I Save a Copy	Ook bij Kopie opslaan sturen
 	Also send a PNG preview with a PSD	Met een PSD ook een PNG-voorbeeld sturen
 	Send automatically	Automatisch sturen
@@ -3853,3 +3850,8 @@ curves	Smooth	Vloeiend maken
 	*Size:* {size}	*Grootte:* {size}
 	*Time:* {time}	*Tijd:* {time}
 	*Path:* `{path}`	*Pad:* `{path}`
+	Pin the message	Bericht vastzetten
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Vastzetten kan alleen als de bot beheerder is. Anders wordt het bestand toch verzonden.
+	Could not pin the message. The file was still sent.	Het bericht kon niet worden vastgezet. Het bestand is wel verzonden.
+	Get from Telegram	Ophalen uit Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Nog geen bestanden. Stuur je bot een bestand of een foto en probeer het opnieuw.

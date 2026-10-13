@@ -3065,7 +3065,6 @@ curves	Smooth	Lisser
 	Telegram sending needs the desktop app.	L'envoi vers Telegram n'existe que dans l'application de bureau.
 	Telegram is set up. Save or export a file, then send it.	Telegram est configuré. Enregistrez ou exportez un fichier, puis envoyez-le.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Créez un bot avec BotFather, puis envoyez-lui un message. Remplissez l'identifiant avec Chercher les discussions, ou collez un nombre ou @channelname.
 	Open the official bot guide	Ouvrir le guide officiel des bots
 	Find chats for this token	Chercher les discussions de ce jeton
@@ -3077,12 +3076,10 @@ curves	Smooth	Lisser
 	Sending {name} to Telegram…	Envoi de {name} vers Telegram…
 	Sent to Telegram	Envoyé vers Telegram
 	A Telegram send is already running.	Un envoi vers Telegram est déjà en cours.
-	Could not prepare a file to send: {error}	Impossible de préparer un fichier à envoyer : {error}
 	Send as	Envoyer comme
 	Saved file	Fichier enregistré
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Le fichier enregistré est la copie sur le disque. PSD et PNG sont une nouvelle copie du document ouvert, y compris les modifications non enregistrées.
 	Chats or channels. Several are allowed, separated by commas.	Discussions ou canaux. Plusieurs sont possibles, séparés par des virgules.
-	There is no saved file to send. Choose PSD or PNG.	Il n'y a pas de fichier enregistré à envoyer. Choisissez PSD ou PNG.
 	Also send when I Save a Copy	Envoyer aussi quand j'enregistre une copie
 	Also send a PNG preview with a PSD	Envoyer aussi un aperçu PNG avec un PSD
 	Send automatically	Envoi automatique
@@ -3094,3 +3091,8 @@ curves	Smooth	Lisser
 	*Size:* {size}	*Taille :* {size}
 	*Time:* {time}	*Heure :* {time}
 	*Path:* `{path}`	*Chemin :* `{path}`
+	Pin the message	Épingler le message
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Épingler exige que le bot soit administrateur. Sinon, le fichier est quand même envoyé.
+	Could not pin the message. The file was still sent.	Le message n'a pas pu être épinglé. Le fichier a bien été envoyé.
+	Get from Telegram	Récupérer depuis Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Pas encore de fichiers. Envoyez un fichier ou une photo à votre bot, puis réessayez.

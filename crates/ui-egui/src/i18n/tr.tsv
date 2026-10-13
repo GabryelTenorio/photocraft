@@ -3795,7 +3795,6 @@ cameraData	Lens	Lens
 	Telegram sending needs the desktop app.	Telegram'a gönderme yalnızca masaüstü uygulamada vardır.
 	Telegram is set up. Save or export a file, then send it.	Telegram ayarlandı. Bir dosyayı kaydedin veya dışa aktarın, sonra gönderin.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	BotFather ile bir bot oluşturun ve ona herhangi bir ileti gönderin. Kimliği Sohbetleri bul ile doldurun ya da bir sayı veya @channelname yapıştırın.
 	Open the official bot guide	Resmi bot rehberini aç
 	Find chats for this token	Bu belirtecin sohbetlerini bul
@@ -3807,12 +3806,10 @@ cameraData	Lens	Lens
 	Sending {name} to Telegram…	{name} Telegram'a gönderiliyor…
 	Sent to Telegram	Telegram'a gönderildi
 	A Telegram send is already running.	Bir Telegram gönderimi zaten sürüyor.
-	Could not prepare a file to send: {error}	Gönderilecek dosya hazırlanamadı: {error}
 	Send as	Şu biçimde gönder
 	Saved file	Kayıtlı dosya
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Kayıtlı dosya diskteki kopyadır. PSD ve PNG, kaydedilmemiş değişiklikler dahil açık belgenin yeni bir kopyasıdır.
 	Chats or channels. Several are allowed, separated by commas.	Sohbetler veya kanallar. Birden fazlası virgülle ayrılabilir.
-	There is no saved file to send. Choose PSD or PNG.	Gönderilecek kayıtlı dosya yok. PSD veya PNG seçin.
 	Also send when I Save a Copy	Kopya Kaydet'te de gönder
 	Also send a PNG preview with a PSD	Bir PSD ile birlikte PNG önizlemesi de gönder
 	Send automatically	Otomatik gönder
@@ -3824,3 +3821,8 @@ cameraData	Lens	Lens
 	*Size:* {size}	*Boyut:* {size}
 	*Time:* {time}	*Zaman:* {time}
 	*Path:* `{path}`	*Yol:* `{path}`
+	Pin the message	İletiyi sabitle
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Sabitlemek için botun yönetici olması gerekir. Değilse dosya yine gönderilir.
+	Could not pin the message. The file was still sent.	İleti sabitlenemedi. Dosya yine de gönderildi.
+	Get from Telegram	Telegram'dan al
+	No files yet. Send your bot a file or a photo, then try again.	Henüz dosya yok. Botuna bir dosya veya fotoğraf gönder, sonra yeniden dene.

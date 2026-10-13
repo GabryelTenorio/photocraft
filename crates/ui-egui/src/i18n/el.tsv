@@ -3762,7 +3762,6 @@ curves	Smooth	Εξομάλυνση
 	Telegram sending needs the desktop app.	Η αποστολή στο Telegram υπάρχει μόνο στην εφαρμογή για υπολογιστή.
 	Telegram is set up. Save or export a file, then send it.	Το Telegram ρυθμίστηκε. Αποθήκευσε ή εξήγαγε ένα αρχείο και μετά στείλ' το.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	Φτιάξε ένα bot στο BotFather και στείλε του οποιοδήποτε μήνυμα. Συμπλήρωσε το id με Εύρεση συνομιλιών, ή επικόλλησε έναν αριθμό ή @channelname.
 	Open the official bot guide	Άνοιγμα του επίσημου οδηγού για bot
 	Find chats for this token	Εύρεση συνομιλιών για αυτό το διακριτικό
@@ -3774,12 +3773,10 @@ curves	Smooth	Εξομάλυνση
 	Sending {name} to Telegram…	Αποστολή του {name} στο Telegram…
 	Sent to Telegram	Στάλθηκε στο Telegram
 	A Telegram send is already running.	Μια αποστολή στο Telegram εκτελείται ήδη.
-	Could not prepare a file to send: {error}	Δεν ήταν δυνατή η προετοιμασία αρχείου για αποστολή: {error}
 	Send as	Αποστολή ως
 	Saved file	Αποθηκευμένο αρχείο
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	Το αποθηκευμένο αρχείο είναι το αντίγραφο στον δίσκο. Τα PSD και PNG είναι νέο αντίγραφο του ανοιχτού εγγράφου, μαζί με αλλαγές που δεν έχουν αποθηκευτεί.
 	Chats or channels. Several are allowed, separated by commas.	Συνομιλίες ή κανάλια. Επιτρέπονται πολλές, χωρισμένες με κόμματα.
-	There is no saved file to send. Choose PSD or PNG.	Δεν υπάρχει αποθηκευμένο αρχείο για αποστολή. Διάλεξε PSD ή PNG.
 	Also send when I Save a Copy	Αποστολή και κατά την Αποθήκευση αντιγράφου
 	Also send a PNG preview with a PSD	Αποστολή και προεπισκόπησης PNG μαζί με PSD
 	Send automatically	Αυτόματη αποστολή
@@ -3791,3 +3788,8 @@ curves	Smooth	Εξομάλυνση
 	*Size:* {size}	*Μέγεθος:* {size}
 	*Time:* {time}	*Ώρα:* {time}
 	*Path:* `{path}`	*Διαδρομή:* `{path}`
+	Pin the message	Καρφίτσωμα μηνύματος
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	Το καρφίτσωμα θέλει τον bot διαχειριστή. Αλλιώς το αρχείο στέλνεται και πάλι.
+	Could not pin the message. The file was still sent.	Το μήνυμα δεν καρφιτσώθηκε. Το αρχείο στάλθηκε.
+	Get from Telegram	Λήψη από το Telegram
+	No files yet. Send your bot a file or a photo, then try again.	Δεν υπάρχουν αρχεία ακόμα. Στείλτε στο bot ένα αρχείο ή μια φωτογραφία και δοκιμάστε ξανά.

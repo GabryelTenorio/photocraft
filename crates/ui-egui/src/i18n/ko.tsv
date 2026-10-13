@@ -3234,7 +3234,6 @@ curves	Smooth	매끄럽게
 	Telegram sending needs the desktop app.	Telegram 보내기는 데스크톱 앱에서만 됩니다.
 	Telegram is set up. Save or export a file, then send it.	Telegram이 설정되었습니다. 파일을 저장하거나 내보낸 다음 보냅니다.
 
-# File › Send to Telegram
 	Create a bot with BotFather, then send that bot any message. Use Find chats to fill the id, or paste a number or @channelname.	BotFather로 봇을 만든 다음 그 봇에게 아무 메시지나 보냅니다. 채팅 찾기로 ID를 채우거나 숫자 또는 @channelname 을 붙여 넣습니다.
 	Open the official bot guide	공식 봇 안내 열기
 	Find chats for this token	이 토큰의 채팅 찾기
@@ -3246,12 +3245,10 @@ curves	Smooth	매끄럽게
 	Sending {name} to Telegram…	{name}을(를) Telegram으로 보내는 중…
 	Sent to Telegram	Telegram으로 보냈습니다
 	A Telegram send is already running.	Telegram 보내기가 이미 진행 중입니다.
-	Could not prepare a file to send: {error}	보낼 파일을 준비할 수 없습니다: {error}
 	Send as	보내는 형식
 	Saved file	저장된 파일
 	Saved file sends the copy on disk. PSD and PNG are a new copy of the open document, including changes you have not saved.	저장된 파일은 디스크의 복사본입니다. PSD와 PNG는 저장하지 않은 변경을 포함한, 열린 문서의 새 복사본입니다.
 	Chats or channels. Several are allowed, separated by commas.	채팅 또는 채널. 여러 개는 쉼표로 구분합니다.
-	There is no saved file to send. Choose PSD or PNG.	보낼 저장된 파일이 없습니다. PSD 또는 PNG를 선택하세요.
 	Also send when I Save a Copy	사본 저장할 때도 보내기
 	Also send a PNG preview with a PSD	PSD와 함께 PNG 미리보기도 보내기
 	Send automatically	자동으로 보내기
@@ -3263,3 +3260,8 @@ curves	Smooth	매끄럽게
 	*Size:* {size}	*크기:* {size}
 	*Time:* {time}	*시간:* {time}
 	*Path:* `{path}`	*경로:* `{path}`
+	Pin the message	메시지 고정
+	Pinning needs the bot to be an admin. If it is not, the file is still sent.	고정하려면 봇이 관리자여야 합니다. 아니면 파일은 그대로 보내집니다.
+	Could not pin the message. The file was still sent.	메시지를 고정하지 못했습니다. 파일은 보내졌습니다.
+	Get from Telegram	텔레그램에서 가져오기
+	No files yet. Send your bot a file or a photo, then try again.	아직 파일이 없습니다. 봇에게 파일이나 사진을 보낸 뒤 다시 시도하세요.

@@ -457,6 +457,7 @@ pub struct Services {
     pub telegram_send: Option<TelegramSendFn>,
     /// GET a Telegram bot method (`getUpdates`). Same secrecy rule as [`Self::telegram_send`].
     pub telegram_get: Option<TelegramGetFn>,
+    pub telegram_download: Option<TelegramDownloadFn>,
     /// The desktop settings file for File › Send to Telegram (not preferences: those are visible
     /// to agents). `None` on the web.
     pub load_telegram: Option<LoadTextFn>,
@@ -468,6 +469,8 @@ pub struct Services {
 pub type TelegramSendFn = std::sync::Arc<dyn Fn(&str, &str, &[u8]) -> Result<String, String> + Send + Sync>;
 /// GET `url` for [`Services::telegram_get`].
 pub type TelegramGetFn = std::sync::Arc<dyn Fn(&str) -> Result<String, String> + Send + Sync>;
+/// Download a file the bot was sent. Arguments: bot token, file id. At most 20 MB.
+pub type TelegramDownloadFn = std::sync::Arc<dyn Fn(&str, &str) -> Result<Vec<u8>, String> + Send + Sync>;
 
 /// A document histogram being computed off the UI thread: (document, revision, receiver of
 /// (document, compute ms, histograms)).
