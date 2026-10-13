@@ -195,6 +195,7 @@ pub mod tiff_options_ui;
 mod tile_overlay;
 mod timeline_ui;
 mod titlebar;
+pub use titlebar::{Caption, CaptionFamily, CaptionIcon, CaptionIcons, CaptionStyle, RenderIconFn};
 pub mod tone;
 mod tool_cursor;
 pub mod tool_feedback;
@@ -379,6 +380,8 @@ pub type CapsLockFn = Box<dyn FnMut() -> bool>;
 /// Keeps an undecorated window's OS frame from offsetting its content and pointer (#2246).
 /// Called once per frame; `None` when the window is decorated or the platform needs no fixing.
 pub type WindowFrameFn = Box<dyn FnMut()>;
+/// The caption buttons' current style ([`Services::caption_style`]).
+pub type CaptionStyleFn = Box<dyn Fn(&egui::Context) -> CaptionStyle>;
 
 /// Platform services injected by the app binary (file dialogs, codecs), keeping this crate free of
 /// I/O dependencies.
@@ -455,6 +458,10 @@ pub struct Services {
     /// (Windows custom title bar, #2246). Called once per frame; `None` when the window is
     /// decorated or the platform needs no fixing.
     pub window_frame: Option<WindowFrameFn>,
+    /// How the custom title bar's caption buttons look and where they sit (Linux: the desktop's
+    /// style and button layout). Read every frame, with the context to wake when it changes;
+    /// `None` keeps Windows' buttons at the right end.
+    pub caption_style: Option<CaptionStyleFn>,
     /// The persistent brush preset store, loading in the background (desktop; see
     /// `photocraft_engine::preset_store`). Attached to the session once it arrives; without
     /// one, brush presets are session-only unless the shell attached a store before startup.
@@ -1259,7 +1266,8 @@ impl PhotocraftApp {
             return self.save_to(path, tga_bits);
         }
         let st = self.session.active().ok_or("no document")?;
-        // PDN imports default to our native format, which preserves Paint.NET's blend modes.
+        // PDN imports default to our native format, which preserves Paint.NET's blend modes;
+        // Krita imports to OpenRaster, which Krita opens with its layers.
         // Other files keep their format only when it can retain their layers. A plain raster
         // (including an unlocked transparent PNG) can keep its flat format; editable contents,
         // masks and layer appearance settings need a layered format even with just one layer.
@@ -1273,7 +1281,11 @@ impl PhotocraftApp {
             Some(p) if writable => p.clone(),
             p => {
                 let source = p.as_deref().unwrap_or(&st.doc.name);
-                let ext = if photocraft_engine::file_cmds::extension(source).as_deref() == Some("pdn") { "pcraft" } else { "psd" };
+                let ext = match photocraft_engine::file_cmds::extension(source).as_deref() {
+                    Some("pdn") => "pcraft",
+                    Some("kra" | "krz") => "ora",
+                    _ => "psd",
+                };
                 std::path::Path::new(source).with_extension(ext).to_string_lossy().into_owned()
             }
         };
