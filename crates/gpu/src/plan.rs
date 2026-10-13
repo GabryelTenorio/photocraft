@@ -9,7 +9,8 @@
 //! effect maps (shadow / glow / satin / bevel coverage, stroke bands) are built once per layer
 //! state by [`crate::fx`] and sampled here; exterior effects paint into a copy of the backdrop,
 //! the layer at fill opacity takes the interior effects, and the two merge with the layer's mode
-//! and opacity. Effect passes are clipped to the layer's effect region and the result is copied
+//! (or the layer merges first and the effects paint over it: `effects::premerges_layer`) and
+//! opacity. Effect passes are clipped to the layer's effect region and the result is copied
 //! back into the backdrop in place, so a small text layer costs only its own pixels.
 
 use photocraft_color::BlendMode;
@@ -1095,6 +1096,19 @@ impl<'a> Planner<'a> {
         } else {
             init(self, lay_src, None, INIT_INSIDE, layer.fill_opacity)
         };
+        // Blend Interior Effects as Group off: the layer merges in its mode first and the
+        // interior effects paint over the result (`effects::premerges_layer`).
+        let premerge = photocraft_compose::effects::premerges_layer(layer);
+        if premerge {
+            let mut p = Pass::new(Kernel::Blend, 0);
+            p.a = Some(self.retain(w));
+            p.b = Some(l);
+            p.mode = layer.blend;
+            p.flags = gamma_flag(layer);
+            p.extra[3] = photocraft_compose::text_gamma(layer);
+            p.clip = Some(clip);
+            l = self.emit(p);
+        }
         for &(_, e) in &rev {
             if let Effect::PatternOverlay { common, name, id, scale, angle, link, phase } = e
                 && let Some(pat) = photocraft_doc::pattern::find(self.cx.patterns, id, name).filter(|p| p.is_paintable())
@@ -1257,7 +1271,7 @@ impl<'a> Planner<'a> {
             }
         }
 
-        let mode = if layer.blend == BlendMode::PassThrough { BlendMode::Normal } else { layer.blend };
+        let mode = if premerge || layer.blend == BlendMode::PassThrough { BlendMode::Normal } else { layer.blend };
         let late: Vec<(usize, &'a photocraft_doc::Bevel)> = rev
             .iter()
             .filter_map(|&(i, e)| if let Effect::BevelEmboss(b) = e { Some((i, b)) } else { None })
@@ -1514,13 +1528,18 @@ fn to_row(t: &[f32]) -> [f32; 4096] {
 
 /// Whether the adjustment kernel can evaluate `adj` in a document of colour `mode`: Levels and
 /// Curves on CMYK ink or Lab channels convert through ICC profiles per pixel, and so do the
-/// adjustments a Lab document evaluates on L, a and b (`photocraft_compose::adjust::lab_channel_adjustment`),
-/// which only the CPU does.
+/// adjustments a Lab document evaluates on L, a and b (`photocraft_compose::adjust::lab_channel_adjustment`)
+/// and a CMYK document on its inks (`cmyk_channel_adjustment`), which only the CPU does.
 pub fn adjustment_on_gpu(adj: &Adjustment, mode: photocraft_color::ColorMode) -> bool {
+    use photocraft_compose::adjust::{cmyk_channel_adjustment, lab_channel_adjustment};
     let tone_in_space =
         matches!(adj, Adjustment::Levels { space: ToneSpace::Cmyk | ToneSpace::Lab, .. } | Adjustment::Curves { space: ToneSpace::Cmyk | ToneSpace::Lab, .. });
-    let lab_channels = mode == photocraft_color::ColorMode::Lab && photocraft_compose::adjust::lab_channel_adjustment(adj);
-    !tone_in_space && !lab_channels
+    let own_channels = match mode {
+        photocraft_color::ColorMode::Lab => lab_channel_adjustment(adj),
+        photocraft_color::ColorMode::Cmyk => cmyk_channel_adjustment(adj),
+        _ => false,
+    };
+    !tone_in_space && !own_channels
 }
 
 /// A tone transfer as the shader's `t_decode`/`t_encode` exponent (0: the sRGB curve).
@@ -1747,9 +1766,12 @@ mod tests {
         ];
         for adj in &lab_rules {
             assert!(!adjustment_on_gpu(adj, ColorMode::Lab), "{adj:?}");
-            for mode in [ColorMode::Rgb, ColorMode::Cmyk, ColorMode::Grayscale] {
+            for mode in [ColorMode::Rgb, ColorMode::Grayscale] {
                 assert!(adjustment_on_gpu(adj, mode), "{adj:?} in {mode:?}");
             }
+            // CMYK documents invert, posterize and threshold their inks, on the CPU.
+            let inks = matches!(adj, Adjustment::Invert | Adjustment::Posterize { .. } | Adjustment::Threshold { .. });
+            assert_eq!(adjustment_on_gpu(adj, ColorMode::Cmyk), !inks, "{adj:?} in CMYK");
         }
         // Screen-colour adjustments stay on the GPU in Lab documents.
         assert!(adjustment_on_gpu(&Adjustment::Exposure { exposure: 1.0, offset: 0.0, gamma: 1.0 }, ColorMode::Lab));
