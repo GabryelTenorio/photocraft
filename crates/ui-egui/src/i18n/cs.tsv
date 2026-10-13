@@ -138,6 +138,8 @@
 	Search…	Hledat…
 	Check Spelling…	Kontrola pravopisu…
 	Find and Replace Text…	Najít a nahradit text…
+	Add to Dictionary	Přidat do slovníku
+	No Spelling Suggestions	Žádné návrhy pravopisu
 	Fill…	Vyplnit…
 	Stroke…	Tah…
 	Content-Aware Fill…	Výplň s ohledem na obsah…
@@ -535,6 +537,10 @@
 	Blur	Rozostření
 	Blur Gallery	Galerie rozostření
 	Field Blur…	Rozostření pole…
+# Field Blur pins (#3373)
+	No pin selected	Není vybrán žádný špendlík
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kliknutím do obrazu přidáte špendlík; tažením špendlík přesunete, tažením jeho prstence změníte rozostření. Delete odstraní vybraný špendlík.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Tažením úchytů na obrysu ho změníte a otočíte, čtverečkem zaoblíte rohy a body uvnitř nastavíte, kde začíná rozostření.
 	Iris Blur…	Rozostření clonou…
 	Tilt-Shift…	Tilt-shift…
 	Path Blur…	Rozostření podél cesty…
@@ -860,6 +866,12 @@
 	Baseline shift	Posun účaří
 	Basic	Základní
 	Before (Y)	Před (Y)
+	Save Settings…	Uložit nastavení…
+	Load Settings…	Načíst nastavení…
+	Save these settings as a Camera Raw .xmp file	Uložit toto nastavení jako soubor Camera Raw .xmp
+	Load settings from a Camera Raw .xmp file	Načíst nastavení ze souboru Camera Raw .xmp
+	Loaded Camera Raw settings from {file}	Nastavení Camera Raw načteno ze souboru {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Nastavení Camera Raw načteno ze souboru {file} (nepodporováno: {n})
 	Begin recording	Zahájit záznam
 	Bend:	Ohyb:
 	Bicubic	Bikubická
@@ -3666,6 +3678,9 @@ navigator	Zoom	Zvětšení
 	Remove after each stroke	Odstranit po každém tahu
 	Apply the removal ({key})	Použít odstranění ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Tahy k odstranění: {n} (Enter použije, Esc zruší)
+	Clear Brush Controls	Obnovit ovládací prvky stopy
+	Reset All Locked Settings	Obnovit všechna zamknutá nastavení
+	Copy Texture to Other Tools	Kopírovat texturu do jiných nástrojů
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Načíst akce…
@@ -3687,7 +3702,4 @@ navigator	Zoom	Zvětšení
 	Action playback stopped	Přehrávání akce zastaveno
 	Step {step} is waiting for its dialog	Krok {step} čeká na svůj dialog
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
-# Field Blur pins (#3373)
-	No pin selected	Není vybrán žádný špendlík
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kliknutím do obrazu přidáte špendlík; tažením špendlík přesunete, tažením jeho prstence změníte rozostření. Delete odstraní vybraný špendlík.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Tažením úchytů na obrysu ho změníte a otočíte, čtverečkem zaoblíte rohy a body uvnitř nastavíte, kde začíná rozostření.
+	Auto Add/Delete	Automaticky přidat/odstranit

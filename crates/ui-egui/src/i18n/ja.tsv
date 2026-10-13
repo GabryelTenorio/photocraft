@@ -132,6 +132,8 @@
 	Search…	検索…
 	Check Spelling…	スペルチェック…
 	Find and Replace Text…	テキストを検索して置換…
+	Add to Dictionary	辞書に追加
+	No Spelling Suggestions	スペルの候補はありません
 	Fill…	塗りつぶし…
 	Stroke…	境界線を描く…
 	Content-Aware Fill…	コンテンツに応じた塗りつぶし…
@@ -528,6 +530,10 @@
 	Blur	ぼかし
 	Blur Gallery	ぼかしギャラリー
 	Field Blur…	フィールドぼかし…
+# Field Blur pins (#3373)
+	No pin selected	ピンが選択されていません
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	画像をクリックしてピンを追加します。ピンをドラッグして移動し、リングをドラッグしてぼかしを変更します。Delete キーで選択したピンを削除します。
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	輪郭上のハンドルをドラッグしてサイズ変更と回転、四角形で角の丸み、内側の点でぼかしの開始位置を設定します。
 	Iris Blur…	虹彩絞りぼかし…
 	Tilt-Shift…	チルトシフト…
 	Path Blur…	パスぼかし…
@@ -847,6 +853,12 @@
 	Baseline shift	ベースラインシフト
 	Basic	基本
 	Before (Y)	補正前(Y)
+	Save Settings…	設定を保存…
+	Load Settings…	設定を読み込み…
+	Save these settings as a Camera Raw .xmp file	この設定を Camera Raw の .xmp ファイルとして保存
+	Load settings from a Camera Raw .xmp file	Camera Raw の .xmp ファイルから設定を読み込む
+	Loaded Camera Raw settings from {file}	{file} から Camera Raw の設定を読み込みました
+	Loaded Camera Raw settings from {file} ({n} not supported)	{file} から Camera Raw の設定を読み込みました（未対応: {n}）
 	Begin recording	記録を開始
 	Bend:	曲げ:
 	Bicubic	バイキュービック
@@ -3668,6 +3680,9 @@ curves	Smooth	スムーズ
 	Remove after each stroke	ストロークごとに削除
 	Apply the removal ({key})	削除を適用 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	削除するストローク: {n}（Enter で適用、Esc で取り消し）
+	Clear Brush Controls	ブラシのコントロールを消去
+	Reset All Locked Settings	ロックされた設定をすべて初期化
+	Copy Texture to Other Tools	テクスチャを他のツールにコピー
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	アクションを読み込み…
@@ -3689,7 +3704,4 @@ curves	Smooth	スムーズ
 	Action playback stopped	アクションの再生を停止しました
 	Step {step} is waiting for its dialog	ステップ {step} はダイアログを待っています
 @plural	{n} action|{n} actions	アクション {n} 個
-# Field Blur pins (#3373)
-	No pin selected	ピンが選択されていません
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	画像をクリックしてピンを追加します。ピンをドラッグして移動し、リングをドラッグしてぼかしを変更します。Delete キーで選択したピンを削除します。
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	輪郭上のハンドルをドラッグしてサイズ変更と回転、四角形で角の丸み、内側の点でぼかしの開始位置を設定します。
+	Auto Add/Delete	自動追加・削除
