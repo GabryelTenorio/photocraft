@@ -24,6 +24,7 @@ pub mod fill_layout;
 pub mod gradient_fill;
 pub mod masks;
 pub mod multichannel;
+pub mod native;
 pub mod pattern;
 pub mod proxy;
 pub mod psblend;
@@ -232,20 +233,48 @@ pub fn band_rows_for(width: u32, requested: i32) -> i32 {
 /// The document's composite as a pixel surface in `fmt` (straight RGBA converted to its model
 /// and depth), optionally flattened over an opaque `background`; rendered and written in bands,
 /// so no full-size float composite is held. Tiles equal to the default pixel are pruned.
+///
+/// Fully transparent pixels are written as the default pixel. Converting transparent black
+/// leaves colour behind in CMYK (K = 100%) and Lab (neutral a/b = 0.5), and those pixels would
+/// otherwise count as content: the result would span the whole canvas.
+///
+/// A CMYK document of plain Normal layers is composited in its ink values instead
+/// ([`native::flatten_cmyk`]), so flattening doesn't round-trip its pixels through RGB (#3778).
 pub fn flatten_to_surface(doc: &Document, fmt: photocraft_color::PixelFormat, background: Option<[f32; 3]>) -> Surface {
+    composite_to_surface(doc, doc.bounds(), fmt, background)
+}
+
+/// [`flatten_to_surface`] over `rect` only (the rest of the surface stays empty).
+pub fn composite_to_surface(doc: &Document, rect: Rect, fmt: photocraft_color::PixelFormat, background: Option<[f32; 3]>) -> Surface {
+    let paper = background.is_some_and(|bg| bg == [1.0; 3]);
+    if (background.is_none() || paper)
+        && let Some(s) = native::flatten_cmyk(doc, rect, fmt, paper)
+    {
+        return s;
+    }
     let mut s = Surface::new(fmt);
     let n = fmt.channels();
+    let empty = s.default_pixel();
     let mut data = Vec::new();
-    let _ = render_bands(doc, doc.bounds(), 0, |band| -> Result<(), ()> {
+    // The composite separates back to CMYK through the document's own profile, the one its
+    // pixels were read through.
+    let cmyk = cmyk_space(doc);
+    let _ = render_bands(doc, rect, 0, |band| -> Result<(), ()> {
         let band = match background {
             Some(bg) => band.over_background(bg),
             None => band,
         };
         data.clear();
         data.resize(band.px.len() * n, 0.0);
-        for (p, out) in band.px.iter().zip(data.chunks_exact_mut(n)) {
-            photocraft_raster::from_rgba_into(&fmt, *p, out);
-        }
+        photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
+            for (p, out) in band.px.iter().zip(data.chunks_exact_mut(n)) {
+                if fmt.alpha && (p[3] <= 0.0 || p[3].is_nan()) && empty.len() == n {
+                    out.copy_from_slice(&empty);
+                } else {
+                    photocraft_raster::from_rgba_into(&fmt, *p, out);
+                }
+            }
+        });
         s.write_region(band.rect, &data);
         Ok(())
     });
@@ -294,13 +323,19 @@ pub fn thumbnail(doc: &Document, max_side: u32) -> Rgba8Image {
     thumbnail_buffer(doc, max_side).to_rgba8()
 }
 
+/// Width and height of [`thumbnail`]`(doc, max_side)`.
+pub fn thumbnail_size(doc: &Document, max_side: u32) -> (u32, u32) {
+    let b = doc.bounds();
+    let longest = b.width().max(b.height()).max(1);
+    let scale = (max_side as f32 / longest as f32).min(1.0);
+    (((b.width() as f32 * scale).round() as u32).max(1), ((b.height() as f32 * scale).round() as u32).max(1))
+}
+
 /// [`thumbnail`] as straight-alpha floats (for callers that colour-convert it first).
 pub fn thumbnail_buffer(doc: &Document, max_side: u32) -> Buffer {
     let b = doc.bounds();
     let longest = b.width().max(b.height()).max(1);
-    let scale = (max_side as f32 / longest as f32).min(1.0);
-    let w = ((b.width() as f32 * scale).round() as u32).max(1);
-    let h = ((b.height() as f32 * scale).round() as u32).max(1);
+    let (w, h) = thumbnail_size(doc, max_side);
     let k = longest / max_side.max(1).saturating_mul(2);
     if k >= 2 && doc.size.area() > PROXY_THUMBNAIL_PIXELS && proxy::proxy_faithful(doc) {
         render_reduced(&proxy::proxy_document(doc, k), w, h)
@@ -1352,7 +1387,8 @@ fn split_parts(layer: &Layer, rect: Rect, cx: &Ctx) -> Option<(Buffer, Buffer, O
 // ---------------------------------------------------------------------------------------------
 // Layer-effect map cache
 
-/// Order-independent identity of a layer's pixels, masks, effects and (for groups) children.
+/// Order-independent identity of a layer's pixels, masks, effects, Advanced Blending and Blend If
+/// and (for groups) children.
 /// Pixels are identified by their copy-on-write tile pointers; cache entries pin a clone of the
 /// layer so those tiles (and their addresses) stay alive while the entry exists.
 fn layer_identity(layer: &Layer, h: &mut std::collections::hash_map::DefaultHasher) {
@@ -1410,6 +1446,10 @@ fn layer_identity(layer: &Layer, h: &mut std::collections::hash_map::DefaultHash
         format!("{vm:?}").hash(h);
     }
     format!("{:?}", layer.effects).hash(h);
+    // Transparency Shapes Layer picks the shape (content or the whole layer); a group child's
+    // Blend If and knockout change the composite a styled group's shape comes from.
+    layer.advanced.hash(h);
+    layer.blend_if.hash(h);
     h.write_u8(0xfe);
 }
 
@@ -1492,7 +1532,8 @@ fn effect_region(layer: &Layer, rect: Rect, cx: &Ctx) -> (Rect, bool) {
 fn effect_maps(layer: &Layer, rect: Rect, cx: &Ctx) -> std::sync::Arc<effects::FxMaps> {
     use std::hash::{Hash, Hasher};
     let (region, clipped) = effect_region(layer, rect, cx);
-    if std::env::var_os("PHOTOCRAFT_FX_NOCACHE").is_some() {
+    static NO_CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *NO_CACHE.get_or_init(|| std::env::var_os("PHOTOCRAFT_FX_NOCACHE").is_some()) {
         let shape = if region.is_empty() { Vec::new() } else { effect_shape(layer, region, cx) };
         return std::sync::Arc::new(effects::build_maps_prepared(layer, shape, region, &cx.light, &texture_ctx(layer, region, cx), cx.patterns));
     }
