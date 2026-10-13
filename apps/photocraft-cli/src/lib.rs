@@ -47,6 +47,8 @@ USAGE:
       or on 127.0.0.1:<port>. Methods: engine.execute, jobs.list/cancel, engine.commands,
       doc.open/new/place/save/exportLayers/exportDataSets/importDataSets/inspect/render/select/close, session.list, batch, methods
       (docs/control-protocol.md#headless-server).
+      To drive the running desktop app instead, start `photocraft --control <port>`
+      (docs/control-protocol.md#which-entry-point-when).
 
   photocraft-cli <subcommand> --help (or -h) prints this text. A flag the subcommand doesn't take is
   an error.
@@ -656,6 +658,31 @@ mod missing_font_warning_tests {
         assert_eq!(code, 0, "{stderr}");
         assert!(!stderr.contains("font '"), "{stderr}");
         let _ = std::fs::remove_dir_all(&folder);
+    }
+}
+
+#[cfg(test)]
+mod serve_help_tests {
+    use super::*;
+
+    fn invoke(args: &[&str]) -> (i32, String, String) {
+        let (mut output, mut errors) = (Vec::new(), Vec::new());
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let code = run(&args, &mut output, &mut errors);
+        (code, String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
+    }
+
+    /// The serve usage must point at the desktop control server, the other way to run this
+    /// protocol.
+    #[test]
+    fn serve_help_points_at_the_desktop_entry_point() {
+        let (code, out, _) = invoke(&["serve", "--help"]);
+        assert_eq!(code, 0);
+        // Only the serve entry counts: the mcp entry names `photocraft --control` for bridge
+        // mode already.
+        let start = out.find("photocraft-cli serve").unwrap();
+        let serve = out[start..].split("\n\n").next().unwrap();
+        assert!(serve.contains("photocraft --control <port>"), "{serve}");
     }
 }
 

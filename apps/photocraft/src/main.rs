@@ -130,6 +130,41 @@ fn bind_control(port: u16) -> Result<std::net::TcpListener, String> {
     std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| format!("cannot listen on 127.0.0.1:{port}: {e}; another PhotoCraft instance may own it"))
 }
 
+/// The usage `--help` and `-h` print: the launch flags (mirroring the argument loop in `main`)
+/// and where the headless sibling and the protocol are documented.
+const HELP: &str = "\
+photocraft: PhotoCraft desktop app
+
+USAGE:
+  photocraft [--control <port>] [--control-token <64-hex> | --control-token-file <path>]
+      [--automation-read-root <dir>] [--automation-write-root <dir>] [--safe-gpu]
+      [--in-window-menus] [files…]
+      --control <port> (or PHOTOCRAFT_CONTROL_PORT) starts a localhost JSON-lines control
+      server; the first line must authenticate. --control-token / --control-token-file (or
+      PHOTOCRAFT_CONTROL_TOKEN / PHOTOCRAFT_CONTROL_TOKEN_FILE) supply its token;
+      --automation-read-root / --automation-write-root (or PHOTOCRAFT_AUTOMATION_READ_ROOT /
+      PHOTOCRAFT_AUTOMATION_WRITE_ROOT) grant its file access. A port that cannot be bound
+      fails the launch with a non-zero exit before any window opens.
+      --safe-gpu starts with the CPU renderer for this launch.
+      --in-window-menus keeps the menus inside the window on macOS.
+      --version prints the version. --help / -h prints this text.
+      files are documents to open.
+
+For windowless editing sessions, MCP, or conversions, use photocraft-cli instead
+(photocraft-cli --help). The two entry points are compared in docs/control-protocol.md.
+";
+
+/// The text an argument prints before the launch exits 0: `--version` the build, `--help`/`-h`
+/// the usage. Any other argument — a flag with its value, a `-psn_…` serial, a file to open —
+/// returns `None` and the launch proceeds.
+fn early_exit(arg: &str) -> Option<String> {
+    match arg {
+        "--version" => Some(format!("photocraft {}\n", photocraft_engine::build_info::long_version())),
+        "--help" | "-h" => Some(HELP.to_owned()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod control_port_tests {
     use super::{bind_control, control_args_exit_code, parse_control_port};
@@ -174,6 +209,42 @@ mod control_port_tests {
     }
 }
 
+#[cfg(test)]
+mod early_exit_tests {
+    use super::early_exit;
+
+    #[test]
+    fn help_and_version_answer_at_once_and_everything_else_proceeds() {
+        let help = early_exit("--help").unwrap();
+        assert_eq!(early_exit("-h").unwrap(), help, "-h is --help");
+        // The usage lists every flag the argument loop accepts, and points at the headless
+        // sibling entry point and the protocol documentation.
+        for listed in [
+            "--control <port>",
+            "--control-token <64-hex>",
+            "--control-token-file <path>",
+            "--automation-read-root <dir>",
+            "--automation-write-root <dir>",
+            "--safe-gpu",
+            "--in-window-menus",
+            "--version",
+            "PHOTOCRAFT_CONTROL_PORT",
+            "photocraft-cli",
+            "docs/control-protocol.md",
+        ] {
+            assert!(help.contains(listed), "the usage must mention {listed}");
+        }
+        assert!(help.starts_with("photocraft:") && help.ends_with('\n'), "{help}");
+        let version = early_exit("--version").unwrap();
+        assert!(version.starts_with("photocraft ") && version.ends_with('\n'), "{version}");
+        // A flag with its value, a Finder serial number, a file to open and an unknown flag all
+        // proceed to the launch.
+        for arg in ["--safe-gpu", "-psn_0123", "art.psd", "--nonsense"] {
+            assert_eq!(early_exit(arg), None, "{arg} must not answer at once");
+        }
+    }
+}
+
 fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
@@ -201,7 +272,13 @@ fn main() -> eframe::Result {
     let mut in_window_menus = std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0");
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
-        match a.to_str() {
+        let arg = a.to_str();
+        // `--version`, `--help` and `-h` answer at once, like the CLI's help: no window, exit 0.
+        if let Some(text) = arg.and_then(early_exit) {
+            print!("{text}");
+            return Ok(());
+        }
+        match arg {
             Some("--control") => match args.next() {
                 Some(value) => match parse_control_port(&value.to_string_lossy(), "--control") {
                     Ok(port) => control_port = Some(port),
@@ -219,10 +296,6 @@ fn main() -> eframe::Result {
             Some("--automation-write-root") => automation_write_root = args.next().map(std::path::PathBuf::from),
             Some("--safe-gpu") => safe_gpu = true,
             Some("--in-window-menus") => in_window_menus = true,
-            Some("--version") => {
-                println!("photocraft {}", photocraft_engine::build_info::long_version());
-                return Ok(());
-            }
             // Old macOS passes a process serial number when launched from Finder.
             Some(s) if s.starts_with("-psn_") => {}
             Some(s) => files.push(s.to_owned()),

@@ -8,6 +8,25 @@ Stroke Options applies valid UI edits immediately; `strokeEditor` is the open ed
 not an uncommitted document preview. Escape/outside clicks close it without reverting edits.
 See [Shape stroke options](shape-strokes.md) for limits, preview and persistence behavior.
 
+## Which entry point when
+
+Two processes answer this protocol, and the MCP bridge is a client of the first:
+
+| You want to | Start | Port, token, roots | Method surface | stdio |
+|---|---|---|---|---|
+| Drive the live UI (tools, dialogs, panels, screenshots) | `photocraft --control <port>` | port: `--control` or `PHOTOCRAFT_CONTROL_PORT`; token: `--control-token{,-file}` (or `PHOTOCRAFT_CONTROL_TOKEN{,_FILE}`); roots: `--automation-read-root` / `--automation-write-root` (or `PHOTOCRAFT_AUTOMATION_{READ,WRITE}_ROOT`) | the live GUI session: `ui.*`, `app.*`, `engine.execute` / `engine.commands`, `jobs.*` — see [Methods](#methods) | no |
+| A windowless editing session | `photocraft-cli serve` (TCP: `--port <port>`) | port: `--port` (no env); token: `--control-token{,-file}` or the same env vars; roots: flags only (see the environment note under [MCP bridge](#mcp-bridge)) | one shared headless session: `doc.*`, `session.list`, `batch`, `methods`, `engine.execute` / `engine.commands`, `jobs.*` — see [Headless server](#headless-server) | yes — the default with no `--port` |
+| MCP for an agent client | `photocraft-cli mcp`, or `photocraft-cli mcp --bridge 127.0.0.1:<port>` (a client of the desktop server above) | token only in bridge mode | every MCP tool — see [MCP bridge](#mcp-bridge) | yes (MCP framing) |
+| One-shot scripting (convert, batch, droplets, listing commands) | `photocraft-cli convert` / `info` / `run` / `batch` / `droplet` / `commands` | per subcommand | none: each invocation is one job | — |
+
+Both servers may run side by side on different ports (independent loopback listeners), and bridge
+mode needs both processes at once: the desktop server and its `photocraft-cli mcp --bridge`
+client. The flag vocabularies differ: the desktop names the port `--control` and also reads port,
+token and roots from the environment; `serve` names the port `--port` and takes token and roots
+from flags only. A bad port value is a usage error (exit 2 on the desktop, exit 1 on `serve`),
+and a port that cannot be bound fails the launch on both, before any window opens on the desktop.
+`photocraft --help` and `photocraft-cli --help` print each binary's flags.
+
 The desktop app listens on `127.0.0.1:<port>` (loopback only). Start it with a token file so the credential is not exposed in the process command line:
 
 ```sh
