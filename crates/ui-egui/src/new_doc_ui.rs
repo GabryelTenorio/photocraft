@@ -679,19 +679,43 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
             });
             ui.add_space(4.0);
             small_label(ui, tl!("Background Contents"));
-            let mut bg = get_s(f, "background", "white");
+            // A custom colour lives in `background` as the `#rrggbb` `file.new` takes; the
+            // dropdown shows it as "Color…", and choosing that opens the Color Picker on it (#4789).
+            let raw_bg = get_s(f, "background", "white");
+            let is_custom = raw_bg.starts_with('#');
+            let mut bg = if is_custom { "color".to_string() } else { raw_bg.clone() };
             let opts = [
                 ("white".to_string(), tl!("White")),
                 ("black".to_string(), tl!("Black")),
                 ("backgroundColor".to_string(), tl!("Background Color")),
                 ("transparent".to_string(), tl!("Transparent")),
+                ("color".to_string(), tl!("Color…")),
             ];
             if widgets::dropdown(ui, "nd-bg", &mut bg, &opts, 240.0) {
-                f.insert("background".into(), json!(bg));
                 f.remove("__savedPreset");
                 // A fresh choice of Background Color uses today's toolbox colour. Selecting a
                 // saved preset instead restores the colour captured when it was saved.
                 f.remove("backgroundColor");
+                if bg == "color" {
+                    // Photoshop opens the picker straight away, starting from the toolbox colour.
+                    let c = app.session.tools.background;
+                    f.insert("background".into(), json!(crate::color_picker_ui::hex([c[0], c[1], c[2]])));
+                    crate::color_picker_ui::request_field(f, "background", &crate::color_picker_ui::title_for("Background Color"));
+                } else {
+                    f.insert("background".into(), json!(bg));
+                }
+            }
+            if is_custom {
+                // The swatch reopens the Color Picker on the chosen colour.
+                ui.horizontal(|ui| {
+                    small_label(ui, tl!("Color:"));
+                    let rgb = crate::color_picker_ui::parse_hex(&raw_bg).unwrap_or([0.0; 3]);
+                    let channel = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+                    let color = egui::Color32::from_rgb(channel(rgb[0]), channel(rgb[1]), channel(rgb[2]));
+                    if widgets::color_swatch_button(ui, color, tl!("Background Color")).clicked() {
+                        crate::color_picker_ui::request_field(f, "background", &crate::color_picker_ui::title_for("Background Color"));
+                    }
+                });
             }
             save_preset(app, ui, f);
         });
@@ -1410,6 +1434,41 @@ mod tests {
                     "hovering preset tab {tab:?} must show PointingHand instead of text caret"
                 );
             }
+        }
+
+        /// #4789: Background Contents › Color… opens the Color Picker (starting from the toolbox
+        /// colour), its OK sets the dialog's custom background, and Create fills the document with it.
+        #[test]
+        fn color_background_opens_the_picker_and_creates_with_it() {
+            use egui_kittest::kittest::Queryable;
+            let picker_color = |h: &Harness<'static, PhotocraftApp>| {
+                let id = crate::color_picker_ui::top(h.state()).expect("the Color Picker is open");
+                h.state().ui.dialogs.iter().find(|d| d.id == id).and_then(|d| d.fields.get("color").cloned()).expect("a colour")
+            };
+            let mut h = harness();
+            h.state_mut().run("tools.setColors", serde_json::json!({"foreground": "#ff0000", "background": "#00ff00"})).unwrap();
+            h.get_by_value("White").click();
+            h.run_steps(3);
+            h.get_by_label("Color…").click();
+            h.run_steps(4);
+            let picker = crate::color_picker_ui::top(h.state()).expect("Color… opens the Color Picker");
+            assert_eq!(picker_color(&h), serde_json::json!("#00ff00"), "on the toolbox background colour");
+            h.state_mut().ui.dialog_mut(picker).unwrap().fields.insert("color".into(), serde_json::json!("#336699"));
+            crate::dialogs::confirm(h.state_mut(), picker).unwrap();
+            h.run_steps(3);
+            assert!(crate::color_picker_ui::top(h.state()).is_none(), "OK closes the picker");
+            assert_eq!(fields(&h)["background"], serde_json::json!("#336699"), "the New Document dialog stays open with the custom colour");
+            // The dropdown shows the custom colour as Color…, with a swatch that reopens the picker.
+            assert!(h.query_by_value("Color…").is_some(), "the dropdown shows Color… for the custom colour");
+            h.get_by_label("Background Color").click();
+            h.run_steps(4);
+            let picker = crate::color_picker_ui::top(h.state()).expect("the swatch reopens the Color Picker");
+            assert_eq!(picker_color(&h), serde_json::json!("#336699"));
+            h.state_mut().ui.close_dialog(picker);
+            h.run_steps(2);
+            enter(&mut h);
+            assert_eq!(created(&h), (1920, 1080, 72.0));
+            assert_pixel(&mut h, [0x33 as f64 / 255.0, 0x66 as f64 / 255.0, 0x99 as f64 / 255.0, 1.0]);
         }
     }
 }
