@@ -28,6 +28,12 @@ fn run_once(id: &str, p: &Value) -> Option<bool> {
     std::thread::spawn(move || {
         let r = catch_unwind(AssertUnwindSafe(|| {
             let mut s = fresh();
+            let mut p = p;
+            // Exercise print layout and parameter validation without sending test documents to
+            // the system spooler, whose drivers and interactive prompts have no bounded runtime.
+            if matches!(id.as_str(), "file.print" | "file.printOneCopy") {
+                p.as_object_mut().expect("object-shaped adversarial print arguments").insert("dryRun".into(), json!(true));
+            }
             let _ = s.execute(&id, p);
         }));
         let _ = tx.send(r.is_ok());
