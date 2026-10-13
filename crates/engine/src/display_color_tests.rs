@@ -80,8 +80,11 @@ fn srgb_is_the_identity_fast_path() {
         assert!(s.color.canvas_lut(&d, 9).unwrap().is_none(), "no GPU LUT either");
         assert!(close(shown(&s, &d), [204.0, 127.5, 76.5], 0.6));
     }
-    // Untagged gray (sGray), CMYK (shown in sRGB) and Lab composites are sRGB too.
-    let g = Document::with_background("g", Size::new(4, 4), ColorMode::Grayscale, SampleType::U8, Color::gray(0.3));
+    // sGray-tagged gray and CMYK (shown in sRGB) composites are sRGB too; untagged gray takes the
+    // default working gray (Dot Gain 20 %-compatible), which is not.
+    let mut g = Document::with_background("g", Size::new(4, 4), ColorMode::Grayscale, SampleType::U8, Color::gray(0.3));
+    assert!(!s.color.canvas_display(&g).unwrap().is_identity());
+    g.icc_profile = Some(Builtin::SGray.profile().to_bytes());
     assert!(s.color.canvas_display(&g).unwrap().is_identity());
     assert!(s.color.canvas_display(&cmyk_doc(None, [0.1, 0.5, 0.5, 0.0])).unwrap().is_identity());
     // Cached: the same Arc for the same profiles.
@@ -184,6 +187,26 @@ fn exr_round_trip_is_linear() {
     let v = back.layers[0].surface().unwrap().pixel(1, 1);
     assert!((v[0] - 0.214).abs() < 2e-3, "stored linear: {v:?}");
     assert!(close(shown(&s, &back), shown(&s, &d), 1.0));
+    // Opening keeps it linear without a mismatch prompt.
+    let (_, report) = s.open_document(back, None);
+    assert_eq!(report["action"], "kept");
+    assert!(report.get("ask").is_none());
+}
+
+#[test]
+fn gray_exr_round_trip_is_linear() {
+    let mut s = Session::new();
+    // An sGray document exported to EXR is linearised (#2386); re-opened it is tagged linear gray
+    // and displays as before.
+    let mut d = Document::with_background("t", Size::new(8, 8), ColorMode::Grayscale, SampleType::U8, Color::gray(128.0 / 255.0));
+    d.icc_profile = Some(Builtin::SGray.profile().to_bytes());
+    let r = photocraft_io::export(&d, "x.exr", &photocraft_io::ExportOptions::default()).unwrap();
+    let back = photocraft_io::import("x.exr", &r.bytes).unwrap().document;
+    let icc = back.icc_profile.clone().expect("tagged");
+    assert_eq!(Profile::parse(&icc).unwrap().content_hash(), photocraft_cms::builtin::linear_gray().content_hash());
+    let v = back.layers[0].surface().unwrap().pixel(1, 1);
+    assert!((v[0] - 0.2159).abs() < 1e-3, "stored linear: {v:?}");
+    assert!(close(shown(&s, &back), shown(&s, &d), 1.0), "{:?} vs {:?}", shown(&s, &back), shown(&s, &d));
     // Opening keeps it linear without a mismatch prompt.
     let (_, report) = s.open_document(back, None);
     assert_eq!(report["action"], "kept");

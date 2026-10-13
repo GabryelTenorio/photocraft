@@ -155,10 +155,12 @@ impl ImageSourceData {
         let version = self.version;
         let mut blocks = Vec::with_capacity(self.global_blocks.len() + 2);
         if let Some(info) = &self.layer_info {
-            let mut info = info.clone();
-            info.pad_to(version, 4)?;
+            // Pad to 4 without cloning the layers (and all their pixel data) just to set `padding`.
+            let pad = info.pad_len(version, 4)?;
             let mut data = Vec::new();
-            info.write_body(&mut data, version)?;
+            data.try_reserve(info.channel_data_len().saturating_add(pad)).map_err(|_| PsdError::LimitExceeded("not enough memory for the layer data"))?;
+            info.write_unpadded(&mut data, version)?;
+            data.resize(data.len() + pad, 0);
             blocks.push(padded_block(self.layer_info_key, data));
         }
         if let Some(m) = &self.global_layer_mask {
@@ -173,7 +175,7 @@ impl ImageSourceData {
             blocks.push(b);
         }
         let mut body = Vec::new();
-        write_blocks(&mut body, &blocks, version)?;
+        write_blocks(&mut body, &blocks, version, 2)?;
         body.put(&self.trailing);
         let (body, warnings) =
             if order.is_little() { transcode::transcode_blocks(&body, version, ByteOrder::Big, ByteOrder::Little)? } else { (body, Vec::new()) };
@@ -1056,7 +1058,11 @@ pub mod transcode {
                         Ok(())
                     })?;
                     mask_heights = mh;
-                    t.sized_region(false, |x| x.u32s_to_end())?;
+                    // Blending ranges are bytes (black low/high, white low/high per channel), so
+                    // Photoshop stores them in the same order in either byte order: an Intel-order
+                    // layered TIFF holds the default ranges as `00 00 ff ff`. Swapping them as u32s
+                    // turned every range into `ff ff 00 00`, which hides every pixel of the layer.
+                    t.sized_region(false, |x| x.rest())?;
                     t.pascal(4)?;
                     t.blocks()
                 })?;
@@ -2221,6 +2227,24 @@ mod tests {
         let counts = &ch.data[..table];
         let swapped: Vec<u8> = counts.chunks(2).flat_map(|c| [c[1], c[0]]).collect();
         assert!(little.windows(table + samples.len()).any(|w| w[..table] == swapped[..] && w[table..] == *samples));
+    }
+
+    #[test]
+    fn blending_ranges_are_bytes_in_either_order() {
+        let mut file = testgen::layered(Version::Psd, ColorMode::Rgb, 8, Compression::Rle);
+        let ranges: Vec<u8> = [0u8, 0, 255, 255].repeat(10);
+        let marked: Vec<u8> = (1u8..=40).collect();
+        for (i, l) in file.layer_info.as_mut().unwrap().layers.iter_mut().enumerate() {
+            l.blending_ranges.data = if i == 0 { marked.clone() } else { ranges.clone() };
+        }
+        let d = ImageSourceData::from_psd(&file);
+        let (little, _) = d.to_bytes(ByteOrder::Little).unwrap();
+        // Written verbatim (what Photoshop writes in an `II` TIFF), not swapped per u32.
+        assert!(little.windows(marked.len()).any(|w| w == marked));
+        let (back, _) = ImageSourceData::from_bytes(&little).unwrap();
+        for (a, b) in d.layer_info.as_ref().unwrap().layers.iter().zip(&back.layer_info.as_ref().unwrap().layers) {
+            assert_eq!(a.blending_ranges, b.blending_ranges);
+        }
     }
 
     #[test]
