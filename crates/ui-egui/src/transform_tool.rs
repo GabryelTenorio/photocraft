@@ -2022,15 +2022,30 @@ pub fn cursor(app: &PhotocraftApp, p: [f64; 2], quick_split: bool) -> Option<Cur
         // The overlay draws the curved rotate arrow (`rotate_cursor_dir`), also during the drag.
         return Some(CursorIcon::None);
     }
+    // The box's corners run clockwise from the top-left; edge k joins corners k and k + 1.
+    let corner = |k: usize| vec2(t.quad[k % 4][0] as f32, t.quad[k % 4][1] as f32);
+    let edge_mid = |k: usize| (corner(k) + corner(k + 1)) / 2.0;
     Some(match h {
-        Hit::Corner(0 | 2) => CursorIcon::ResizeNwSe,
-        Hit::Corner(_) => CursorIcon::ResizeNeSw,
-        Hit::Edge(0 | 2) => CursorIcon::ResizeVertical,
-        Hit::Edge(_) => CursorIcon::ResizeHorizontal,
+        // A handle resizes the box away from the opposite handle.
+        Hit::Corner(i) => screen_resize_cursor(app, corner(i + 2), corner(i)),
+        Hit::Edge(i) => screen_resize_cursor(app, edge_mid(i + 2), edge_mid(i)),
         Hit::Pivot => CursorIcon::Crosshair,
         Hit::Inside => CursorIcon::Move,
         Hit::Outside => CursorIcon::Alias,
     })
+}
+
+/// The resize arrow for a handle at `to` that resizes the box away from `from`: the direction
+/// between them as it looks on screen, so the arrow turns with the box and with the view's
+/// rotation and flip.
+fn screen_resize_cursor(app: &PhotocraftApp, from: egui::Vec2, to: egui::Vec2) -> CursorIcon {
+    let direction = to - from;
+    let on_screen = match ViewXform::active(app) {
+        Some(view) => view.map_vec(direction),
+        None => direction,
+    };
+    // Already as the view shows it, flip included, so there is nothing left to flip.
+    crate::type_transform::resize_cursor([f64::from(on_screen.x), f64::from(on_screen.y)], false)
 }
 
 /// Warped preview of the moving pixels plus the box, handles and reference point.
@@ -4059,6 +4074,38 @@ mod tests {
         assert_eq!(rotate_cursor_dir(&app, [60.0, 60.0]), None, "inside moves");
         assert_eq!(rotate_cursor_dir(&app, [32.0, 32.0]), None, "the corner handle scales");
         assert_eq!(rotate_cursor_dir(&app, [f64::NAN, 32.0]), None);
+    }
+
+    /// The resize arrows follow the box's turn and the view's rotation and flip: each handle
+    /// shows the arrow it resizes along on screen, not the one it had on the upright box.
+    #[test]
+    fn resize_cursors_turn_with_the_box_and_the_view() {
+        use CursorIcon::{ResizeHorizontal as H, ResizeNeSw as NeSw, ResizeNwSe as NwSe, ResizeVertical as V};
+        // Box turned (degrees), view rotation, flip → corner 0, corner 1, edge 0, edge 1 (corner
+        // and edge i + 2 sit opposite, on the same axis).
+        let cases = [
+            (0.0, 0.0, false, [NwSe, NeSw, V, H]),
+            (90.0, 0.0, false, [NeSw, NwSe, H, V]),
+            (45.0, 0.0, false, [V, H, NeSw, NwSe]),
+            (0.0, 0.0, true, [NeSw, NwSe, V, H]),
+            (0.0, 90.0, false, [NeSw, NwSe, H, V]),
+        ];
+        for (deg, view, flip, want) in cases {
+            let mut app = app_with_square(256, photocraft_geom::Rect::new(64, 96, 192, 160));
+            crate::menus::invoke(&mut app, &egui::Context::default(), "edit.freeTransform", json!({})).unwrap();
+            let view_index = app.session.active_index().unwrap();
+            app.ui.views[view_index].rotation = view;
+            app.ui.view.flip_horizontal = flip;
+            let t = app.ui.transform.as_mut().unwrap();
+            let (s, c) = f64::to_radians(deg).sin_cos();
+            let o = [128.0, 128.0];
+            t.quad = t.quad.map(|[x, y]| [o[0] + (x - o[0]) * c - (y - o[1]) * s, o[1] + (x - o[0]) * s + (y - o[1]) * c]);
+            let t = app.ui.transform.clone().unwrap();
+            let mid = |i: usize| [(t.quad[i][0] + t.quad[(i + 1) % 4][0]) / 2.0, (t.quad[i][1] + t.quad[(i + 1) % 4][1]) / 2.0];
+            let got: Vec<_> = (0..4).map(|i| cursor(&app, t.quad[i], false)).chain((0..4).map(|i| cursor(&app, mid(i), false))).collect();
+            let want = [want[0], want[1], want[0], want[1], want[2], want[3], want[2], want[3]].map(Some);
+            assert_eq!(got, want, "box {deg}°, view {view}°, flip {flip}");
+        }
     }
 
     /// #1767: the readout beside the pointer during a drag (Photoshop's transformation values):
