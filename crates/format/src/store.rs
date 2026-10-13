@@ -587,11 +587,27 @@ struct BundleGc {
 }
 
 #[cfg(unix)]
+fn gc_directory_flags() -> rustix::fs::OFlags {
+    use rustix::fs::OFlags;
+
+    // GC needs directory traversal, not permission to read a directory listing.
+    // Both modes retain a descriptor for the directory opened here, so a later
+    // pathname replacement cannot redirect descriptor-relative cleanup.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let access = OFlags::PATH;
+    #[cfg(target_vendor = "apple")]
+    let access = OFlags::from_bits_retain(libc::O_SEARCH.cast_unsigned());
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_vendor = "apple")))]
+    let access = OFlags::RDONLY;
+    access | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
+}
+
+#[cfg(unix)]
 impl BundleGc {
     fn new(root: &Path) -> Result<Self> {
-        use rustix::fs::{Mode, OFlags, open, openat};
+        use rustix::fs::{Mode, open, openat};
 
-        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let flags = gc_directory_flags();
         let root = open(root, flags, Mode::empty()).map_err(std::io::Error::from)?;
         let tiles = openat(&root, "tiles", flags, Mode::empty()).map_err(std::io::Error::from)?;
         let blobs = openat(&root, "blobs", flags, Mode::empty()).map_err(std::io::Error::from)?;
