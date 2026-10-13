@@ -3038,3 +3038,20 @@ curves	Smooth	Haluskan
 	Remove after each stroke	Hapus setelah setiap goresan
 	Apply the removal ({key})	Terapkan penghapusan ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Goresan untuk dihapus: {n} (Enter menerapkan, Esc membatalkan)
+
+	Cancel Sampling	Batalkan pengambilan sampel
+	Clear Modifiers	Lepaskan tombol pengubah
+	Close selection	Tutup seleksi
+	Commit crop	Terapkan pemotongan
+	Commit transform	Terapkan transformasi
+	Pick Color Once	Ambil warna
+	Set Sample Point	Tetapkan titik sampel
+	Show Panels	Tampilkan panel
+	Tap Set Sample Point, then tap the image	Ketuk Tetapkan titik sampel, lalu ketuk gambar
+	Tap inside the image to sample	Ketuk di dalam gambar untuk mengambil sampel
+	Tap this, then tap the image. Drawing resumes automatically.	Ketuk di sini, lalu ketuk gambar. Menggambar akan dilanjutkan secara otomatis.
+	Touch Controls	Kontrol sentuh
+	Touch Tools	Semua alat
+	Add to selection	Tambah ke seleksi
+	Subtract from selection	Kurangi dari seleksi
+	Intersect with selection	Irisan dengan seleksi

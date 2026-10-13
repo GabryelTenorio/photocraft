@@ -2640,3 +2640,21 @@ curves	Smooth	平滑
 	Remove after each stroke	每次描邊後移除
 	Apply the removal ({key})	套用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描邊：{n}（Enter 套用，Esc 取消）
+
+	Cancel Sampling	取消取樣
+	Clear Modifiers	清除輔助鍵
+	Close selection	閉合選取範圍
+	Commit crop	完成裁切
+	Commit transform	完成變形
+	Pick Color Once	吸取顏色
+	Set Sample Point	設定取樣點
+	Show Panels	顯示面板
+	Tap Set Sample Point, then tap the image	點選底部「設定取樣點」，再點選影像
+	Tap inside the image to sample	請在影像內部點選取樣
+	Tap this, then tap the image. Drawing resumes automatically.	點選按鈕後在影像上取樣，隨後自動恢復繪製。
+	Touch Controls	觸控操作列
+	Touch Tools	全部工具
+	Add to selection	加入選取範圍
+	Subtract from selection	從選取範圍減去
+	Intersect with selection	與選取範圍交集
+	Brush Size	筆刷大小

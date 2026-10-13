@@ -3534,3 +3534,19 @@ curves	Smooth	Làm mượt
 	Remove after each stroke	Xóa sau mỗi nét vẽ
 	Apply the removal ({key})	Áp dụng việc xóa ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Nét vẽ cần xóa: {n} (Enter áp dụng, Esc hủy)
+	Cancel Sampling	Hủy lấy mẫu
+	Clear Modifiers	Bỏ phím bổ trợ
+	Close selection	Khép vùng chọn
+	Commit crop	Áp dụng cắt
+	Commit transform	Áp dụng biến đổi
+	Pick Color Once	Lấy màu
+	Set Sample Point	Đặt điểm lấy mẫu
+	Show Panels	Hiện bảng
+	Tap Set Sample Point, then tap the image	Nhấn Đặt điểm lấy mẫu, rồi chạm vào ảnh
+	Tap inside the image to sample	Chạm bên trong ảnh để lấy mẫu
+	Tap this, then tap the image. Drawing resumes automatically.	Nhấn nút này, rồi chạm vào ảnh. Sau đó sẽ tự động trở lại vẽ.
+	Touch Controls	Điều khiển cảm ứng
+	Touch Tools	Tất cả công cụ
+	Add to selection	Thêm vào vùng chọn
+	Subtract from selection	Bớt khỏi vùng chọn
+	Intersect with selection	Giao với vùng chọn

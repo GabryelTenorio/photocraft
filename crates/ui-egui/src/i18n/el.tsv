@@ -3748,3 +3748,20 @@ curves	Smooth	Εξομάλυνση
 	Remove after each stroke	Αφαίρεση μετά από κάθε πινελιά
 	Apply the removal ({key})	Εφαρμογή της αφαίρεσης ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Πινελιές προς αφαίρεση: {n} (Enter εφαρμόζει, Esc ακυρώνει)
+
+	Cancel Sampling	Ακύρωση δειγματοληψίας
+	Clear Modifiers	Απελευθέρωση τροποποιητών
+	Close selection	Κλείσιμο επιλογής
+	Commit crop	Εφαρμογή περικοπής
+	Commit transform	Εφαρμογή μετασχηματισμού
+	Pick Color Once	Λήψη χρώματος
+	Set Sample Point	Ορισμός σημείου δείγματος
+	Show Panels	Εμφάνιση πλαισίων
+	Tap Set Sample Point, then tap the image	Πατήστε Ορισμός σημείου δείγματος και έπειτα την εικόνα
+	Tap inside the image to sample	Πατήστε μέσα στην εικόνα για λήψη δείγματος
+	Tap this, then tap the image. Drawing resumes automatically.	Πατήστε εδώ και έπειτα την εικόνα. Η σχεδίαση συνεχίζεται αυτόματα.
+	Touch Controls	Χειριστήρια αφής
+	Touch Tools	Όλα τα εργαλεία
+	Add to selection	Προσθήκη στην επιλογή
+	Subtract from selection	Αφαίρεση από την επιλογή
+	Intersect with selection	Τομή με την επιλογή

@@ -56,3 +56,18 @@ Windows builds `/out\boards-2-Capsule.jpg`, whereas the assertion requires `/out
 Complete corpus regression passed: 3153 tests passed, 25 ignored, across 143 test binaries. The local regression build used CARGO_PROFILE_RELEASE_LTO=false and CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; source/build defaults and the released APK are unchanged. The APK remains the previously tested 0.7.0 build.
 The new Folder picker variant explicitly reports Android folder workflows unsupported.
 Flick inertia and press-stroke state are suppressed during touch navigation.
+
+## Alpha.3 touch tools (2026-10-13)
+
+One-shot Clone/Healing source sampling consumes the complete pointer gesture, including
+a duplicate Down on click release, so sampling never starts an accidental zero-offset
+stroke. The bottom tray exposes color sampling, history, tool browsing, brush size,
+selection modes and existing sticky modifiers. Layer rows now honor those modifiers.
+
+On the 0.7.0 release source: 1960 UI tests passed (10 ignored), including seven new
+touch tests; three pinch tests, host/cross clippy, layers and wasm passed. The release
+APK was installed on Lenovo TB378FC / Android 16. ADB verified clone, Undo/Redo,
+color sampling, brush size and selection add/subtract/deselect. The quick layout
+benchmark completed; no baseline was updated and tablet frame time was not measured.
+Crop/transform completion, polygon closure, fullscreen recovery and physical pinch
+feel still require device confirmation. [Screenshots and reproduction steps](../../docs/android-touch-controls.md).
