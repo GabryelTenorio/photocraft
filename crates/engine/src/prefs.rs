@@ -341,6 +341,14 @@ impl Default for Workspace {
     }
 }
 
+impl Workspace {
+    /// Preferences ▸ Workspace ▸ Enable Narrow Options Bar: the options bar drops to its compact
+    /// height, as in Photoshop, so the document gets more room (see `panels::options_bar`).
+    pub fn narrow_options_bar(&self) -> bool {
+        self.enable_narrow_options_bar
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Tools {
@@ -869,6 +877,15 @@ impl Default for TypePrefs {
     }
 }
 
+impl TypePrefs {
+    /// Preferences ▸ Type ▸ Missing Glyph Protection: with it on (the default, as in Photoshop),
+    /// glyphs the chosen face lacks fall back through the coverage fonts (#1909). The text engine
+    /// applies this in `Session::apply_prefs`.
+    pub fn missing_glyph_protection(&self) -> bool {
+        self.missing_glyph_protection
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct EnhancedControls {
@@ -994,6 +1011,10 @@ pub struct Preferences {
     /// differ from their defaults, saved as the user changes them and restored at launch, as
     /// Photoshop remembers each tool's options between sessions. JSON owned by the shell.
     pub tool_options: Value,
+    /// View › Extras, the View › Show items (Pixel Grid, Grid, Guides, …) and the View › Snap To
+    /// targets that differ from their defaults, saved as the user toggles them and restored at
+    /// launch, as Photoshop keeps them between sessions (#3762). JSON owned by the shell.
+    pub view_extras: Value,
     /// File › Scripts › Script Events Manager: event → script bindings.
     pub script_events: crate::automate_cmds::ScriptEvents,
 }
@@ -1030,12 +1051,9 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "general.colorPicker",
     "general.animatedZoom",
     "general.zoomResizesWindows",
-    "workspace.autoCollapseIconPanels",
     "workspace.autoShowHiddenPanels",
     "workspace.enableFloatingDocumentWindowDocking",
-    "workspace.enableNarrowOptionsBar",
     "fileHandling.saveInBackground",
-    "fileHandling.maximizePsdCompatibility",
     "performance.cacheLevels",
     "performance.effectCacheMb",
     "performance.legacyCompositing",
@@ -1045,7 +1063,6 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "plugIns.showExtensionPanels",
     "plugIns.allowScriptsToConnect",
     "plugIns.generatorEnabled",
-    "type.missingGlyphProtection",
     "type.textEngine",
     "type.recentFonts",
     "enhancedControls.scrubbySliderAcceleration",
@@ -1480,8 +1497,8 @@ impl Session {
         r
     }
 
-    /// Push engine-relevant preferences into live state: every document's history limit and
-    /// the layer-effect cache budget.
+    /// Push engine-relevant preferences into live state: every document's history limit, the
+    /// layer-effect cache budget and the text engine's missing-glyph protection.
     pub fn apply_prefs(&mut self) {
         let n = self.prefs().performance.history_states.max(1) as usize;
         let bytes = self.prefs().performance.history_budget_bytes();
@@ -1492,6 +1509,9 @@ impl Session {
             st.history.trim(&st.doc);
         }
         photocraft_compose::set_effect_cache_budget(budget << 20);
+        if let Ok(mut engine) = photocraft_text::shared().lock() {
+            engine.fonts.set_missing_glyph_protection(self.prefs().type_.missing_glyph_protection());
+        }
         crate::plugin_cmds::sync_prefs(self);
     }
 
@@ -1553,7 +1573,9 @@ impl Session {
     }
 
     /// Set one dotted path, routing `colorSettings.*` to the colour state.
-    fn set_pref(&mut self, path: &str, value: Value) -> std::result::Result<(), String> {
+    /// Batches defer colour validation until their complete candidate is staged. Returns
+    /// whether colour settings were touched, including whole-section/root-object updates.
+    fn set_pref(&mut self, path: &str, value: Value, validate_color: bool) -> std::result::Result<bool, String> {
         if let Some(rest) = path.strip_prefix("colorSettings") {
             let mut cur = serde_json::to_value(&self.color.settings).map_err(|e| e.to_string())?;
             let rest = rest.trim_start_matches('.');
@@ -1562,19 +1584,23 @@ impl Session {
             } else {
                 set_path(&mut cur, rest, value)?;
             }
-            self.color.settings = serde_json::from_value(cur).map_err(|e| format!("invalid value for `{path}`: {e}"))?;
-            crate::color_cmds::validate_settings(&self.color.settings)?;
+            let next = serde_json::from_value(cur).map_err(|e| format!("invalid value for `{path}`: {e}"))?;
+            if validate_color {
+                crate::color_cmds::validate_settings(&next)?;
+            }
+            self.color.settings = next;
             self.prefs.edit(|_| ());
-            return Ok(());
+            return Ok(true);
         }
         let mut next = self.prefs().clone();
+        let mut color_changed = false;
         if path.is_empty() || SECTIONS.iter().any(|(id, _)| *id == path) || matches!(path, "shortcuts" | "menus" | "toolbar") {
             // Whole section (or everything): merge the object key by key so each value is checked.
             let obj = value.as_object().ok_or_else(|| format!("`{path}` needs an object"))?;
             for (k, v) in obj {
                 let p = if path.is_empty() { k.clone() } else { format!("{path}.{k}") };
                 if path.is_empty() && k == "colorSettings" {
-                    self.set_pref("colorSettings", v.clone())?;
+                    color_changed |= self.set_pref("colorSettings", v.clone(), validate_color)?;
                     continue;
                 }
                 if v.is_object() && !p.starts_with("shortcuts") && !p.ends_with(".colors") && next.get(&p).is_some_and(|c| c.is_object()) {
@@ -1643,7 +1669,7 @@ impl Session {
             }
         }
         self.prefs.edit(|p| *p = next);
-        Ok(())
+        Ok(color_changed)
     }
 }
 
@@ -1677,12 +1703,21 @@ fn prefs_set(s: &mut Session, p: &Value) -> Result<Value> {
     }
     // All or nothing: validate against a scratch copy first.
     let (saved_prefs, saved_color) = (s.prefs().clone(), s.color.settings.clone());
+    let mut color_changed = false;
     for (path, v) in &changes {
-        if let Err(e) = s.set_pref(path, v.clone()) {
-            s.prefs.edit(|p| *p = saved_prefs);
-            s.color.settings = saved_color;
-            return Err(bad(cmd, e));
+        match s.set_pref(path, v.clone(), false) {
+            Ok(touched) => color_changed |= touched,
+            Err(e) => {
+                s.prefs.edit(|p| *p = saved_prefs);
+                s.color.settings = saved_color;
+                return Err(bad(cmd, e));
+            }
         }
+    }
+    if color_changed && let Err(e) = crate::color_cmds::validate_settings(&s.color.settings) {
+        s.prefs.edit(|p| *p = saved_prefs);
+        s.color.settings = saved_color;
+        return Err(bad(cmd, e));
     }
     // `colorSettings.blendTextGamma` lives in the compositor too, as `edit.colorSettings` sets it.
     photocraft_compose::psblend::set_text_gamma(s.color.settings.blend_text_gamma);
@@ -1702,7 +1737,7 @@ fn prefs_reset(s: &mut Session, p: &Value) -> Result<Value> {
             let defaults = serde_json::to_value(crate::color_cmds::ColorSettings::default()).map_err(|e| bad("prefs.reset", e.to_string()))?;
             let key = path.strip_prefix("colorSettings.").unwrap_or(path);
             let def = get_path(&defaults, key).cloned().ok_or_else(|| bad("prefs.reset", format!("unknown preference `{path}`")))?;
-            s.set_pref(path, def).map_err(|e| bad("prefs.reset", e))?;
+            s.set_pref(path, def, true).map_err(|e| bad("prefs.reset", e))?;
         }
         None => {
             s.color.settings = Default::default();
