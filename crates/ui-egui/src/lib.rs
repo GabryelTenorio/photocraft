@@ -30,6 +30,7 @@ mod brand;
 pub(crate) mod brush_cursor;
 pub mod brush_panel;
 pub mod brush_picker;
+pub mod brush_preset_dialog;
 pub mod brush_preview;
 pub mod brush_resize;
 pub mod brush_sections;
@@ -165,6 +166,7 @@ pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
 pub mod scrollbars;
+mod scrub_wrap;
 pub mod select_mask_view;
 pub mod served_fonts;
 pub mod shape_dialog;
@@ -179,6 +181,7 @@ pub mod smart_ui;
 pub mod snap_ui;
 pub(crate) mod solid_fill_ui;
 pub mod spring_tools;
+pub mod stack_dialog;
 pub mod state;
 pub mod stroke_constraint;
 pub mod stroke_trail;
@@ -1189,6 +1192,7 @@ impl PhotocraftApp {
             st.source_read_only = photocraft_io::affinity::is_affinity(bytes);
         }
         self.sync_views();
+        let warnings = file_open::with_missing_fonts(self, warnings);
         self.ui.status = crate::i18n::fmt(tl!("Opened {name}"), &[("name", name)]);
         self.ui.status_error = false;
         if camera_raw_ui::wants_open_dialog(self, &warnings) {
