@@ -219,6 +219,38 @@ fn delete_and_fill_selection_removes_the_object_in_one_step() {
 }
 
 #[test]
+fn content_aware_fill_on_an_empty_layer_samples_the_composite() {
+    let mut s = blob_session(8);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let empty = s.active().unwrap().active_layer.unwrap();
+    assert_eq!(px(&s, 30, 20)[3], 0.0, "the new layer has no paint");
+    let r = s.execute("edit.contentAwareFill", json!({"colorAdaptation": "none"})).unwrap();
+    assert!(r["filled"].as_u64().unwrap() > 0);
+    assert_eq!(s.active().unwrap().active_layer, Some(empty));
+    assert!(px(&s, 30, 20)[3] > 0.5, "the hole is filled from the layers underneath");
+    s.undo();
+    let missed = s.execute("edit.contentAwareFill", json!({"sampleAllLayers": false, "colorAdaptation": "none"})).unwrap();
+    assert!(missed["filled"].as_u64().unwrap() > 0);
+    assert!(px(&s, 30, 20)[3] < 0.05, "sampling only the empty layer leaves it empty");
+}
+
+#[test]
+fn content_aware_fill_on_an_empty_cmyk_layer_uses_the_layer_format() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 48, "height": 36, "mode": "cmyk", "background": "white"})).unwrap();
+    s.execute("select.rect", json!({"x": 16, "y": 12, "width": 12, "height": 10})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let before = px(&s, 20, 16);
+    assert!(before.iter().all(|c| *c < 0.05), "the new CMYK layer is empty: {before:?}");
+    s.execute("edit.contentAwareFill", json!({"colorAdaptation": "none"})).unwrap();
+    let v = px(&s, 20, 16);
+    assert_eq!(v.len(), before.len());
+    // White in the layer's CMYK is near zero ink with a covered alpha, not the compositor's RGBA.
+    assert!(v[..4].iter().all(|c| *c < 0.15), "CMYK ink stayed low: {v:?}");
+    assert!(v.last().copied().unwrap_or(0.0) > 0.5, "the hole is covered: {v:?}");
+}
+
+#[test]
 fn content_aware_fill_samples_photoshops_window() {
     // A 50 px selection samples the 200 px square centred on it (Photoshop 25.4's overlay);
     // at the canvas edge the square slides inwards. Edit › Fill uses the same window.
@@ -444,6 +476,27 @@ fn find_and_replace_across_type_layers() {
     assert_eq!(f2["found"]["text"], "world");
     assert_ne!(f2["found"]["layer"], f2["changed"]["layer"]);
     assert!(s.execute("edit.findAndReplaceText", json!({"find": ""})).is_err());
+}
+
+#[test]
+fn find_and_replace_change_rejects_a_layer_locked_after_the_find() {
+    // #4188: the found match's layer gets Lock All before Change; the text must stay.
+    let mut s = session(8);
+    let id = s.execute("type.create", json!({"text": "abc", "x": 2, "y": 12})).unwrap()["layer"].as_u64().unwrap();
+    // A second, unlocked type layer keeps the command enabled.
+    s.execute("type.create", json!({"text": "zzz", "x": 2, "y": 40})).unwrap();
+    let found = s.execute("edit.findAndReplaceText", json!({"find": "abc", "action": "find"})).unwrap();
+    assert_eq!(found["found"]["layer"].as_u64(), Some(id));
+    s.execute("layer.setProps", json!({"layer": id, "locked": true})).unwrap();
+    let history = s.active().unwrap().history.past_len();
+    let result = s.execute("edit.findAndReplaceText", json!({"find": "abc", "replace": "x", "action": "change"}));
+    assert!(matches!(&result, Err(EngineError::Other(message)) if message.contains("locked")), "{result:?}");
+    let text = match &s.active().unwrap().doc.layer(LayerId(id)).unwrap().content {
+        LayerContent::Text(t) => t.text.clone(),
+        _ => String::new(),
+    };
+    assert_eq!(text, "abc");
+    assert_eq!(s.active().unwrap().history.past_len(), history);
 }
 
 #[test]

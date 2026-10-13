@@ -136,8 +136,13 @@ fn hex3(s: &str) -> Option<[f32; 3]> {
 impl WebSettings {
     /// Settings from command parameters (missing keys keep the defaults; Photoshop's preset
     /// names such as "GIF 128 Dithered" or "JPEG High" are accepted as `"preset"`).
+    ///
+    /// Without a preset there is no matte, as in Photoshop's scripted Save for Web
+    /// (`ExportOptionsSaveForWeb` left at its defaults): a GIF or PNG-8 keeps the colour of its
+    /// partly transparent pixels instead of lightening them towards white (#4115). Formats
+    /// without transparency still go over white.
     pub fn from_params(p: &Value, cmd: &str) -> Result<Self> {
-        let mut st = WebSettings::default();
+        let mut st = WebSettings { matte: None, ..WebSettings::default() };
         if let Some(preset) = p.get("preset").and_then(Value::as_str) {
             st = preset_settings(preset).ok_or_else(|| bad(cmd, format!("unknown preset `{preset}`")))?;
         }
@@ -837,6 +842,21 @@ pub fn save_for_web_with_writer(s: &mut Session, p: &Value, write: &mut dyn FnMu
     save_for_web_impl(s, p, write, false)
 }
 
+/// Settings to seed the Save for Web dialog from on the next launch: `file_menu` is session
+/// state, so a complete export also writes the preferences' remembered dialog settings (like
+/// Fill, Liquify and the filter dialogs). The destination is per export, never remembered.
+fn remember_web_settings(s: &mut Session, cmd: &str, settings: &Value) {
+    let mut m = settings.clone();
+    if let Some(o) = m.as_object_mut() {
+        for k in ["path", "dir", "trustedSliceHtml"] {
+            o.remove(k);
+        }
+    }
+    s.prefs.edit(|p| {
+        p.dialogs.insert(cmd.to_string(), m);
+    });
+}
+
 fn save_for_web_impl(s: &mut Session, p: &Value, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, native_paths: bool) -> Result<Value> {
     let cmd = "file.export.saveForWebLegacy";
     if let Some(authorize) = s.authorize {
@@ -883,6 +903,7 @@ fn save_for_web_impl(s: &mut Session, p: &Value, write: &mut dyn FnMut(&str, &[u
     if let Some(path) = single.filter(|_| dir.is_none() && (all.len() == 1 || p.get("slices").is_none())) {
         let o = optimize(&buf.px, bw, wdoc.bounds(), &st, icc, xmp.as_deref(), dpi, false)?;
         write(path, &o.bytes)?;
+        remember_web_settings(s, cmd, &last_web);
         s.file_menu.last_web = Some(last_web);
         crate::automate_cmds::fire_event(s, "export");
         return Ok(json!({"files": [path], "bytes": o.bytes.len(), "width": o.width, "height": o.height, "colors": o.colors}));
@@ -973,6 +994,7 @@ fn save_for_web_impl(s: &mut Session, p: &Value, write: &mut dyn FnMut(&str, &[u
         write(&web_derived_path(&dir, &format!("{base}.html"), native_paths)?, page.as_bytes())?;
         html_path = Some(hp);
     }
+    remember_web_settings(s, cmd, &last_web);
     s.file_menu.last_web = Some(last_web);
     crate::automate_cmds::fire_event(s, "export");
     Ok(json!({"files": files, "html": html_path, "bytes": total, "slices": chosen.len(), "width": wdoc.size.width, "height": wdoc.size.height}))
@@ -1037,6 +1059,7 @@ fn quick_export(s: &mut Session, p: &Value) -> Result<Value> {
     );
     o.insert("convertToSrgb".into(), json!(prefs.convert_to_srgb));
     o.insert("transparency".into(), json!(true));
+    o.insert("matte".into(), json!("#ffffff"));
     match fmt.as_str() {
         "jpg" => {
             o.insert("format".into(), json!("jpeg"));
@@ -1445,7 +1468,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Save for Web (Legacy)…",
             &["File", "Export"],
             Some("Cmd+Alt+Shift+S"),
-            r##"{"preset":"GIF 128 Dithered|JPEG High|PNG-24|…"?,"format":"gif|png8|png24|jpeg|wbmp"="png24","palette":"perceptual|selective|adaptive|restrictive|exact|systemMac|systemWindows|uniform"="selective","colors":2..256=256,"colorTable":["#rrggbb",…]? (fixed opaque source palette, 1–256 entries; 255 with transparency),"colorTableEdits":{"0":"#rrggbb",…}? (replace entries after indexing; requires colorTable),"dither":"none|diffusion|pattern|noise"="diffusion","ditherAmount":0..100=88,"transparency":bool=true,"matte":"#rrggbb|none"="#ffffff","interlaced":bool=false,"webSnap":0..100=0,"quality":0..100=60,"progressive":bool=false,"optimized":bool=true,"embedIcc":bool=false,"metadata":"none|copyright|copyrightAndContact|all"="copyright","convertToSrgb":bool=true,"width"|"height"|"percent"? (image size),"resample":"bicubic|bilinear|nearest"?,"path":file? (whole image),"dir":folder? (one file per slice in images/),"imagesFolder":relative-folder?="images","html":bool=false,"trustedSliceHtml":bool=false (only for trusted documents; emit raw no-image cell HTML),"slices":"all|user"="all","numbers":[n]?} → no path/dir: {bytes,width,height,colors,colorTable,transparentIndex} estimate; else {files, html, bytes}"##,
+            r##"{"preset":"GIF 128 Dithered|JPEG High|PNG-24|…"?,"format":"gif|png8|png24|jpeg|wbmp"="png24","palette":"perceptual|selective|adaptive|restrictive|exact|systemMac|systemWindows|uniform"="selective","colors":2..256=256,"colorTable":["#rrggbb",…]? (fixed opaque source palette, 1–256 entries; 255 with transparency),"colorTableEdits":{"0":"#rrggbb",…}? (replace entries after indexing; requires colorTable),"dither":"none|diffusion|pattern|noise"="diffusion","ditherAmount":0..100=88,"transparency":bool=true,"matte":"#rrggbb|none"="none" (a preset's own: white; formats without transparency go over white),"interlaced":bool=false,"webSnap":0..100=0,"quality":0..100=60,"progressive":bool=false,"optimized":bool=true,"embedIcc":bool=false,"metadata":"none|copyright|copyrightAndContact|all"="copyright","convertToSrgb":bool=true,"width"|"height"|"percent"? (image size),"resample":"bicubic|bilinear|nearest"?,"path":file? (whole image),"dir":folder? (one file per slice in images/),"imagesFolder":relative-folder?="images","html":bool=false,"trustedSliceHtml":bool=false (only for trusted documents; emit raw no-image cell HTML),"slices":"all|user"="all","numbers":[n]?} → no path/dir: {bytes,width,height,colors,colorTable,transparentIndex} estimate; else {files, html, bytes}"##,
             has_doc,
             save_for_web
         ),
