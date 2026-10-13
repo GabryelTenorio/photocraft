@@ -335,29 +335,6 @@ fn rect_param(p: &Value, key: &str, cmd: &str) -> Result<Rect> {
     Ok(Rect::new(x, y, x.saturating_add(w.max(0)), y.saturating_add(h.max(0))))
 }
 
-/// Visible composite of `window`, in the active layer's channel count, so Content-Aware Fill
-/// can sample every layer and still write the active layer's format.
-fn composite_window(doc: &Document, window: Rect, n: usize) -> Vec<f32> {
-    let buf = photocraft_compose::render(doc, window);
-    let mut out = Vec::new();
-    if n == 0 {
-        return out;
-    }
-    out.reserve(buf.px.len().saturating_mul(n));
-    for px in &buf.px {
-        match n {
-            1 => out.push(px[0]),
-            2 => out.extend_from_slice(&[px[0], px[3]]),
-            3 => out.extend_from_slice(&px[..3]),
-            _ => {
-                out.extend_from_slice(px);
-                out.extend(std::iter::repeat_n(0.0, n - 4));
-            }
-        }
-    }
-    out
-}
-
 fn content_aware_fill(s: &mut Session, p: &Value) -> Result<Value> {
     content_aware_fill_as(s, p, "edit.contentAwareFill", "Content-Aware Fill")
 }
@@ -408,15 +385,19 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
         mirror: bool_or(p, "mirror", false),
         seed: p.get("seed").and_then(Value::as_u64).unwrap_or(1),
     };
-    // Photoshop's Content-Aware Fill workspace samples every visible layer. Without that, a
-    // new empty layer above the photo fills with nothing and still reports success (#4026).
-    let sample_all = bool_or(p, "sampleAllLayers", true);
     let output = str_or(p, "output", "current").to_string();
     if !matches!(output.as_str(), "current" | "new" | "duplicate") {
         return Err(bad(cmd, "`output` must be current|new|duplicate"));
     }
     let surf = doc.layer(id).and_then(|l| l.surface()).ok_or(EngineError::NoLayer(id))?;
     let fmt = surf.format();
+    // Photoshop's Sample All Layers checkbox is off unless the caller asks. When the active
+    // layer has no pixels in the window there is nothing to sample, so that case uses the
+    // visible composite (#4026). An explicit false still reads only this layer.
+    let sample_all = match p.get("sampleAllLayers").and_then(Value::as_bool) {
+        Some(v) => v,
+        None => surf.content_bounds().intersect(&window).is_empty(),
+    };
     let n = fmt.channels();
     // Refuse a window too large to read before allocating for it, whatever the sampling (#963).
     let (w, h) = crate::fill_cmds::window_size(window)?;
@@ -434,7 +415,14 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
             let cancel = || ctx.cancelled();
             let surf = doc.layer(id).and_then(|l| l.surface()).ok_or(EngineError::NoLayer(id))?;
             let img = if sample_all {
-                composite_window(&doc, window, n)
+                if cancel() {
+                    return Err(EngineError::Cancelled);
+                }
+                let region = crate::retouch_cmds::composite_region(&doc, None, crate::retouch_cmds::SampleLayers::All, window, fmt);
+                if cancel() {
+                    return Err(EngineError::Cancelled);
+                }
+                region.data
             } else {
                 read_window(surf, window, &cancel).ok_or(EngineError::Cancelled)?
             };
@@ -1169,7 +1157,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Content-Aware Fill…",
             ["Edit"],
             None,
-            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"sampleAllLayers":bool=true,"output":"current|new|duplicate","seed":u64=1}"##,
+            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"sampleAllLayers":bool=false,"output":"current|new|duplicate","seed":u64=1}"##,
             can_caf,
             content_aware_fill
         ),
