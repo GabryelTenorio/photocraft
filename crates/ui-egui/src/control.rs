@@ -12,7 +12,7 @@
 //!   change UI state; any other field is an error ([`UI_SET_FIELDS`])
 //! - `ui.dialog.open {kind, fields?}` (kinds: newDocument, about, layerStyle {effect?}, colorPicker {target: foreground|background}, command {command}) / `ui.dialog.set {dialog, field, value}` / `ui.dialog.confirm {dialog, wait?}` / `ui.dialog.cancel {dialog}`
 //! - `ui.dialog.apply {dialog}`: commit Preferences changes without closing the dialog
-//! - `ui.window.open {document?}` / `ui.window.close {window}`: extra document windows
+//! - `ui.window.open {document?}`: extra view; `ui.window.close {window}`: close that view, or a primary document through the stock unsaved-changes prompt
 //! - `ui.pointer {events: [{kind: down|move|up, x, y, pressure?, tiltX?, tiltY?, rotation?}], tool?, modifiers?, button?}`: drive the active tool in document coordinates (`button: "secondary"` opens the tool's canvas context menu (the pasteboard colour menu outside the image) or Brush Preset picker, or erases with Preferences › Tools › Right-click with painting tools = erase)
 //! - `ui.click {x, y, button?, count?}` / `ui.move {x, y}`: synthetic pointer input in screen points
 //!   (`count` at most [`MAX_CLICKS`])
@@ -924,9 +924,26 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
         }
         "ui.window.close" => {
             let Some(id) = u("window") else { return err("missing `window`") };
-            let before = app.ui.windows.len();
-            app.ui.windows.retain(|w| w.id != id);
-            if app.ui.windows.len() < before { ok(Value::Null) } else { err(format!("no window {id}")) }
+            let Some(window) = app.ui.windows.iter().find(|w| w.id == id).cloned() else { return err(format!("no window {id}")) };
+            if window.primary {
+                let Some(document) = app.session.documents().get(window.document).map(|d| d.doc.id) else {
+                    return err(format!("no document for window {id}"));
+                };
+                let Some(index) = crate::document_windows::index(app, document) else { return err(format!("no document for window {id}")) };
+                let params = json!({"document": index});
+                // Native/synthetic menu invocation already checks this policy when input is
+                // automated; direct requests must check it too, before parking a dirty close.
+                if !app.automation_input
+                    && let Some(authorize) = app.services.automation_command.as_ref()
+                    && let Err(error) = authorize("file.close", &params)
+                {
+                    return err(error);
+                }
+                wrap(crate::menus::invoke(app, ctx, "file.close", params))
+            } else {
+                app.ui.windows.retain(|w| w.id != id);
+                ok(Value::Null)
+            }
         }
         "ui.pointer" => {
             // Every field and event is validated before the first event runs, so a rejected call
