@@ -801,7 +801,7 @@ fn preview_mask(l: &photocraft_doc::Layer, b: photocraft_geom::Rect) -> Option<c
     let vector = l.vector_mask.as_ref().filter(|v| v.enabled);
     let linked_pixel = pixel.filter(|m| m.linked);
     if pixel.is_none_or(|m| m.linked)
-        && vector.is_some_and(|v| v.linked)
+        && vector.is_none_or(|v| v.linked)
         && let Some(surface) = photocraft_compose::masks::combined_mask(l, b)
     {
         return Some(PreviewMask { surface, density: 1.0 });
@@ -1501,6 +1501,13 @@ pub(crate) fn apply_mode_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2],
             s.quad = keep_convex(q0, q);
             s.pivot = carry_pivot(q0, s.quad, g.pivot0);
         }
+        // Rotate (#3941): a corner or edge turns about the reference point, the same drag as the
+        // zone just outside the box. Free Transform still scales from those handles.
+        (TransformMode::Rotate, Hit::Corner(_) | Hit::Edge(_)) => {
+            let mut g = g;
+            g.hit = Hit::Outside;
+            apply_drag(s, g, p, mods);
+        }
         // Skew: an edge slides only along itself (⌘⇧ in Free Transform).
         (TransformMode::Skew, Hit::Edge(_)) => {
             mods.command = true;
@@ -1935,7 +1942,10 @@ pub fn split(app: &mut PhotocraftApp, id: &str, at: Option<[f64; 2]>) -> Result<
 fn near_rotate_corner(t: &TransformSession, p: [f64; 2], tol: f64) -> bool {
     t.warp.is_none()
         && t.mode != TransformMode::Distort
-        && hit(t, p, tol) == Hit::Outside
+        && {
+            let h = hit(t, p, tol);
+            h == Hit::Outside || (t.mode == TransformMode::Rotate && matches!(h, Hit::Corner(_) | Hit::Edge(_)))
+        }
         && t.quad.iter().any(|q| (p[0] - q[0]).hypot(p[1] - q[1]) <= tol * 3.0)
 }
 
@@ -3854,6 +3864,25 @@ mod tests {
         assert_eq!(app.ui.transform.as_ref().unwrap().mode, TransformMode::Free);
     }
 
+    /// #3941: Edit › Transform › Rotate must rotate from a corner handle, not scale.
+    #[test]
+    fn rotate_mode_turns_the_box_from_a_corner_handle() {
+        let mut app = app_with_square(64, photocraft_geom::Rect::new(8, 8, 24, 24));
+        app.ui.extras.snap = false;
+        let ctx = egui::Context::default();
+        crate::menus::invoke(&mut app, &ctx, "edit.transform.rotate", json!({})).unwrap();
+        assert_eq!(app.ui.transform.as_ref().unwrap().mode, TransformMode::Rotate);
+        let q0 = app.ui.transform.as_ref().unwrap().quad;
+        press_drag(&mut app, q0[1], [q0[1][0], q0[1][1] + 16.0], egui::Modifiers::NONE);
+        let q = app.ui.transform.as_ref().unwrap().quad;
+        let w0 = (q0[1][0] - q0[0][0]).hypot(q0[1][1] - q0[0][1]);
+        let w = (q[1][0] - q[0][0]).hypot(q[1][1] - q[0][1]);
+        assert!((w - w0).abs() < 1e-6, "side length stays {w0}, got {w}: {q:?}");
+        assert!((q[0][1] - q[1][1]).abs() > 1.0, "the box rotated, not scaled: {q:?}");
+        crate::menus::invoke(&mut app, &ctx, "edit.transform.scale", json!({})).unwrap();
+        assert_eq!(app.ui.transform.as_ref().unwrap().mode, TransformMode::Free);
+    }
+
     fn near2(a: Option<[f64; 2]>, b: [f64; 2]) -> bool {
         a.is_some_and(|a| (a[0] - b[0]).abs() < 1e-9 && (a[1] - b[1]).abs() < 1e-9)
     }
@@ -4550,6 +4579,32 @@ mod tests {
         let (img, _) = preview_image(&st.doc, id, Some(&lifted), b, 4096, false);
         assert_eq!(texel_alpha(&img, 2, 4), 0, "masked");
         assert_eq!(texel_alpha(&img, 10, 4), 255, "revealed");
+    }
+
+    #[test]
+    fn preview_feathers_the_linked_mask() {
+        // A feathered pixel mask without a vector mask: the compositor softens the edge at x 16,
+        // so the moving texels must be soft there too, not hard until the commit (#4560).
+        let mut app = masked_app(true);
+        app.session
+            .edit("feather", |doc, a| {
+                doc.layer_mut(a.unwrap()).unwrap().mask.as_mut().unwrap().feather = 4.0;
+                Ok(())
+            })
+            .unwrap();
+        let st = app.session.active().unwrap();
+        let id = st.active_layer.unwrap();
+        let b = photocraft_geom::Rect::new(8, 8, 24, 24);
+        let (img, _) = preview_image(&st.doc, id, None, b, 4096, false);
+        // Texel x 7 = doc x 15, just inside the hidden half; texel x 8 = doc x 16, just revealed.
+        assert!(texel_alpha(&img, 7, 4) > 0, "the feather reaches into the hidden side");
+        assert!(texel_alpha(&img, 8, 4) < 255, "the feather reaches into the revealed side");
+        // The same values the compositor masks the committed layer with.
+        let m = photocraft_compose::masks::combined_mask(st.doc.layer(id).unwrap(), b).unwrap();
+        for x in [6usize, 7, 8, 9, 15] {
+            let want = (m.sample_channel(8 + x as i32, 12, 0) * 255.0).round() as i32;
+            assert!((i32::from(texel_alpha(&img, x, 4)) - want).abs() <= 1, "texel {x}");
+        }
     }
 
     #[test]
