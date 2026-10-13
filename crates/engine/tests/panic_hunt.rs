@@ -60,6 +60,8 @@ fn no_command_panics_or_hangs_on_adversarial_params() {
         json!({"x": 1e5, "y": -1e5, "radius": 300, "amount": 300, "angle": 1e5, "opacity": -100, "scale": -5, "gamma": -1}),
         json!({"points": [], "from": [0, 0], "to": [0, 0], "stops": [], "matrix": [0, 0, 0, 0, 0, 0], "colors": [], "name": "", "mode": "", "style": ""}),
     ];
+    // `gmic.list` may start a catalogue load with an installed G'MIC: keep its cache out of $HOME.
+    photocraft_engine::gmic_cmds::set_cache_dir(Some(std::env::temp_dir().join(format!("photocraft-panic-hunt-gmic-{}", std::process::id()))));
     // Commands whose success reaches outside the process: `file.print` and `file.printOneCopy`
     // spool to CUPS, so a fuzz run with `{}` printed a blank page on the default printer. Their
     // params are validated like everyone else's; the spooling itself is not fuzzed.
