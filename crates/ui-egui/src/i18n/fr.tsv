@@ -3096,6 +3096,13 @@ curves	Smooth	Lisser
 	Light Red	Rouge clair
 	Medium Blue	Bleu moyen
 	Light Gray	Gris clair
+	Float Panel Group	Détacher le groupe de panneaux
+	Dock Panel Group	Ancrer le groupe de panneaux
+	Move Panel Group	Déplacer le groupe de panneaux
+	Float Document View	Détacher la vue du document
+	Dock Document View	Ancrer la vue du document
+	Resize Document View	Redimensionner la vue du document
+	Dock	Ancrer
 	Object Finder	Outil de recherche d’objets
 	No object found there — drag a rectangle around it	Aucun objet trouvé ici — tracez un rectangle autour
 	Remove after each stroke	Supprimer après chaque trait

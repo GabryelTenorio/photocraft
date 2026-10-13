@@ -36,9 +36,9 @@ note = "See the prefs audit and BUG-204-*"
 [[item]]
 id = "UI-217-5"
 target = "Panel groups can float (menu + drag out of the dock) and are restored at launch"
-status = "missing"
+status = "done"
 issue = 217
-note = "No floating groups in dock.rs/panels.rs"
+note = "panel_docking.rs + workspace_dock.rs: floating individual panels and whole groups, four-sided docks, tab/split targets, header grips, workspace/launch persistence and cancellation; panel_docking_tests.rs (2026-10-12). Separate OS-window tear-off remains out of scope."
 
 [[item]]
 id = "UI-217-6"

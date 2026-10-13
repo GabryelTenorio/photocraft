@@ -3703,6 +3703,13 @@ navigator	Zoom	Zvětšení
 	Light Blue	Světle modrá
 	Light Red	Světle červená
 	Medium Blue	Středně modrá
+	Float Panel Group	Uvolnit skupinu panelů
+	Dock Panel Group	Ukotvit skupinu panelů
+	Move Panel Group	Přesunout skupinu panelů
+	Float Document View	Uvolnit zobrazení dokumentu
+	Dock Document View	Ukotvit zobrazení dokumentu
+	Resize Document View	Změnit velikost zobrazení dokumentu
+	Dock	Ukotvit
 	Object Finder	Hledání objektů
 	No object found there — drag a rectangle around it	Nebyl tam nalezen žádný objekt — přetáhněte kolem něj obdélník
 	Remove after each stroke	Odstranit po každém tahu

@@ -4047,3 +4047,12 @@ cameraRaw	Yellow	Sárga
 	Color Indicates:	A szín jelzése:
 	Ink Characteristics	Festék jellemzői
 	Solidity:	Fedőképesség:
+
+# Detachable panel groups and in-app document views
+	Float Panel Group	Panelcsoport lebegtetése
+	Dock Panel Group	Panelcsoport dokkolása
+	Move Panel Group	Panelcsoport áthelyezése
+	Float Document View	Dokumentumnézet lebegtetése
+	Dock Document View	Dokumentumnézet dokkolása
+	Resize Document View	Dokumentumnézet átméretezése
+	Dock	Dokkolás

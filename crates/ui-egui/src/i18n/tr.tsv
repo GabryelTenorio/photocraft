@@ -3858,3 +3858,12 @@ cameraData	Lens	Lens
 	Color Indicates:	Rengin Gösterdiği:
 	Ink Characteristics	Mürekkep Özellikleri
 	Solidity:	Doluluk:
+
+# Detachable panel groups and in-app document views
+	Float Panel Group	Panel Grubunu Yüzdür
+	Dock Panel Group	Panel Grubunu Sabitle
+	Move Panel Group	Panel Grubunu Taşı
+	Float Document View	Belge Görünümünü Yüzdür
+	Dock Document View	Belge Görünümünü Sabitle
+	Resize Document View	Belge Görünümünü Yeniden Boyutlandır
+	Dock	Sabitle

@@ -2778,6 +2778,13 @@ curves	Smooth	Suavizar
 	Light Red	Rojo claro
 	Medium Blue	Azul medio
 	Light Gray	Gris claro
+	Float Panel Group	Hacer flotante el grupo de paneles
+	Dock Panel Group	Acoplar grupo de paneles
+	Move Panel Group	Mover grupo de paneles
+	Float Document View	Hacer flotante la vista del documento
+	Dock Document View	Acoplar la vista del documento
+	Resize Document View	Cambiar tamaño de la vista del documento
+	Dock	Acoplar
 	Object Finder	Buscador de objetos
 	No object found there — drag a rectangle around it	No se encontró ningún objeto ahí; arrastra un rectángulo a su alrededor
 	Remove after each stroke	Eliminar después de cada trazo

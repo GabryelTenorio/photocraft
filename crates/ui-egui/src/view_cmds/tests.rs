@@ -144,7 +144,8 @@ fn arrange_layouts_floating_windows_and_matching() {
     let six = cells("sixUp", egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 600.0)), 3).unwrap();
     assert_eq!((six.len(), six[1].min.x), (6, 300.0));
     menu(&mut app, &ctx, "window.arrange.floatAllInWindows", json!({})).unwrap();
-    assert_eq!(app.ui.windows.len(), 3);
+    assert_eq!(app.ui.floating_documents.len(), 3);
+    assert!(app.ui.windows.is_empty());
     app.ui.views[2].zoom = 3.0;
     app.ui.views[2].center = [1.0, 2.0];
     menu(&mut app, &ctx, "window.arrange.matchAll", json!({})).unwrap();
@@ -153,6 +154,7 @@ fn arrange_layouts_floating_windows_and_matching() {
     menu(&mut app, &ctx, "window.arrange.consolidateAllToTabs", json!({})).unwrap();
     assert!(app.ui.windows.is_empty());
     assert_eq!(app.ui.view.arrange, "tabs");
+    assert!(app.ui.floating_documents.is_empty());
     menu(&mut app, &ctx, "window.arrange.newWindowForDocument", json!({})).unwrap();
     assert_eq!(app.ui.windows.len(), 1);
 }
@@ -359,18 +361,30 @@ fn lookup_export_dialog_uses_the_current_adjustment_selection() {
     assert!(direct["cube"].as_str().unwrap().contains("LUT_3D_SIZE 3"));
 }
 
-/// Float in Window takes the document and the screen position a dragged-off tab was dropped at
-/// (#3733); bad params are errors, not panics.
+/// Upstream screen-position parameters place the primary view inside the main viewport.
 #[test]
 fn float_in_window_takes_a_document_and_position() {
     let (mut app, ctx) = app_with(3);
-    let r = menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({"document": 1, "position": [1950.0, 40.5]})).unwrap();
-    let w = app.ui.windows.last().unwrap();
-    assert_eq!(r, json!({"window": w.id}));
-    assert_eq!((w.document, w.position), (1, Some([1950.0, 40.5])));
+    let id = app.session.documents()[1].doc.id.0;
+    app.ui.document_float_memory.insert(id, [10.0, 20.0, 480.0, 320.0]);
+    app.ui.views[1].zoom = 2.5;
+    app.ui.views[1].center = [20.0, 30.0];
+    app.ui.views[1].rotation = 0.4;
+    let camera = app.ui.views[1].clone();
+    let mut input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 800.0))), ..Default::default() };
+    input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap().inner_rect = Some(egui::Rect::from_min_size(egui::pos2(1000.0, 50.0), egui::vec2(1000.0, 800.0)));
+    ctx.begin_pass(input);
+    let r = menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({"document": 1, "position": [1060.0, 80.0]})).unwrap();
+    assert_eq!(r, json!({"window": id}));
+    assert_eq!(app.ui.floating_documents[&id], [60.0, 30.0, 480.0, 320.0]);
     assert_eq!(app.session.active_index(), Some(1));
+    assert_eq!(serde_json::to_value(&app.ui.views[1]).unwrap(), serde_json::to_value(&camera).unwrap());
     menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({})).unwrap();
-    assert_eq!(app.ui.windows.last().map(|w| (w.document, w.position)), Some((1, None)), "defaults: the active document, placed by the OS");
+    assert_eq!(app.ui.floating_documents.len(), 1, "default reuses the active primary view");
+    assert!(app.ui.windows.is_empty(), "no duplicate desktop view");
+    menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({"position": [9000, 9000]})).unwrap();
+    assert_eq!(app.ui.floating_documents[&id], [520.0, 480.0, 480.0, 320.0]);
+    let before = serde_json::to_value(&app.ui).unwrap();
     for bad in [
         json!({"document": 3}),
         json!({"document": -1}),
@@ -381,8 +395,30 @@ fn float_in_window_takes_a_document_and_position() {
         json!({"position": 5}),
     ] {
         assert!(menu(&mut app, &ctx, "window.arrange.floatInWindow", bad.clone()).is_err(), "{bad}");
+        assert_eq!(serde_json::to_value(&app.ui).unwrap(), before, "{bad}");
+        assert_eq!(app.session.active_index(), Some(1));
     }
-    assert_eq!(app.ui.windows.len(), 2, "rejected params open no window");
+    app.session.prefs.edit(|prefs| prefs.workspace_locked = true);
+    assert!(menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({"document":0})).is_err());
+    assert_eq!(serde_json::to_value(&app.ui).unwrap(), before);
+    let mut output = ctx.end_pass();
+    output.textures_delta.clear();
+}
+
+#[test]
+fn floating_screen_position_requires_a_known_screen_origin_and_preserves_preferred_size() {
+    let (mut app, ctx) = app_with(1);
+    let before = serde_json::to_value(&app.ui).unwrap();
+    let error = menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({"position":[20,30]})).unwrap_err();
+    assert!(error.contains("window.document.float"));
+    assert_eq!(serde_json::to_value(&app.ui).unwrap(), before);
+    let rect =
+        crate::document_docking::placement(&app, 0, egui::pos2(900.0, 900.0), egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(280.0, 200.0))).unwrap();
+    assert_eq!(rect, [0.0, 0.0, 800.0, 600.0], "viewport constraints do not overwrite remembered size");
+    menu(&mut app, &ctx, "window.arrange.floatInWindow", json!({})).unwrap();
+    assert_eq!(app.ui.floating_documents.len(), 1);
+    menu(&mut app, &ctx, "window.arrange.newWindowForDocument", json!({})).unwrap();
+    assert_eq!(app.ui.windows.len(), 1, "explicit native view command is preserved");
 }
 
 #[test]

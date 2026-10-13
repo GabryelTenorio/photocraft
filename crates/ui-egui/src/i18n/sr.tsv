@@ -4201,3 +4201,12 @@ shape	Appearance	Izgled
 	Color Indicates:	Boja označava:
 	Ink Characteristics	Karakteristike mastila
 	Solidity:	Punoća:
+
+# Detachable panel groups and in-app document views
+	Float Panel Group	Odvoji grupu panela
+	Dock Panel Group	Usidri grupu panela
+	Move Panel Group	Premesti grupu panela
+	Float Document View	Odvoji prikaz dokumenta
+	Dock Document View	Usidri prikaz dokumenta
+	Resize Document View	Promeni veličinu prikaza dokumenta
+	Dock	Usidri

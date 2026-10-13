@@ -3692,6 +3692,13 @@ curves	Smooth	Wygładź
 	Light Red	Jasnoczerwony
 	Medium Blue	Średnioniebieski
 	Light Gray	Jasnoszary
+	Float Panel Group	Odłącz grupę paneli
+	Dock Panel Group	Zadokuj grupę paneli
+	Move Panel Group	Przenieś grupę paneli
+	Float Document View	Odłącz widok dokumentu
+	Dock Document View	Zadokuj widok dokumentu
+	Resize Document View	Zmień rozmiar widoku dokumentu
+	Dock	Zadokuj
 	Object Finder	Wyszukiwanie obiektów
 	No object found there — drag a rectangle around it	Nie znaleziono tam obiektu — przeciągnij wokół niego prostokąt
 	Remove after each stroke	Usuwaj po każdym pociągnięciu

@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (source-content feedback, docked header detachment and anchored floating resize; in-app docking evidence and upstream reconciliation; Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -198,13 +198,13 @@ Paragraph; the rest open as in-app floating windows.
 
 | Behaviour | Status | Evidence |
 |---|---|---|
-| Panel groups float and tear off into OS windows | missing | UI-217-5, #1828, #1213 |
-| Drag panels to reorder and regroup | partial | #2272, #2305 |
+| Panel groups float and tear off into OS windows | partial | In-app floating/resizable groups and four-side docking implemented (2026-10-12); OS-window tear-off remains missing (UI-217-5, #1828, #1213) |
+| Drag panels to reorder and regroup | done | Individual tabs and header grips move panels/groups; tab merges, splits, four-side docking, cancellation, locking and saved layouts; live candidate-layout previews, independent floating-size memory, inner document docks, in-app document tear-off, bounded same-group insertion lines, source-content return highlights, docked-header group detachment and pointer-anchored floating panel/document resizing (`panel_docking_tests.rs`, 2026-10-13); #2272, #2305 |
 | Docked resize pushes the neighbour | partial | #2573 |
 | Color panel wheel and RGB/HSB/CMYK/Lab sliders | missing | UI-217-17, #2569 |
 | Window size and dock width remembered | done | UI-217-2 |
 | Command palette with recents | done | UI-217-7 |
-| Every preference takes effect | partial | 46 of 149 do nothing (scorecard) |
+| Every preference takes effect | partial | 26 of 156 do nothing (scorecard) |
 | UI scale presets | missing | UI-217-9, #2492 |
 | History snapshots: camera button, snapshot rows (click returns, rename, delete), `history.*Snapshot` commands | partial | `history_cmds.rs`, `snapshot_rows` in `panels.rs`; New Snapshot dialog, first snapshot and History Options to come (#2966) |
 | Themes: Photoshop's four greys | partial | five themes; #2661 |
@@ -216,6 +216,13 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | Source-group content highlights with explicit no-op returns; docked header detachment; anchored floating panel/document resizing at min/max and viewport boundaries; no parity percentages changed |
+| 2026-10-13 | minor | Reconciled upstream progress with in-app panel/document docking; retained native additional views and screen-position command compatibility; no parity percentages changed |
+| 2026-10-12 | minor | solid floating header backgrounds; live docking reflow with affected-group outlines; 40% drag-preview opacity; validation skipped at user request |
+| 2026-10-12 | minor | document-edge bands nest inside surrounding docks; 150 ms fades to 30% panel-preview opacity; validation skipped at user request |
+| 2026-10-12 | minor | live dragging, independent floating memory, inner document docks and in-app document tear-off |
+| 2026-10-12 | minor | bounded insertion lines for all same-group slots; floating header/border movement and edge resizing |
+| 2026-10-12 | minor | four-sided in-app panel docking and whole-group dragging |
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |

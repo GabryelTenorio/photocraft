@@ -495,7 +495,7 @@ pub struct DocWindow {
     pub view: View,
     pub open: bool,
     /// Where the window opens on screen (outer top-left, in points); `None` lets the OS place it.
-    /// A tab dragged off the tab strip opens its window where it was dropped (#3733).
+    /// Reserved for native additional views; primary tab tear-off stays inside PhotoCraft.
     #[serde(default)]
     pub position: Option<[f32; 2]>,
 }
@@ -1178,6 +1178,11 @@ pub struct UiState {
     pub views: Vec<View>,
     pub dialogs: Vec<Dialog>,
     pub windows: Vec<DocWindow>,
+    /// Primary document views floating inside PhotoCraft, keyed by stable document identity.
+    #[serde(default)]
+    pub floating_documents: std::collections::BTreeMap<u64, [f32; 4]>,
+    #[serde(default)]
+    pub document_float_memory: std::collections::BTreeMap<u64, [f32; 4]>,
     pub theme: crate::theme::ThemeKind,
     pub workspace: String,
     pub palette_open: bool,
@@ -1188,6 +1193,9 @@ pub struct UiState {
     /// Authoritative custom panel membership and placement; legacy fields are compatibility projections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docking: Option<craft_ui::docking::Layout<String>>,
+    /// Region membership and sizes around the canvas; old workspaces default to the right dock.
+    #[serde(default)]
+    pub dock_regions: crate::workspace_dock::DockRegions,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub docking_hidden: std::collections::BTreeMap<String, craft_ui::docking::Location<String>>,
     /// Invalidates in-flight gestures when a workspace is replaced.
@@ -1311,12 +1319,15 @@ impl Default for UiState {
             views: Vec::new(),
             dialogs: Vec::new(),
             windows: Vec::new(),
+            floating_documents: Default::default(),
+            document_float_memory: Default::default(),
             theme: crate::theme::ThemeKind::ProMedium,
             workspace: "Essentials".into(),
             palette_open: false,
             dock_tabs: DockTabs::default(),
             dock: Default::default(),
             docking: None,
+            dock_regions: Default::default(),
             docking_hidden: Default::default(),
             docking_generation: 0,
             docking_collapsed: Vec::new(),

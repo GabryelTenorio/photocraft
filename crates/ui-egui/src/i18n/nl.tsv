@@ -3854,6 +3854,13 @@ curves	Smooth	Vloeiend maken
 	Light Red	Lichtrood
 	Medium Blue	Middelblauw
 	Light Gray	Lichtgrijs
+	Float Panel Group	Paneelgroep zwevend maken
+	Dock Panel Group	Paneelgroep vastzetten
+	Move Panel Group	Paneelgroep verplaatsen
+	Float Document View	Documentweergave losmaken
+	Dock Document View	Documentweergave vastzetten
+	Resize Document View	Documentweergave vergroten of verkleinen
+	Dock	Vastzetten
 	Object Finder	Objectzoeker
 	No object found there — drag a rectangle around it	Daar is geen object gevonden — sleep er een rechthoek omheen
 	Remove after each stroke	Verwijderen na elke streek

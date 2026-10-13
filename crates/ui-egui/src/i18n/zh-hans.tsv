@@ -2703,6 +2703,13 @@ curves	Smooth	平滑
 	Light Red	浅红色
 	Medium Blue	中蓝色
 	Light Gray	浅灰色
+	Float Panel Group	浮动面板组
+	Dock Panel Group	停靠面板组
+	Move Panel Group	移动面板组
+	Float Document View	浮动文档视图
+	Dock Document View	停靠文档视图
+	Resize Document View	调整文档视图大小
+	Dock	停靠
 	Object Finder	对象查找程序
 	No object found there — drag a rectangle around it	那里未找到对象 — 请在其周围拖动矩形
 	Remove after each stroke	每次描边后移除

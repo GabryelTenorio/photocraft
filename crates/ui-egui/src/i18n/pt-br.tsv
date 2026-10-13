@@ -3884,6 +3884,13 @@ layerLabel	No Color	Sem cor
 	Light Red	Vermelho-claro
 	Medium Blue	Azul médio
 	Light Gray	Cinza-claro
+	Float Panel Group	Flutuar grupo de painéis
+	Dock Panel Group	Encaixar grupo de painéis
+	Move Panel Group	Mover grupo de painéis
+	Float Document View	Flutuar visualização do documento
+	Dock Document View	Encaixar visualização do documento
+	Resize Document View	Redimensionar visualização do documento
+	Dock	Encaixar
 	Object Finder	Localizador de objetos
 	No object found there — drag a rectangle around it	Nenhum objeto encontrado ali — arraste um retângulo ao redor dele
 	Remove after each stroke	Remover após cada traço

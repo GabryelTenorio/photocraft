@@ -3040,6 +3040,13 @@ curves	Smooth	Сгладить
 	Light Red	Светло-красный
 	Medium Blue	Средне-синий
 	Light Gray	Светло-серый
+	Float Panel Group	Открепить группу панелей
+	Dock Panel Group	Закрепить группу панелей
+	Move Panel Group	Переместить группу панелей
+	Float Document View	Отделить вид документа
+	Dock Document View	Закрепить вид документа
+	Resize Document View	Изменить размер вида документа
+	Dock	Закрепить
 	Object Finder	Поиск объектов
 	No object found there — drag a rectangle around it	Объект не найден — обведите его прямоугольником
 	Remove after each stroke	Удалять после каждого штриха

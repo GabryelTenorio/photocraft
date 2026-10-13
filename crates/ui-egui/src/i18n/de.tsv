@@ -2737,6 +2737,13 @@ curves	Smooth	Glätten
 	Light Red	Hellrot
 	Medium Blue	Mittelblau
 	Light Gray	Hellgrau
+	Float Panel Group	Bedienfeldgruppe lösen
+	Dock Panel Group	Bedienfeldgruppe andocken
+	Move Panel Group	Bedienfeldgruppe verschieben
+	Float Document View	Dokumentansicht lösen
+	Dock Document View	Dokumentansicht andocken
+	Resize Document View	Dokumentansicht skalieren
+	Dock	Andocken
 	Object Finder	Objektsucher
 	No object found there — drag a rectangle around it	Dort wurde kein Objekt gefunden — ziehen Sie ein Rechteck darum
 	Remove after each stroke	Nach jedem Strich entfernen

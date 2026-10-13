@@ -3704,6 +3704,13 @@ curves	Smooth	スムーズ
 	Light Red	ライトレッド
 	Medium Blue	ミディアムブルー
 	Light Gray	ライトグレー
+	Float Panel Group	パネルグループを分離
+	Dock Panel Group	パネルグループをドッキング
+	Move Panel Group	パネルグループを移動
+	Float Document View	ドキュメントビューをフローティング表示
+	Dock Document View	ドキュメントビューをドッキング
+	Resize Document View	ドキュメントビューのサイズを変更
+	Dock	ドッキング
 	Object Finder	オブジェクトファインダー
 	No object found there — drag a rectangle around it	そこにオブジェクトが見つかりません — 周囲に矩形をドラッグしてください
 	Remove after each stroke	ストロークごとに削除

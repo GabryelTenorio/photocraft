@@ -723,7 +723,7 @@ fn run(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, p: &Value) -> Res
         return Ok(json!(k));
     }
     if let Some(k) = id.strip_prefix("window.arrange.") {
-        return arrange(app, k, p);
+        return arrange(app, ctx, k, p);
     }
     match id {
         "view.extras" => {
@@ -805,7 +805,7 @@ pub(crate) fn float_window(app: &mut PhotocraftApp, doc: usize, offset: usize) -
     wid
 }
 
-fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String> {
+fn arrange(app: &mut PhotocraftApp, ctx: &egui::Context, k: &str, p: &Value) -> Result<Value, String> {
     if LAYOUTS.contains(&k) {
         app.ui.view.arrange = k.to_string();
         // Each document fits its new cell.
@@ -815,6 +815,7 @@ fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String>
     match k {
         "consolidateAllToTabs" => {
             app.ui.view.arrange = "tabs".into();
+            crate::document_docking::consolidate(app);
             app.ui.windows.clear();
             Ok(json!({"arrange": "tabs"}))
         }
@@ -823,7 +824,7 @@ fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String>
             Ok(json!({"window": float_window(app, doc, 0)}))
         }
         // Optional `document` (index; default the active one) and `position` (`[x, y]`, the
-        // window's screen position in points): dragging a tab off the tab strip uses both (#3733).
+        // desired screen position in points). The primary view stays inside PhotoCraft.
         "floatInWindow" => {
             let doc = match p.get("document") {
                 None | Some(Value::Null) => app.session.active_index().ok_or("no document")?,
@@ -836,16 +837,30 @@ fn arrange(app: &mut PhotocraftApp, k: &str, p: &Value) -> Result<Value, String>
                 None | Some(Value::Null) => None,
                 Some(v) => Some(screen_position(v).ok_or("position must be [x, y] in points")?),
             };
-            let wid = float_window(app, doc, 0);
-            if let Some(w) = app.ui.windows.iter_mut().find(|w| w.id == wid) {
-                w.position = position;
-            }
+            let rect = if let Some(position) = position {
+                let origin = ctx
+                    .input(|i| i.viewport().inner_rect)
+                    .filter(|r| r.is_finite())
+                    .ok_or("screen origin unavailable; use window.document.float with local x/y geometry")?
+                    .min;
+                let local = egui::pos2(position[0], position[1]) - origin.to_vec2();
+                Some(crate::document_docking::placement(app, doc, local, ctx.content_rect())?)
+            } else {
+                None
+            };
+            let id = crate::document_docking::detach(app, doc, rect)?;
             app.session.set_active(doc);
-            Ok(json!({"window": wid}))
+            Ok(json!({"window": id}))
         }
         "floatAllInWindows" | "cascade" => {
             let n = app.session.documents().len();
-            let ids: Vec<u64> = (0..n).map(|d| float_window(app, d, d)).collect();
+            if app.session.prefs().workspace_locked {
+                return Err("workspace is locked".into());
+            }
+            if n > 64 {
+                return Err("too many floating document views".into());
+            }
+            let ids: Vec<u64> = (0..n).map(|d| crate::document_docking::detach(app, d, None)).collect::<Result<_, _>>()?;
             Ok(json!({"windows": ids}))
         }
         "matchZoom" | "matchLocation" | "matchRotation" | "matchAll" => {
@@ -1146,6 +1161,7 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
         let r = app.run(id, params.clone());
         if r.is_ok() {
             app.ui.views = if id == "file.closeAll" { Vec::new() } else { keep.into_iter().collect() };
+            crate::document_docking::consolidate(app);
             app.ui.windows.clear();
             app.sync_views();
         }

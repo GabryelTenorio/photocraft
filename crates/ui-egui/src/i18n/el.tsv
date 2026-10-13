@@ -3792,6 +3792,13 @@ curves	Smooth	Εξομάλυνση
 	Light Red	Ανοιχτό κόκκινο
 	Medium Blue	Μεσαίο μπλε
 	Light Gray	Ανοιχτό γκρι
+	Float Panel Group	Αποδέσμευση ομάδας πάνελ
+	Dock Panel Group	Αγκύρωση ομάδας πάνελ
+	Move Panel Group	Μετακίνηση ομάδας πάνελ
+	Float Document View	Αποδέσμευση προβολής εγγράφου
+	Dock Document View	Προσάρτηση προβολής εγγράφου
+	Resize Document View	Αλλαγή μεγέθους προβολής εγγράφου
+	Dock	Προσάρτηση
 	Object Finder	Εύρεση αντικειμένων
 	No object found there — drag a rectangle around it	Δεν βρέθηκε αντικείμενο εκεί — σύρετε ένα ορθογώνιο γύρω του
 	Remove after each stroke	Αφαίρεση μετά από κάθε πινελιά

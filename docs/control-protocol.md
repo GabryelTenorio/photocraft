@@ -550,8 +550,13 @@ layer names. Selection is captured before opening the dialog; an unselected laye
 ## Shared panel docking
 
 Panel arrangements support tab grouping and reordering, horizontal and vertical splits,
-and movable, resizable floating groups inside the application window. Drag a panel tab,
-or use its context menu. Floating groups remain within the application viewport.
+and movable, resizable floating groups inside the application window. Drag a panel tab
+to move one panel, or a header grip to move the whole group. Drop on a tab strip to join,
+on a group edge to split, or at an edge of the workspace to dock left, right, top or
+bottom. Top/bottom regions span the workspace width; left/right regions share the middle
+band with the protected document canvas. Accent previews show the destination. Floating
+groups remain within the application viewport; separate desktop windows are not supported.
+Escape, focus loss and workspace replacement cancel unfinished docking gestures.
 
 The shared layout begins with the existing workspace on the first docking operation.
 Workspace saves retain its groups, active tabs, split sizes, floating geometry, and the
@@ -561,8 +566,11 @@ positions of hidden panels. Resetting a built-in workspace restores its default 
   `zone` is `tab` (default), `center`, `left`, `right`, `top`, or `bottom`; `before` reorders
   tabs by panel ID. The destination must already be visible.
 - `window.panel.float {panel, x?, y?, width?, height?}` detaches a panel.
-- `window.panel.dock {panel, anchor?, zone?, before?}` returns a panel to its previous
-  dock placement when possible, or to the supplied destination.
+- `window.panel.dock {panel, anchor?, zone?, before?, side?}` returns a panel to its previous
+  dock placement when possible, or to the supplied destination. `side` is `left`, `right`,
+  `top` or `bottom` and creates an independent group on that side. `window.panel.move`
+  also accepts `side`. A side destination cannot be combined with `anchor`, `before`
+  or `zone`; omit it when joining/splitting an existing group.
 - `window.panel.activate {panel}` reveals and selects a panel, restoring its saved
   position when possible. `window.panel.close {panel}` hides it.
 
@@ -572,6 +580,23 @@ invalid destinations return an error without changing the arrangement.
 Lock Workspace prevents moving, detaching, and closing panels; activating a panel remains available.
 
 `window.panel.layout {action}` also accepts the shared, externally tagged action schema.
+
+`window.panel.move {panel, operation:"insertBetween", before, after}` inserts a panel
+between neighboring split children; `window.panel.group` with the same parameters moves its
+whole group, preserving tab order and selection. `window.panel.dock` and `window.panel.layout`
+also accept this operation. Neighbors are stable visible panel IDs in the same dock region,
+ordered top-to-bottom or left-to-right. No new command IDs are added. These commands require
+current rendered host geometry, reject other destination parameters and fail atomically on
+invalid neighbors, locked workspaces or insufficient minimum space.
+
+Pointer drops within 8 logical pixels of an internal divider use the same operation. Visible
+tab strips retain priority; outer workspace/document-edge bands remain unchanged. Source
+removal is measured first, then the incoming group receives one third of the combined extent
+after dividers, constrained by minimum/maximum sizes. Remaining space follows the neighbors'
+previous proportions. Both neighboring strips stay fixed during preview; animated bodies and
+orange outlines show the candidate. The accent insertion line is raised above header and drag
+overlays, including unchanged tab positions. Separate floating panel windows are not divider
+destinations; docked groups inside floating document hosts are supported.
 For example, `{"action":{"MoveFloating":{"panel":"properties","rect":[44,66,360,450]}}}`
 updates a floating group's position and size; `{"action":{"ResizeSplit":{"path":[],"size":{"Ratio":0.35}}}}`
 resizes the root divider (`false`/`true` path entries select first/second children).
@@ -599,3 +624,121 @@ dock target. The panel menu and icon rail remain
 available in custom workspaces. `window.panel.<id> {show:true}` always reveals, selects
 and expands the panel, including when another tab is selected. Workspace snapshots
 retain custom collapse settings and Timeline visibility.
+
+### Four-sided panel workspaces
+
+`window.panel.group {panel, operation:"float", x?, y?, width?, height?}` detaches
+all tabs in the current group while retaining their order and active tab.
+`window.panel.group {panel, operation:"dock", side:"left|right|top|bottom"}` docks
+the whole group on a workspace side. `operation:"move"` also accepts `side`.
+Without a side, group `dock` accepts an existing panel `anchor`, or uses its remembered
+side. Group Up/Down operate within the current dock region.
+
+`window.panel.layout {side:"left|right|top|bottom", size:points}` changes a region's
+preferred width (left/right) or height (top/bottom), between 80 and 4096 logical points.
+The renderer constrains actual sizes to the available space and panel/canvas minima.
+Existing `ResizeSplit` paths continue to address the canonical panel tree in `docking`;
+synthetic region dividers are addressed by `side`, not by tree path. Nested dividers also
+include their `band` identity; resize requests validate the band's host and side.
+
+`ui.inspect` exposes `dockRegions`: `enabled`, `sides` (panel ID to side), and `sizes`
+(left/right widths, top/bottom heights). `docking` retains the shared panel tree and
+floating groups. Region membership stays with floating/hidden panels for restoration.
+Workspace saves and Remember Workspace Changes persist both values. Old workspaces
+without `dockRegions` keep their existing right dock; Reset Workspace restores defaults.
+
+Dock previews measure the validated candidate arrangement using the renderer's sizing
+rules, including saved dock sizes, panel/canvas minimums and space released by the source.
+Workspace-edge destinations take precedence over group destinations, except when reordering
+inside the source group's tab strip; document-edge drops preview an inner document-area
+dock. The moving panel UI fades over 150 ms to 40% opacity (60% transparency) over any
+eligible panel tab strip and back to full opacity elsewhere; insertion lines and destination highlights retain their normal opacity.
+Document tab strips are unaffected. Same-group destinations highlight the content area in the accent color,
+leaving the tab strip clear; strip targets also show a bounded insertion line, including unchanged positions.
+Returning to the source body is an explicit no-op and never detaches the tab. Unchanged releases preserve
+position. Floating groups move from the grip, empty header or top border; their left, right
+and bottom edges and both bottom corners resize within panel and viewport limits. Workspace
+locking blocks both movement and resizing. The top border retains the normal mouse pointer.
+Stationary floating panels paint a complete opaque theme background beneath the top border and
+header, including themes whose tab-strip color is transparent. Only the intentional moving
+preview becomes translucent.
+
+Dragging renders the panel UI once with controls disabled, leaving the source body filled
+with its theme background. Docking candidates temporarily resize/reposition existing panel UI
+and the document area, with 2-point orange/amber theme-warning outlines around affected existing
+groups. Incoming destination highlights retain the accent color. The dragged content appears
+only in the moving preview; its reserved destination is background-filled. Source and receiving
+groups keep their remaining existing content selected during preview.
+
+Panel/document bounds and their orange outlines ease between preview sizes over 150 ms.
+Changing destinations continues from the current displayed geometry; leaving a destination
+or cancelling eases back. Release commits the measured candidate immediately while its visual
+transition finishes. The incoming accent highlight stays at the final destination. Controls
+remain disabled during settling, and ordinary panel resizing keeps its immediate response.
+
+When joining or splitting an existing panel group, its receiving tab strip stays at its
+authoritative position and width while only its content previews the resize. Existing tab
+slots, order and overflow stay fixed; insertion feedback and drop detection use those same
+slots. The themed strip paints above preview content, and strip hits win over coincident edge
+targets. Incoming tabs appear on commit; the strip then eases into its final position over
+150 ms. Cancellation keeps its original header while content returns. Other groups retain
+their existing preview animation; document tab strips and docking zone sizes are unchanged.
+
+Live layouts are presentation-only: authoritative drag targets remain stable, preview controls
+are disabled, and no temporary panel sizes, floating memory or document cameras are saved.
+Insertion lines follow the measured displayed strip for cross-group joins. Same-group reorder
+feedback highlights only the source content area and shows its bounded insertion line, with
+no live reflow or orange outlines. Destination feedback and release share one validated
+candidate; Escape, focus loss, locking and workspace
+changes discard the display without committing.
+
+Panel side commands also accept `scope:"workspace"|"document"` (default `workspace`).
+Document scope without `documentView` addresses the main document area. With a floating
+`documentView` identity it addresses that in-app document window. Region resizing accepts
+the same scope and identity. Anchored joins/splits inherit the destination group's host and band.
+Side docking additionally accepts `adjacent:true` with document scope to create a new innermost
+band around the remaining document rectangle, preserving surrounding panels. Omission keeps
+the existing side-region command behavior. Document-edge gestures use this option on all four sides.
+The outermost 12 logical pixels of the workspace select outer docking; the document edge has a
+36-point inner hit band, leaving the next 24 points for document docking where edges coincide.
+A bottom document-edge drop spans the remaining document width; the outer bottom row spans
+the workspace. Preview and release measure and commit the same candidate arrangement.
+`dockRegions` additionally exposes `hosts`, `documentSizes`, `viewSizes` and
+`bands` (panel ID to nesting order, zero for legacy regions), `bandSizes` (band to preferred
+extent), `floatingMemory` (panel ID to `[x,y,width,height]`) and `dockReturns` (last docked
+locations, retained independently of hidden floating locations). Floating dimensions are independent
+of dock dimensions; moving/resizing a floating group records the geometry for its members.
+Named workspaces convert session-specific hosts to the main document area.
+
+`window.document.float {document?, documentView?, x?, y?, width?, height?}` detaches the
+primary document view inside PhotoCraft. `document` is the session index; `documentView`
+is the stable document ID returned by the command. Omit both to target the active document.
+`window.document.geometry` accepts the same target/geometry and requires an existing
+floating view. Sizes must be 320–4096 by 240–4096 logical points.
+`window.document.dock {document?, documentView?}` returns its view to the document tab
+strip. `ui.inspect.floatingDocuments` maps stable document identities to preferred rectangles.
+Float in Window / Float All use these in-app views; New Window for Document retains its
+additional native desktop view. Main-app panels stay in the main app on detachment. Panels
+docked inside a floating document move with that window and return to the main document
+area when it redocks or closes. Closing a primary document uses the normal save guard.
+Separate desktop-window tear-off by dragging remains unfinished.
+
+`window.arrange.floatInWindow` also accepts upstream-compatible optional `document`
+(zero-based index; defaults to the active document) and `position: [x, y]` (screen
+coordinates in logical points). It detaches the primary view inside PhotoCraft,
+converts the position to main-window coordinates and keeps its header reachable,
+retaining its independently remembered size. Explicit screen positions require a
+known viewport screen origin; otherwise use `window.document.float` with local
+`x`/`y` geometry. Invalid parameters and locked workspaces leave the layout and
+active document unchanged. New Window for Document remains an additional native view.
+
+Docked groups can detach from empty header space or their top 4 logical pixels. All tabs
+in that group move together, preserving order and selection; neighboring split groups stay
+in place. Menu, overflow and resize controls retain their own hit targets. The top border
+uses the normal pointer. These gestures use the existing whole-group commands.
+
+Floating panel and document resize handles follow absolute pointer positions with a captured
+grab offset. Opposite edges remain fixed. At minimum/maximum sizes and viewport boundaries,
+the edge stops until the cursor re-enters its valid range; reversal outside the range does
+not resize or translate the window. Viewports unable to fit the minimum suspend resizing
+without overwriting preferred dimensions. Keyboard resizing and resize cursors are preserved.

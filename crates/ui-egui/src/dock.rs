@@ -529,6 +529,18 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
                 crate::panel_docking::legacy_tab(app, &mut child, panel, response);
             }
         }
+        if let Some(panel) = tabs.get(sel) {
+            crate::panel_docking::legacy_group(app, &mut child, panel, &resp.strip);
+            let right = resp.chevron.map_or(resp.menu.rect.left(), |chevron| chevron.left());
+            let border = Rect::from_min_max(
+                pos2(rect.left(), resp.menu.rect.top()),
+                pos2(right.max(rect.left()), (resp.menu.rect.top() + 4.0).min(resp.menu.rect.bottom())),
+            );
+            let response =
+                child.interact(border, child.id().with(("dock-group-border", g.key())), egui::Sense::drag()).on_hover_cursor(egui::CursorIcon::Default);
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !locked && child.is_enabled(), tl!("Move Panel Group")));
+            crate::panel_docking::legacy_border(app, &mut child, panel, &response);
+        }
         strips.push(StripRects {
             group: g,
             area: Rect::from_min_max(pos2(rect.left(), resp.menu.rect.top()), pos2(resp.menu.rect.left(), resp.menu.rect.bottom())),
@@ -633,7 +645,8 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
         });
         // Splitter in the gap below this group: resizes it, pushing the neighbouring groups.
         if i + 1 < rects.len() && !collapsed && rects.iter().skip(i + 1).any(|(n, _)| !app.ui.dock.is_collapsed(*n)) {
-            let gap = Rect::from_min_size(pos2(rect.left(), rect.bottom()), vec2(rect.width(), GAP)).expand2(vec2(0.0, 2.0));
+            // Leave the following group's top-border drag band reachable.
+            let gap = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 2.0), pos2(rect.right(), rect.bottom() + GAP));
             let sresp = ui.interact(gap, ui.id().with(("dock-splitter", g.key())), Sense::drag());
             if sresp.hovered() || sresp.dragged() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -792,7 +805,7 @@ fn resize(layout: &mut DockLayout, heights: &[(Group, f32)], i: usize, dy: f32) 
 
 /// What `prefs.panelLayout` holds: the live layout and open panels.
 fn snapshot(app: &PhotocraftApp) -> Value {
-    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
+    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockRegions": app.ui.dock_regions.portable(), "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
 }
 
 /// Remember the layout in the preferences once the user lets go of the mouse (Workspace ›
@@ -827,11 +840,31 @@ pub fn restore(app: &mut PhotocraftApp) {
 /// (a workspace or `panelLayout`). Missing or invalid dock parts are left alone; old
 /// layouts without Timeline visibility restore it closed.
 pub fn apply(app: &mut PhotocraftApp, v: &Value) {
+    crate::document_docking::consolidate(app);
     app.ui.docking_collapsed = v.get("dockingCollapsed").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.dock_regions = v
+        .get("dockRegions")
+        .and_then(|value| serde_json::from_value::<crate::workspace_dock::DockRegions>(value.clone()).ok())
+        .filter(crate::workspace_dock::DockRegions::valid)
+        .unwrap_or_default();
     app.ui.docking_reveal = None;
     app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
     app.ui.docking_hidden = v.get("dockingHidden").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
     app.ui.docking = v.get("docking").and_then(|d| serde_json::from_value(d.clone()).ok()).filter(crate::panel_docking::valid);
+    if v.get("dockRegions").and_then(|regions| regions.get("dockReturns")).is_none() {
+        for (panel, location) in &app.ui.docking_hidden {
+            if crate::panel_docking::normalize(panel).is_some() && location.floating.is_none() {
+                app.ui.dock_regions.dock_returns.entry(panel.clone()).or_insert_with(|| location.clone());
+            }
+        }
+    }
+    if let Some(layout) = &app.ui.docking {
+        for group in &layout.floating {
+            for panel in &group.panels {
+                app.ui.dock_regions.floating_memory.entry(panel.clone()).or_insert(group.rect);
+            }
+        }
+    }
     if let Some(mut p) = v.get("panels").and_then(|p| serde_json::from_value::<Panels>(p.clone()).ok()) {
         // The embedding host owns these flags, including for layouts that serialize them.
         p.menu_bar = app.ui.panels.menu_bar;

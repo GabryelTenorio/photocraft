@@ -1641,7 +1641,8 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Even legacy destinations must discard gestures captured by an earlier workspace.
-    let customized = crate::panel_docking::show(app, ui);
+    let workspace = crate::panel_docking::workspace_presentation(app, ui.ctx());
+    let customized = workspace || crate::panel_docking::show(app, ui);
     let t = Tokens::get(ui.ctx());
     let p = app.ui.panels.clone();
     if t.pro && !customized {
@@ -1650,7 +1651,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Narrow icon rail, unless an embedding app hides it: shows, expands or collapses panel groups.
     if p.rail {
         let (rw, rb) = if t.pro { (36.0, 28.0) } else { (44.0, 32.0) };
-        crate::direction::end_panel("rail")
+        let rail = crate::direction::end_panel("rail")
             .resizable(false)
             .exact_size(rw)
             .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(4, 8)))
@@ -1681,9 +1682,13 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     }
                 }
             });
+        ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("photocraft-icon-rail-width"), rail.response.rect.width()));
     }
     if !t.pro && !customized {
         dock_panels(app, ui, &p, &t);
+    }
+    if workspace {
+        crate::panel_docking::show(app, ui);
     }
     crate::dock::persist(app, ui.ctx());
 }

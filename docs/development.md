@@ -34,6 +34,13 @@ building locally; the downloaded app is still subject to Windows application-con
 
 ## Build and run
 
+On Windows, double-click `run-photocraft.bat` in the repository root to build and open
+the current source in release mode. The first build may take several minutes; later
+launches reuse Cargo's build cache. You can also drop an image onto the batch file,
+or pass image paths and app options to it from a terminal. Build failures stay visible
+in the console. The launcher finds Rust on PATH, in `CARGO_HOME`, or in the default
+user installation; the Windows source-build prerequisites above still apply.
+
 ```sh
 cargo run --release -p photocraft -- path/to/image.psd      # desktop app
 cargo run --release -p photocraft -- --control 7878 --control-token-file .private/control.token \

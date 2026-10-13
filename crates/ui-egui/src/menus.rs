@@ -25,6 +25,9 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     // Right-click the options bar's tool icon (#2825); `tool.resetAll` asks first.
     ("tool.reset", "Reset Tool", &[], None),
     ("tool.resetAll", "Reset All Tools", &[], None),
+    ("window.document.float", "Float Document View", &[], None),
+    ("window.document.dock", "Dock Document View", &[], None),
+    ("window.document.geometry", "Resize Document View", &[], None),
     ("window.panel.group", "Change Panel Group", &[], None),
     ("window.panel.layout", "Change Panel Layout", &[], None),
     ("window.panel.move", "Move Panel", &[], None),
@@ -185,6 +188,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if id == "image.crop" && crate::crop_ui::pending(app) {
         crate::canvas::commit_crop(app);
         return Ok(json!({"committed": true}));
+    }
+    if let Some(result) = crate::document_docking::command(app, id, &params) {
+        return result;
     }
     if let Some(result) = crate::panel_docking::command(app, id, &params) {
         return result;
@@ -744,6 +750,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     }
     match id {
         "window.panel.activate" | "window.panel.layout" => true,
+        "window.document.float" | "window.document.dock" | "window.document.geometry" => {
+            !app.session.prefs().workspace_locked && app.session.active_index().is_some()
+        }
         "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
         "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
         i if i.starts_with("file.openRecent.") => true,
@@ -902,7 +911,7 @@ pub(crate) fn reveal_label() -> &'static str {
 /// Reuse the existing translated PNG sentence, so dynamic formats work in every UI language.
 fn translated_menu_label(lang: crate::i18n::Lang, item: &MenuItem) -> String {
     // A document's name is shown as it is.
-    if item.id.starts_with(DOCUMENT_ITEM) {
+    if item.id.strip_prefix(DOCUMENT_ITEM).is_some_and(|suffix| suffix.parse::<usize>().is_ok()) {
         return item.label.clone();
     }
     if item.id == "file.export.quickExportAsPng"
@@ -1520,6 +1529,9 @@ pub fn apply_workspace(app: &mut PhotocraftApp) {
     app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
     app.ui.docking = None;
     app.ui.docking_hidden.clear();
+    app.ui.dock_regions = Default::default();
+    app.ui.floating_documents.clear();
+    app.ui.document_float_memory.clear();
     app.ui.docking_collapsed.clear();
     app.ui.dock_tabs = Default::default();
     let p = &mut app.ui.panels;

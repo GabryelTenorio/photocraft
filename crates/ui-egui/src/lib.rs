@@ -74,6 +74,7 @@ pub mod discard_ui;
 pub mod distort_ui;
 pub mod doc_props_ui;
 pub mod dock;
+mod document_docking;
 pub mod duplicate_layer_ui;
 pub mod edit_history;
 pub mod egui_fonts;
@@ -223,6 +224,7 @@ pub mod wheel_nav;
 pub mod wide_angle_ui;
 pub mod widgets;
 pub mod work_area;
+pub mod workspace_dock;
 pub mod workspace_ui;
 pub mod zoom_levels;
 pub mod zoom_tool;
@@ -594,6 +596,7 @@ pub struct PhotocraftApp {
     fonts_ready: bool,
     /// Screen rect of the main canvas last frame (for overlays and the navigator).
     pub last_canvas_rect: egui::Rect,
+    pub(crate) docking_geometry: std::collections::BTreeMap<workspace_dock::DockHost, panel_docking::HostGeometry>,
     /// Physical pixels per egui point of the canvas last frame (`ctx.pixels_per_point`, which
     /// folds in both the display scale and Interface › UI Scale). The canvas maps document pixels
     /// to physical pixels, so point-space geometry divides the view zoom by this (see
@@ -798,6 +801,7 @@ impl PhotocraftApp {
             last_window_title: String::new(),
             fonts_ready: false,
             last_canvas_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0)),
+            docking_geometry: std::collections::BTreeMap::new(),
             ppp: 1.0,
             drop_canvas_rect: None,
             tab_strip: None,
@@ -976,6 +980,9 @@ impl PhotocraftApp {
         {
             authorize(id, &params)?;
         }
+        if let Some(result) = document_docking::command(self, id, &params) {
+            return result;
+        }
         if let Some(result) = panel_docking::command(self, id, &params) {
             return result;
         }
@@ -1135,7 +1142,7 @@ impl PhotocraftApp {
             let new_docs: Vec<usize> = ids.iter().enumerate().filter(|(_, id)| !self.view_docs.contains(id)).map(|(i, _)| i).collect();
             for &idx in &new_docs {
                 if !self.ui.windows.iter().any(|w| w.document == idx) {
-                    crate::view_cmds::float_window(self, idx, idx);
+                    let _ = document_docking::detach(self, idx, None);
                 }
             }
         }
@@ -1810,14 +1817,17 @@ impl eframe::App for PhotocraftApp {
         if chrome && self.ui.panels.toolbar {
             panels::toolbar(self, ui);
         }
+        let canvas_in_dock = chrome && self.ui.panels.dock && panel_docking::workspace_presentation(self, &ctx);
         if chrome && self.ui.panels.dock {
             panels::right_dock(self, ui);
         }
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
-            canvas::document_area(self, ui);
-        });
+        if !canvas_in_dock || self.ui.docking.is_none() {
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+                canvas::document_area(self, ui);
+            });
+        }
         panels::properties_window(self, &ctx);
         brush_panel::window(self, &ctx);
         preset_panels::windows(self, &ctx);
@@ -1836,6 +1846,7 @@ impl eframe::App for PhotocraftApp {
         distort_ui::show(self, &ctx);
         camera_raw_ui::show(self, &ctx);
         wide_angle_ui::show(self, &ctx);
+        document_docking::show(self, &ctx);
         canvas::extra_windows(self, &ctx);
         notices::show(self, &ctx);
         gpu_status::show_fallback(self, &ctx);
