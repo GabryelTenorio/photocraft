@@ -178,6 +178,11 @@ impl DockRegions {
         self.render_host(layout, DockHost::Workspace, CANVAS)
     }
 
+    pub(crate) fn region_tree(&self, layout: &Layout<String>, panel: &str) -> Option<Node<String>> {
+        project(layout.root.as_ref()?, self, (self.host(panel), self.side(panel), self.band(panel)), &mut Vec::new(), 0)
+            .map(|projected| projected.node)
+    }
+
     pub(crate) fn render_host(&self, layout: &Layout<String>, host: DockHost, canvas: &str) -> RenderLayout {
         let mut rendered = Projected { node: Node::Tabs { panels: vec![canvas.into()], active: 0 }, splits: BTreeMap::new() };
         let hosts = if host == DockHost::Workspace { vec![DockHost::Document, host] } else { vec![host] };

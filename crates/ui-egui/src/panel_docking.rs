@@ -8,6 +8,25 @@ use serde_json::{Value, json};
 use crate::PhotocraftApp;
 use crate::workspace_dock::{CANVAS, DockHost, DockSide, SplitTarget};
 
+mod between;
+
+#[derive(Clone)]
+pub(crate) struct HostGeometry {
+    generation: u64,
+    workspace: egui::Rect,
+    screen: egui::Rect,
+    style: craft_ui::docking::DockStyle,
+}
+
+fn record_geometry(app: &mut PhotocraftApp, ctx: &egui::Context, host: DockHost, workspace: egui::Rect, style: &craft_ui::docking::DockStyle) {
+    if craft_ui::docking::is_dragging::<String>(ctx, egui::Id::new("photocraft-panel-docking"))
+        && app.docking_geometry.get(&host).is_some_and(|geometry| geometry.generation == app.ui.docking_generation)
+    {
+        return;
+    }
+    app.docking_geometry.insert(host, HostGeometry { generation: app.ui.docking_generation, workspace, screen: ctx.content_rect(), style: style.clone() });
+}
+
 const PANELS: &[(&str, &str, Group)] = &[
     ("color", "Color", Group::Color),
     ("swatches", "Swatches", Group::Color),
@@ -171,6 +190,11 @@ fn placement(params: &Value) -> Result<Placement<String>, String> {
 }
 
 pub(crate) fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
+    if matches!(id, "window.panel.move" | "window.panel.dock" | "window.panel.group" | "window.panel.layout")
+        && params.get("operation").and_then(Value::as_str) == Some("insertBetween")
+    {
+        return Some(between::command(app, params, id == "window.panel.group"));
+    }
     if matches!(id, "window.panel.move" | "window.panel.dock" | "window.panel.group") && params.get("side").is_some() {
         return Some(side_command(app, params, id == "window.panel.group"));
     }
@@ -675,6 +699,7 @@ pub(crate) fn show_document_host(app: &mut PhotocraftApp, ui: &mut egui::Ui, doc
     style.panels_label = tl!("Panels").into();
     style.resize_label = tl!("Resize panels").into();
     style.resize_window_label = tl!("Resize panel window").into();
+    record_geometry(app, ui.ctx(), host, ui.available_rect_before_wrap(), &style);
     let output =
         craft_ui::docking::DockArea::new(egui::Id::new("photocraft-panel-docking")).surface(egui::Id::new(("document-dock", document))).show_customized(
             ui,
@@ -834,6 +859,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         if let Some(panel) = &reveal {
             area = area.raise_panel(panel.clone());
         }
+        record_geometry(app, ui.ctx(), DockHost::Workspace, ui.available_rect_before_wrap(), &style);
         area.show_customized(
             ui,
             display,
@@ -1341,7 +1367,7 @@ struct LiveDockPreview {
     candidate: DockSnapshot,
     moving: Vec<String>,
     rearrange: bool,
-    receiver: Option<craft_ui::docking::DropTarget<String>>,
+    receivers: Vec<craft_ui::docking::DropTarget<String>>,
 }
 
 /// Legacy layouts can temporarily use the regional shell without migrating saved state.
@@ -1513,8 +1539,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         if self.app.session.prefs().workspace_locked {
             return None;
         }
-        live_preview(ctx, self.app.ui.docking_generation).and_then(|preview| preview.receiver)
-            .filter(|receiver| panels.contains(&receiver.anchor))
+        live_preview(ctx, self.app.ui.docking_generation).and_then(|preview| preview.receivers.into_iter().find(|receiver| panels.contains(&receiver.anchor)))
     }
     fn preview_geometry_duration(&self) -> f32 {
         if self.app.session.prefs().workspace_locked { 0.0 } else { 0.15 }
@@ -1746,6 +1771,15 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 }
             }
         }
+        let seam = if !panel_strip && edge.is_none() && document_target.is_none() {
+            between::hit(self.app, request.pointer, &members, &eligible)
+        } else {
+            None
+        };
+        if seam.as_ref().is_some_and(|hit| hit.before.is_none() || hit.after.is_none()) {
+            // Moving an entire neighbor to its own boundary leaves the order unchanged.
+            return Some(DropFeedback::default());
+        }
         let receiver = if edge.is_none() && document_target.is_none() {
             proposal.as_ref().and_then(|proposal| {
                 eligible.iter().rev().find(|target| target.anchor == proposal.anchor || target.tabs.iter().any(|(panel, _)| panel == &proposal.anchor))
@@ -1762,11 +1796,14 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         } else {
             None
         };
+        let receivers = seam.as_ref().map(|hit| hit.receivers.clone()).unwrap_or_else(|| receiver.into_iter().collect());
         let mut insertion = None;
         let operation = if let Some(side) = edge {
             Some((if whole { "window.panel.group" } else { "window.panel.dock" }, json!({"panel":panel,"operation":"dock","side":side})))
         } else if let Some((host, side)) = document_target {
             Some((if whole { "window.panel.group" } else { "window.panel.dock" }, host_params(host, json!({"panel":panel,"operation":"dock","side":side,"adjacent":true}))))
+        } else if let Some(hit) = &seam {
+            Some((if whole { "window.panel.group" } else { "window.panel.move" }, json!({"panel":panel,"operation":"insertBetween","before":hit.before,"after":hit.after})))
         } else if let Some(proposal) = proposal {
             if proposal.noop {
                 let feedback = DropFeedback { preview: None, insertion: proposal.insertion };
@@ -1833,7 +1870,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 feedback: feedback.clone(),
                 candidate: candidate.clone(),
                 moving: members,
-                receiver,
+                receivers,
                 rearrange: !same_group_strip && !matches!(id, "window.panel.float")
                     && params.get("operation").and_then(Value::as_str) != Some("float"),
             });

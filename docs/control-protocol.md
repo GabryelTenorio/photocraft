@@ -560,6 +560,23 @@ invalid destinations return an error without changing the arrangement.
 Lock Workspace prevents moving, detaching, and closing panels; activating a panel remains available.
 
 `window.panel.layout {action}` also accepts the shared, externally tagged action schema.
+
+`window.panel.move {panel, operation:"insertBetween", before, after}` inserts a panel
+between neighboring split children; `window.panel.group` with the same parameters moves its
+whole group, preserving tab order and selection. `window.panel.dock` and `window.panel.layout`
+also accept this operation. Neighbors are stable visible panel IDs in the same dock region,
+ordered top-to-bottom or left-to-right. No new command IDs are added. These commands require
+current rendered host geometry, reject other destination parameters and fail atomically on
+invalid neighbors, locked workspaces or insufficient minimum space.
+
+Pointer drops within 8 logical pixels of an internal divider use the same operation. Visible
+tab strips retain priority; outer workspace/document-edge bands remain unchanged. Source
+removal is measured first, then the incoming group receives one third of the combined extent
+after dividers, constrained by minimum/maximum sizes. Remaining space follows the neighbors'
+previous proportions. Both neighboring strips stay fixed during preview; animated bodies and
+orange outlines show the candidate. The accent insertion line is raised above header and drag
+overlays, including unchanged tab positions. Separate floating panel windows are not divider
+destinations; docked groups inside floating document hosts are supported.
 For example, `{"action":{"MoveFloating":{"panel":"properties","rect":[44,66,360,450]}}}`
 updates a floating group's position and size; `{"action":{"ResizeSplit":{"path":[],"size":{"Ratio":0.35}}}}`
 resizes the root divider (`false`/`true` path entries select first/second children).
