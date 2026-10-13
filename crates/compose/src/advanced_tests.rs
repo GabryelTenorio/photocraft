@@ -247,6 +247,26 @@ fn blend_interior_effects_as_group_puts_overlays_under_fill_opacity() {
 }
 
 #[test]
+fn interior_effects_blend_over_the_layer_mode_unless_grouped() {
+    // #3996: #888888 under a black Color-mode layer with a red Overlay colour overlay. The
+    // layer's mode applies to its own pixels (grey stays grey), then the overlay blends onto
+    // that result and tints it; as a group the overlay of black is black, so grey remains.
+    let grey = 136.0 / 255.0;
+    let lift = 1.0 - 2.0 * (1.0 - grey);
+    for depth in DEPTHS {
+        let mut d = doc(depth, false);
+        d.layers.push(solid(&d, "grey", full(&d), [grey, grey, grey, 1.0]));
+        let mut l = solid(&d, "black", full(&d), [0.0, 0.0, 0.0, 1.0]);
+        l.blend = BlendMode::Color;
+        l.effects.items = vec![Effect::ColorOverlay { common: FxCommon::new(BlendMode::Overlay, 1.0), color: Color::rgb(1.0, 0.0, 0.0) }];
+        d.layers.push(l);
+        check(&d, 2, 2, [1.0, lift, lift, 1.0], "default: overlay over the Color blend");
+        d.layers[1].advanced.blend_interior = true;
+        check(&d, 2, 2, [grey, grey, grey, 1.0], "as group: overlay inside the Color blend");
+    }
+}
+
+#[test]
 fn transparency_shapes_off_spreads_effects_over_the_whole_layer() {
     for depth in DEPTHS {
         let mut d = doc(depth, true);
@@ -436,4 +456,27 @@ fn a_knockout_background_does_not_recurse() {
     d.layers[0].fill_opacity = 0.0;
     let got = render(&d, Rect::from_xywh(0, 0, 1, 1)).px[0];
     assert!(got[3] <= 1.0);
+}
+
+/// The Background is found by its structure, not its English name: a file from a German or
+/// Japanese Photoshop calls it "Hintergrund" or "背景", and a deep knockout still reveals it. A
+/// bottom layer merely called "Background", without the Background's locks, is not one.
+#[test]
+fn deep_knockout_reveals_a_localized_background() {
+    for depth in DEPTHS {
+        for name in ["Hintergrund", "背景", "Arrière-plan"] {
+            let mut d = doc(depth, true);
+            d.layers[0].name = name.into();
+            let green = solid(&d, "green", full(&d), GREEN);
+            d.layers.push(green);
+            d.layers.push(knocker(&d, Knockout::Deep));
+            check(&d, 2, 2, WHITE, name);
+        }
+        let mut d = doc(depth, true);
+        d.layers[0].locks = Default::default();
+        let green = solid(&d, "green", full(&d), GREEN);
+        d.layers.push(green);
+        d.layers.push(knocker(&d, Knockout::Deep));
+        check(&d, 2, 2, [0.0; 4], "an unlocked layer named Background");
+    }
 }

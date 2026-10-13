@@ -1,9 +1,11 @@
 //! Font database: bundled fonts (always available, also on the web), the optional craft-fonts
 //! Japanese fonts ([`crate::craft_fonts`], when built with `CRAFT_FONTS_DIR`), optional system
-//! fonts found by scanning the platform font directories (no fontconfig), user-registered font
-//! data, and PostScript-name lookup for PSD import.
+//! fonts found by scanning platform directories (plus Fontconfig's file list on Linux),
+//! user-registered font data, and PostScript-name lookup for PSD import.
 
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock};
 
@@ -107,6 +109,16 @@ pub fn generation() -> u64 {
     GENERATION.load(Ordering::Relaxed)
 }
 
+/// Bumped only by the [`FontDb`] of [`crate::shared`], so caches of the shared engine's fonts
+/// aren't invalidated by unrelated databases (a document's own engine, a test's throwaway one).
+static SHARED_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Changes whenever font data is registered in the shared engine's [`FontDb`] ([`crate::shared`]).
+/// Font menus key their caches on this, not [`generation`].
+pub fn shared_generation() -> u64 {
+    SHARED_GENERATION.load(Ordering::Relaxed)
+}
+
 /// One face in the database (for font menus).
 #[derive(Clone, Debug, PartialEq)]
 pub struct FaceInfo {
@@ -138,8 +150,13 @@ pub struct FontDb {
     /// PostScript name → (family, weight, italic), filled lazily.
     ps_cache: HashMap<String, Option<ResolvedFont>>,
     fallbacks: Vec<String>,
+    /// Preferences ▸ Type ▸ Missing Glyph Protection: route glyphs the chosen face lacks through
+    /// [`Self::fallback_stack`] (#1909). Off, only the default family shapes the text.
+    missing_glyph_protection: bool,
     face_cache: HashMap<String, Vec<FaceInfo>>,
     face_aliases: HashMap<(String, usize), String>,
+    /// This is the shared engine's database: registrations also move [`shared_generation`].
+    shared: bool,
 }
 
 impl Default for FontDb {
@@ -157,8 +174,10 @@ impl FontDb {
             system_loaded: false,
             ps_cache: HashMap::new(),
             fallbacks: Vec::new(),
+            missing_glyph_protection: true,
             face_cache: HashMap::new(),
             face_aliases: HashMap::new(),
+            shared: false,
         };
         for (_, bytes) in BUNDLED {
             db.register_static_font(bytes.as_slice());
@@ -179,8 +198,8 @@ impl FontDb {
         db
     }
 
-    /// Scans the platform font directories (once). Font files are memory-mapped lazily by
-    /// fontique when a face is first used.
+    /// Scans the platform font directories once, plus Fontconfig's file list on Linux. Font files
+    /// are memory-mapped lazily by fontique when a face is first used.
     pub fn load_system_fonts(&mut self) {
         if self.system_loaded {
             return;
@@ -193,12 +212,18 @@ impl FontDb {
             for d in system_font_dirs() {
                 collect_font_files(&d, 0, &mut files);
             }
+            #[cfg(target_os = "linux")]
+            files.extend(fontconfig_font_paths());
             // PingFang (the macOS Chinese UI font) lives outside the font folders.
             if cfg!(target_os = "macos") {
                 files.extend(crate::cjk::mac_pingfang());
             }
-            for f in files {
-                self.fcx.collection.load_fonts_from_paths([f]);
+            let mut seen = HashSet::new();
+            for path in files {
+                let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+                if seen.insert(key) {
+                    self.fcx.collection.load_fonts_from_paths([path]);
+                }
             }
             self.ps_cache.clear();
             self.face_cache.clear();
@@ -234,7 +259,17 @@ impl FontDb {
         self.face_cache.clear();
         self.refresh_generics();
         GENERATION.fetch_add(1, Ordering::Relaxed);
+        if self.shared {
+            SHARED_GENERATION.fetch_add(1, Ordering::Relaxed);
+        }
         names
+    }
+
+    /// Marks this as the shared engine's database ([`crate::shared`]) and moves
+    /// [`shared_generation`], since its fonts replace whatever caches saw before.
+    pub(crate) fn mark_shared(&mut self) {
+        self.shared = true;
+        SHARED_GENERATION.fetch_add(1, Ordering::Relaxed);
     }
 
     fn refresh_generics(&mut self) {
@@ -264,8 +299,20 @@ impl FontDb {
     }
 
     /// Families available after the requested one (bundled default + installed coverage fonts).
+    /// With missing glyph protection off (Preferences ▸ Type), only the default family shapes.
     pub(crate) fn fallback_stack(&self) -> impl Iterator<Item = &str> {
-        std::iter::once(DEFAULT_FAMILY).chain(self.fallbacks.iter().map(String::as_str))
+        let fallbacks = self.missing_glyph_protection.then_some(self.fallbacks.iter().map(String::as_str));
+        std::iter::once(DEFAULT_FAMILY).chain(fallbacks.into_iter().flatten())
+    }
+
+    /// Preferences ▸ Type ▸ Missing Glyph Protection, applied by the engine's `apply_prefs`.
+    pub fn set_missing_glyph_protection(&mut self, on: bool) {
+        self.missing_glyph_protection = on;
+    }
+
+    /// Is missing glyph protection on?
+    pub fn missing_glyph_protection(&self) -> bool {
+        self.missing_glyph_protection
     }
 
     /// All family names, sorted.
@@ -557,6 +604,54 @@ pub(crate) fn collect_font_files(dir: &std::path::Path, depth: u32, out: &mut Ve
         } else if p.extension().and_then(|x| x.to_str()).is_some_and(|x| matches!(x.to_ascii_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc")) {
             out.push(p);
         }
+    }
+}
+
+/// Fontconfig knows about configured font directories that are not in our portable path list.
+/// Keep this optional and shell-free: directory scans remain the fallback when `fc-list` is not
+/// installed or Fontconfig cannot enumerate fonts.
+#[cfg(all(target_os = "linux", not(target_arch = "wasm32")))]
+fn fontconfig_font_paths() -> Vec<std::path::PathBuf> {
+    let Ok(output) = std::process::Command::new("fc-list").arg("--format=%{file}\\n").output() else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    fontconfig_paths_from_output(&output.stdout).into_iter().filter(|path| path.is_file()).collect()
+}
+
+#[cfg(all(target_os = "linux", not(target_arch = "wasm32")))]
+fn fontconfig_paths_from_output(output: &[u8]) -> Vec<std::path::PathBuf> {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let mut seen = HashSet::new();
+    output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| std::path::PathBuf::from(OsString::from_vec(line.to_vec())))
+        .filter(|path| {
+            path.is_absolute()
+                && path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc"))
+        })
+        .map(|path| path.canonicalize().unwrap_or(path))
+        .filter(|path| seen.insert(path.clone()))
+        .collect()
+}
+
+#[cfg(all(test, target_os = "linux", not(target_arch = "wasm32")))]
+mod fontconfig_tests {
+    use super::fontconfig_paths_from_output;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parses_unique_absolute_font_paths_from_fontconfig() {
+        let paths = fontconfig_paths_from_output(
+            b"/usr/share/fonts/example.ttf\nrelative.otf\n/usr/share/fonts/README.txt\n/usr/local/fonts/collection.OTC\n/usr/share/fonts/example.ttf\n\n",
+        );
+
+        assert_eq!(paths, vec![PathBuf::from("/usr/share/fonts/example.ttf"), PathBuf::from("/usr/local/fonts/collection.OTC")]);
     }
 }
 
