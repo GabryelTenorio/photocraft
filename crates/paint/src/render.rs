@@ -927,6 +927,16 @@ impl StrokeRenderer {
         self.ctx.stroke_mask_wet(c, self.cov.depth(x, y), self.dual.as_ref().map(|d| d.get(x, y)), x, y)
     }
 
+    /// Finished coverage with a sparse smoothing-tail preview. Tiles absent from the preview
+    /// retain the main stroke's coverage; preview tiles already include their original dabs.
+    pub fn coverage_with_tail_at(&self, tail: Option<&Self>, x: i32, y: i32) -> f32 {
+        let key = (x.div_euclid(COV_TILE), y.div_euclid(COV_TILE));
+        match tail {
+            Some(t) if t.cov.tiles.contains_key(&key) => t.coverage_at(x, y),
+            _ => self.coverage_at(x, y),
+        }
+    }
+
     /// Dense final coverage over the stroke bounds.
     pub fn dense_coverage(&self) -> (Rect, Vec<f32>) {
         let b = self.bounds();

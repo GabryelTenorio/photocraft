@@ -4,6 +4,171 @@ use photocraft_color::ColorMode;
 const DEPTHS: [u64; 3] = [8, 16, 32];
 
 #[test]
+fn periodic_clone_large_footprint_applies_opacity_once_and_respects_destination_masks() {
+    for depth in DEPTHS {
+        for lock in [false, true] {
+            let mut s = session(8, 8, depth, "rgb");
+            paint_layer(&mut s, |x, _| {
+                if x < 4 {
+                    [1.0, 0.0, 0.0, 1.0]
+                } else if x == 7 {
+                    [0.0; 4]
+                } else {
+                    [1.0; 4]
+                }
+            });
+            s.edit("lock", |doc, active| {
+                doc.layer_mut(active.unwrap()).unwrap().locks.transparency = lock;
+                Ok(())
+            })
+            .unwrap();
+            s.execute("select.rect", json!({"x":5,"y":0,"width":3,"height":8})).unwrap();
+            s.execute("paint.cloneStamp", json!({"points":[[6,4]],"offset":[4,0],"size":32,"hardness":100,"opacity":50,"wrap":true})).unwrap();
+            assert_eq!(rgba(&s, 4, 4), [1.0; 4], "selection is evaluated at the wrapped destination");
+            let opaque = rgba(&s, 6, 4);
+            assert!((opaque[1] - 0.5).abs() <= tol(depth), "overlapping tile copies must not multiply opacity: {opaque:?}");
+            let transparent = rgba(&s, 7, 4);
+            if lock {
+                assert_eq!(transparent[3], 0.0, "locked transparent destination stays transparent");
+            } else {
+                assert!((transparent[3] - 0.5).abs() <= tol(depth), "unlocked transparent destination receives one stroke: {transparent:?}");
+                assert_eq!(transparent[0], 1.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn periodic_clone_selection_uses_native_cmyk_pixels_across_seam() {
+    let mut s = session(64, 32, 8, "cmyk");
+    paint_layer(&mut s, |x, _| if x < 32 { [0.0, 0.0, 1.0, 1.0] } else { [1.0, 1.0, 0.0, 1.0] });
+    s.execute("select.rect", json!({"x":0,"y":0,"width":4,"height":32})).unwrap();
+    s.execute("paint.cloneStamp", json!({"points":[[63,16]],"offset":[-23,0],"size":16,"hardness":100,"wrap":true})).unwrap();
+    let (inside, outside) = (rgba(&s, 1, 16), rgba(&s, 5, 16));
+    assert!(inside[0] > 0.8 && inside[2] < 0.3, "selected wrapped destination becomes yellow: {inside:?}");
+    assert!(outside[2] > outside[0] + 0.2, "unselected neighbour remains blue: {outside:?}");
+}
+
+#[test]
+fn periodic_clone_projection_is_disjoint_and_matches_pixel_modulo() {
+    use std::collections::HashSet;
+    let tile = Rect::new(0, 0, 8, 6);
+    for rect in [Rect::new(-2, -3, 3, 2), Rect::new(-10, -9, 19, 14), Rect::new(7, 5, 10, 8), Rect::new(i32::MIN, i32::MIN, i32::MIN + 3, i32::MIN + 2)] {
+        let expected: HashSet<_> = (rect.y0..rect.y1).flat_map(|y| (rect.x0..rect.x1).map(move |x| (x.rem_euclid(8), y.rem_euclid(6)))).collect();
+        let mut actual = HashSet::new();
+        for r in periodic::project(rect, tile) {
+            for y in r.y0..r.y1 {
+                for x in r.x0..r.x1 {
+                    assert!(actual.insert((x, y)), "projected rectangles overlap");
+                }
+            }
+        }
+        assert_eq!(actual, expected);
+    }
+}
+
+#[test]
+fn periodic_clone_preview_interpolates_across_transformed_source_seam() {
+    use crate::presets::clone_source::Mapping;
+    for depth in DEPTHS {
+        let mut s = session(32, 24, depth, "rgb");
+        paint_layer(&mut s, |x, _| if x == 0 { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 0.0, 1.0, 1.0] });
+        let before = s.active().unwrap().doc.clone();
+        // A rotated mapping samples halfway between the last and first columns.
+        let map = Mapping { source: (31.5, 10.0), anchor: (0.0, 0.0), m: [0.0, 1.0, -1.0, 0.0] };
+        let r = Rect::new(0, 0, 1, 1);
+        let wrapped = clone_preview_periodic(&s, r, &map, "current", true).unwrap();
+        assert_eq!(wrapped.px, [[0.5, 0.0, 0.5, 1.0]]);
+        let ordinary = clone_preview(&s, r, &map, "current").unwrap();
+        assert_eq!(ordinary.px, [[0.0, 0.0, 1.0, 0.5]]);
+        assert_eq!(s.active().unwrap().doc, before);
+    }
+}
+
+#[test]
+fn periodic_clone_destination_wraps_edges_and_undoes_at_every_depth() {
+    for depth in DEPTHS {
+        for wrap in [false, true] {
+            let mut s = session(100, 60, depth, "rgb");
+            paint_layer(&mut s, |x, y| if x < 24 && y < 24 { [1.0, 0.0, 0.0, 1.0] } else { [1.0; 4] });
+            let before = s.active().unwrap().doc.clone();
+            s.execute("paint.cloneStamp", json!({"points":[[98,30]],"source":[10,10],"size":16,"hardness":100,"opacity":50,"wrap":wrap})).unwrap();
+            for x in [98, 1] {
+                let expected = if x == 98 || wrap { [1.0, 0.5, 0.5, 1.0] } else { [1.0; 4] };
+                let actual = rgba(&s, x, 30);
+                for (a, b) in actual.into_iter().zip(expected) {
+                    assert!((a - b).abs() <= tol(depth), "depth={depth} wrap={wrap} x={x}: {actual:?}");
+                }
+            }
+            assert!(s.undo());
+            assert_eq!(s.active().unwrap().doc, before, "one undo restores the whole wrapped stroke");
+        }
+    }
+}
+
+#[test]
+fn periodic_clone_live_matches_commit_through_a_corner() {
+    for depth in DEPTHS {
+        let mut s = session(32, 24, depth, "rgb");
+        paint_layer(&mut s, texture);
+        let before = s.active().unwrap().doc.clone();
+        let mut params = json!({"points":[[30,22]],"source":[10,10],"size":16,"hardness":70,"opacity":45,"flow":60,"wrap":true});
+        let mut live = LiveRetouch::begin(&s, "paint.cloneStamp", &params).unwrap();
+        let mut points = vec![json!([30, 22])];
+        for next in [None, Some([34.0, 26.0]), Some([38.0, 28.0]), Some([30.0, 22.0])] {
+            if let Some([x, y]) = next {
+                live.push(&[StrokePoint::new(x, y, 1.0)]).unwrap();
+                points.push(json!([x, y]));
+            }
+            params["points"] = json!(points);
+            let mut committed = Session::new();
+            committed.add_document((*before).clone(), None);
+            committed.execute("paint.cloneStamp", params.clone()).unwrap();
+            let id = s.active().unwrap().active_layer.unwrap();
+            let actual = live.doc.layer(id).unwrap().surface().unwrap().read_region(before.bounds());
+            let expected = committed.active().unwrap().doc.layer(id).unwrap().surface().unwrap().read_region(before.bounds());
+            assert_eq!(actual, expected, "live versus committed pixels at depth {depth}, points {points:?}");
+        }
+    }
+}
+
+#[test]
+fn periodic_clone_source_repeats_both_axes_at_every_depth() {
+    for depth in DEPTHS {
+        let mut s = session(6, 4, depth, "rgb");
+        paint_layer(&mut s, |x, y| [x as f32 / 6.0, y as f32 / 4.0, 0.25, 1.0]);
+        let st = s.active().unwrap();
+        let surf = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
+        let r = Rect::new(-8, -6, 15, 11);
+        for which in [SampleLayers::Current, SampleLayers::CurrentAndBelow, SampleLayers::All] {
+            let result = periodic::sample(&st.doc, st.active_layer, surf, which, r, "test").unwrap();
+            for y in r.y0..r.y1 {
+                for x in r.x0..r.x1 {
+                    let expected = surf.rgba(x.rem_euclid(6), y.rem_euclid(4));
+                    let actual = to_rgba(&surf.format(), result.px(x, y));
+                    for (a, b) in actual.into_iter().zip(expected) {
+                        assert!((a - b).abs() <= tol(depth), "{depth}-bit ({x},{y}): {actual:?} != {expected:?}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn periodic_clone_source_bounds_allocations_and_accepts_far_coordinates() {
+    let s = session(6, 4, 8, "rgb");
+    let st = s.active().unwrap();
+    let surf = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
+    assert!(periodic::sample(&st.doc, st.active_layer, surf, SampleLayers::Current, Rect::new(0, 0, 100_000, 100_000), "test").is_err());
+    for r in [Rect::new(i32::MIN, i32::MIN, i32::MIN + 3, i32::MIN + 2), Rect::new(i32::MAX - 3, i32::MAX - 2, i32::MAX, i32::MAX)] {
+        let result = periodic::sample(&st.doc, st.active_layer, surf, SampleLayers::Current, r, "test").unwrap();
+        assert_eq!(result.data.len(), 3 * 2 * surf.channels());
+        assert!(result.data.iter().all(|v| *v == 1.0));
+    }
+}
+
+#[test]
 fn proximity_match_reads_original_pixels_for_overlapping_offsets() {
     // Shifting source one pixel to the left overlaps the destination in a
     // left-to-right traversal: reading the output would repeat the first value.
