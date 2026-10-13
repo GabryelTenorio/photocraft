@@ -22,7 +22,7 @@ described in [development.md](development.md). UI tools require a running deskto
   Every layer (including groups and nested children) reports raster-only `hasMask`,
   `hasVectorMask` for vector mask presence, and `vectorMaskEnabled` (`true`/`false` when
   present, `null` when absent). A disabled vector mask still has `hasVectorMask:true`.
-- `render_preview`: bounded PNG content; `index` and `max_side` (default 1024, maximum 2048).
+- `render_preview`: bounded PNG content; `index` and `max_side` (default 1024, maximum 2048; `0` still means full size, but fails if the document's longest edge exceeds 2048; `doc_save` a .png for full resolution).
 - `ui_inspect` and `ui_screenshot`: live app state/window in bridge mode.
 
 Existing document/session/job/UI tools remain listed, including the documented
