@@ -212,6 +212,25 @@ pub(crate) fn u32_id_param(cmd: &str, p: &Value, key: &str) -> Result<Option<u32
     p.get(key).map(|v| u32_id(cmd, key, v)).transpose()
 }
 
+/// A required layer id (a whole number only, unlike [`int`], which rounds floats for geometry).
+/// Absent or `null` → "missing `{key}`"; any other JSON type → an error naming the value, so a
+/// wrong type is never reported as a missing key.
+pub(crate) fn req_u64(cmd: &str, p: &Value, key: &str) -> Result<u64> {
+    match p.get(key) {
+        None | Some(Value::Null) => Err(bad(cmd, format!("missing `{key}`"))),
+        Some(v) => v.as_u64().ok_or_else(|| bad(cmd, format!("`{key}` must be a layer id (unsigned integer), not {v}"))),
+    }
+}
+
+/// [`req_u64`] for an optional layer id: `Ok(None)` when the key is absent or `null`, so callers
+/// fall back — but a present value of the wrong type is an error, never a silent retarget.
+pub(crate) fn opt_u64(cmd: &str, p: &Value, key: &str) -> Result<Option<u64>> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(_) => req_u64(cmd, p, key).map(Some),
+    }
+}
+
 fn f32_or(p: &Value, key: &str, default: f32) -> f32 {
     p.get(key).and_then(Value::as_f64).map(|v| v as f32).unwrap_or(default)
 }
@@ -239,7 +258,9 @@ pub(crate) fn parse_hex(s: &str) -> Option<[f32; 4]> {
 /// becomes the base; Release releases every selected layer. One history step either way.
 fn set_clipped(s: &mut Session, p: &Value, clip: bool) -> Result<Value> {
     let label = if clip { "Create Clipping Mask" } else { "Release Clipping Mask" };
-    let ids: Vec<LayerId> = if p.get("layer").is_some() {
+    // `null` counts as absent everywhere a `layer` param is read, as `name_param` treats it.
+    let explicit = !matches!(p.get("layer"), None | Some(Value::Null));
+    let ids: Vec<LayerId> = if explicit {
         vec![layer_param(s, p)?]
     } else {
         let selected = s.active().ok_or(EngineError::NoDocument)?.selected_layers();
@@ -260,7 +281,7 @@ fn set_clipped(s: &mut Session, p: &Value, clip: bool) -> Result<Value> {
 }
 
 pub(crate) fn layer_param(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+    match opt_u64("layer", p, "layer")? {
         Some(id) => Ok(LayerId(id)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -1005,7 +1026,10 @@ fn build() -> Vec<CommandSpec> {
             params: r##"{"document":index}"##,
             enabled: has_doc,
             run: |s, p| {
-                let i = p.get("document").and_then(Value::as_u64).ok_or_else(|| bad("document.activate", "missing `document`"))?;
+                let i = match p.get("document") {
+                    None | Some(Value::Null) => return Err(bad("document.activate", "missing `document`")),
+                    Some(v) => v.as_u64().ok_or_else(|| bad("document.activate", format!("`document` must be an index (unsigned integer), not {v}")))?,
+                };
                 let idx = usize::try_from(i).map_err(|_| bad("document.activate", "`document` out of range"))?;
                 if s.set_active(idx) { Ok(Value::Null) } else { Err(EngineError::Other(format!("no document at index {idx}"))) }
             },

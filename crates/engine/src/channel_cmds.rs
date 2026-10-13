@@ -328,9 +328,12 @@ fn native_pixels(doc: &Document, layer: Option<LayerId>) -> Result<(Vec<f32>, us
     }
 }
 
-/// `"layer"` param of a source: a layer id, or `"merged"` (default).
-fn source_layer(p: &Value) -> Option<LayerId> {
-    p.get("layer").and_then(Value::as_u64).map(LayerId)
+/// `"layer"` param of a source: a layer id, or `"merged"` (default, also for `null`).
+fn source_layer(p: &Value, cmd: &str) -> Result<Option<LayerId>> {
+    Ok(match p.get("layer") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(LayerId(v.as_u64().ok_or_else(|| bad(cmd, format!("`layer` must be a layer id, not {v}")))?)),
+    })
 }
 
 /// Planes of channel `r` from document `doc` (`layer` = None: merged). A composite gives one
@@ -425,7 +428,7 @@ fn source(s: &Session, p: &Value, cmd: &str, gray: bool) -> Result<Vec<Vec<f32>>
         return Err(bad(cmd, format!("source document \"{}\" is {}×{}; it must match the target size", st.doc.name, st.doc.size.width, st.doc.size.height)));
     }
     let r = p.get("channel").map_or(Some(ChanRef::Composite), |v| parse_ref(v, &st.doc)).ok_or_else(|| bad(cmd, "unknown `channel`"))?;
-    let layer = source_layer(p);
+    let layer = source_layer(p, cmd)?;
     let mut planes = if gray { vec![gray_plane(&st.doc, layer, st.active_layer, r)?] } else { ref_planes(&st.doc, layer, st.active_layer, r)? };
     // Guard every caller (`.remove(0)` / `src[0]`) against an empty source.
     if planes.is_empty() {
@@ -1174,7 +1177,10 @@ fn move_channel(s: &mut Session, p: &Value) -> Result<Value> {
     let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
     let n = doc.channels.len();
     let i = alpha_index(doc, p, "channel", cmd)?;
-    let to = p.get("to").and_then(Value::as_u64).map(|v| (v as usize).min(n - 1)).ok_or_else(|| bad(cmd, "missing `to`"))?;
+    let to = match p.get("to") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `to`")),
+        Some(v) => v.as_u64().map(|v| (v as usize).min(n - 1)).ok_or_else(|| bad(cmd, format!("`to` must be a channel position (unsigned integer), not {v}")))?,
+    };
     if to == i {
         return Ok(json!({ "channel": i }));
     }

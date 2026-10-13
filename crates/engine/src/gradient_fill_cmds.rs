@@ -374,7 +374,10 @@ pub fn apply_stop(f: &Fill, p: &Value, fg: [f32; 4], bg: [f32; 4]) -> Result<Fil
     const CMD: &str = STOP;
     let mut out = f.clone();
     let Fill::Gradient { stops, opacity_stops, midpoints, .. } = &mut out else { return Err(bad(CMD, "not a gradient fill")) };
-    let action = p.get("action").and_then(Value::as_str).ok_or_else(|| bad(CMD, "missing `action` (add|move|delete|color|opacity|midpoint)"))?;
+    let action = match p.get("action") {
+        None | Some(Value::Null) => return Err(bad(CMD, "missing `action` (add|move|delete|color|opacity|midpoint)")),
+        Some(v) => v.as_str().ok_or_else(|| bad(CMD, format!("`action` must be a string (add|move|delete|color|opacity|midpoint), not {v}")))?,
+    };
     let opacity_kind = match p.get("kind").and_then(Value::as_str).unwrap_or("color") {
         "color" => false,
         "opacity" => true,
@@ -384,8 +387,10 @@ pub fn apply_stop(f: &Fill, p: &Value, fg: [f32; 4], bg: [f32; 4]) -> Result<Fil
     // "colour stop" or "segment") before any arithmetic on it: an index is untrusted and can be as
     // large as the integer type, so `i + 1` on it would overflow (#958).
     let index = |len: usize, what: &str| -> Result<usize> {
-        let i =
-            p.get("index").and_then(Value::as_u64).and_then(|v| usize::try_from(v).ok()).ok_or_else(|| bad(CMD, "missing `index` (a stop number from 0)"))?;
+        let i = match p.get("index") {
+            None | Some(Value::Null) => return Err(bad(CMD, "missing `index` (a stop number from 0)")),
+            Some(v) => v.as_u64().and_then(|v| usize::try_from(v).ok()).ok_or_else(|| bad(CMD, format!("`index` must be a stop number from 0, not {v}")))?,
+        };
         if i >= len {
             return Err(bad(CMD, format!("no {what} {i} (there are {len})")));
         }

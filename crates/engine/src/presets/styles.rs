@@ -156,21 +156,21 @@ fn list(s: &mut Session, _: &Value) -> Result<Value> {
 }
 
 /// Target layers: `"layers": [ids]`, `"layer": id`, else every selected layer.
-fn targets(s: &Session, p: &Value) -> Vec<photocraft_doc::LayerId> {
+fn targets(s: &Session, p: &Value) -> Result<Vec<photocraft_doc::LayerId>> {
     if let Some(a) = p.get("layers").and_then(Value::as_array) {
-        return a.iter().filter_map(Value::as_u64).map(photocraft_doc::LayerId).collect();
+        return Ok(a.iter().filter_map(Value::as_u64).map(photocraft_doc::LayerId).collect());
     }
-    if let Some(id) = p.get("layer").and_then(Value::as_u64) {
-        return vec![photocraft_doc::LayerId(id)];
+    if let Some(id) = crate::commands::opt_u64("style.presets.apply", p, "layer")? {
+        return Ok(vec![photocraft_doc::LayerId(id)]);
     }
-    crate::layer_multi_cmds::selected(s)
+    Ok(crate::layer_multi_cmds::selected(s))
 }
 
 fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "style.presets.apply";
     let style = find_style(s, p, CMD)?.clone();
     let add = p.get("add").and_then(Value::as_bool).unwrap_or(false);
-    let ids = targets(s, p);
+    let ids = targets(s, p)?;
     if ids.is_empty() {
         return Err(bad(CMD, "no target layers"));
     }
@@ -236,7 +236,10 @@ fn new_preset(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|list| -> Result<Vec<Effect>> {
             list.iter()
                 .map(|e| {
-                    let kind = e.get(0).and_then(Value::as_str).ok_or_else(|| bad(CMD, "each effect is [kind, params]"))?;
+                    let kind = match e.get(0) {
+                        Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(CMD, format!("each effect is [kind, params]; kind must be a string, not {v}")))?,
+                        _ => return Err(bad(CMD, "each effect is [kind, params]")),
+                    };
                     effect_from_params(kind, e.get(1).unwrap_or(&Value::Null)).ok_or_else(|| bad(CMD, format!("unknown effect {kind}")))
                 })
                 .collect()

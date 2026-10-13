@@ -237,7 +237,14 @@ pub(crate) fn str_param<'a>(p: &'a Value, k: &str) -> Option<&'a str> {
 }
 
 pub(crate) fn req_str<'a>(p: &'a Value, k: &str, cmd: &str) -> Result<&'a str> {
-    str_param(p, k).ok_or_else(|| bad(cmd, format!("missing `{k}`")))
+    match p.get(k) {
+        None | Some(Value::Null) => Err(bad(cmd, format!("missing `{k}`"))),
+        Some(Value::String(s)) => {
+            let s = s.trim();
+            if s.is_empty() { Err(bad(cmd, format!("`{k}` must be a non-empty string"))) } else { Ok(s) }
+        }
+        Some(v) => Err(bad(cmd, format!("`{k}` must be a string, not {v}"))),
+    }
 }
 
 /// Locate a preset by name (optionally within `group`): (group index, item index).
@@ -293,7 +300,10 @@ pub(crate) fn edit_groups<T: Named>(groups: &mut Vec<Group<T>>, action: &str, p:
         }
         "delete" => {
             let names: Vec<String> = match p.get("preset") {
-                Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+                Some(Value::Array(a)) => a
+                    .iter()
+                    .map(|v| v.as_str().map(str::to_string).ok_or_else(|| bad(cmd, format!("each `preset` must be a string, not {v}"))))
+                    .collect::<Result<_>>()?,
                 _ => vec![req_str(p, "preset", cmd)?.to_string()],
             };
             // All or nothing: a missing name deletes none of the others.

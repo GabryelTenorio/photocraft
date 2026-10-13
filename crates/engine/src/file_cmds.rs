@@ -305,7 +305,10 @@ pub(crate) fn save_doc(doc: &Document, path: &str, save: impl Into<SaveOpts>) ->
 }
 
 pub(crate) fn str_param<'a>(p: &'a Value, key: &str, cmd: &str) -> Result<&'a str> {
-    p.get(key).and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or_else(|| EngineError::BadParams { cmd: cmd.into(), msg: format!("missing \"{key}\"") })
+    match p.get(key) {
+        None | Some(Value::Null) => Err(EngineError::BadParams { cmd: cmd.into(), msg: format!("missing \"{key}\"") }),
+        Some(v) => v.as_str().filter(|s| !s.is_empty()).ok_or_else(|| EngineError::BadParams { cmd: cmd.into(), msg: format!("\"{key}\" must be a non-empty string, not {v}") }),
+    }
 }
 
 pub(crate) fn f64_param(p: &Value, key: &str) -> Option<f64> {

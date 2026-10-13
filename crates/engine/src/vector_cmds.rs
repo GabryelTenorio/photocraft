@@ -110,7 +110,7 @@ fn paste_shape_stroke(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn layer_id(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+    match crate::commands::opt_u64("layer", p, "layer")? {
         Some(id) => Ok(LayerId(id)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -1856,7 +1856,7 @@ pub fn specs() -> Vec<CommandSpec> {
         )),
         // Without `layer`, every selected shape layer (the shared Rasterize logic calls back here with one).
         spec!("layer.rasterize.shape", "Rasterize Shape", [], r##"{"layer":id?} (no layer: every selected shape layer)"##, has_layer, |s, p| {
-            if p.get("layer").is_some() { shape_rasterize(s, p) } else { crate::extra_cmds::rasterize(s, p, Some("shape")) }
+            if !matches!(p.get("layer"), None | Some(Value::Null)) { shape_rasterize(s, p) } else { crate::extra_cmds::rasterize(s, p, Some("shape")) }
         }),
         // With two or more shape layers selected (and no `layer`/`subpath`), these merge them into
         // the top-most one, as in Photoshop; with one, they set the operation of its components.

@@ -48,14 +48,23 @@ fn color_of(p: &Value) -> Option<Color> {
 
 fn index_of(s: &Session, p: &Value, cmd: &str) -> Result<usize> {
     let n = s.active().ok_or(EngineError::NoDocument)?.doc.notes.len();
-    let i = p.get("index").and_then(Value::as_u64).ok_or_else(|| bad(cmd, "pass `index`"))? as usize;
+    let i = match p.get("index") {
+        None | Some(Value::Null) => return Err(bad(cmd, "pass `index`")),
+        Some(v) => v.as_u64().ok_or_else(|| bad(cmd, format!("`index` must be a note number (unsigned integer), not {v}")))? as usize,
+    };
     if i < n { Ok(i) } else { Err(bad(cmd, format!("no note {i} (the document has {n})"))) }
 }
 
 fn add(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "notes.add";
-    let x = p.get("x").and_then(Value::as_f64).ok_or_else(|| bad(CMD, "pass `x` and `y`"))?;
-    let y = p.get("y").and_then(Value::as_f64).ok_or_else(|| bad(CMD, "pass `x` and `y`"))?;
+    let x = match p.get("x") {
+        None | Some(Value::Null) => return Err(bad(CMD, "pass `x` and `y`")),
+        Some(v) => v.as_f64().ok_or_else(|| bad(CMD, format!("`x` must be a number, not {v}")))?,
+    };
+    let y = match p.get("y") {
+        None | Some(Value::Null) => return Err(bad(CMD, "pass `x` and `y`")),
+        Some(v) => v.as_f64().ok_or_else(|| bad(CMD, format!("`y` must be a number, not {v}")))?,
+    };
     if !x.is_finite() || !y.is_finite() {
         return Err(bad(CMD, "coordinates must be finite"));
     }
@@ -157,7 +166,10 @@ fn read(path: &str) -> Result<Vec<u8>> {
 /// canvas are pulled inside, as Photoshop does when sizes differ.
 fn import(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "file.import.notes";
-    let path = p.get("path").and_then(Value::as_str).ok_or_else(|| bad(CMD, "pass `path` (.psd, .psb or .pcraft)"))?;
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(bad(CMD, "pass `path` (.psd, .psb or .pcraft)")),
+        Some(v) => v.as_str().ok_or_else(|| bad(CMD, format!("`path` must be a string, not {v}")))?,
+    };
     let bytes = read(path)?;
     let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.to_string());
     import_notes_from(s, &name, &bytes)

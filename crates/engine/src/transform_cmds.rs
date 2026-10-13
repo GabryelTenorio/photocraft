@@ -7,7 +7,7 @@ use photocraft_geom::{Affine, Rect};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
-use crate::commands::CommandSpec;
+use crate::commands::{CommandSpec, opt_u64};
 use crate::{EngineError, Result, Session};
 
 fn has_layer(s: &Session) -> std::result::Result<(), String> {
@@ -422,7 +422,7 @@ fn with_panel_target(s: &Session, p: &Value) -> Value {
 fn transform(s: &mut Session, p: &Value) -> Result<Value> {
     let p = &with_panel_target(s, p);
     let st = s.active().ok_or(EngineError::NoDocument)?;
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match opt_u64("edit.transform", p, "layer")? {
         Some(v) => Some(LayerId(v)),
         None => st.active_layer,
     };

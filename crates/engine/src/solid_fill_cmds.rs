@@ -45,7 +45,7 @@ pub fn color_param(value: &Value, original: Color, mode: ColorMode) -> Result<Co
 }
 
 fn set(s: &mut Session, p: &Value) -> Result<Value> {
-    if !p.is_object() || p.get("layer").is_some_and(|v| v.as_u64().is_none()) {
+    if !p.is_object() || p.get("layer").is_some_and(|v| !v.is_null() && v.as_u64().is_none()) {
         return Err(bad("params must be an object and layer an unsigned id"));
     }
     let st = s.active().ok_or(EngineError::NoDocument)?;

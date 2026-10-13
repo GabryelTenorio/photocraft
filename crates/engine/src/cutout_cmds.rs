@@ -233,8 +233,12 @@ mod tests {
         let (mut s, _) = disc(8);
         let before = s.active().unwrap().revision;
         assert!(s.execute(CMD, json!({"layer": 999_999})).is_err());
-        // Wrong types fall back to the defaults (the active layer, layer-only sampling, refined).
-        assert!(s.execute(CMD, json!({"layer": "x", "sampleAllLayers": 3, "refine": "no"})).is_ok());
+        // A wrong-typed layer id is rejected instead of falling back to the active layer.
+        let e = s.execute(CMD, json!({"layer": "x"})).unwrap_err();
+        assert!(matches!(&e, EngineError::BadParams { msg, .. } if msg.contains("must be a layer id")), "{e}");
+        assert_eq!(s.active().unwrap().revision, before);
+        // Wrong-typed optional booleans fall back to the defaults (layer-only sampling, refined).
+        assert!(s.execute(CMD, json!({"sampleAllLayers": 3, "refine": "no"})).is_ok());
         assert!(s.active().unwrap().revision > before);
     }
 

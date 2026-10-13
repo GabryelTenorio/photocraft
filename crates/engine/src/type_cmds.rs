@@ -23,7 +23,7 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
 }
 
 fn layer_id(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+    match crate::commands::opt_u64("layer", p, "layer")? {
         Some(id) => Ok(LayerId(id)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -507,7 +507,7 @@ fn with_text_layer<R>(s: &mut Session, p: &Value, label: &str, f: impl FnOnce(&m
 /// range keeps its single-layer scope. Selected groups are not expanded.
 pub(crate) fn format_targets(s: &Session, p: &Value) -> Result<Vec<LayerId>> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
-    let single = p.get("layer").is_some() || (p.get("range").is_some() && p.get("layers").is_none());
+    let single = !matches!(p.get("layer"), None | Some(Value::Null)) || (p.get("range").is_some() && p.get("layers").is_none());
     let ids = if single {
         vec![layer_id(s, p)?]
     } else if let Some(value) = p.get("layers") {
@@ -555,7 +555,7 @@ pub(crate) fn with_text_targets(
         for id in &ids {
             let Some(LayerContent::Text(t)) = doc.layer_mut(*id).map(|l| &mut l.content) else { return Err(EngineError::NoLayer(*id)) };
             let before = t.cache.as_ref().map(|c| c.tile_bounds());
-            let range = if p.get("layers").is_none() || p.get("layer").is_some() { range_param(&t.text, p) } else { (0, t.text.len()) };
+            let range = if p.get("layers").is_none() || !matches!(p.get("layer"), None | Some(Value::Null)) { range_param(&t.text, p) } else { (0, t.text.len()) };
             f(t, range)?;
             refresh(&snapshot, t);
             // An unknown old/new cache retains Session.edit's full-refresh fallback.
@@ -767,7 +767,10 @@ pub fn specs() -> Vec<CommandSpec> {
                 let kern_pair = match p.get("kernPair") {
                     None => None,
                     Some(k) => {
-                        let at = k.get("at").and_then(Value::as_u64).ok_or_else(|| bad("type.edit", "kernPair.at must be a caret position (character index)"))?;
+                        let at = match k.get("at") {
+                            Some(v) if !v.is_null() => v.as_u64().ok_or_else(|| bad("type.edit", format!("kernPair.at must be a caret position (character index), not {v}")))?,
+                            _ => return Err(bad("type.edit", "kernPair.at must be a caret position (character index)")),
+                        };
                         let by = k
                             .get("by")
                             .and_then(Value::as_f64)

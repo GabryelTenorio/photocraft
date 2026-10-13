@@ -58,7 +58,10 @@ fn plugin_params(p: &Value) -> Value {
 }
 
 fn plugin_by_id(cmd: &str, p: &Value) -> Result<std::sync::Arc<Plugin>> {
-    let id = p.get("id").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing `id` (see plugin.list)"))?;
+    let id = match p.get("id") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `id` (see plugin.list)")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`id` must be a string, not {v}")))?,
+    };
     registry::get(id).ok_or_else(|| err(photocraft_plugins::Error::NotFound(id.into())))
 }
 
@@ -253,7 +256,10 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r##"{"id":text}"##,
             enabled: always,
             run: |_, p| {
-                let id = p.get("id").and_then(Value::as_str).ok_or_else(|| bad("plugin.remove", "missing `id`"))?;
+                let id = match p.get("id") {
+                    Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad("plugin.remove", format!("`id` must be a string, not {v}")))?,
+                    _ => return Err(bad("plugin.remove", "missing `id`")),
+                };
                 if registry::remove(id) { Ok(json!({"removed": id})) } else { Err(err(photocraft_plugins::Error::NotFound(id.into()))) }
             },
             journal: false,

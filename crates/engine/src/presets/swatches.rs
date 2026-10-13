@@ -160,14 +160,17 @@ impl SwatchColor {
             let b = |i: usize| h.get(i..i + 2).and_then(|x| u8::from_str_radix(x, 16).ok()).map_or(0.0, |x| f32::from(x) / 255.0);
             return Ok(SwatchColor::Rgb([b(0), b(2), b(4)]));
         }
-        let model = v.get("model").and_then(Value::as_str).ok_or("a colour needs `model` (rgb|hsb|cmyk|lab|gray) and `values`")?;
-        let vals: Vec<f32> = v
-            .get("values")
-            .and_then(Value::as_array)
-            .ok_or("a colour needs `values`")?
-            .iter()
-            .map(|x| x.as_f64().filter(|f| f.is_finite()).map(|f| f as f32).ok_or("colour values must be finite numbers"))
-            .collect::<Result<_, _>>()?;
+        let model = match v.get("model") {
+            Some(m) if !m.is_null() => m.as_str().ok_or_else(|| format!("a colour's `model` must be a string, not {m}"))?,
+            _ => return Err("a colour needs `model` (rgb|hsb|cmyk|lab|gray) and `values`".into()),
+        };
+        let vals: Vec<f32> = match v.get("values") {
+            Some(x) if !x.is_null() => x.as_array().ok_or_else(|| format!("a colour's `values` must be an array, not {x}"))?,
+            _ => return Err("a colour needs `values`".into()),
+        }
+        .iter()
+        .map(|x| x.as_f64().filter(|f| f.is_finite()).map(|f| f as f32).ok_or("colour values must be finite numbers"))
+        .collect::<Result<_, _>>()?;
         let need = |n: usize| if vals.len() == n { Ok(()) } else { Err(format!("a {model} colour has {n} values, got {}", vals.len())) };
         let pct = |v: f32| (v / 100.0).clamp(0.0, 1.0);
         Ok(match model {

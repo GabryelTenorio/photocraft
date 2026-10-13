@@ -100,9 +100,9 @@ fn flame_paths(s: &Session, p: &Value) -> Option<Vec<Vec<(f32, f32)>>> {
 }
 
 /// Draws `prims` onto the target layer as one undo step.
-fn draw(s: &mut Session, label: &str, p: &Value, prims: Vec<Prim>, extra: Value) -> Result<Value> {
+fn draw(s: &mut Session, cmd: &str, label: &str, p: &Value, prims: Vec<Prim>, extra: Value) -> Result<Value> {
     let want_new = p.get("newLayer").and_then(Value::as_bool).unwrap_or(false);
-    let target = p.get("layer").and_then(Value::as_u64).map(LayerId);
+    let target = crate::commands::opt_u64(cmd, p, "layer")?.map(LayerId);
     let count = prims.len();
     let (layer, created, used) = s.edit(label, |doc, active| {
         let id = target.or(*active);
@@ -166,7 +166,7 @@ fn run_flame(s: &mut Session, p: &Value) -> Result<Value> {
         }
     });
     let prims = render2::flame(&spec, &paths);
-    draw(s, "Flame…", p, prims, json!({ "usedPath": used_path }))
+    draw(s, "filter.render.flame", "Flame…", p, prims, json!({ "usedPath": used_path }))
 }
 
 fn run_tree(s: &mut Session, p: &Value) -> Result<Value> {
@@ -182,7 +182,7 @@ fn run_tree(s: &mut Session, p: &Value) -> Result<Value> {
     let spec: TreeSpec = spec_from(m)?;
     let prims = render2::tree(&spec, canvas(s)?);
     let name = render2::tree_type_names()[(spec.base_tree_type.clamp(1, 34) - 1) as usize];
-    draw(s, "Tree…", p, prims, json!({ "treeType": name }))
+    draw(s, "filter.render.tree", "Tree…", p, prims, json!({ "treeType": name }))
 }
 
 fn run_frame(s: &mut Session, p: &Value) -> Result<Value> {
@@ -192,7 +192,7 @@ fn run_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let spec: FrameSpec = spec_from(m)?;
     let prims = render2::picture_frame(&spec, canvas(s)?);
     let name = render2::FRAME_STYLES[(spec.frame.clamp(1, render2::FRAME_STYLES.len() as u32) - 1) as usize];
-    draw(s, "Picture Frame…", p, prims, json!({ "frame": name }))
+    draw(s, "filter.render.pictureFrame", "Picture Frame…", p, prims, json!({ "frame": name }))
 }
 
 fn has_doc(s: &Session) -> std::result::Result<(), String> {

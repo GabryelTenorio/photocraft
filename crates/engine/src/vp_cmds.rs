@@ -24,11 +24,10 @@ fn pt(v: &Value) -> Option<[f64; 2]> {
 
 /// Builds the scene from `"planes"`.
 pub fn scene(p: &Value, canvas: Rect) -> Result<Scene> {
-    let planes = p
-        .get("planes")
-        .and_then(Value::as_array)
-        .filter(|a| !a.is_empty())
-        .ok_or_else(|| bad("pass `planes`: [{\"corners\":[[x,y]×4]}, {\"from\":0,\"edge\":\"top\",\"angle\":90}]"))?;
+    let planes = match p.get("planes") {
+        None | Some(Value::Null) => return Err(bad("pass `planes`: [{\"corners\":[[x,y]×4]}, {\"from\":0,\"edge\":\"top\",\"angle\":90}]")),
+        Some(v) => v.as_array().filter(|a| !a.is_empty()).ok_or_else(|| bad(format!("`planes` must be a non-empty array, not {v}")))?,
+    };
     let center = [(canvas.x0 + canvas.x1) as f64 / 2.0, (canvas.y0 + canvas.y1) as f64 / 2.0];
     let corners = |v: &Value| -> Option<[[f64; 2]; 4]> {
         let a = v.get("corners")?.as_array()?;

@@ -95,7 +95,10 @@ fn new_document(s: &mut Session, p: &Value) -> Result<Value> {
 /// The `snapshot` param: the index of the active document's snapshot with that id.
 fn snapshot_index(s: &Session, cmd: &str, p: &Value) -> Result<usize> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
-    let id = p.get("snapshot").and_then(Value::as_u64).ok_or_else(|| bad(cmd, "`snapshot` must be a snapshot id"))?;
+    let id = match p.get("snapshot") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `snapshot`")),
+        Some(v) => v.as_u64().ok_or_else(|| bad(cmd, format!("`snapshot` must be a snapshot id, not {v}")))?,
+    };
     st.snapshots.iter().position(|snap| snap.id == id).ok_or_else(|| bad(cmd, format!("no snapshot {id}")))
 }
 

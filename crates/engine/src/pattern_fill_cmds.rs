@@ -67,7 +67,7 @@ fn edited(s: &Session, base: &Fill, p: &Value) -> Result<(Fill, Option<Pattern>)
 
 /// The target layer and the fill `p` gives it, checked against the active document.
 fn target(s: &Session, p: &Value) -> Result<(photocraft_doc::LayerId, Fill, Fill, Option<Pattern>)> {
-    if !p.is_object() || p.get("layer").is_some_and(|v| v.as_u64().is_none()) {
+    if !p.is_object() || p.get("layer").is_some_and(|v| !v.is_null() && v.as_u64().is_none()) {
         return Err(bad("params must be an object and layer an unsigned id"));
     }
     let st = s.active().ok_or(EngineError::NoDocument)?;

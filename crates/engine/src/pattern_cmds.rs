@@ -236,7 +236,10 @@ fn define(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn library_index(s: &Session, cmd: &str, p: &Value) -> Result<usize> {
-    let key = p.get("pattern").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing `pattern` (id or name)"))?;
+    let key = match p.get("pattern") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `pattern` (id or name)")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`pattern` must be a string (id or name), not {v}")))?,
+    };
     let found =
         photocraft_doc::pattern::find(&s.patterns.items, key, key).map(|f| f.id.clone()).ok_or_else(|| bad(cmd, format!("no library pattern \"{key}\"")))?;
     Ok(s.patterns.items.iter().position(|q| q.id == found).unwrap_or(0))
@@ -244,7 +247,10 @@ fn library_index(s: &Session, cmd: &str, p: &Value) -> Result<usize> {
 
 fn rename(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "pattern.rename";
-    let name = p.get("name").and_then(Value::as_str).filter(|n| !n.trim().is_empty()).ok_or_else(|| bad(cmd, "missing `name`"))?.to_string();
+    let name = match p.get("name") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `name`")),
+        Some(v) => v.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(cmd, format!("`name` must be a non-empty string, not {v}")))?.to_string(),
+    };
     let i = library_index(s, cmd, p)?;
     let id = s.patterns.items[i].id.clone();
     s.patterns.items[i].name = name.clone();
@@ -268,7 +274,10 @@ fn delete(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn import(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "pattern.import";
-    let path = p.get("path").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing `path` (.pat file)"))?;
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `path` (.pat file)")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`path` must be a string, not {v}")))?,
+    };
     let bytes = std::fs::read(path).map_err(|e| EngineError::Other(format!("{path}: {e}")))?;
     let pats = photocraft_io::pattern_map::read_pat(&bytes).map_err(EngineError::Other)?;
     let mut ids = Vec::new();
@@ -284,7 +293,10 @@ fn import(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn export(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "pattern.export";
-    let path = p.get("path").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing `path`"))?;
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `path`")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`path` must be a string, not {v}")))?,
+    };
     let pats: Vec<Pattern> = match p.get("patterns").and_then(Value::as_array) {
         Some(keys) => {
             keys.iter().filter_map(Value::as_str).map(|k| resolve(s, k).ok_or_else(|| bad(cmd, format!("no pattern \"{k}\"")))).collect::<Result<_>>()?

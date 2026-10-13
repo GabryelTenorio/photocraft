@@ -86,11 +86,11 @@ pub fn stroke_brush(base: &BrushSettings, p: &Value) -> BrushSettings {
 /// Parse the shared brush params into a stroke on a layer (`None` when an alpha channel or the
 /// Quick Mask is targeted).
 fn parse_brush(s: &Session, p: &Value, cmd: &str) -> Result<(Stroke, Option<LayerId>)> {
-    let pts: Vec<StrokePoint> = p
-        .get("points")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad(cmd, "missing `points`"))?
-        .iter()
+    let pts: Vec<StrokePoint> = match p.get("points") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `points`")),
+        Some(v) => v.as_array().ok_or_else(|| bad(cmd, format!("`points` must be an array, not {v}")))?,
+    }
+    .iter()
         .filter_map(|v| {
             let a = v.as_array()?;
             Some(StrokePoint::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2).and_then(Value::as_f64).unwrap_or(1.0) as f32))
@@ -105,7 +105,7 @@ fn parse_brush(s: &Session, p: &Value, cmd: &str) -> Result<(Stroke, Option<Laye
     if crate::channel_cmds::is_channel_target(p) {
         return Ok((Stroke { brush, points: pts }, None));
     }
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match crate::commands::opt_u64(cmd, p, "layer")? {
         Some(id) => LayerId(id),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into()))?,
     };

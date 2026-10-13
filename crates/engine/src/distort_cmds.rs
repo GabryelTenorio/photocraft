@@ -188,8 +188,8 @@ pub fn apply_to_surface(id: &str, params: &Value, surf: &Surface, canvas: Rect) 
 
 // ---------- commands ----------
 
-fn target(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+fn target(s: &Session, cmd: &str, p: &Value) -> Result<LayerId> {
+    match crate::commands::opt_u64(cmd, p, "layer")? {
         Some(v) => Ok(LayerId(v)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -229,7 +229,7 @@ type MaskFn<'a> = Option<&'a dyn Fn(&Surface, Option<&Surface>) -> Result<Surfac
 type LayerFn<'a> = &'a dyn Fn(&Surface, Option<&Surface>, Rect) -> Result<Surface>;
 
 fn run_on_layer(s: &mut Session, cmd: &str, label: &str, p: &Value, moves: bool, f: LayerFn, mask: MaskFn) -> Result<Value> {
-    let id = target(s, p)?;
+    let id = target(s, cmd, p)?;
     let mut params = p.clone();
     if let Value::Object(m) = &mut params {
         m.remove("layer");
@@ -266,7 +266,7 @@ fn run_on_layer(s: &mut Session, cmd: &str, label: &str, p: &Value, moves: bool,
 fn liquify(s: &mut Session, p: &Value) -> Result<Value> {
     let canvas = s.active().ok_or(EngineError::NoDocument)?.doc.bounds();
     let (strokes, cell) = liquify_params(LIQUIFY, p, canvas)?;
-    let id = target(s, p)?;
+    let id = target(s, LIQUIFY, p)?;
     if strokes.is_empty() {
         return Ok(json!({"layer": id.0, "changed": false}));
     }
@@ -318,7 +318,7 @@ fn deform_selected(surf: &Surface, sel: Option<&Surface>, f: &dyn Fn(&Surface) -
 
 fn puppet(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
     let w = puppet_params(cmd, p)?;
-    let id = target(s, p)?;
+    let id = target(s, cmd, p)?;
     let smart = matches!(s.active().and_then(|d| d.doc.layer(id)).map(|l| &l.content), Some(LayerContent::Smart(_)));
     if w.is_identity() && !smart {
         return Ok(json!({"layer": id.0, "changed": false}));
@@ -330,7 +330,7 @@ fn puppet(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
 
 fn perspective(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
     let planes = perspective_params(cmd, p)?;
-    let id = target(s, p)?;
+    let id = target(s, cmd, p)?;
     let smart = matches!(s.active().and_then(|d| d.doc.layer(id)).map(|l| &l.content), Some(LayerContent::Smart(_)));
     if PerspectiveMap::is_identity(&planes) && !smart {
         return Ok(json!({"layer": id.0, "changed": false, "planes": planes}));

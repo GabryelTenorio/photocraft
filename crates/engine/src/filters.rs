@@ -10,7 +10,7 @@ use photocraft_algo::{
 use photocraft_doc::{LayerContent, SmartFilter};
 use serde_json::{Value, json};
 
-use crate::commands::CommandSpec;
+use crate::commands::{CommandSpec, opt_u64};
 use crate::{EngineError, Result, Session};
 
 mod validation;
@@ -217,7 +217,7 @@ pub(crate) fn run_filter(s: &mut Session, id: &str, p: &Value) -> Result<Value> 
     let p = &prepared;
     let mut fp = params_for(id, p).ok_or_else(|| EngineError::Other(format!("unknown filter {id}")))?;
     crate::filters_ext::resolve(s, &mut fp, p)?;
-    let layer = match p.get("layer").and_then(Value::as_u64) {
+    let layer = match opt_u64(id, p, "layer")? {
         Some(l) => photocraft_doc::LayerId(l),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into()))?,
     };

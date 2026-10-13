@@ -87,7 +87,10 @@ fn bad(msg: impl Into<String>) -> EngineError {
 
 /// `points`: `[[x, y], …]` of finite numbers.
 fn points(p: &Value) -> Result<Vec<[f64; 2]>> {
-    let a = p.get("points").and_then(Value::as_array).ok_or_else(|| bad("`points` must be [[x, y], …]"))?;
+    let a = match p.get("points") {
+        None | Some(Value::Null) => return Err(bad("`points` must be [[x, y], …]")),
+        Some(v) => v.as_array().ok_or_else(|| bad(format!("`points` must be [[x, y], …], not {v}")))?,
+    };
     if a.len() > MAX_POINTS {
         return Err(bad(format!("at most {MAX_POINTS} points")));
     }

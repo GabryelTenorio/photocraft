@@ -287,7 +287,10 @@ fn list(s: &mut Session, _: &Value) -> Result<Value> {
 
 fn select(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "cloneSource.select";
-    let i = p.get("index").and_then(Value::as_u64).ok_or_else(|| bad(CMD, "missing `index`"))? as usize;
+    let i = match p.get("index") {
+        None | Some(Value::Null) => return Err(bad(CMD, "missing `index`")),
+        Some(v) => v.as_u64().ok_or_else(|| bad(CMD, format!("`index` must be a slot number (unsigned integer), not {v}")))? as usize,
+    };
     if i >= SLOTS {
         return Err(bad(CMD, format!("index {i} out of range (0..{SLOTS})")));
     }
@@ -304,7 +307,7 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
         // A new sample point re-pairs with the next stroke.
         slot.source = Some([x, y]);
         slot.anchor = None;
-        slot.layer = p.get("layer").and_then(Value::as_u64).or(active_layer);
+        slot.layer = crate::commands::opt_u64(CMD, p, "layer")?.or(active_layer);
     }
     if let Some((dx, dy)) = pt(p, "offset") {
         // Offset X/Y fields: keep the anchor (or the source as anchor) and move the source.

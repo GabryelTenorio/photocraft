@@ -837,17 +837,29 @@ const MAX_EFFECTS: usize = 256;
 /// mismatches and malformed snapshots are errors, never panics.
 fn replace_effects(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "layer.layerStyle.replace";
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match crate::commands::opt_u64(CMD, p, "layer")? {
         Some(id) => photocraft_doc::LayerId(id),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into()))?,
     };
-    let entries = p.get("effects").and_then(Value::as_array).ok_or_else(|| {
-        let mut msg = String::from("need a top-level `effects` array: {\"effects\": [{kind, params, fx?}]}");
-        if p.get("style").is_some() || p.get("layerStyle").is_some() {
-            msg.push_str("; an `effects` list under a `style` key is not read; put `effects` at the top level, beside `layer`");
+    let entries = match p.get("effects") {
+        None | Some(Value::Null) => {
+            let mut msg = String::from("need a top-level `effects` array: {\"effects\": [{kind, params, fx?}]}");
+            if p.get("style").is_some() || p.get("layerStyle").is_some() {
+                msg.push_str("; an `effects` list under a `style` key is not read; put `effects` at the top level, beside `layer`");
+            }
+            return Err(bad(CMD, msg));
         }
-        bad(CMD, msg)
-    })?;
+        Some(v) => match v.as_array() {
+            Some(entries) => entries,
+            None => {
+                let mut msg = format!("`effects` must be an array, not {v}");
+                if p.get("style").is_some() || p.get("layerStyle").is_some() {
+                    msg.push_str("; an `effects` list under a `style` key is not read; put `effects` at the top level, beside `layer`");
+                }
+                return Err(bad(CMD, msg));
+            }
+        },
+    };
     if entries.len() > MAX_EFFECTS {
         return Err(bad(CMD, format!("at most {MAX_EFFECTS} effects")));
     }
@@ -892,12 +904,12 @@ fn replace_effects(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({ "layer": id.0, "effects": count }))
 }
 
-fn set_effect(s: &mut Session, p: &Value, kind: &str) -> Result<Value> {
+fn set_effect(s: &mut Session, p: &Value, cmd: &str, kind: &str) -> Result<Value> {
     let fx = effect_from_params(kind, p).ok_or_else(|| EngineError::Other(format!("unknown effect {kind}")))?;
     let (fx, pattern) = crate::pattern_cmds::resolve_effect(s, fx)?;
     let label = format!("Layer Style: {}", fx.label());
     let add = b(p, "add", false);
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match crate::commands::opt_u64(cmd, p, "layer")? {
         Some(id) => photocraft_doc::LayerId(id),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into()))?,
     };
@@ -942,7 +954,10 @@ fn default_for(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn req_str_kind<'a>(p: &'a Value, cmd: &str) -> Result<&'a str> {
-    let kind = p.get("kind").and_then(Value::as_str).ok_or_else(|| bad(cmd, "need `kind`"))?;
+    let kind = match p.get("kind") {
+        None | Some(Value::Null) => return Err(bad(cmd, "need `kind`")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`kind` must be a string, not {v}")))?,
+    };
     if effect_from_params(kind, &Value::Null).is_none() {
         return Err(bad(cmd, format!("unknown effect {kind}")));
     }
@@ -963,7 +978,7 @@ macro_rules! style_cmd {
             shortcut: None,
             params: $params,
             enabled: has_layer,
-            run: |s, p| set_effect(s, p, $kind),
+            run: |s, p| set_effect(s, p, concat!("layer.layerStyle.", $kind), $kind),
             journal: true,
         }
     };
