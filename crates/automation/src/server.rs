@@ -982,7 +982,7 @@ impl PhotocraftMcp {
         }
     }
 
-    #[tool(description = "Bridge mode: call any control-protocol method (docs/control-protocol.md) with raw params.")]
+    #[tool(description = "Bridge mode: call any method the desktop control server registers (docs/control-protocol.md) with raw params.")]
     async fn control_call(&self, Parameters(p): Parameters<ControlParams>) -> Result<CallToolResult, McpError> {
         match self.bridge_client() {
             Some(b) => to_result(b.call(&p.method, p.params.unwrap_or_else(|| json!({}))).await),
