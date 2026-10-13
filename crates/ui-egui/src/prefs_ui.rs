@@ -97,6 +97,7 @@ fn selected_theme(interface: &prefs::Interface, system: Option<egui::Theme>) -> 
             LightTheme::Classic => ThemeKind::Classic,
             LightTheme::Adwaita => ThemeKind::Adwaita,
             LightTheme::BreezeLight => ThemeKind::BreezeLight,
+            LightTheme::SoftLight => ThemeKind::SoftLight,
         }
     } else {
         match interface.dark_theme {
@@ -106,6 +107,7 @@ fn selected_theme(interface: &prefs::Interface, system: Option<egui::Theme>) -> 
             DarkTheme::SolarizedDark => ThemeKind::SolarizedDark,
             DarkTheme::AdwaitaDark => ThemeKind::AdwaitaDark,
             DarkTheme::BreezeDark => ThemeKind::BreezeDark,
+            DarkTheme::SoftDark => ThemeKind::SoftDark,
         }
     }
 }
@@ -133,6 +135,7 @@ const LIGHT_THEME_OPTIONS: &[(&str, ThemeKind)] = &[
     ("classic", ThemeKind::Classic),
     ("adwaita", ThemeKind::Adwaita),
     ("breezeLight", ThemeKind::BreezeLight),
+    ("softLight", ThemeKind::SoftLight),
 ];
 const DARK_THEME_OPTIONS: &[(&str, ThemeKind)] = &[
     ("proMedium", ThemeKind::ProMedium),
@@ -141,6 +144,7 @@ const DARK_THEME_OPTIONS: &[(&str, ThemeKind)] = &[
     ("solarizedDark", ThemeKind::SolarizedDark),
     ("adwaitaDark", ThemeKind::AdwaitaDark),
     ("breezeDark", ThemeKind::BreezeDark),
+    ("softDark", ThemeKind::SoftDark),
 ];
 
 fn favorite_theme_groups(favorites: &[SavedTheme]) -> (Vec<ThemeKind>, Vec<ThemeKind>) {
@@ -218,6 +222,7 @@ pub fn load(app: &mut PhotocraftApp) {
     crate::brush_picker::restore(app);
     sync_rulers(app);
     crate::tool_memory::restore(app);
+    crate::view_cmds::restore(app);
     app.sync_recent();
     app.prefs_rt.saved_rev = app.session.prefs.rev();
     app.prefs_rt.saved_value = Some(app.session.prefs_value());
@@ -764,6 +769,11 @@ pub fn shortcut_items(app: &PhotocraftApp) -> Vec<(String, String, Vec<String>, 
     let at = out.iter().rposition(|i| i.2.first().map(String::as_str) == Some("Layer")).map_or(out.len(), |i| i + 1);
     out.splice(at..at, layer);
     out.extend(tools);
+    out.extend(
+        crate::state::Tool::ALL
+            .into_iter()
+            .map(|tool| (crate::tool_shortcuts::id(tool), tool.label().to_string(), vec!["Tools".into()], crate::tool_shortcuts::default(tool))),
+    );
     for (id, label, def) in prefs::TEMPORARY_TOOLS {
         if seen.insert(id.to_string()) {
             out.push((id.to_string(), label.to_string(), vec!["Tools".into(), "Temporary".into()], Some(def.to_string())));
@@ -1669,6 +1679,9 @@ fn shortcuts_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String
         let mut last_top = String::new();
         egui::Grid::new("shortcut-grid").num_columns(3).spacing([12.0, 3.0]).striped(true).show(ui, |ui| {
             for (id, label, path, def) in &items {
+                if tab == 1 && crate::tool_shortcuts::tool(id).is_some() {
+                    continue;
+                }
                 let cur = eff(&overrides, id, def);
                 let (shown_path, shown_label) = shown(id, label, path);
                 // Match what is shown and the English name (commands are documented in English).
@@ -2080,7 +2093,12 @@ mod tests {
     fn breeze_themes_are_chosen_by_preference_and_fix_the_matching_mode() {
         let ctx = egui::Context::default();
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
-        for (id, kind, mode) in [("breezeLight", ThemeKind::BreezeLight, AppearanceMode::Light), ("breezeDark", ThemeKind::BreezeDark, AppearanceMode::Dark)] {
+        for (id, kind, mode) in [
+            ("breezeLight", ThemeKind::BreezeLight, AppearanceMode::Light),
+            ("breezeDark", ThemeKind::BreezeDark, AppearanceMode::Dark),
+            ("softLight", ThemeKind::SoftLight, AppearanceMode::Light),
+            ("softDark", ThemeKind::SoftDark, AppearanceMode::Dark),
+        ] {
             app.run("prefs.set", json!({"path": "interface.theme", "value": id})).unwrap();
             tick(&mut app, &ctx);
             let interface = app.session.prefs().interface.clone();
@@ -2089,8 +2107,8 @@ mod tests {
             assert_eq!(app.ui.theme, kind, "{id}");
         }
         // The two slots are independent: choosing the dark one left the light choice alone.
-        assert_eq!(app.session.prefs().interface.light_theme, LightTheme::BreezeLight);
-        assert_eq!(app.session.prefs().interface.dark_theme, DarkTheme::BreezeDark);
+        assert_eq!(app.session.prefs().interface.light_theme, LightTheme::SoftLight);
+        assert_eq!(app.session.prefs().interface.dark_theme, DarkTheme::SoftDark);
     }
 
     #[test]
@@ -2646,6 +2664,39 @@ mod tests {
             let o = &app3.ui.tool_options;
             assert!(o.move_auto_select && o.feather == 0.0, "{bad}");
             assert_eq!(o.tolerance, if bad.is_object() { 5.0 } else { 32.0 });
+        }
+    }
+
+    #[test]
+    fn view_show_items_survive_a_restart() {
+        let (mut app, store) = app_with_store();
+        let ctx = egui::Context::default();
+        tick(&mut app, &ctx);
+        // Untouched: nothing is stored, so later default changes still reach the user.
+        crate::view_cmds::persist(&mut app, &ctx);
+        tick(&mut app, &ctx);
+        assert!(stored(&store).get("viewExtras").is_none_or(Value::is_null));
+        // The menu commands, as a user toggles them (#3762: Pixel Grid off).
+        for id in ["view.show.pixelGrid", "view.show.grid", "view.snapTo.layers", "view.extras"] {
+            crate::menus::invoke(&mut app, &ctx, id, json!({})).unwrap();
+        }
+        crate::view_cmds::persist(&mut app, &ctx);
+        tick(&mut app, &ctx);
+        assert_eq!(stored(&store)["viewExtras"], json!({"extras": false, "grid": true, "show": {"pixelGrid": false}, "snapTo": {"layers": false}}));
+        // A restart gets them back.
+        let saved = store.lock().unwrap().clone().unwrap();
+        let (mut app2, _) = app_with_saved(Some(saved));
+        tick(&mut app2, &ctx);
+        let v = &app2.ui.view;
+        assert!(!v.extras && !v.show.pixel_grid && !v.snap_to.layers && app2.ui.extras.grid);
+        assert!(v.show.selection_edges && v.snap_to.guides && app2.ui.extras.guides, "the rest keep their defaults");
+        // A hand-edited file: unknown keys and non-booleans keep the defaults, good ones still load.
+        for bad in [json!("junk"), json!({"extras": 0, "show": {"pixelGrid": "no", "mesh": true, "bogus": true}, "snapTo": [1]})] {
+            let (mut app3, _) = app_with_saved(Some(json!({"viewExtras": bad}).to_string()));
+            tick(&mut app3, &ctx);
+            let v = &app3.ui.view;
+            assert!(v.extras && v.show.pixel_grid && v.snap_to.layers, "{bad}");
+            assert_eq!(v.show.mesh, bad.is_object());
         }
     }
 
