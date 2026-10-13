@@ -10,7 +10,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use photocraft_color::{BlendMode, PixelFormat, SampleType};
+use photocraft_color::{BlendMode, ColorMode, PixelFormat, SampleType};
 use photocraft_geom::Rect;
 use photocraft_raster::{Surface, from_rgba_into, to_rgba};
 #[cfg(not(target_arch = "wasm32"))]
@@ -1065,6 +1065,14 @@ impl StrokeRenderer {
         let opacity = b.opacity.clamp(0.0, 1.0);
         let mut base_src = [0.0f32; 8];
         from_rgba_into(&fmt, b.color, &mut base_src);
+        let mut src = [0.0f32; 8];
+        from_rgba_into(&fmt, b.color, &mut src);
+        // A colour picked as CMYK paints its inks as they are in a CMYK target (#4344).
+        if let (ColorMode::Cmyk, Some((rgb, inks))) = (fmt.mode, b.color_cmyk)
+            && rgb == [b.color[0], b.color[1], b.color[2]]
+        {
+            src[..4].copy_from_slice(&inks);
+        }
         if let Some(a) = a_idx {
             base_src[a] = b.color[3];
         }
