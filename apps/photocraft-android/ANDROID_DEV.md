@@ -97,3 +97,24 @@ tests passed. The helper exports platform, touch and docs/tools patches plus key
 catalog additions, preserving upstream translations. PSD export options added upstream
 are forwarded by the Android service adapter. Final APK/device and corpus results
 are recorded below once completed. [Porting guide](../../docs/android-porting.md).
+
+### Final alpha.4 package and device evidence
+
+Signed ARM64 APK: 64,990,728 bytes, SHA256
+10a3f51c78f449ff655c1beae48960637b4253ef35f1148b0e4ecb7c3f2da939.
+APK v2 signature verified; signer SHA256 matches alpha.3. ADB install -r succeeded
+without uninstalling or clearing data. APK copied to the tablet Downloads directory.
+
+Final file-service tests: 2 passed, including PSD thumbnail preference propagation.
+Full corpus regression: 3387 passed, 27 ignored, 151 test binaries; local corpus
+profile used LTO=false and codegen-units=16. The APK used the default release profile.
+Final host/cross clippy passed. Scoped formatting, three catalog-port tests, layers
+and wasm passed. Three exported patches applied to a clean 0.8.2 temporary index;
+keyed merges reproduced all 20 catalog deltas exactly.
+
+Lenovo TB378FC / Android 16: native picker PNG import, Clone Stamp source/paint,
+Undo/Redo and PSD Save As passed. Saved 082.psd grew from 49,166 to 50,521 bytes
+after a second stroke and Save. With the app stopped, tapping the file in Files
+and choosing PhotoCraft just once cold-opened both strokes. The two screenshot
+pixels (1100,900) and (1100,1000) are green (40,170,90). Only synthetic fixtures
+appear in the published captures. Physical pinch feel still needs confirmation.

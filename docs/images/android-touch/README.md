@@ -2,7 +2,7 @@
 
 Original, unretouched ADB screenshots captured on a Lenovo TB378FC running Android 16.
 The only image document shown is an original synthetic 640 × 480 four-color fixture.
-Captured for @HubWithTorch on 2026-10-12. No personal photos are included.
+Captured for @HubWithTorch on 2026-10-12 and 2026-10-13. No personal photos are included.
 
 `clone-before.png` shows alpha.2; all other PNGs show the installed alpha.3 APK.
 The new bottom tray reduces the canvas viewport height, so the image position differs.

@@ -50,7 +50,7 @@ def export(root, base, out):
     groups = {
         '01-platform.patch': ['Cargo.toml', 'Cargo.lock', 'apps/photocraft-android', 'crates/text', 'xtask/src/layers.rs'],
         '02-touch.patch': ['crates/ui-egui', ':!crates/ui-egui/src/i18n/*.tsv'],
-        '03-docs-tools.patch': ['docs/android-touch-controls.md', 'docs/android-porting.md', 'docs/images/android-touch', 'docs/hardware-parity.md', 'ATTRIBUTION.md', 'packaging/android'],
+        '03-docs-tools.patch': ['docs/android-touch-controls.md', 'docs/android-porting.md', 'docs/images/android-touch', 'docs/hardware-parity.md', 'docs/scorecard.md', 'ATTRIBUTION.md', 'packaging/android'],
     }
     for filename, paths in groups.items():
         (out / filename).write_bytes(git(root, 'diff', '--binary', base, head, '--', *paths))

@@ -7,13 +7,33 @@ without a keyboard could select the tool but could not start retouching. Android
 enables a bottom touch tray with one-shot sampling and larger controls for common actions.
 The same shared Rust UI remains optional on desktop, under Window > Modifier Keys > Touch Controls.
 
-Download the [community APK and checksums](https://github.com/HubWithTorch/photocraft/releases/tag/android-v0.7.0-alpha.3).
+Download the [0.8.2 community APK and checksums](https://github.com/HubWithTorch/photocraft/releases/tag/android-v0.8.2-alpha.4).
+The historical [alpha.3 release](https://github.com/HubWithTorch/photocraft/releases/tag/android-v0.7.0-alpha.3) remains available.
 This is an experimental community release, not an official upstream Android release.
 The new alpha.4 release uses upstream 0.8.2 with the same file and touch fixes.
 Screenshots below remain the original alpha.2/alpha.3 device comparison, not new-build evidence.
 See [migration boundaries and build tools](android-porting.md).
 
-## Before and after / 修复前后
+## 0.8.2 update / 新版验证
++
++Alpha.4 is based on upstream 0.8.2 (24930b31) and keeps the same package and signing
++certificate as alpha.3. It was installed over the existing app without clearing data.
++ADB repeated source sampling, clone painting, Undo/Redo, system-picker PNG import,
++PSD Save As, repeated Save and Files cold-open on 2026-10-13. The saved test PSD grew
++from 49,166 to 50,521 bytes after a second stroke; both strokes survived reopening.
++
++| Clone sampling on 0.8.2 | Files cold-open restores both saved strokes |
++|---|---|
++| ![0.8.2 clone result](images/android-touch/clone-0.8.2.png) | ![0.8.2 reopen result](images/android-touch/reopen-0.8.2.png) |
++
++Current validation: **2545 UI tests passed, 12 ignored**; **2 Android file-service tests**;
++**3387 corpus tests passed, 27 ignored**, across 151 binaries. Host/Android clippy,
++layers, wasm, scoped formatting and three catalog-port tests passed. The migration
++bundle was applied to a clean upstream index and its 20 catalog deltas checked against
++the source. Corpus validation used a faster local LTO-disabled profile; the APK used
++the default release profile. See [the porting guide](android-porting.md).
++
++## Before and after / 修复前后
 
 Both captures use the same synthetic image on a Lenovo TB378FC, Android 16, at 225% zoom.
 The original is alpha.2; the updated image is the installed alpha.3 APK.

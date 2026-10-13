@@ -126,4 +126,4 @@ Files copied into `corpus/` by hand (tiff, exr, raw) must be MIT, BSD or CC0.
 
 | Path | Title | Author | Source | License |
 |---|---|---|---|---|
-| `docs/images/android-touch/*.png` | Android before/after touch workflow captures using an original synthetic fixture | @HubWithTorch | Original ADB device screenshots, 2026-10-12; [provenance](docs/images/android-touch/README.md) | Original contributions MIT OR Apache-2.0; [MIT](docs/images/android-touch/LICENSE-MIT), [Apache-2.0](docs/images/android-touch/LICENSE-APACHE); displayed UI assets retain their existing licenses |
+| `docs/images/android-touch/*.png` | Android before/after touch workflow captures using an original synthetic fixture | @HubWithTorch | Original ADB device screenshots, 2026-10-12 and 2026-10-13; [provenance](docs/images/android-touch/README.md) | Original contributions MIT OR Apache-2.0; [MIT](docs/images/android-touch/LICENSE-MIT), [Apache-2.0](docs/images/android-touch/LICENSE-APACHE); displayed UI assets retain their existing licenses |

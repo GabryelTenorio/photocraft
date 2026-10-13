@@ -91,6 +91,7 @@ cargo clippy -p photocraft-ui-egui -p photocraft-android --all-targets -- -D war
 cargo ndk -t arm64-v8a clippy -p photocraft-android --all-targets -- -D warnings
 cargo xtask layers
 cargo xtask wasm
+cargo xtask scorecard
 ```
 
 The UI suite includes seven `touch_ui::tests` and three `touch_navigation` canvas tests.
