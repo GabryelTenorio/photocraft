@@ -124,6 +124,8 @@
 	Search…	Zoeken…
 	Check Spelling…	Spelling controleren…
 	Find and Replace Text…	Tekst zoeken en vervangen…
+	Add to Dictionary	Aan woordenboek toevoegen
+	No Spelling Suggestions	Geen spellingsuggesties
 	Fill…	Vullen…
 	Stroke…	Omlijnen…
 	Content-Aware Fill…	Inhoudsbewust vullen…
@@ -519,6 +521,12 @@
 	Blur	Vervagen
 	Blur Gallery	Vervagingsgalerie
 	Field Blur…	Veldvervaging…
+# Field Blur pins (#3373)
+	No pin selected	Geen speld geselecteerd
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Klik in de afbeelding om een speld toe te voegen; sleep een speld om hem te verplaatsen, of zijn ring om de vervaging te wijzigen. Delete verwijdert de geselecteerde speld.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Sleep de grepen op de omtrek om hem te schalen en te draaien, het vierkantje om de hoeken af te ronden en de punten binnenin om in te stellen waar de vervaging begint.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Sleep de speld om de band te verplaatsen, of zijn ring om de vervaging te wijzigen. Sleep de doorgetrokken lijnen om de scherpe band te verbreden, de stippellijnen voor de overgang en de punten om hem te draaien.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Sleep de grepen op de omtrek om hem te schalen en te draaien; de ring stelt de vervagingshoek in.
 	Iris Blur…	Irisvervaging…
 	Tilt-Shift…	Tilt-shift…
 	Path Blur…	Padvervaging…
@@ -827,6 +835,12 @@
 	Baseline shift	Basislijnverschuiving
 	Basic	Basis
 	Before (Y)	Voor (Y)
+	Save Settings…	Instellingen opslaan…
+	Load Settings…	Instellingen laden…
+	Save these settings as a Camera Raw .xmp file	Deze instellingen opslaan als Camera Raw-.xmp-bestand
+	Load settings from a Camera Raw .xmp file	Instellingen laden uit een Camera Raw-.xmp-bestand
+	Loaded Camera Raw settings from {file}	Camera Raw-instellingen geladen uit {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw-instellingen geladen uit {file} ({n} niet ondersteund)
 	Begin recording	Opname starten
 	Bend:	Buiging:
 	Bicubic	Bicubisch
@@ -3818,6 +3832,9 @@ curves	Smooth	Vloeiend maken
 	Remove after each stroke	Verwijderen na elke streek
 	Apply the removal ({key})	Verwijdering toepassen ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Streken om te verwijderen: {n} (Enter past toe, Esc annuleert)
+	Clear Brush Controls	Penseelbesturing wissen
+	Reset All Locked Settings	Alle vergrendelde instellingen opnieuw instellen
+	Copy Texture to Other Tools	Structuur kopiëren naar andere gereedschappen
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Handelingen laden…
@@ -3839,9 +3856,4 @@ curves	Smooth	Vloeiend maken
 	Action playback stopped	Afspelen van de handeling gestopt
 	Step {step} is waiting for its dialog	Stap {step} wacht op zijn dialoogvenster
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
-# Field Blur pins (#3373)
-	No pin selected	Geen speld geselecteerd
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Klik in de afbeelding om een speld toe te voegen; sleep een speld om hem te verplaatsen, of zijn ring om de vervaging te wijzigen. Delete verwijdert de geselecteerde speld.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Sleep de grepen op de omtrek om hem te schalen en te draaien, het vierkantje om de hoeken af te ronden en de punten binnenin om in te stellen waar de vervaging begint.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Sleep de speld om de band te verplaatsen, of zijn ring om de vervaging te wijzigen. Sleep de doorgetrokken lijnen om de scherpe band te verbreden, de stippellijnen voor de overgang en de punten om hem te draaien.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Sleep de grepen op de omtrek om hem te schalen en te draaien; de ring stelt de vervagingshoek in.
+	Auto Add/Delete	Automatisch toevoegen/verwijderen

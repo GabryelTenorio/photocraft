@@ -270,6 +270,8 @@
 	Check Spelling	Проверка орфографии
 	Language Options	Языковые параметры
 	Find and Replace Text…	Найти и заменить текст…
+	Add to Dictionary	Добавить в словарь
+	No Spelling Suggestions	Нет вариантов написания
 	Paste Lorem Ipsum	Вставить условный текст
 	Glyphs Panel	Панель «Глифы»
 	Type Styles	Стили текста
@@ -326,6 +328,13 @@
 	Oil Paint…	Масляная живопись…
 	Blur Gallery	Галерея размытия
 	Field Blur…	Размытие по полю…
+# Field Blur pins (#3373)
+	No pin selected	Булавка не выбрана
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Щелкните изображение, чтобы добавить булавку; перетащите булавку, чтобы переместить ее, или ее кольцо, чтобы изменить размытие. Delete удаляет выбранную булавку.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Перетаскивайте маркеры на контуре, чтобы изменить размер и повернуть его, квадрат — чтобы скруглить углы, а точки внутри — чтобы задать, где начинается размытие.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Перетащите булавку, чтобы сдвинуть полосу, или ее кольцо, чтобы изменить размытие. Сплошные линии расширяют резкую полосу, пунктирные задают переход, а точки поворачивают ее.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Перетаскивайте маркеры на контуре, чтобы изменить размер и повернуть его; кольцо задает угол размытия.
+	Blur Angle	Угол размытия
 	Iris Blur…	Диафрагменное размытие…
 	Tilt-Shift…	Наклон-сдвиг…
 	Path Blur…	Размытие по контуру…
@@ -1681,6 +1690,12 @@
 	Show in Explorer	Показать в Проводнике
 	Show in Folder	Показать в папке
 	Before (Y)	До (Y)
+	Save Settings…	Сохранить настройки…
+	Load Settings…	Загрузить настройки…
+	Save these settings as a Camera Raw .xmp file	Сохранить эти настройки в файл Camera Raw .xmp
+	Load settings from a Camera Raw .xmp file	Загрузить настройки из файла Camera Raw .xmp
+	Loaded Camera Raw settings from {file}	Настройки Camera Raw загружены из {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Настройки Camera Raw загружены из {file} (не поддерживается: {n})
 	After (X)	После (X)
 	Original	Оригинал
 	Current	Текущий
@@ -3003,6 +3018,9 @@ curves	Smooth	Сгладить
 	Remove after each stroke	Удалять после каждого штриха
 	Apply the removal ({key})	Применить удаление ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)
+	Clear Brush Controls	Очистить параметры кисти
+	Reset All Locked Settings	Сбросить все заблокированные параметры
+	Copy Texture to Other Tools	Скопировать текстуру в другие инструменты
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Загрузить операции…
@@ -3024,10 +3042,4 @@ curves	Smooth	Сгладить
 	Action playback stopped	Воспроизведение операции остановлено
 	Step {step} is waiting for its dialog	Шаг {step} ожидает своего диалога
 @plural	{n} action|{n} actions	{n} операция|{n} операции|{n} операций
-# Field Blur pins (#3373)
-	No pin selected	Булавка не выбрана
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Щелкните изображение, чтобы добавить булавку; перетащите булавку, чтобы переместить ее, или ее кольцо, чтобы изменить размытие. Delete удаляет выбранную булавку.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Перетаскивайте маркеры на контуре, чтобы изменить размер и повернуть его, квадрат — чтобы скруглить углы, а точки внутри — чтобы задать, где начинается размытие.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Перетащите булавку, чтобы сдвинуть полосу, или ее кольцо, чтобы изменить размытие. Сплошные линии расширяют резкую полосу, пунктирные задают переход, а точки поворачивают ее.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Перетаскивайте маркеры на контуре, чтобы изменить размер и повернуть его; кольцо задает угол размытия.
-	Blur Angle	Угол размытия
+	Auto Add/Delete	Автодобавление/удаление

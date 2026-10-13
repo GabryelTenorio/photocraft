@@ -248,6 +248,8 @@
 	Check Spelling	Перевірити правопис
 	Language Options	Мовні параметри
 	Find and Replace Text…	Знайти та замінити текст…
+	Add to Dictionary	Додати до словника
+	No Spelling Suggestions	Немає варіантів написання
 	Paste Lorem Ipsum	Вставити Lorem Ipsum
 	Glyphs Panel	Панель гліфів
 	Type Styles	Текстові стилі
@@ -304,6 +306,12 @@
 	Oil Paint…	Олійний живопис…
 	Blur Gallery	Галерея розмиття
 	Field Blur…	Розмиття поля…
+# Field Blur pins (#3373)
+	No pin selected	Шпильку не вибрано
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Клацніть зображення, щоб додати шпильку; перетягніть шпильку, щоб перемістити її, або її кільце, щоб змінити розмиття. Delete видаляє вибрану шпильку.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Перетягуйте маркери на контурі, щоб змінити розмір і повернути його, квадрат — щоб заокруглити кути, а точки всередині — щоб задати, де починається розмиття.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Перетягніть шпильку, щоб зсунути смугу, або її кільце, щоб змінити розмиття. Суцільні лінії розширюють різку смугу, пунктирні задають перехід, а точки повертають її.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Перетягуйте маркери на контурі, щоб змінити розмір і повернути його; кільце задає кут розмиття.
 	Iris Blur…	Розмиття діафрагми…
 	Tilt-Shift…	Нахил і зсув…
 	Path Blur…	Розмиття вздовж контуру…
@@ -1662,6 +1670,12 @@
 	Show in Explorer	Показати у Провіднику
 	Show in Folder	Показати в теці
 	Before (Y)	До (Y)
+	Save Settings…	Зберегти налаштування…
+	Load Settings…	Завантажити налаштування…
+	Save these settings as a Camera Raw .xmp file	Зберегти ці налаштування у файл Camera Raw .xmp
+	Load settings from a Camera Raw .xmp file	Завантажити налаштування з файлу Camera Raw .xmp
+	Loaded Camera Raw settings from {file}	Налаштування Camera Raw завантажено з {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Налаштування Camera Raw завантажено з {file} (не підтримується: {n})
 	After (X)	Після (X)
 	Original	Оригінал
 	Current	Поточний
@@ -3756,6 +3770,9 @@ curves	Smooth	Згладити
 	Remove after each stroke	Видаляти після кожного штриха
 	Apply the removal ({key})	Застосувати видалення ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихів для видалення: {n} (Enter застосовує, Esc скасовує)
+	Clear Brush Controls	Очистити параметри пензля
+	Reset All Locked Settings	Скинути всі заблоковані параметри
+	Copy Texture to Other Tools	Скопіювати текстуру в інші інструменти
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Завантажити операції…
@@ -3777,9 +3794,4 @@ curves	Smooth	Згладити
 	Action playback stopped	Відтворення операції зупинено
 	Step {step} is waiting for its dialog	Крок {step} очікує на свій діалог
 @plural	{n} action|{n} actions	{n} операція|{n} операції|{n} операцій
-# Field Blur pins (#3373)
-	No pin selected	Шпильку не вибрано
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Клацніть зображення, щоб додати шпильку; перетягніть шпильку, щоб перемістити її, або її кільце, щоб змінити розмиття. Delete видаляє вибрану шпильку.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Перетягуйте маркери на контурі, щоб змінити розмір і повернути його, квадрат — щоб заокруглити кути, а точки всередині — щоб задати, де починається розмиття.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Перетягніть шпильку, щоб зсунути смугу, або її кільце, щоб змінити розмиття. Суцільні лінії розширюють різку смугу, пунктирні задають перехід, а точки повертають її.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Перетягуйте маркери на контурі, щоб змінити розмір і повернути його; кільце задає кут розмиття.
+	Auto Add/Delete	Автододавання/видалення
