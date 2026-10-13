@@ -653,8 +653,9 @@ Workspace-edge destinations take precedence over group destinations, except when
 inside the source group's tab strip; document-edge drops preview an inner document-area
 dock. The moving panel UI fades over 150 ms to 40% opacity (60% transparency) over any
 eligible panel tab strip and back to full opacity elsewhere; insertion lines and destination highlights retain their normal opacity.
-Document tab strips are unaffected. Same-group tab-strip destinations show only an insertion line, including unchanged
-positions, with the marker contained inside the visible strip. Unchanged releases preserve
+Document tab strips are unaffected. Same-group destinations highlight the content area in the accent color,
+leaving the tab strip clear; strip targets also show a bounded insertion line, including unchanged positions.
+Returning to the source body is an explicit no-op and never detaches the tab. Unchanged releases preserve
 position. Floating groups move from the grip, empty header or top border; their left, right
 and bottom edges and both bottom corners resize within panel and viewport limits. Workspace
 locking blocks both movement and resizing. The top border retains the normal mouse pointer.
@@ -686,8 +687,9 @@ their existing preview animation; document tab strips and docking zone sizes are
 Live layouts are presentation-only: authoritative drag targets remain stable, preview controls
 are disabled, and no temporary panel sizes, floating memory or document cameras are saved.
 Insertion lines follow the measured displayed strip for cross-group joins. Same-group reorder
-feedback remains insertion-line-only, with no live reflow or orange outlines. Destination
-feedback and release share one validated candidate; Escape, focus loss, locking and workspace
+feedback highlights only the source content area and shows its bounded insertion line, with
+no live reflow or orange outlines. Destination feedback and release share one validated
+candidate; Escape, focus loss, locking and workspace
 changes discard the display without committing.
 
 Panel side commands also accept `scope:"workspace"|"document"` (default `workspace`).
@@ -729,3 +731,14 @@ retaining its independently remembered size. Explicit screen positions require a
 known viewport screen origin; otherwise use `window.document.float` with local
 `x`/`y` geometry. Invalid parameters and locked workspaces leave the layout and
 active document unchanged. New Window for Document remains an additional native view.
+
+Docked groups can detach from empty header space or their top 4 logical pixels. All tabs
+in that group move together, preserving order and selection; neighboring split groups stay
+in place. Menu, overflow and resize controls retain their own hit targets. The top border
+uses the normal pointer. These gestures use the existing whole-group commands.
+
+Floating panel and document resize handles follow absolute pointer positions with a captured
+grab offset. Opposite edges remain fixed. At minimum/maximum sizes and viewport boundaries,
+the edge stops until the cursor re-enters its valid range; reversal outside the range does
+not resize or translate the window. Viewports unable to fit the minimum suspend resizing
+without overwriting preferred dimensions. Keyboard resizing and resize cursors are preserved.

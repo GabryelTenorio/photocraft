@@ -939,7 +939,7 @@ fn capture_regional_docking_visual_fixtures() {
             h.render().unwrap().save(directory.join(format!("regional-{}-{width}-{scale}x.png", theme.id()))).unwrap();
             let tab = tab_rect(&h, "layers");
             hold_drag(&mut h, tab.center(), egui::pos2(tab.left() + 3.0, tab.center().y));
-            assert_insertion_only(&h, "layers");
+            assert_source_strip_feedback(&h, "layers");
             h.render().unwrap().save(directory.join(format!("insertion-{}-{width}-{scale}x.png", theme.id()))).unwrap();
         }
     }
@@ -1110,7 +1110,7 @@ fn unchanged_tab_insertions_show_only_a_bounded_line_and_leave_order_unchanged()
             let to = egui::pos2(if after_midpoint { rect.right() - 3.0 } else { rect.left() + 3.0 }, rect.center().y);
             let before = h.state().ui.docking.clone();
             hold_drag(&mut h, from, to);
-            assert_insertion_only(&h, panel);
+            assert_source_strip_feedback(&h, panel);
             capture_insertion(&mut h, &format!("unchanged-{panel}-{after_midpoint}"));
             h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
             h.run_steps(3);
@@ -1138,10 +1138,12 @@ fn first_regional_drop_from_legacy_custom_dock_accounts_for_the_icon_rail() {
     }
 }
 
-fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
+fn assert_source_strip_feedback(h: &Harness<'static, PhotocraftApp>, panel: &str) {
     assert_drag_opacity(h, 0.4);
     let feedback = drop_preview(h).expect("tab-strip feedback");
-    assert!(feedback.preview.is_none(), "same-group reorder must not highlight the group");
+    let body = feedback.preview.expect("same-group content highlight");
+    assert!(rendered_group(h, panel).contains_rect(body));
+    assert!(body.top() >= tab_rect(h, panel).bottom() - 0.1, "strip must stay clear");
     let marker = feedback.insertion.expect("insertion marker even at unchanged slots");
     assert!(rendered_group(h, panel).contains_rect(marker), "marker {marker:?} outside group");
     let tab = tab_rect(h, panel);
@@ -1149,6 +1151,96 @@ fn assert_insertion_only(h: &Harness<'static, PhotocraftApp>, panel: &str) {
     assert!(marker.width() > 0.0 && marker.width() <= 2.01);
     let accent = crate::theme::Tokens::get(&h.ctx).accent;
     assert!(h.output().shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == marker && r.fill == accent)));
+}
+
+#[test]
+fn returning_to_the_source_body_highlights_content_and_never_floats() {
+    for singleton in [false, true] {
+        let mut app = app();
+        enable_workspace(&mut app);
+        if singleton {
+            app.run("window.panel.dock", json!({"panel":"layers","side":"left"})).unwrap();
+        }
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let before = h.state().ui.docking.clone();
+        let target = rendered_group(&h, "layers").center();
+        let from = tab_rect(&h, "layers").center();
+        hold_drag(&mut h, from, target);
+        let feedback = drop_preview(&h).unwrap();
+        let body = feedback.preview.expect("source content is a valid blue return destination");
+        assert!(body.top() >= tab_rect(&h, "layers").bottom());
+        assert!(feedback.insertion.is_none());
+        capture_insertion(&mut h, &format!("source-body-{singleton}"));
+        h.event(Event::PointerButton { pos: target, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.run_steps(3);
+        assert_eq!(h.state().ui.docking, before);
+    }
+}
+
+#[test]
+fn docked_border_and_empty_header_detach_all_tabs_without_neighbor_groups() {
+    for native in [false, true] {
+        for border in [false, true] {
+            for locked in [false, true] {
+                let mut app = app();
+                app.ui.dock_tabs.layers = 1;
+                if !native {
+                    enable_workspace(&mut app);
+                }
+                app.session.prefs.edit(|prefs| prefs.workspace_locked = locked);
+                let mut h = harness(app, vec2(1440.0, 1000.0));
+                let before = h.state().ui.docking.clone();
+                let native_strip = crate::dock::last_strips(&h.ctx).into_iter().find(|strip| strip.group == crate::dock::Group::Layers);
+                let strip = if native {
+                    native_strip.as_ref().unwrap().area
+                } else {
+                    let group = rendered_group(&h, "layers");
+                    egui::Rect::from_min_max(group.min, egui::pos2(group.right(), tab_rect(&h, "layers").bottom()))
+                };
+                let from = if !native {
+                    let first = "layers".to_owned();
+                    let handle = if border { "move-group-border" } else { "move-group-header" };
+                    h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with((handle, Some(&first)))).expect("shared header handle").rect.center()
+                } else if border {
+                    egui::pos2(strip.center().x, strip.top() + 2.0)
+                } else {
+                    let last_tab = native_strip.as_ref().unwrap().tabs.last().unwrap().1;
+                    egui::pos2((last_tab.right() + strip.right()) * 0.5, strip.center().y)
+                };
+                let to = if native { egui::pos2(strip.left() * 0.5, 500.0) } else { canvas_region(&h).center() };
+                hold_drag(&mut h, from, to);
+                if !locked {
+                    assert!(
+                        craft_ui::docking::is_dragging::<String>(&h.ctx, egui::Id::new("photocraft-panel-docking")),
+                        "native={native}, border={border}, from={from:?}, status={}",
+                        h.state().ui.status
+                    );
+                    assert!(
+                        drop_preview(&h).and_then(|feedback| feedback.preview).is_some(),
+                        "missing destination: native={native}, border={border}, status={}",
+                        h.state().ui.status
+                    );
+                    capture_insertion(&mut h, &format!("header-{native}-{border}"));
+                }
+                h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+                h.run_steps(3);
+                if locked {
+                    assert_eq!(h.state().ui.docking, before);
+                    continue;
+                }
+                let layout = h.state().ui.docking.as_ref().unwrap();
+                let floating = layout
+                    .floating
+                    .iter()
+                    .find(|group| group.panels.iter().any(|id| id == "layers"))
+                    .unwrap_or_else(|| panic!("native={native}, border={border}, status={}, layout={layout:?}", h.state().ui.status));
+                assert_eq!(floating.panels, ["layers", "channels", "paths"], "native={native}, border={border}");
+                assert_eq!(floating.panels.get(floating.active).map(String::as_str), Some("channels"));
+                assert!(!floating.panels.iter().any(|id| id == "properties" || id == "color"));
+                assert_eq!(group_members(layout, "properties"), ["properties", "adjustments"]);
+            }
+        }
+    }
 }
 fn assert_drag_opacity(h: &Harness<'static, PhotocraftApp>, opacity: f32) {
     fn large_fill(shape: &egui::Shape, fill: egui::Color32) -> bool {
@@ -1178,7 +1270,7 @@ fn drag_opacity_tracks_same_and_cross_group_strips_and_restores_outside() {
         let from = tab_rect(&h, "layers").center();
         let own = egui::pos2(tab_rect(&h, "layers").left() + 3.0, from.y);
         hold_drag(&mut h, from, own);
-        assert_insertion_only(&h, "layers");
+        assert_source_strip_feedback(&h, "layers");
         capture_insertion(&mut h, &format!("opacity-own-{floating}"));
         let outside = rendered_group(&h, CANVAS).center();
         h.event(Event::PointerMoved(outside));
@@ -1205,7 +1297,7 @@ fn capture_insertion(h: &mut Harness<'static, PhotocraftApp>, name: &str) {
 }
 
 #[test]
-fn same_group_reorders_have_only_lines_in_both_directions_and_floating_groups() {
+fn same_group_reorders_highlight_content_and_keep_lines_in_both_directions() {
     for size in [vec2(1440.0, 1000.0), vec2(700.0, 500.0)] {
         for floating in [false, true] {
             for forward in [false, true] {
@@ -1220,7 +1312,7 @@ fn same_group_reorders_have_only_lines_in_both_directions_and_floating_groups() 
                 let to = egui::pos2(if forward { target.right() - 3.0 } else { target.left() + 3.0 }, target.center().y);
                 let from = tab_rect(&h, panel).center();
                 hold_drag(&mut h, from, to);
-                assert_insertion_only(&h, panel);
+                assert_source_strip_feedback(&h, panel);
                 capture_insertion(&mut h, &format!("reorder-{}-{floating}-{forward}", size.x));
                 h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
                 h.run_steps(3);
@@ -1240,7 +1332,7 @@ fn singleton_strip_reorder_wins_over_workspace_edge() {
     let to = egui::pos2(tab.left() + 3.0, tab.center().y);
     let before = h.state().ui.docking.clone();
     hold_drag(&mut h, tab.center(), to);
-    assert_insertion_only(&h, "layers");
+    assert_source_strip_feedback(&h, "layers");
     capture_insertion(&mut h, "singleton-top-edge");
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(3);
@@ -1312,7 +1404,7 @@ fn unchanged_first_slot_in_an_overflowing_float_preserves_hidden_tab_order() {
     let tab = tab_rect(&h, "layers");
     let to = egui::pos2(tab.left() + 3.0, tab.center().y);
     hold_drag(&mut h, tab.center(), to);
-    assert_insertion_only(&h, "layers");
+    assert_source_strip_feedback(&h, "layers");
     capture_insertion(&mut h, "overflow-first-slot");
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(3);
@@ -1626,7 +1718,7 @@ fn insertion_marker_is_visible_in_rendered_pixels_above_drag_and_fixed_header() 
         let last = tab_rect(&h, "paths");
         let to = egui::pos2(last.right() - 2.0, last.center().y);
         hold_drag(&mut h, from, to);
-        assert_insertion_only(&h, "layers");
+        assert_source_strip_feedback(&h, "layers");
         let marker = drop_preview(&h).unwrap().insertion.unwrap();
         let scale = h.ctx.pixels_per_point();
         let image = h.render().unwrap();
@@ -1634,5 +1726,79 @@ fn insertion_marker_is_visible_in_rendered_pixels_above_drag_and_fixed_header() 
         let expected = crate::theme::Tokens::get(&h.ctx).accent.to_array();
         assert!(pixel.iter().zip(expected).all(|(actual, expected)| actual.abs_diff(expected) <= 1), "marker is covered: {pixel:?}, expected {expected:?}");
         capture_insertion(&mut h, &format!("visible-marker-{floating}"));
+    }
+}
+
+#[test]
+fn floating_panel_and_document_resizers_follow_pointer_after_boundary_overshoot() {
+    fn bounds(h: &Harness<'static, PhotocraftApp>, document: Option<u64>) -> egui::Rect {
+        if let Some(id) = document {
+            let header = h.ctx.read_response(egui::Id::new(("document-header", id))).unwrap().rect;
+            let content = crate::document_docking::content_rect(&h.ctx, id).unwrap();
+            egui::Rect::from_min_max(egui::pos2(content.left() - 1.0, header.top()), content.max + vec2(1.0, 1.0))
+        } else {
+            rendered_group(h, "layers")
+        }
+    }
+    fn hover(h: &mut Harness<'static, PhotocraftApp>, at: Pos2) {
+        h.event(Event::PointerMoved(at));
+        h.run_steps(2);
+    }
+    for document_window in [false, true] {
+        for (panel_handle, document_handle, horizontal, left, vertical) in [
+            ("resize-right", "right", true, false, false),
+            ("resize-left", "left", true, true, false),
+            ("resize-bottom", "bottom", false, false, true),
+            ("resize", "corner", true, false, true),
+            ("resize-bottom-left", "corner-left", true, true, true),
+        ] {
+            let mut app = app();
+            let document = if document_window {
+                app.run("file.new", json!({"width":80,"height":60})).unwrap();
+                app.run("window.document.float", json!({"x":200,"y":200,"width":360,"height":400})).unwrap();
+                Some(app.session.active().unwrap().doc.id.0)
+            } else {
+                app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":200,"y":200,"width":360,"height":400})).unwrap();
+                None
+            };
+            let mut h = harness(app, vec2(1440.0, 1000.0));
+            let control = if let Some(id) = document {
+                egui::Id::new(("document-resize", id, document_handle))
+            } else {
+                egui::Id::new("photocraft-panel-docking").with(("floating", &"layers".to_owned())).with(panel_handle)
+            };
+            let start = h.ctx.read_response(control).unwrap().rect.center();
+            let original = bounds(&h, document);
+            h.event(Event::PointerMoved(start));
+            h.run_steps(1);
+            h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+            h.run_steps(1);
+            let outside = egui::pos2(if horizontal { if left { -500.0 } else { 2000.0 } } else { start.x }, if vertical { 1500.0 } else { start.y });
+            hover(&mut h, outside);
+            let stopped = bounds(&h, document);
+            assert_eq!(stopped.top(), original.top());
+            if left {
+                assert_eq!(stopped.right(), original.right());
+            } else {
+                assert_eq!(stopped.left(), original.left());
+            }
+            hover(&mut h, outside + vec2(if horizontal { if left { 100.0 } else { -100.0 } } else { 0.0 }, if vertical { -100.0 } else { 0.0 }));
+            assert_eq!(bounds(&h, document), stopped, "{document_window}/{panel_handle}: no drift on reversal outside viewport");
+            hover(&mut h, start);
+            assert!((bounds(&h, document).min - original.min).length() < 0.1 && (bounds(&h, document).max - original.max).length() < 0.1);
+            let below_minimum = egui::pos2(
+                if horizontal { if left { original.right() - 10.0 } else { original.left() + 10.0 } } else { start.x },
+                if vertical { original.top() + 10.0 } else { start.y },
+            );
+            hover(&mut h, below_minimum);
+            let minimum = bounds(&h, document);
+            hover(&mut h, below_minimum + vec2(if horizontal { if left { -20.0 } else { 20.0 } } else { 0.0 }, if vertical { 20.0 } else { 0.0 }));
+            assert_eq!(bounds(&h, document), minimum, "{document_window}/{panel_handle}: no growth until cursor returns to handle");
+            hover(&mut h, start);
+            h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+            h.run_steps(2);
+            assert!((bounds(&h, document).min - original.min).length() < 0.1 && (bounds(&h, document).max - original.max).length() < 0.1);
+            capture_insertion(&mut h, &format!("resize-{document_window}-{panel_handle}"));
+        }
     }
 }

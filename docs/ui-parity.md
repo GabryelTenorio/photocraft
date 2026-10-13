@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (in-app docking evidence and upstream reconciliation; Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (source-content feedback, docked header detachment and anchored floating resize; in-app docking evidence and upstream reconciliation; Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -199,7 +199,7 @@ Paragraph; the rest open as in-app floating windows.
 | Behaviour | Status | Evidence |
 |---|---|---|
 | Panel groups float and tear off into OS windows | partial | In-app floating/resizable groups and four-side docking implemented (2026-10-12); OS-window tear-off remains missing (UI-217-5, #1828, #1213) |
-| Drag panels to reorder and regroup | done | Individual tabs and header grips move panels/groups; tab merges, splits, four-side docking, cancellation, locking and saved layouts; live candidate-layout previews, independent floating-size memory, inner document docks, in-app document tear-off, bounded same-group insertion lines, floating top-border movement and edge resizing (`panel_docking_tests.rs`, 2026-10-12); #2272, #2305 |
+| Drag panels to reorder and regroup | done | Individual tabs and header grips move panels/groups; tab merges, splits, four-side docking, cancellation, locking and saved layouts; live candidate-layout previews, independent floating-size memory, inner document docks, in-app document tear-off, bounded same-group insertion lines, source-content return highlights, docked-header group detachment and pointer-anchored floating panel/document resizing (`panel_docking_tests.rs`, 2026-10-13); #2272, #2305 |
 | Docked resize pushes the neighbour | partial | #2573 |
 | Color panel wheel and RGB/HSB/CMYK/Lab sliders | missing | UI-217-17, #2569 |
 | Window size and dock width remembered | done | UI-217-2 |
@@ -216,6 +216,7 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | Source-group content highlights with explicit no-op returns; docked header detachment; anchored floating panel/document resizing at min/max and viewport boundaries; no parity percentages changed |
 | 2026-10-13 | minor | Reconciled upstream progress with in-app panel/document docking; retained native additional views and screen-position command compatibility; no parity percentages changed |
 | 2026-10-12 | minor | solid floating header backgrounds; live docking reflow with affected-group outlines; 40% drag-preview opacity; validation skipped at user request |
 | 2026-10-12 | minor | document-edge bands nest inside surrounding docks; 150 ms fades to 30% panel-preview opacity; validation skipped at user request |

@@ -976,14 +976,18 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
 }
 
 pub(crate) fn legacy_tab(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response) {
-    legacy_drag(app, ui, panel, response, false);
+    legacy_drag(app, ui, panel, response, false, false);
 }
 
 pub(crate) fn legacy_group(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response) {
-    legacy_drag(app, ui, panel, response, true);
+    legacy_drag(app, ui, panel, response, true, false);
 }
 
-fn legacy_drag(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response, whole_group: bool) {
+pub(crate) fn legacy_border(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response) {
+    legacy_drag(app, ui, panel, response, true, true);
+}
+
+fn legacy_drag(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response, whole_group: bool, border: bool) {
     let suppressed = egui::Id::new("photocraft-panel-docking").with("legacy-suppressed");
     if ui.input(|input| input.pointer.button_pressed(egui::PointerButton::Primary)) {
         ui.ctx().data_mut(|data| data.remove::<bool>(suppressed));
@@ -997,7 +1001,7 @@ fn legacy_drag(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response
     let strip = egui::Rect::from_min_max(egui::pos2(ui.max_rect().left(), response.rect.top()), egui::pos2(ui.max_rect().right(), response.rect.bottom()));
     if response.dragged()
         && ui.input(|input| input.focused && input.pointer.primary_down() && !input.key_pressed(egui::Key::Escape))
-        && ui.ctx().pointer_interact_pos().is_some_and(|position| position.x < strip.left() - 24.0 || position.x > strip.right() + 24.0)
+        && (border || ui.ctx().pointer_interact_pos().is_some_and(|position| position.x < strip.left() - 24.0 || position.x > strip.right() + 24.0))
         && let Some(id) = normalize(panel)
     {
         let mut layout = app.ui.docking.clone().unwrap_or_else(|| legacy(app));
@@ -1740,6 +1744,12 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             .and_then(|target| resolve_drop(&panel, request.pointer, std::slice::from_ref(target)));
         let same_group_strip =
             !whole && proposal.as_ref().is_some_and(|proposal| proposal.insertion.is_some() && group_members(layout, &panel).contains(&proposal.anchor));
+        let source_body_preview = (!whole && proposal.as_ref().is_some_and(|proposal| proposal.noop || same_group_strip))
+            .then(|| eligible.iter().rev().find(|target| target.rect.contains(request.pointer) && target.tabs.iter().any(|(id, _)| id == &panel)))
+            .flatten()
+            .map(|target| {
+                egui::Rect::from_min_max(egui::pos2(target.rect.left(), target.tab_strip.map_or(target.rect.top(), |strip| strip.bottom())), target.rect.max)
+            });
         ctx.data_mut(|data| data.insert_temp(key.with("same-group-strip"), same_group_strip));
         // A visible receiving strip stays reachable even when it touches a dock edge.
         let panel_strip = proposal.as_ref().is_some_and(|proposal| proposal.insertion.is_some());
@@ -1822,7 +1832,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             ))
         } else if let Some(proposal) = proposal {
             if proposal.noop {
-                let feedback = DropFeedback { preview: None, insertion: proposal.insertion };
+                let feedback = DropFeedback { preview: source_body_preview, insertion: proposal.insertion };
                 ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), feedback.clone()));
                 return Some(feedback);
             }
@@ -1875,7 +1885,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let Some(rect) = rect else {
             return Some(DropFeedback::default());
         };
-        let feedback = DropFeedback { preview: (!same_group_strip).then_some(rect), insertion };
+        let feedback = DropFeedback { preview: if same_group_strip { source_body_preview } else { Some(rect) }, insertion };
         let frame = ctx.cumulative_frame_nr();
         ctx.data_mut(|data| {
             data.insert_temp(key.with("resolved-preview"), feedback.clone());
@@ -1957,6 +1967,9 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     }
     fn panel_menu(&mut self, ui: &mut egui::Ui, id: &String) {
         panel_menu(self.app, ui, id);
+    }
+    fn drag_docked_headers(&self) -> bool {
+        true
     }
     fn group_header_width(&self, _panels: &[String], _active: &String, floating: bool) -> f32 {
         if floating { 28.0 } else { 42.0 }

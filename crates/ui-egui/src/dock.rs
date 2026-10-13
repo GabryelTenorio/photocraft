@@ -531,6 +531,15 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
         }
         if let Some(panel) = tabs.get(sel) {
             crate::panel_docking::legacy_group(app, &mut child, panel, &resp.strip);
+            let right = resp.chevron.map_or(resp.menu.rect.left(), |chevron| chevron.left());
+            let border = Rect::from_min_max(
+                pos2(rect.left(), resp.menu.rect.top()),
+                pos2(right.max(rect.left()), (resp.menu.rect.top() + 4.0).min(resp.menu.rect.bottom())),
+            );
+            let response =
+                child.interact(border, child.id().with(("dock-group-border", g.key())), egui::Sense::drag()).on_hover_cursor(egui::CursorIcon::Default);
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !locked && child.is_enabled(), tl!("Move Panel Group")));
+            crate::panel_docking::legacy_border(app, &mut child, panel, &response);
         }
         strips.push(StripRects {
             group: g,
@@ -636,7 +645,8 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
         });
         // Splitter in the gap below this group: resizes it, pushing the neighbouring groups.
         if i + 1 < rects.len() && !collapsed && rects.iter().skip(i + 1).any(|(n, _)| !app.ui.dock.is_collapsed(*n)) {
-            let gap = Rect::from_min_size(pos2(rect.left(), rect.bottom()), vec2(rect.width(), GAP)).expand2(vec2(0.0, 2.0));
+            // Leave the following group's top-border drag band reachable.
+            let gap = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 2.0), pos2(rect.right(), rect.bottom() + GAP));
             let sresp = ui.interact(gap, ui.id().with(("dock-splitter", g.key())), Sense::drag());
             if sresp.hovered() || sresp.dragged() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);

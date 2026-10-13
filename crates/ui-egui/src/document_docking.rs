@@ -194,15 +194,15 @@ fn clamp(rect: Rect, screen: Rect) -> Rect {
     let size = rect.size().min(screen.size()).max(Vec2::splat(1.0));
     Rect::from_min_size(rect.min.max(screen.min).min(screen.max - size), size)
 }
-fn moved(drag: &DocumentDrag, pointer: Pos2) -> Rect {
-    if drag.resize == Vec2::ZERO {
-        drag.rect.translate(pointer - drag.origin)
-    } else {
-        let delta = pointer - drag.origin;
-        let size = (drag.rect.size() + delta * drag.resize).max(egui::vec2(320.0, 240.0)).min(Vec2::splat(4096.0));
-        let min = egui::pos2(if drag.resize.x < 0.0 { drag.rect.right() - size.x } else { drag.rect.left() }, drag.rect.top());
-        Rect::from_min_size(min, size)
-    }
+fn resize_rect(drag: &DocumentDrag, pointer: Pos2, screen: Rect) -> Option<Rect> {
+    craft_ui::docking::AnchoredResize::new(drag.rect, drag.origin, drag.resize)?.rect(
+        pointer,
+        screen,
+        craft_ui::docking::PanelLimits { min: egui::vec2(320.0, 240.0), max: Vec2::splat(4096.0) },
+    )
+}
+fn moved(drag: &DocumentDrag, pointer: Pos2, screen: Rect) -> Rect {
+    if drag.resize == Vec2::ZERO { drag.rect.translate(pointer - drag.origin) } else { resize_rect(drag, pointer, screen).unwrap_or(drag.rect) }
 }
 
 pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
@@ -241,7 +241,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         && drag.tab
         && app.tab_strip.as_ref().is_some_and(|s| tab_outside(ctx, s.rect))
     {
-        let rect = moved(drag, ctx.pointer_interact_pos().unwrap_or(drag.origin));
+        let rect = moved(drag, ctx.pointer_interact_pos().unwrap_or(drag.origin), screen);
         windows.insert(drag.id, [rect.left(), rect.top(), rect.width(), rect.height()]);
         if let Some(doc) = index(app, drag.id)
             && let Some(tab) = app.tab_strip.as_ref().and_then(|s| s.tabs.iter().find(|(i, _)| *i == doc).map(|(_, r)| *r))
@@ -256,7 +256,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
     for (id, stored) in windows {
         let active_drag = drag.as_ref().filter(|d| d.id == id);
         let original = Rect::from_min_size(egui::pos2(stored[0], stored[1]), egui::vec2(stored[2], stored[3]));
-        let rect = clamp(active_drag.map(|d| moved(d, ctx.pointer_interact_pos().unwrap_or(d.origin))).unwrap_or(original), screen);
+        let rect = clamp(active_drag.map(|d| moved(d, ctx.pointer_interact_pos().unwrap_or(d.origin), screen)).unwrap_or(original), screen);
         if active_drag.is_some_and(|d| !d.tab) {
             ctx.layer_painter(egui::LayerId::new(egui::Order::Middle, Id::new("document-source-placeholder"))).rect_filled(
                 clamp(original, screen),
@@ -386,8 +386,10 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             ctx.data_mut(|d| d.remove::<DocumentDrag>(drag_key()));
             if !drag.tab && target && drag.resize == Vec2::ZERO {
                 let _ = app.run("window.document.dock", json!({"documentView":drag.id}));
-            } else if !drag.tab || app.tab_strip.as_ref().is_some_and(|s| tab_outside(ctx, s.rect)) {
-                let rect = moved(&drag, pointer);
+            } else if (!drag.tab || app.tab_strip.as_ref().is_some_and(|s| tab_outside(ctx, s.rect)))
+                && (drag.resize == Vec2::ZERO || resize_rect(&drag, pointer, screen).is_some_and(|rect| rect != drag.rect))
+            {
+                let rect = moved(&drag, pointer, screen);
                 if app
                     .run("window.document.float", json!({"documentView":drag.id,"x":rect.left(),"y":rect.top(),"width":rect.width(),"height":rect.height()}))
                     .is_ok()
