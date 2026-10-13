@@ -8,6 +8,12 @@
 # No proprietary translation resources were used.
 # Licensed MIT OR Apache-2.0. See LICENSE-translations.txt and ATTRIBUTION.md.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Колір каналу
+	Color Indicates:	Кольором позначено:
+	Solidity:	Щільність:
+	Ink Characteristics	Характеристики фарби
+
 # Menus
 
 # Guide layout dialog
@@ -73,6 +79,8 @@
 	Save	Зберегти
 	Save As…	Зберегти як…
 	Save a Copy…	Зберегти копію…
+	{name} can't keep everything in this document	{name} не може зберегти весь вміст цього документа
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Виберіть формат, який збереже все, наприклад Photoshop (PSD), або збережіть копію.
 	Save…	Зберегти…
 	Revert	Повернути до збереженого
 	Import	Імпорт
@@ -193,6 +201,9 @@
 	Enable Layer Mask	Увімкнути маску шару
 	Disable Layer Mask	Вимкнути маску шару
 	Apply Layer Mask	Застосувати маску шару
+	Add Mask to Selection	Додати маску до виділення
+	Subtract Mask from Selection	Відняти маску від виділення
+	Intersect Mask with Selection	Перетнути маску з виділенням
 	Link Layer Mask	Зв'язати маску шару
 	Unlink Layer Mask	Відв'язати маску шару
 	Vector Mask	Векторна маска
@@ -3812,3 +3823,4 @@ curves	Smooth	Згладити
 	Step {step} is waiting for its dialog	Крок {step} очікує на свій діалог
 @plural	{n} action|{n} actions	{n} операція|{n} операції|{n} операцій
 	Auto Add/Delete	Автододавання/видалення
+	ICO is limited to 256 × 256 pixels	ICO обмежено розміром 256 × 256 пікселів

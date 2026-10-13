@@ -19,6 +19,12 @@
 # ArtCraft, OpenType, Lab ...) stay as they are; RGB/CMYK read RVB/CMJN; the trailing "…" of
 # dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Couleur de la couche
+	Color Indicates:	La couleur indique :
+	Solidity:	Solidité :
+	Ink Characteristics	Caractéristiques de l’encre
+
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -79,6 +85,8 @@
 	Save	Enregistrer
 	Save As…	Enregistrer sous…
 	Save a Copy…	Enregistrer une copie…
+	{name} can't keep everything in this document	{name} ne peut pas conserver tout le contenu de ce document
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Choisissez un format qui conserve tout, comme Photoshop (PSD), ou enregistrez une copie.
 	Revert	Revenir à la version enregistrée
 	Export	Exporter
 	Quick Export as PNG	Exportation rapide au format PNG
@@ -834,6 +842,9 @@
 	Appearance	Apparence
 	Appearance (Layer Style)	Apparence (style de calque)
 	Apply Layer Mask	Appliquer le masque de calque
+	Add Mask to Selection	Ajouter le masque à la sélection
+	Subtract Mask from Selection	Soustraire le masque de la sélection
+	Intersect Mask with Selection	Intersection du masque et de la sélection
 	Apply Per Tip	Appliquer par pointe
 	Apply next selected layer comp	Appliquer la composition de calques sélectionnée suivante
 	Apply previous selected layer comp	Appliquer la composition de calques sélectionnée précédente
@@ -3115,3 +3126,4 @@ curves	Smooth	Lisser
 	Step {step} is waiting for its dialog	L’étape {step} attend sa boîte de dialogue
 @plural	{n} action|{n} actions	{n} action|{n} actions
 	Auto Add/Delete	Ajout/suppr. auto
+	ICO is limited to 256 × 256 pixels	Le format ICO est limité à 256 × 256 pixels
