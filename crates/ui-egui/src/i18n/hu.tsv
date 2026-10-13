@@ -393,6 +393,7 @@
 	Smooth…	Simítás…
 	Solid Color…	Egyszínű kitöltés…
 	Stack Mode	Halommód
+	Choose Stack Mode:	Halommód kiválasztása:
 	Standard Deviation	Szórás
 	Subject	Fő téma
 	Subtract Front Shape	Elülső alakzat kivonása
@@ -4025,4 +4026,3 @@ cameraRaw	Yellow	Sárga
 	Loaded Camera Raw settings from {file}	Camera Raw-beállítások betöltve innen: {file}
 	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw-beállítások betöltve innen: {file} ({n} nem támogatott)
 	Auto Add/Delete	Automatikus hozzáadás/törlés
-	Choose Stack Mode:	Halommód kiválasztása:

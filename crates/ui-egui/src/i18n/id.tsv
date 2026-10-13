@@ -358,6 +358,7 @@
 	Update Modified Content	Perbarui Isi yang Diubah
 	Update All Modified Content	Perbarui Semua Isi yang Diubah
 	Stack Mode	Mode Stack
+	Choose Stack Mode:	Pilih Mode Stack:
 	Entropy	Entropi
 	Kurtosis	Kurtosis
 	Maximum	Maksimum
@@ -3093,4 +3094,3 @@ curves	Smooth	Haluskan
 	Step {step} is waiting for its dialog	Langkah {step} menunggu dialognya
 @plural	{n} action|{n} actions	{n} tindakan
 	Auto Add/Delete	Tambah/Hapus Otomatis
-	Choose Stack Mode:	Pilih Mode Stack:

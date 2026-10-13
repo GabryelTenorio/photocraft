@@ -1827,6 +1827,7 @@
 	Update Modified Content	Ενημέρωση τροποποιημένου περιεχομένου
 	Update All Modified Content	Ενημέρωση όλων των τροποποιημένων περιεχομένων
 	Stack Mode	Λειτουργία στοίβας
+	Choose Stack Mode:	Επιλογή λειτουργίας στοίβας:
 	Entropy	Εντροπία
 	Kurtosis	Κύρτωση
 	Maximum	Μέγιστο
@@ -3802,4 +3803,3 @@ curves	Smooth	Εξομάλυνση
 	Step {step} is waiting for its dialog	Το βήμα {step} περιμένει το παράθυρο διαλόγου του
 @plural	{n} action|{n} actions	{n} ενέργεια|{n} ενέργειες
 	Auto Add/Delete	Αυτόματη προσθήκη/διαγραφή
-	Choose Stack Mode:	Επιλογή λειτουργίας στοίβας:

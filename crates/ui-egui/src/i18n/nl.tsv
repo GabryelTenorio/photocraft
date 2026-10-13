@@ -360,6 +360,7 @@
 	Update Modified Content	Gewijzigde inhoud bijwerken
 	Update All Modified Content	Alle gewijzigde inhoud bijwerken
 	Stack Mode	Stapelmodus
+	Choose Stack Mode:	Stapelmodus kiezen:
 	Entropy	Entropie
 	Kurtosis	Kurtosis
 	Maximum	Maximum
@@ -3864,4 +3865,3 @@ curves	Smooth	Vloeiend maken
 	Step {step} is waiting for its dialog	Stap {step} wacht op zijn dialoogvenster
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
 	Auto Add/Delete	Automatisch toevoegen/verwijderen
-	Choose Stack Mode:	Stapelmodus kiezen:

@@ -357,6 +357,7 @@
 	Update Modified Content	Değiştirilen İçeriği Güncelle
 	Update All Modified Content	Değiştirilen Tüm İçeriği Güncelle
 	Stack Mode	Yığın Modu
+	Choose Stack Mode:	Yığın Modunu Seçin:
 	Entropy	Entropi
 	Kurtosis	Basıklık
 	Maximum	Maksimum
@@ -3837,4 +3838,3 @@ cameraData	Lens	Lens
 	Loaded Camera Raw settings from {file}	Camera Raw ayarları {file} dosyasından yüklendi
 	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw ayarları {file} dosyasından yüklendi ({n} desteklenmiyor)
 	Auto Add/Delete	Otomatik Ekle/Sil
-	Choose Stack Mode:	Yığın Modunu Seçin:

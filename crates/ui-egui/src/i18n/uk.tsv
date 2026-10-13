@@ -1954,6 +1954,7 @@
 	Solid Color…	Суцільний колір…
 	Square	Квадрат
 	Stack Mode	Режим стосу
+	Choose Stack Mode:	Виберіть режим стосу:
 	Standard Deviation	Стандартне відхилення
 	Statistics…	Статистика…
 	Stylistic Alternates	Стилістичні альтернативи
@@ -3803,4 +3804,3 @@ curves	Smooth	Згладити
 	Step {step} is waiting for its dialog	Крок {step} очікує на свій діалог
 @plural	{n} action|{n} actions	{n} операція|{n} операції|{n} операцій
 	Auto Add/Delete	Автододавання/видалення
-	Choose Stack Mode:	Виберіть режим стосу:

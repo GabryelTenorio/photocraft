@@ -1975,6 +1975,7 @@
 	Solid Color…	Однотонный цвет…
 	Square	Квадрат
 	Stack Mode	Режим стопки
+	Choose Stack Mode:	Выберите режим стопки:
 	Standard Deviation	Стандартное отклонение
 	Statistics…	Статистика…
 	Stylistic Alternates	Стилистические варианты
@@ -3050,4 +3051,3 @@ curves	Smooth	Сгладить
 	Step {step} is waiting for its dialog	Шаг {step} ожидает своего диалога
 @plural	{n} action|{n} actions	{n} операция|{n} операции|{n} операций
 	Auto Add/Delete	Автодобавление/удаление
-	Choose Stack Mode:	Выберите режим стопки:

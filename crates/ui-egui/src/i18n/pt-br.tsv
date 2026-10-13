@@ -360,6 +360,7 @@
 	Update Modified Content	Atualizar conteúdo modificado
 	Update All Modified Content	Atualizar todo o conteúdo modificado
 	Stack Mode	Modo de pilha
+	Choose Stack Mode:	Escolher modo de pilha:
 	Entropy	Entropia
 	Kurtosis	Curtose
 	Maximum	Máximo
@@ -3894,4 +3895,3 @@ layerLabel	No Color	Sem cor
 	Step {step} is waiting for its dialog	A etapa {step} está aguardando sua caixa de diálogo
 @plural	{n} action|{n} actions	{n} ação|{n} ações
 	Auto Add/Delete	Adicionar/excluir automaticamente
-	Choose Stack Mode:	Escolher modo de pilha:

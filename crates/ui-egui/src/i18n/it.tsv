@@ -367,6 +367,7 @@
 	Update Modified Content	Aggiorna contenuto modificato
 	Update All Modified Content	Aggiorna tutto il contenuto modificato
 	Stack Mode	Modalità pila
+	Choose Stack Mode:	Scegli modalità pila:
 	Entropy	Entropia
 	Kurtosis	Curtosi
 	Maximum	Massimo
@@ -4068,4 +4069,3 @@ navigator	Zoom	Zoom
 	Step {step} is waiting for its dialog	Il passaggio {step} attende la sua finestra di dialogo
 @plural	{n} action|{n} actions	{n} azione|{n} azioni
 	Auto Add/Delete	Aggiungi/elimina automaticamente
-	Choose Stack Mode:	Scegli modalità pila:

@@ -365,6 +365,7 @@
 	Update Modified Content	Ažuriraj izmenjeni sadržaj
 	Update All Modified Content	Ažuriraj sav izmenjeni sadržaj
 	Stack Mode	Režim steka
+	Choose Stack Mode:	Izaberite režim steka:
 	Entropy	Entropija
 	Kurtosis	Kurtozis
 	Maximum	Maksimum
@@ -4180,4 +4181,3 @@ shape	Appearance	Izgled
 	Import .GRD	Uvezi .GRD
 	Choose a gradient file (.grd).	Izaberite datoteku gradijenta (.grd).
 	Auto Add/Delete	Automatsko dodavanje/brisanje
-	Choose Stack Mode:	Izaberite režim steka:
