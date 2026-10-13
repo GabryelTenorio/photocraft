@@ -24,6 +24,8 @@
 # Guide layout dialog
 
 # Custom print paper (#3820)
+	Paper Width	用紙の幅
+	Paper Height	用紙の高さ
 	Rows	行
 	Number	数
 	Top:	上:
@@ -2127,6 +2129,11 @@
 	Rename Brush…	ブラシの名前を変更…
 	Delete Brush	ブラシを削除
 	New Brush Preset…	新規ブラシプリセット…
+	Capture Brush Size in Preset	ブラシサイズをプリセットに保存
+	Include Tool Settings	ツール設定を含める
+	Include Color	カラーを含める
+	Enter a name for the brush preset	ブラシプリセットの名前を入力してください
+	A brush preset with this name already exists	この名前のブラシプリセットは既に存在します
 	Brush Preset Options	ブラシプリセットのオプション
 	Group name	グループ名
 	Brush name	ブラシ名
