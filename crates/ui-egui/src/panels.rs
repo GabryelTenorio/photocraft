@@ -2213,11 +2213,15 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 crate::mask_transfer_ui::clear_drag(&ctx);
                 ctx.data_mut(|d| d.remove::<MaskDrag>(mask_drag_key()));
             }
-            let held = ctx.data(|d| d.get_temp::<u64>(egui::Id::new("layer-drag")).is_some() || d.get_temp::<FxDrag>(fx_drag_key()).is_some())
-                || crate::mask_transfer_ui::dragging(&ctx);
+            let held = ctx.data(|d| d.get_temp::<u64>(egui::Id::new("layer-drag")).is_some() || d.get_temp::<FxDrag>(fx_drag_key()).is_some());
             let dragging = held && ctx.input(|i| i.pointer.primary_down());
             let pointer = ctx.input(|i| i.pointer.interact_pos());
-            let delta = layer_drag_edge_scroll(pointer, ui.clip_rect(), dragging, ctx.input(|i| i.stable_dt));
+            let delta = layer_drag_edge_scroll(
+                pointer,
+                ui.clip_rect(),
+                dragging || (crate::mask_transfer_ui::dragging(&ctx) && ctx.input(|i| i.pointer.primary_down())),
+                ctx.input(|i| i.stable_dt),
+            );
             if delta != 0.0 {
                 ui.scroll_with_delta(vec2(0.0, delta));
                 ctx.request_repaint();
