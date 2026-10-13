@@ -1,6 +1,6 @@
 # PhotoCraft vs Adobe Photoshop: target-app parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (`.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-13 · **Change:** minor (JPEG Options dialog landed, FILE-215-19; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment) · **Target:** Adobe Photoshop 2026
 
 The authoritative answer to "how close is PhotoCraft to Photoshop, and how much work is left". The
 one-page summary is [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [`gaps.md`](gaps.md);
@@ -179,7 +179,7 @@ parity for the area and are already contained in the dimension rows above.
 | Camera Raw and computational photo (Photomerge, HDR, lens) | 45% | 120–200 | Raw for DNG/CR2/NEF/ARW/RW2/ORF/RAF(uncompressed)/PEF; no CR3; ACR dialog partial (no masking, calibration); generic lens profiles only |
 | Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; Actions panel and recording not document-independent (AUTO-219-1/2); `.atn` load/save since 2026-10-12 (112 events mapped, the rest kept verbatim); no ExtendScript/UXP |
 | File I/O | 60% | 300–500 | See [file-format-parity.md](file-format-parity.md) |
-| Print, export, Save for Web | 50% | 60–100 | JPEG Options dialog missing (FILE-215-19), no Photoshop PDF, no separations, Save for Web settings not remembered |
+| Print, export, Save for Web | 50% | 60–100 | no Photoshop PDF, no separations, Save for Web settings not remembered |
 | Video / timeline, data-driven graphics | 30% | 100–200 | Menu items live; frame model persists in `.pcraft`; no PSD video-layer mapping |
 | Workspace, panels, preferences | 40% | 150–250 | 46 of 149 prefs do nothing; no floating/OS-window panel groups; Libraries, Comments, Contextual Task Bar missing |
 | AI / generative | 10% | 300–600 | See the dimension row |
@@ -563,6 +563,7 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | JPEG Options dialog landed (FILE-215-19); percentages unchanged |
 | 2026-10-12 | minor | Free Transform options bar H/V skew fields; percentages unchanged |
 | 2026-10-12 | minor | `.atn` import: 112 events mapped (TrueGrit Texture Supply sets play end to end); percentages unchanged |
 | 2026-10-12 | minor | Photoshop Actions `.atn` load and save (90 events mapped both ways); percentages unchanged |

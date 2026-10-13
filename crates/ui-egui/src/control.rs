@@ -1218,10 +1218,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             }
             None => err("missing `path`"),
         },
-        "app.save" => match crate::targa_options_ui::bits_param(p, "app.save") {
-            Ok(tga_bits) => {
+        "app.save" => match crate::SaveChoices::from_params(p, "app.save") {
+            Ok(choices) => {
                 let path = s("path").map(str::to_string);
-                run_waiting(app, p.get("wait").and_then(Value::as_bool).unwrap_or(true), move |app| app.save_automation_with(path, tga_bits))
+                run_waiting(app, p.get("wait").and_then(Value::as_bool).unwrap_or(true), move |app| app.save_automation_with(path, choices))
             }
             Err(e) => err(e),
         },

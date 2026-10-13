@@ -197,6 +197,47 @@ fn bad_targa_bits_are_refused_before_writing() {
     }
 }
 
+/// `jpegFormat` picks JPEG Options' format: Progressive writes a progressive frame (SOF2), the
+/// others a baseline one (SOF0); `quality` keeps Photoshop's 0–12 scale.
+#[test]
+fn save_a_copy_writes_the_jpeg_format_asked_for() {
+    let dir = tmp("jpeg-format");
+    let mut s = session(40, 30, 8);
+    let marker = |b: &[u8], m: u8| b.windows(2).any(|w| w == [0xFF, m]);
+    for (params, progressive) in [
+        (json!({}), false),
+        (json!({"jpegFormat": null}), false),
+        (json!({"jpegFormat": "baseline", "quality": 12}), false),
+        (json!({"jpegFormat": "optimized", "quality": 10}), false),
+        (json!({"jpegFormat": "progressive", "quality": 3}), true),
+    ] {
+        let out = join(&dir, "a.jpg");
+        let mut p = params.clone();
+        p["path"] = json!(out);
+        s.execute("file.saveACopy", p).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        assert_eq!(marker(&bytes, 0xC2), progressive, "{params}");
+        assert_eq!(marker(&bytes, 0xC0), !progressive, "{params}");
+        assert_eq!(photocraft_io::import("a.jpg", &bytes).unwrap().document.size.width, 40, "{params}");
+    }
+    assert_eq!((jpeg_quality(0.0), jpeg_quality(12.0), jpeg_quality(6.0)), (1, 100, 51));
+    assert_eq!((jpeg_quality(-3.0), jpeg_quality(40.0), jpeg_quality(f64::NAN)), (1, 100, 100));
+}
+
+/// A `jpegFormat` other than the three names is a bad parameter, reported before anything is
+/// written.
+#[test]
+fn bad_jpeg_formats_are_refused_before_writing() {
+    let dir = tmp("jpeg-bad");
+    let mut s = session(8, 8, 8);
+    for bad in [json!("Progressive"), json!(""), json!(2), json!(true), json!(["baseline"])] {
+        let out = join(&dir, "a.jpg");
+        let r = s.execute("file.saveACopy", json!({"path": out, "jpegFormat": bad}));
+        assert!(matches!(r, Err(EngineError::BadParams { .. })), "{bad}: {r:?}");
+        assert!(!std::path::Path::new(&out).exists(), "{bad}: nothing written");
+    }
+}
+
 /// Preferences › File Handling › Image Previews decides whether a PSD gets Photoshop's
 /// thumbnail resource (1036): Always and Ask When Saving write it, Never doesn't.
 #[test]

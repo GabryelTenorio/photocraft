@@ -18,7 +18,7 @@ use crate::Format;
 use crate::error::CodecError;
 use crate::fidelity::Plan;
 use crate::image::{ChannelLayout, DecodeWarning, Image, Metadata, SampleType};
-use crate::options::{EncodeOptions, Limits};
+use crate::options::{EncodeOptions, JpegFormat, Limits};
 use crate::resolution::{exif_resolution, export_exif, export_xmp, photoshop_resolution, xmp_resolution};
 
 const F: Format = Format::Jpeg;
@@ -252,12 +252,15 @@ pub(crate) fn encode(src: &Image, plan: Plan, opts: &EncodeOptions) -> Result<Ve
     let mut enc = jpeg_encoder::Encoder::new(&mut out, opts.jpeg_quality.clamp(1, 100));
     // CMYK is always written 4:4:4: subsampled 4-component JPEGs are not
     // decoded consistently across implementations.
-    let sampling = if opts.jpeg_chroma_subsampling && img.layout() == ChannelLayout::Rgb {
-        jpeg_encoder::SamplingFactor::R_4_2_0
-    } else {
-        jpeg_encoder::SamplingFactor::R_4_4_4
-    };
+    let subsampled = opts.jpeg_chroma_subsampling && img.layout() == ChannelLayout::Rgb;
+    let sampling = if subsampled { jpeg_encoder::SamplingFactor::R_4_2_0 } else { jpeg_encoder::SamplingFactor::R_4_4_4 };
     enc.set_sampling_factor(sampling);
+    let progressive = opts.jpeg_format == JpegFormat::Progressive;
+    enc.set_progressive(progressive);
+    // jpeg-encoder 0.6 writes corrupt baseline scans when optimised Huffman tables meet 4:2:0
+    // (see `web::encode_jpeg_rgb8`), so a subsampled Baseline Optimized keeps the standard tables.
+    let optimized = opts.jpeg_format == JpegFormat::Optimized && !subsampled;
+    enc.set_optimized_huffman_tables(progressive || optimized);
     let e = |e: jpeg_encoder::EncodingError| CodecError::encode(F, e);
     if opts.embed_metadata {
         if let Some((x, y)) = img.meta.dpi
