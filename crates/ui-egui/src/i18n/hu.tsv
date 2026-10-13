@@ -3983,6 +3983,7 @@ cameraRaw	Yellow	Sárga
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} művelet mentve. Cél: {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	{n} Photoshop-megfelelő nélküli lépés kihagyva
 
+	Starting serial	Kezdő sorszám
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Leállítás beszúrása…
 	Save Set…	Készlet mentése…
@@ -3993,4 +3994,3 @@ cameraRaw	Yellow	Sárga
 	Action playback stopped	A művelet lejátszása leállt
 	Step {step} is waiting for its dialog	A(z) {step}. lépés a párbeszédablakára vár
 @plural	{n} action|{n} actions	{n} művelet
-	Starting serial	Kezdő sorszám

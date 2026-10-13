@@ -3547,6 +3547,8 @@ curves	Smooth	Làm mượt
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	Đã lưu {n} hành động vào {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Đã bỏ qua {n} bước không có chức năng tương ứng trong Photoshop
 
+	File Naming	Đặt tên tệp
+	Starting serial	Số thứ tự bắt đầu
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Chèn điểm dừng…
 	Save Set…	Lưu bộ…
@@ -3557,5 +3559,3 @@ curves	Smooth	Làm mượt
 	Action playback stopped	Đã dừng phát hành động
 	Step {step} is waiting for its dialog	Bước {step} đang chờ hộp thoại của nó
 @plural	{n} action|{n} actions	{n} hành động
-	File Naming	Đặt tên tệp
-	Starting serial	Số thứ tự bắt đầu

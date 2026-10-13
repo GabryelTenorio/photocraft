@@ -3795,6 +3795,7 @@ cameraData	Lens	Lens
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} eylem {file} dosyasına kaydedildi
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Photoshop karşılığı olmayan {n} adım atlandı
 
+	Starting serial	Başlangıç sıra numarası
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Durdurma Ekle…
 	Save Set…	Seti Kaydet…
@@ -3805,4 +3806,3 @@ cameraData	Lens	Lens
 	Action playback stopped	Eylem oynatma durduruldu
 	Step {step} is waiting for its dialog	{step}. adım iletişim kutusunu bekliyor
 @plural	{n} action|{n} actions	{n} eylem
-	Starting serial	Başlangıç sıra numarası
