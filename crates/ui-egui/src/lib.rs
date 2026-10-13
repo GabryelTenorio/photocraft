@@ -132,6 +132,7 @@ pub mod new_guide_ui;
 pub mod new_layer_ui;
 pub mod notices;
 mod numeric_expression;
+pub mod object_finder;
 mod opacity_keys;
 pub mod outline;
 pub mod paint_mouse;
@@ -190,6 +191,7 @@ pub mod targa_options_ui;
 pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
+mod tile_overlay;
 mod timeline_ui;
 mod titlebar;
 pub mod tone;
@@ -511,6 +513,8 @@ pub struct PhotocraftApp {
     pub(crate) move_preview: Option<move_ui::MovePreview>,
     /// Move tool › Show Highlight on Rollover: the last hover answer (`move_hover`).
     pub(crate) move_hover: Option<move_hover::Hover>,
+    /// Object Selection › Object Finder: the hover preview (`object_finder`).
+    pub(crate) object_finder: Option<object_finder::Finder>,
     /// A blend mode hovered in the Layers panel, shown live (`blend_preview`).
     pub(crate) blend_preview: Option<blend_preview::BlendPreview>,
     /// Patch Tool drag: the healed document at the pointer (`patch_preview`).
@@ -739,6 +743,7 @@ impl PhotocraftApp {
             menu_cache: None,
             move_preview: None,
             move_hover: None,
+            object_finder: None,
             blend_preview: None,
             patch_preview: None,
             magnetic: Default::default(),
@@ -1810,6 +1815,13 @@ fn read_dropped(f: &(dyn egui::DroppedFile + Send + Sync)) -> Result<Vec<u8>, St
     f.bytes()
 }
 
+/// The active layer is an adjustment layer. It has no pixels, so painting and filling it edit its
+/// mask even when its icon thumbnail, not the mask, is the Layers panel's target, as in
+/// Photoshop (#4298).
+pub(crate) fn adjustment_layer_active(st: &photocraft_engine::DocState) -> bool {
+    st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| matches!(l.content, photocraft_doc::LayerContent::Adjustment(_)))
+}
+
 /// On the web, dropped-file bytes arrive asynchronously; the web shell handles drops itself.
 #[cfg(target_arch = "wasm32")]
 fn read_dropped(_f: &dyn egui::DroppedFile) -> Result<Vec<u8>, String> {
@@ -1834,9 +1846,9 @@ impl PhotocraftApp {
         }
     }
 
-    /// The active layer's mask is what pixel commands edit: the Layers panel targets it, or every
-    /// colour channel is off and that mask is the picture. An alpha channel or Quick Mask wins,
-    /// as the engine routes those itself.
+    /// The active layer's mask is what pixel commands edit: the Layers panel targets it, the layer
+    /// is an adjustment layer (no pixels of its own), or every colour channel is off and that mask
+    /// is the picture. An alpha channel or Quick Mask wins, as the engine routes those itself.
     pub fn layer_mask_targeted(&self) -> bool {
         let Some(st) = self.session.active() else { return false };
         let layer_mask = st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask;
@@ -1845,7 +1857,7 @@ impl PhotocraftApp {
         if !composite || !has_mask {
             return false;
         }
-        if self.ui.mask_target || layer_mask {
+        if self.ui.mask_target || layer_mask || adjustment_layer_active(st) {
             return true;
         }
         let colors_off = st.channel_view.visible_colors(photocraft_engine::channel_cmds::color_count(&st.doc)) == 0;

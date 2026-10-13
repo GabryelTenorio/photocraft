@@ -1153,6 +1153,9 @@
 	Ignore All	全部略過
 	Image Size	影像尺寸
 	Import Brushes…	匯入筆刷…
+	Gradient Preset Options	漸層預設選項
+	Import .GRD	匯入 .GRD
+	Choose a gradient file (.grd).	請選擇漸層檔案 (.grd)。
 	Import brushes (.abr)	匯入筆刷 (.abr)
 	Import Presets	匯入預設集
 	Imported	已匯入
@@ -2640,9 +2643,14 @@ curves	Smooth	平滑
 	Light Red	淺紅色
 	Medium Blue	中藍色
 	Light Gray	淺灰色
+	Object Finder	物件尋找器
+	No object found there — drag a rectangle around it	那裡找不到物件 — 請在其周圍拖曳矩形
 	Remove after each stroke	每次描邊後移除
 	Apply the removal ({key})	套用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描邊：{n}（Enter 套用，Esc 取消）
+	Clear Brush Controls	清除筆刷控制項
+	Reset All Locked Settings	重設所有鎖定的設定
+	Copy Texture to Other Tools	複製紋理至其他工具
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	載入動作…

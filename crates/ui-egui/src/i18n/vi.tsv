@@ -3534,9 +3534,14 @@ curves	Smooth	Làm mượt
 	Stroke Path…	Đi nét đường dẫn…
 	Apply mask to layer before removing?	Áp dụng mặt nạ vào lớp trước khi xóa?
 	Delete the vector mask?	Xóa mặt nạ vectơ?
+	Object Finder	Trình tìm đối tượng
+	No object found there — drag a rectangle around it	Không tìm thấy đối tượng ở đó — hãy kéo một hình chữ nhật quanh nó
 	Remove after each stroke	Xóa sau mỗi nét vẽ
 	Apply the removal ({key})	Áp dụng việc xóa ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Nét vẽ cần xóa: {n} (Enter áp dụng, Esc hủy)
+	Clear Brush Controls	Xóa điều khiển cọ
+	Reset All Locked Settings	Đặt lại tất cả cài đặt đã khóa
+	Copy Texture to Other Tools	Sao chép họa tiết sang các công cụ khác
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Nạp hành động…
@@ -3558,3 +3563,6 @@ curves	Smooth	Làm mượt
 	Action playback stopped	Đã dừng phát hành động
 	Step {step} is waiting for its dialog	Bước {step} đang chờ hộp thoại của nó
 @plural	{n} action|{n} actions	{n} hành động
+	Gradient Preset Options	Tùy chọn thiết lập sẵn chuyển sắc
+	Import .GRD	Nhập .GRD
+	Choose a gradient file (.grd).	Chọn tệp chuyển sắc (.grd).
