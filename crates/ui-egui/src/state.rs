@@ -594,7 +594,8 @@ pub struct ToolOptions {
     #[serde(default = "one")]
     pub marquee_height: f32,
     /// Move tool: Auto-Select (with "layer" or "group" target) and Show Transform Controls.
-    /// Auto-Select is on by default, as in current Photoshop; ⌘/Ctrl-click inverts it.
+    /// Auto-Select is on with the "group" target by default, as in current Photoshop;
+    /// ⌘/Ctrl-click inverts it.
     #[serde(default = "yes")]
     pub move_auto_select: bool,
     #[serde(default = "default_move_target")]
@@ -706,7 +707,7 @@ fn default_crop_resolution_unit() -> String {
 }
 
 fn default_move_target() -> String {
-    "layer".into()
+    "group".into()
 }
 
 fn default_curve_fit() -> f32 {
@@ -1032,6 +1033,10 @@ pub struct UiState {
     /// one per group: the group's key brings it back, as in Photoshop (#2608).
     #[serde(default)]
     pub group_tools: Vec<Tool>,
+    /// A tool letter still held (spring-loaded tool, #2672): the tool to give back on release.
+    /// Exposed to automation, never restored from settings.
+    #[serde(default, skip_deserializing)]
+    pub spring: Option<crate::spring_tools::Spring>,
     /// Recently opened file paths, most-recent first (File › Open Recent). Capped; de-duplicated.
     #[serde(default)]
     pub recent_files: Vec<String>,
@@ -1243,6 +1248,7 @@ impl Default for UiState {
         Self {
             tool: Tool::Brush,
             group_tools: Vec::new(),
+            spring: None,
             recent_files: Vec::new(),
             text_edit: None,
             type_transform: None,
