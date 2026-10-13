@@ -1162,6 +1162,9 @@
 	Ignore All	Ignorovat vše
 	Image Size	Velikost obrazu
 	Import Brushes…	Importovat štětce…
+	Gradient Preset Options	Možnosti předvoleb přechodu
+	Import .GRD	Importovat .GRD
+	Choose a gradient file (.grd).	Vyberte soubor přechodů (.grd).
 	Import brushes (.abr)	Importovat štětce (.abr)
 	Import Presets	Importovat přednastavení
 	Imported	Importováno
@@ -3658,6 +3661,8 @@ navigator	Zoom	Zvětšení
 	Light Blue	Světle modrá
 	Light Red	Světle červená
 	Medium Blue	Středně modrá
+	Object Finder	Hledání objektů
+	No object found there — drag a rectangle around it	Nebyl tam nalezen žádný objekt — přetáhněte kolem něj obdélník
 	Remove after each stroke	Odstranit po každém tahu
 	Apply the removal ({key})	Použít odstranění ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Tahy k odstranění: {n} (Enter použije, Esc zruší)
