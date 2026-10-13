@@ -3945,11 +3945,11 @@ layerLabel	No Color	Sem cor
 	Also send when I Save a Copy	Enviar também ao Salvar uma cópia
 	Also send a PNG preview with a PSD	Enviar também uma prévia PNG com um PSD
 	Send automatically	Enviar automaticamente
-	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	O token do bot fica no chaveiro do sistema, não no arquivo de ajustes do PhotoCraft.
+	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	O token do bot fica no chaveiro do sistema, não no arquivo de configurações do PhotoCraft.
 	Sending needs an internet connection.	O envio precisa de conexão com a internet.
 	Copied the chat id.	Id da conversa copiado.
 	*File:* `{name}`	*Arquivo:* `{name}`
-	*Format:* {format}	*Format:* {format}
+	*Format:* {format}	*Formato:* {format}
 	*Size:* {size}	*Tamanho:* {size}
 	*Time:* {time}	*Hora:* {time}
 	*Path:* `{path}`	*Caminho:* `{path}`
