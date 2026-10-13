@@ -425,6 +425,16 @@ opened). Unknown `ui` or settings properties, non-boolean `before` / `commit` / 
 least one level apart. Commit dispatches one `filter.cameraRaw` engine command; a failed commit
 keeps the dialog open for correction. Nothing else writes document history.
 
+**Save/Load Settings.** The dialog's footer has **Save Settings…** and **Load
+Settings…**, which reuse a look across images (#4274). `filter.cameraRaw.exportSettings
+{"settings": <Camera Raw settings>, "path": ".xmp"?}` writes an Adobe Camera Raw `.xmp`
+sidecar (or returns the bytes as base64 `data` when no `path` is given);
+`filter.cameraRaw.importSettings {"path"|"data"}` returns `{settings}`. The `crs:` mapping
+covers the Light/Tone/Detail/Effects sliders, the parametric curve, the Color Mixer and
+Color Grading, and the point curves; white-balance Temperature/Tint (relative to the as-shot
+white here) and the internal `seed`/`pixelScale`/`encodingGamma` are not written. A file
+written here round-trips exactly for the settings it carries.
+
 **Opening a raw file.** An interactive open (File › Open, Open Recent, drag and drop, the
 command line) of a camera raw developed from its sensor data shows this dialog first, titled
 "Camera Raw (name)", with **Open** and **Cancel**, as Photoshop opens raws in Adobe Camera Raw.

@@ -74,6 +74,7 @@ supports many more, including CR3).
 | Others (CRW, 3FR, IIQ, X3F, SRW, MRW, ERF…) | embedded preview only | |
 | .xmp sidecars, highlight modes, raw preferences | missing | FILE-215-11 |
 | Camera Raw as a PSD smart filter | partial | 2026-10-07: WB, Light/Presence, curves, HSL, grading, detail, grain, vignette mapped (FILE-215-12) |
+| Camera Raw Filter Settings `.xmp` | partial | 2026-10-13: Filter ▸ Camera Raw Filter ▸ Save/Load Settings writes and reads a `crs:` `.xmp` (mapped sliders, parametric curve, Color Mixer, Color Grading, point curves); Temperature/Tint and internal fields are not written (#4274) |
 
 2026-10-11: on #2135's embedded-JPEG rendering work, open-time Camera Raw tuning
 preserves the fitted rendering while changing Exposure, Temperature and Tint. Default

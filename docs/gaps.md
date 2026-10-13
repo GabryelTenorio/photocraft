@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G14: D90 image area measured, Camera Raw Filter Settings `.xmp` save/load) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -114,6 +114,15 @@ what an agent can't finish alone.
   tuning retains the fitted look and applies user gains afterwards. Three D5100 NEFs
   establish a guarded 4928 × 3264 image area. This is an estimated rendering, not a
   measured D5100 colour calibration; [validation](nikon-nef-development.md).
+- **Progress (2026-10-13):** the D90's image area (4288 × 2848 at (10, 10) in a
+  4352 × 2868 plane) is measured by aligning the decoded plane with the camera's own
+  JPEG, so a D90 NEF opens on the camera's frame instead of the uncropped sensor plane;
+  `crates/raw/src/cameras.rs` (`IMAGE_AREAS`).
+- **Progress (2026-10-13):** Filter ▸ Camera Raw Filter ▸ Save/Load Settings reads and
+  writes an Adobe Camera Raw `.xmp` sidecar (`crs:` fields) so a look is reusable across
+  images (#4274); `crates/algo/src/camera_raw_xmp.rs` and
+  `crates/engine/src/camera_raw_settings_cmds.rs`. RAW-*develop* `.xmp` sidecars
+  (FILE-215-11) are separate and still missing.
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
@@ -245,6 +254,7 @@ what an agent can't finish alone.
 | 2026-10-12 | minor | Refreshed against main: G5 items fixed by #2480, #2327, #2609, #2684, #2675, #2556, #2396, #2527, #2625 and TOOL-214-5/#2442; G7 TOOL-214-7 and Transform On Drop done; G2 #2377 fixed (#2417); G9 UI scale (UI-217-9) and Stamp Visible (UI-217-22) done, prefs 27 of 156; G10 #2225 done (#2482); G13 Khmer, Lao, Myanmar fallback (#3259); G14 CR3 line; G17 Windows ARM64 done (DIST-220-2) |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
+| 2026-10-13 | minor | G14: D90 image area measured (4288 × 2848 at (10, 10)); Camera Raw Filter Settings `.xmp` save/load; gap remains open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
 | 2026-10-11 | minor | G8: Character panel OpenType buttons landed (TYPE-218-5, #3752); Numerals and Stylistic Sets submenus still missing |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |

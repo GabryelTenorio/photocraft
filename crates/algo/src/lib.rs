@@ -23,6 +23,7 @@ mod artistic_fx;
 mod blur;
 mod blur2;
 pub mod camera_raw;
+pub mod camera_raw_xmp;
 pub mod color_to_alpha;
 pub mod content_aware;
 mod denoise;

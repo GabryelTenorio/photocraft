@@ -932,6 +932,9 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
     let screen = ctx.content_rect();
     let current_display = app.session.active().and_then(|st| app.session.color.canvas_display(&st.doc).ok());
     let mut action: Option<&str> = None;
+    // The live settings captured by "Save Settings…" (run after the modal closes, so the file
+    // dialog is not opened inside egui's immediate viewport).
+    let mut save_request: Option<Value> = None;
     egui::Area::new(egui::Id::new("camera-raw-dialog")).order(egui::Order::Foreground).fixed_pos(screen.min).show(ctx, |ui| {
         let Some(d) = app.camera_raw.as_mut() else { return };
         if let Some(display) = &current_display
@@ -1121,6 +1124,14 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
         painter.rect_filled(foot, 0.0, t.dock);
         painter.line_segment([foot.left_top(), foot.right_top()], Stroke::new(1.0, t.separator));
         let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(foot.shrink2(vec2(16.0, 9.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
+        if widgets::secondary_button(&mut fu, tl!("Load Settings…"), 130.0).clicked() {
+            action = Some("load_settings");
+        }
+        fu.add_space(6.0);
+        if widgets::secondary_button(&mut fu, tl!("Save Settings…"), 130.0).clicked() {
+            save_request = Some(serde_json::to_value(&d.params).unwrap_or(Value::Null));
+        }
+        fu.add_space(6.0);
         if let Some(role) = widgets::dialog_buttons(
             &mut fu,
             &[
@@ -1150,7 +1161,38 @@ fn draw(app: &mut PhotocraftApp, ctx: &egui::Context, own_window: bool) {
             }
         }
         Some("cancel") => cancel(app),
+        Some("load_settings") => load_settings(app),
         _ => {}
+    }
+    if let Some(settings) = save_request {
+        save_settings(app, settings);
+    }
+}
+
+/// Save the dialog's current settings to a Camera Raw `.xmp` sidecar (issue #4274).
+fn save_settings(app: &mut PhotocraftApp, settings: Value) {
+    let r = app.pick_save("Camera Raw.xmp", move |app, path| app.run("filter.cameraRaw.exportSettings", json!({"settings": settings, "path": path})));
+    if let Err(e) = r {
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
+}
+
+/// Load Camera Raw settings from an `.xmp` sidecar into the open dialog.
+fn load_settings(app: &mut PhotocraftApp) {
+    let r = app.pick_file_bytes_filtered(&["xmp"], |app, _name, bytes| {
+        let data = photocraft_paint::tile::b64_encode(&bytes);
+        let out = app.run("filter.cameraRaw.importSettings", json!({"data": data}))?;
+        let settings = out.get("settings").cloned().ok_or("the file holds no Camera Raw settings")?;
+        let parsed: CameraRaw = serde_json::from_value(settings).map_err(|e| e.to_string())?;
+        let d = app.camera_raw.as_mut().ok_or("Camera Raw is closed")?;
+        d.params = parsed;
+        d.dirty = true;
+        Ok(Value::Null)
+    });
+    if let Err(e) = r {
+        app.ui.status = e;
+        app.ui.status_error = true;
     }
 }
 
