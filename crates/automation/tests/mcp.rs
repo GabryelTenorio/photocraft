@@ -145,15 +145,17 @@ async fn headless_edit_render_save_roundtrip() {
     assert!(photocraft_codecs::decode(&std::fs::read(&png_path).unwrap()).is_ok());
     assert!(std::fs::metadata(&jpg_path).unwrap().len() > 100);
 
-    // Re-open the native file: identical layer tree.
+    // Re-open the saved file from disk: close the saved document first, because opening a path
+    // that is already an open document's file activates it instead of loading a copy.
+    json_of(&call(&client, "doc_close", json!({})).await);
     let o = json_of(&call(&client, "doc_open", json!({"path": "agent.pcraft"})).await);
-    assert_eq!(o["index"], 1);
-    let doc2 = json_of(&call(&client, "doc_inspect", json!({"index": 1})).await);
+    assert!(o["deduped"].is_null(), "a reopen after close loads the file: {o}");
+    assert_eq!(o["index"], 0);
+    let doc2 = json_of(&call(&client, "doc_inspect", json!({"index": 0})).await);
     assert_eq!(doc2["layers"].as_array().unwrap().len(), 2);
     let sess = json_of(&call(&client, "session_list", json!({})).await);
-    assert_eq!(sess["documents"].as_array().unwrap().len(), 2);
-    json_of(&call(&client, "doc_close", json!({"index": 1})).await);
-    json_of(&call(&client, "doc_select", json!({"index": 0})).await);
+    assert_eq!(sess["documents"].as_array().unwrap().len(), 1);
+    json_of(&call(&client, "doc_close", json!({"index": 0})).await);
     client.cancel().await.unwrap();
     cleanup(&dir);
 }

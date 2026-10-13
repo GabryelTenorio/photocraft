@@ -24,7 +24,10 @@ fn pathless_save_clears_dirty(dir: &std::path::Path, name: &str) {
     headless.handle("doc.save", json!({"path": path.to_str().unwrap()})).unwrap();
     assert!(path.is_file(), "{name} was written");
 
-    // Reopen the saved file and edit it, so the pathless save below writes back over its own file.
+    // Reopen the saved file and edit it, so the pathless save below writes back over its own
+    // file. Close first: opening a path that is already an open document's file activates it
+    // instead of loading a copy.
+    headless.handle("doc.close", json!({})).unwrap();
     headless.handle("doc.open", json!({"path": path.to_str().unwrap()})).unwrap();
     headless.handle("engine.execute", json!({"command": "image.adjustments.invert", "params": {}})).unwrap();
     assert!(headless.session.active().unwrap().is_dirty(), "{name}: the edit dirties");

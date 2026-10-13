@@ -18,6 +18,26 @@ fn untrusted(filesystem: Filesystem) -> Headless {
     Headless { session, writers: HashMap::new(), filesystem }
 }
 
+/// The key an automation open dedupes on: `/`-separated components with empty and `.` components
+/// dropped and `..` resolved lexically, without consulting the filesystem. A path that would
+/// climb above its own start keeps its raw spelling, so comparison falls back to exact text.
+fn dedupe_key(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if parts.pop().is_none() {
+                    return path.to_string();
+                }
+            }
+            _ => parts.push(part),
+        }
+    }
+    let joined = parts.join("/");
+    if path.starts_with('/') { format!("/{joined}") } else { joined }
+}
+
 enum Filesystem {
     Denied,
     TrustedLocal,
@@ -72,9 +92,24 @@ impl Headless {
         }
     }
 
-    /// Open a file and make it the active document.
+    /// Open a file and make it the active document. A path that is already an open document's
+    /// file activates that document instead of loading a second copy.
     pub fn open(&mut self, path: &Path) -> Result<Value, AutomationError> {
         let requested = path.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
+        let key = dedupe_key(requested);
+        if let Some(index) = self.session.documents().iter().position(|st| st.path.as_deref().is_some_and(|p| dedupe_key(p) == key)) {
+            self.session.set_active(index);
+            let d = &self.session.documents()[index];
+            return Ok(json!({
+                "index": index,
+                "name": d.doc.name,
+                "width": d.doc.size.width,
+                "height": d.doc.size.height,
+                "layers": d.doc.layer_count(),
+                "warnings": [],
+                "deduped": true,
+            }));
+        }
         let mut o = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: read authority is absent".into())),
             Filesystem::TrustedLocal => files::open(path)?,
@@ -393,5 +428,20 @@ fn exported(dir: &str, written: photocraft_engine::Result<Vec<String>>, outputs:
             outputs.cleanup()?;
             Err(error.into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedupe_key_resolves_lexical_spellings_and_falls_back_to_raw_text() {
+        assert_eq!(dedupe_key("x.png"), "x.png");
+        assert_eq!(dedupe_key("./x.png"), "x.png");
+        assert_eq!(dedupe_key("in//sub/../x.png"), "in/x.png");
+        assert_eq!(dedupe_key("/root/in/x.png"), "/root/in/x.png");
+        assert_eq!(dedupe_key("../x.png"), "../x.png", "a climb above the start keeps the raw spelling");
+        assert_eq!(dedupe_key("a/../../x.png"), "a/../../x.png");
     }
 }

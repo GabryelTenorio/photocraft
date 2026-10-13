@@ -261,6 +261,26 @@ fn wrap(r: Result<Value, String>) -> Outcome {
     }
 }
 
+/// The key an automation open dedupes on: `/`-separated components with empty and `.` components
+/// dropped and `..` resolved lexically, without consulting the filesystem. A path that would
+/// climb above its own start keeps its raw spelling, so comparison falls back to exact text.
+fn dedupe_key(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if parts.pop().is_none() {
+                    return path.to_string();
+                }
+            }
+            _ => parts.push(part),
+        }
+    }
+    let joined = parts.join("/");
+    if path.starts_with('/') { format!("/{joined}") } else { joined }
+}
+
 /// Run a command the way automation does (script events off). Long commands may run as
 /// background jobs: by default the reply waits for the job's result (backward compatible); with
 /// `wait` false it is `{job, pending: true}` at once.
@@ -1117,6 +1137,18 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
         }
         "app.open" => match s("path") {
             Some(path) => {
+                // An automation open of a path that is already an open document's file activates
+                // that document instead of loading a second copy; interactive opens stay
+                // duplicate-legal, as in Photoshop.
+                let key = dedupe_key(path);
+                if let Some(index) = app.session.documents().iter().position(|st| st.path.as_deref().is_some_and(|p| dedupe_key(p) == key)) {
+                    let name = app.session.documents()[index].doc.name.clone();
+                    app.session.set_active(index);
+                    app.push_recent(path);
+                    app.ui.status = crate::i18n::fmt(tl!("Opened {name}"), &[("name", &name)]);
+                    app.ui.status_error = false;
+                    return ok(json!({"path": path, "name": name, "warnings": [], "index": index, "deduped": true}));
+                }
                 // Directory .pcraft (the native on-disk form) loads through a capability-scoped
                 // source; the single-file (zip) form falls back to the bytes path, as do all
                 // other formats.
@@ -2273,6 +2305,91 @@ mod tests {
         // A real opener error propagates instead of being masked by the fallback.
         let r = call(&mut app, &ctx, "app.open", json!({"path": "gone.pcraft"}));
         assert!(r["error"].as_str().unwrap().contains("corrupt bundle"), "{r}");
+    }
+
+    #[test]
+    fn app_open_of_an_already_open_path_activates_the_existing_document() {
+        use photocraft_doc::Document;
+        use serde_json::json;
+        let services = crate::Services {
+            import: Some(Box::new(|name: &str, _b: &[u8], _depth: usize| {
+                Ok((Document::new(name, photocraft_doc::Size::new(4, 4), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8), Vec::new()))
+            })),
+            automation_read: Some(Box::new(|path: &str| Ok((path.rsplit('/').next().unwrap_or(path).to_string(), b"x".to_vec())))),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        let ctx = egui::Context::default();
+
+        let first = call(&mut app, &ctx, "app.open", json!({"path": "in/warn.psd"}));
+        assert!(first["result"]["deduped"].is_null(), "{first}");
+        let (doc_id, revision) = {
+            let st = app.session.active().unwrap();
+            (st.doc.id, st.revision)
+        };
+
+        let second = call(&mut app, &ctx, "app.open", json!({"path": "in/warn.psd"}));
+        assert_eq!(second["result"]["deduped"], json!(true), "{second}");
+        assert_eq!(second["result"]["index"], 0);
+        assert_eq!(app.session.documents().len(), 1, "the same path opens no second document");
+        let st = app.session.active().unwrap();
+        assert_eq!((st.doc.id, st.revision), (doc_id, revision), "the existing document is returned untouched");
+
+        // A different path still opens a second document.
+        let third = call(&mut app, &ctx, "app.open", json!({"path": "in/other.psd"}));
+        assert!(third["result"]["deduped"].is_null(), "{third}");
+        assert_eq!(app.session.documents().len(), 2);
+
+        // The already-open path is still the first document, not a third one.
+        let again = call(&mut app, &ctx, "app.open", json!({"path": "in/warn.psd"}));
+        assert_eq!(again["result"]["deduped"], json!(true), "{again}");
+        assert_eq!(again["result"]["index"], 0);
+        assert_eq!(app.session.documents().len(), 2);
+    }
+
+    #[test]
+    fn app_open_reopens_a_copy_where_no_path_is_stored() {
+        use photocraft_doc::Document;
+        use serde_json::json;
+        let services = crate::Services {
+            import: Some(Box::new(|name: &str, _b: &[u8], _depth: usize| {
+                Ok((Document::new(name, photocraft_doc::Size::new(4, 4), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8), Vec::new()))
+            })),
+            automation_read: Some(Box::new(|path: &str| Ok((path.rsplit('/').next().unwrap_or(path).to_string(), b"x".to_vec())))),
+            automation_open_pcraft: Some(Box::new(|path: &str| {
+                let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                Ok(Some((name, Document::new("Native", photocraft_doc::Size::new(16, 12), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8))))
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        let ctx = egui::Context::default();
+
+        // A template opens untitled and keeps no path, so a second open is a second document.
+        let first = call(&mut app, &ctx, "app.open", json!({"path": "in/card.psdt"}));
+        assert_eq!(first["result"]["name"], "Untitled-1");
+        assert!(first["result"]["deduped"].is_null(), "{first}");
+        let second = call(&mut app, &ctx, "app.open", json!({"path": "in/card.psdt"}));
+        assert_eq!(second["result"]["name"], "Untitled-2");
+        assert!(second["result"]["deduped"].is_null(), "{second}");
+        assert_eq!(app.session.documents().len(), 2);
+
+        // A directory .pcraft keeps no save-back target either: it too reopens as a copy.
+        let third = call(&mut app, &ctx, "app.open", json!({"path": "native.pcraft"}));
+        assert!(third["result"]["deduped"].is_null(), "{third}");
+        let fourth = call(&mut app, &ctx, "app.open", json!({"path": "native.pcraft"}));
+        assert!(fourth["result"]["deduped"].is_null(), "{fourth}");
+        assert_eq!(app.session.documents().len(), 4);
+    }
+
+    #[test]
+    fn dedupe_key_resolves_lexical_spellings_and_falls_back_to_raw_text() {
+        assert_eq!(dedupe_key("in/x.png"), "in/x.png");
+        assert_eq!(dedupe_key("./in/x.png"), "in/x.png");
+        assert_eq!(dedupe_key("in//sub/../x.png"), "in/x.png");
+        assert_eq!(dedupe_key("/root/in/x.png"), "/root/in/x.png");
+        assert_eq!(dedupe_key("../x.png"), "../x.png", "a climb above the start keeps the raw spelling");
+        assert_eq!(dedupe_key("a/../../x.png"), "a/../../x.png");
     }
 
     #[test]
