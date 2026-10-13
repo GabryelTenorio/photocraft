@@ -169,9 +169,29 @@ fn assert_recovery_after_invalid_encoder(encode_only: bool) {
     let mut comp = Compositor::try_new_with_format(&device, Compositor::preferred_acc_format(&adapter)).unwrap();
     let mut d = doc();
     d.layers[1].effects.items = vec![photocraft_doc::Effect::default_drop_shadow()];
+    // Pipeline creation errors are not proof of missing hardware capabilities: check the
+    // adapter and the features actually enabled on this device before allowing a skip.
+    let required = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    let features = device.features();
+    for format in [wgpu::TextureFormat::R32Float, wgpu::TextureFormat::R16Float] {
+        let adapter_usages = adapter.get_texture_format_features(format).allowed_usages;
+        let guaranteed_usages = format.guaranteed_format_features(features).allowed_usages;
+        if !adapter_usages.contains(required)
+            || (!features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES) && !guaranteed_usages.contains(required))
+        {
+            eprintln!(
+                "skipping effect-map recovery test: {:?} {format:?} lacks {required:?}; adapter usages={adapter_usages:?}, guaranteed usages={guaranteed_usages:?}, device features={features:?}",
+                adapter.get_info().backend,
+            );
+            return;
+        }
+    }
+    comp.supports(&d).expect("a capable adapter must support the recovery fixture's effect-map pipelines");
     let src = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 4, usage: wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
     let dst = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 4, usage: wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    let mut injected = false;
     let mut sink = |encoder: &mut wgpu::CommandEncoder, _: photocraft_gpu::ChunkOut<'_>| {
+        injected = true;
         // Misaligned copies invalidate the encoder, discarding all recorded effect-map work.
         encoder.copy_buffer_to_buffer(&src, 0, &dst, 0, 1);
         if encode_only {
@@ -190,7 +210,9 @@ fn assert_recovery_after_invalid_encoder(encode_only: bool) {
     } else {
         comp.render(&device, &queue, &d, d.bounds(), sink)
     };
-    assert!(result.is_err(), "invalid encoder must fail");
+    assert!(injected, "the invalid encoder injection must reach the sink");
+    let error = result.expect_err("invalid encoder must fail");
+    assert!(error.0.contains("GPU work failed"), "the injected GPU error must be captured: {error}");
     let recovered = render_to_vec(&mut comp, &device, &queue, &d, d.bounds()).unwrap();
     let mut fresh = Compositor::try_new_with_format(&device, Compositor::preferred_acc_format(&adapter)).unwrap();
     let expected = render_to_vec(&mut fresh, &device, &queue, &d, d.bounds()).unwrap();
