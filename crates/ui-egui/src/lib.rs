@@ -1810,7 +1810,6 @@ fn read_dropped(f: &(dyn egui::DroppedFile + Send + Sync)) -> Result<Vec<u8>, St
     f.bytes()
 }
 
-/// On the web, dropped-file bytes arrive asynchronously; the web shell handles drops itself.
 /// The active layer is an adjustment layer. It has no pixels, so painting and filling it edit its
 /// mask even when its icon thumbnail, not the mask, is the Layers panel's target, as in
 /// Photoshop (#4298).
@@ -1818,6 +1817,7 @@ pub(crate) fn adjustment_layer_active(st: &photocraft_engine::DocState) -> bool 
     st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| matches!(l.content, photocraft_doc::LayerContent::Adjustment(_)))
 }
 
+/// On the web, dropped-file bytes arrive asynchronously; the web shell handles drops itself.
 #[cfg(target_arch = "wasm32")]
 fn read_dropped(_f: &dyn egui::DroppedFile) -> Result<Vec<u8>, String> {
     Err("drag-and-drop on the web is handled by the page; use File → Open".into())
