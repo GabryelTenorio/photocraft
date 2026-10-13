@@ -19,11 +19,6 @@ use serde_json::{Value, json};
 
 type Harness = egui_kittest::Harness<'static, PhotocraftApp>;
 
-// Windows WARP can access-violate when these GPU harnesses initialize concurrently. Keep
-// each harness, including its destruction, isolated without changing other tests' parallelism.
-#[cfg(windows)]
-static GPU_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn harness() -> Option<Harness> {
     let built = std::panic::catch_unwind(|| {
         egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 640.0)).with_max_steps(64).wgpu().build_eframe(|cc| {
@@ -111,8 +106,9 @@ fn setup() -> Option<Harness> {
 
 #[test]
 fn a_ratio_dropdown_updates_the_preview_and_enter_without_touching_a_handle() {
-    #[cfg(windows)]
-    let _gpu_guard = GPU_TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Windows WARP can access-violate when GPU harnesses initialize or tear down concurrently:
+    // hold the GPU lock for the whole test, harness included.
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     h.get_by_value("Ratio").click();
     h.run_steps(3);
@@ -131,8 +127,9 @@ fn a_ratio_dropdown_updates_the_preview_and_enter_without_touching_a_handle() {
 
 #[test]
 fn the_swap_button_and_x_apply_the_same_inscribed_ratio() {
-    #[cfg(windows)]
-    let _gpu_guard = GPU_TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Windows WARP can access-violate when GPU harnesses initialize or tear down concurrently:
+    // hold the GPU lock for the whole test, harness included.
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     let original = [30.0, 20.0, 270.0, 180.0];
     h.state_mut().ui.crop_rect = Some(original);
@@ -157,8 +154,9 @@ fn the_swap_button_and_x_apply_the_same_inscribed_ratio() {
 
 #[test]
 fn a_resize_renders_the_frame_and_image_with_the_same_camera() {
-    #[cfg(windows)]
-    let _gpu_guard = GPU_TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Windows WARP can access-violate when GPU harnesses initialize or tear down concurrently:
+    // hold the GPU lock for the whole test, harness included.
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     let box0 = screen_box(&h);
     let c = mid(box0);
@@ -182,8 +180,6 @@ fn a_resize_renders_the_frame_and_image_with_the_same_camera() {
 
 #[test]
 fn dragging_inside_moves_the_image_and_the_box_stays_centred() {
-    #[cfg(windows)]
-    let _gpu_guard = GPU_TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     assert!(!photocraft_ui_egui::crop_ui::pending(h.state()), "the untouched frame");
@@ -215,8 +211,6 @@ fn dragging_inside_moves_the_image_and_the_box_stays_centred() {
 
 #[test]
 fn a_resize_keeps_the_box_centre_after_a_space_pan() {
-    #[cfg(windows)]
-    let _gpu_guard = GPU_TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = setup() else { return };
     // Space held: the temporary Hand pans the view 80, 40.
