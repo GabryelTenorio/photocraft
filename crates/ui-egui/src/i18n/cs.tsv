@@ -114,6 +114,13 @@
 	Script Events Manager…	Správce událostí skriptů…
 	Import	Import
 	Browse…	Procházet…
+	Source Files	Zdrojové soubory
+	Use:	Použít:
+	Files	Soubory
+	Add Open Files	Přidat otevřené soubory
+	Sort By Name	Seřadit podle názvu
+	Attempt to Automatically Align Source Images	Pokusit se automaticky zarovnat zdrojové obrazy
+	Create Smart Object after Loading Layers	Po načtení vrstev vytvořit chytrý objekt
 	Reveal in Finder	Zobrazit ve Finderu
 	Show in Explorer	Zobrazit v Průzkumníkovi
 	Show in Folder	Zobrazit ve složce
@@ -138,6 +145,8 @@
 	Search…	Hledat…
 	Check Spelling…	Kontrola pravopisu…
 	Find and Replace Text…	Najít a nahradit text…
+	Add to Dictionary	Přidat do slovníku
+	No Spelling Suggestions	Žádné návrhy pravopisu
 	Fill…	Vyplnit…
 	Stroke…	Tah…
 	Content-Aware Fill…	Výplň s ohledem na obsah…
@@ -152,6 +161,8 @@
 	Transform Again on a Copy	Duplikovat a opakovat transformaci
 	Scale	Měřítko
 	Rotate	Otočit
+	Set horizontal skew	Nastavit vodorovné zkosení
+	Set vertical skew	Nastavit svislé zkosení
 	Skew	Zkosit
 	Distort	Zkreslit
 	Perspective	Perspektiva
@@ -733,6 +744,10 @@
 	Breeze Dark Theme	Tmavý motiv Breeze
 	Breeze light	Breeze světlý
 	Breeze Light Theme	Světlý motiv Breeze
+	Soft dark	Jemný tmavý
+	Soft light	Jemný světlý
+	Soft Dark Theme	Jemné tmavé téma
+	Soft Light Theme	Jemné světlé téma
 	Next Theme	Další motiv
 	Actions	Akce
 	Brush Settings	Nastavení štětce
@@ -3696,3 +3711,4 @@ navigator	Zoom	Zvětšení
 	Action playback stopped	Přehrávání akce zastaveno
 	Step {step} is waiting for its dialog	Krok {step} čeká na svůj dialog
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
+	Auto Add/Delete	Automaticky přidat/odstranit
