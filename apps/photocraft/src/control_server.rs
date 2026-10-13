@@ -15,16 +15,17 @@ use photocraft_ui_egui::ControlRequest;
 use photocraft_ui_egui::control::{REPLY_DEADLINE, timeout_error};
 use serde_json::{Value, json};
 
-pub fn start(port: u16, token: String, ctx: egui::Context) -> Receiver<ControlRequest> {
+/// Serves an already-bound loopback listener; the app shell binds before the window opens, so a
+/// port another instance owns fails the launch instead of leaving a dead control channel.
+pub fn start(listener: TcpListener, token: String, ctx: egui::Context) -> Receiver<ControlRequest> {
     let (tx, rx) = channel::<ControlRequest>();
-    let listener = match TcpListener::bind(("127.0.0.1", port)) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("photocraft: control server failed to bind 127.0.0.1:{port}: {e}");
-            return rx;
+    match listener.local_addr() {
+        Ok(addr) => {
+            eprintln!("photocraft: control server listening on {addr}");
+            log::info!("control server listening on {addr}");
         }
-    };
-    eprintln!("photocraft: control server listening on 127.0.0.1:{port}");
+        Err(e) => log::warn!("control server bound, but its address is unreadable: {e}"),
+    }
     std::thread::spawn(move || {
         let limiter = ConnectionLimiter::new(MAX_CONNECTIONS);
         let token = Arc::new(token);

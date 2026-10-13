@@ -14,6 +14,8 @@
 //! `--control <port>` (or `PHOTOCRAFT_CONTROL_PORT`) starts a localhost JSON-lines control server.
 //! The first line must authenticate; subsequent request lines get reply lines.
 //! `{"id":1,"ok":true,"result":…}`. See `photocraft_ui_egui::control` for the methods.
+//! A port that cannot be bound (usually another PhotoCraft instance owns it) fails the launch
+//! with a non-zero exit before any window opens.
 
 // Release builds on Windows are GUI-subsystem apps, so launching from the Start Menu or Explorer
 // doesn't open a console window. (`--version` output then only shows when redirected.)
@@ -122,9 +124,15 @@ fn control_args_exit_code(errors: &[String]) -> Option<i32> {
     if errors.is_empty() { None } else { Some(2) }
 }
 
+/// Bind the control server's loopback listener. A port that cannot be bound is an error naming
+/// the port and the OS reason: the app must not keep running with a dead control channel.
+fn bind_control(port: u16) -> Result<std::net::TcpListener, String> {
+    std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| format!("cannot listen on 127.0.0.1:{port}: {e}; another PhotoCraft instance may own it"))
+}
+
 #[cfg(test)]
 mod control_port_tests {
-    use super::{control_args_exit_code, parse_control_port};
+    use super::{bind_control, control_args_exit_code, parse_control_port};
 
     #[test]
     fn control_port_errors_exit_non_zero() {
@@ -148,6 +156,21 @@ mod control_port_tests {
         assert!(err.contains("78787"), "{err}");
         assert!(parse_control_port("--safe-gpu", "--control").is_err());
         assert!(parse_control_port("", "--control").is_err());
+    }
+
+    #[test]
+    fn control_bind_conflict_fails_naming_the_port() {
+        let holder = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = holder.local_addr().unwrap().port();
+        // The OS's own refusal wording ("Address already in use", …) differs per platform.
+        let refused = std::net::TcpListener::bind(("127.0.0.1", port)).unwrap_err().to_string();
+        let err = bind_control(port).unwrap_err();
+        assert!(err.contains(&port.to_string()), "names the port: {err}");
+        assert!(err.contains(&refused), "carries the OS reason: {err}");
+        assert!(err.contains("another PhotoCraft instance"), "names the likely cause: {err}");
+        // Port 0 stays allowed, and the OS-assigned port is reportable.
+        let listener = bind_control(0).unwrap();
+        assert_ne!(listener.local_addr().unwrap().port(), 0);
     }
 }
 
@@ -279,7 +302,17 @@ fn main() -> eframe::Result {
                 std::process::exit(2);
             }
         };
-        Some((port, token, workspace))
+        // Bind before the window opens: a taken port fails the launch with exit 1, like
+        // `photocraft-cli serve`, never a running app whose control channel is dead.
+        let listener = match bind_control(port) {
+            Ok(listener) => listener,
+            Err(e) => {
+                eprintln!("photocraft: {e}");
+                log::error!("{e}");
+                std::process::exit(1);
+            }
+        };
+        Some((listener, token, workspace))
     } else {
         None
     };
@@ -461,8 +494,8 @@ fn main() -> eframe::Result {
                     log::warn!("couldn't remember GPU backend {}: {e}", b.name());
                 }
             });
-            if let Some((port, token, _)) = control {
-                let rx = control_server::start(port, token, cc.egui_ctx.clone());
+            if let Some((listener, token, _)) = control {
+                let rx = control_server::start(listener, token, cc.egui_ctx.clone());
                 app = app.with_control(rx);
             }
             #[cfg(target_os = "macos")]

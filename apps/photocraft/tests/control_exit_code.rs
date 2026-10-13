@@ -2,8 +2,8 @@
 //! status 0 believes the control server is running when it is not.
 //!
 //! These tests run the real binary as a subprocess and assert the exit code,
-//! covering both failure paths in `main.rs`: control authentication and the
-//! automation workspace.
+//! covering every failure path in `main.rs`: control authentication, the
+//! automation workspace, and the control port bind.
 
 /// A syntactically valid 64-hex-char token, so the workspace test reaches the
 /// workspace check instead of failing on token validation first.
