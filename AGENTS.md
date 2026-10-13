@@ -69,6 +69,7 @@ People trust PhotoCraft with their work, and a crash loses it. A malformed file,
 8. **Performance is a feature.** Benchmark heavy operations on a 24–36 MP image in release. Work per tile in parallel (rayon), skip empty tiles, never scan a full surface per frame (cache per revision), and record before/after timings in the dev log.
 
 9. **Never panic on input** (see *Never crash* above). A command's `run` closure and anything it calls must return `Err`, never panic, for *any* params or document state: validate params, check bounds before indexing or dividing, and reject absurd sizes before allocating. The `panic_hunt` integration test fuzzes every command with adversarial params and must stay green.
+10. **User docs.** User docs live in `docs/user/` and are published at https://getartcraft.com/docs/photocraft. If a change alters something a user sees or does (menu or dialog labels, install, file formats, errors), update the matching page in `docs/user/` in the same PR, or add one. Rules: `docs/user/AGENTS.md`. Pages describe the latest release. For a change that is not released yet, write that it was added after <version> and is not in a release yet, or update the page when the release ships.
 
 ## 4. Picking work
 
