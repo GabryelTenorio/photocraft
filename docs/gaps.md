@@ -124,6 +124,10 @@ what an agent can't finish alone.
   tuning retains the fitted look and applies user gains afterwards. Three D5100 NEFs
   establish a guarded 4928 × 3264 image area. This is an estimated rendering, not a
   measured D5100 colour calibration; [validation](nikon-nef-development.md).
+- **Progress (2026-10-13):** the D90's image area (4288 × 2848 at (10, 10) in a
+  4352 × 2868 plane) is measured by aligning the decoded plane with the camera's own
+  JPEG, so a D90 NEF opens on the camera's frame instead of the uncropped sensor plane;
+  `crates/raw/src/cameras.rs` (`IMAGE_AREAS`).
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
@@ -252,6 +256,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | G14: D90 image area measured (4288 × 2848 at (10, 10)); gap remains open |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
 | 2026-10-12 | minor | G11: `.atn` import maps 112 events (Select and Mask, Spatter, Ripple, Crystallize, Pattern Fill, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | G9: toolbar tool shortcut editing (#4086); the remaining workspace gaps stay open |
