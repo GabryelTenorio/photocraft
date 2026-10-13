@@ -22,6 +22,7 @@ const MAX_SIDE: u32 = 4096;
 const MAX_COMPOSITE_CACHE_PIXELS: usize = 8 * 1024 * 1024;
 
 struct SampledComposite {
+    doc: std::sync::Weak<Document>,
     revision: u64,
     preview_key: u64,
     factor: u32,
@@ -270,10 +271,13 @@ pub fn ensure(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize) -> Optio
     // Never exceed what the GPU accepts (egui panics on oversized textures).
     let max_side = (ctx.input(|i| i.max_texture_side) as u32).clamp(256, MAX_SIDE);
     let factor = doc.size.width.max(doc.size.height).div_ceil(max_side).max(1);
-    // A live preview can mutate the same Arc in place. Revision and preview_key, not
-    // pointer identity, determine whether these flattened pixels are still current.
+    // Visibility-only commands bump revision without changing the document. A weak reference
+    // keeps its allocation identifiable and makes Arc::make_mut detach on document edits.
+    // Previews additionally use revision: live preview pixels can change within one gesture.
     if let Some(c) = app.channel_views.get_mut(&id)
-        && c.source.as_ref().is_some_and(|s| s.factor != factor || s.revision != revision || s.preview_key != preview_key)
+        && c.source.as_ref().is_some_and(|s| {
+            s.factor != factor || !s.doc.ptr_eq(&std::sync::Arc::downgrade(&doc)) || s.preview_key != preview_key || preview_key != 0 && s.revision != revision
+        })
     {
         c.source = None;
     }
@@ -325,12 +329,12 @@ pub fn ensure(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usize) -> Optio
             c.factor = factor;
             c.valid = true;
             if let Some(pixels) = fresh.take() {
-                c.source = Some(SampledComposite { revision, preview_key, factor, pixels });
+                c.source = Some(SampledComposite { doc: std::sync::Arc::downgrade(&doc), revision, preview_key, factor, pixels });
             }
         }
         _ => {
             let tex = ctx.load_texture(format!("channel-view-{id}"), img, TextureOptions::LINEAR);
-            let source = fresh.map(|pixels| SampledComposite { revision, preview_key, factor, pixels });
+            let source = fresh.map(|pixels| SampledComposite { doc: std::sync::Arc::downgrade(&doc), revision, preview_key, factor, pixels });
             app.channel_views.insert(id, Cache { revision, key, preview_key, factor, valid: true, tex, source });
         }
     }
@@ -394,10 +398,13 @@ mod tests {
         let first = app.channel_views.get(&id).unwrap().source.as_ref().unwrap();
         let original_sample = first.pixels[0];
         let ptr = first.pixels.as_ptr();
+        let source_revision = first.revision;
 
         app.run("channel.setVisible", json!({"channel": "green", "visible": false})).unwrap();
         assert!(ensure(&mut app, &ctx, 0).is_some());
         let reused = app.channel_views.get(&id).unwrap().source.as_ref().unwrap();
+        assert_ne!(app.session.active().unwrap().revision, source_revision, "visibility advances the view revision");
+        assert_eq!(reused.revision, source_revision, "the existing sampled composite is retained");
         assert_eq!(ptr, reused.pixels.as_ptr(), "visibility does not recompose the pixels");
 
         app.run("edit.fill", json!({"color": "#e02010"})).unwrap();
