@@ -383,6 +383,7 @@ fn input_control_root_pointer_and_keyboard_run_once() {
     for (theme, ppp) in cases() {
         let (mut h, b, r, _integration) = harness(ppp, theme);
         documents(&mut h, &b, true, ppp);
+        assert_eq!(control_done(&mut h, "ui.set", serde_json::json!({"panels":{"properties":false}}))["ok"], true);
         pencil(&mut h);
         let before: Vec<_> = h.state().session.documents().iter().map(|d| (d.doc.clone(), d.history.past_len())).collect();
         let xf = canvas::ViewXform::active(h.state()).unwrap();
