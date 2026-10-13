@@ -800,3 +800,20 @@ fn save_a_copy_is_recorded_and_replayed_as_a_copy() {
     assert_eq!(st.path.as_deref(), Some("/pics/work.pcraft"), "the document keeps its file");
     assert!(st.is_dirty(), "and its unsaved changes");
 }
+
+/// #4400: a new document saved under a name is listed in Open Recent (and on the Home screen),
+/// as opening it is; a Save a Copy isn't, since the document doesn't live there.
+#[test]
+fn saving_a_new_document_lists_it_in_recent_files() {
+    let (mut app, _written) = app_with(vec![Some(FileDialogAnswer::SaveTo("/pics/new.psd".into())), Some(FileDialogAnswer::SaveTo("/pics/copy.png".into()))]);
+    let ctx = egui::Context::default();
+    app.run("file.new", json!({"width": 4, "height": 4})).unwrap();
+    assert!(app.ui.recent_files.is_empty());
+    menus::invoke(&mut app, &ctx, "file.saveAs", json!({})).unwrap();
+    answer(&mut app);
+    assert_eq!(app.ui.recent_files, ["/pics/new.psd"]);
+    assert_eq!(app.session.prefs().file_handling.recent_files, ["/pics/new.psd"], "kept for the next launch");
+    menus::invoke(&mut app, &ctx, "file.saveACopy", json!({})).unwrap();
+    answer(&mut app);
+    assert_eq!(app.ui.recent_files, ["/pics/new.psd"], "a copy isn't the document's file");
+}
