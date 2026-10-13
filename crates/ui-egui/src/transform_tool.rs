@@ -2294,7 +2294,7 @@ pub fn cursor(app: &PhotocraftApp, p: [f64; 2], quick_split: bool) -> Option<Cur
         return Some(CursorIcon::Default);
     }
     if rotate_cursor_dir(app, p).is_some() {
-        // The overlay draws the curved rotate arrow (`rotate_cursor_dir`), also during the drag.
+        // The canvas draws the curved rotate arrow (`rotate_cursor_dir`), also during the drag.
         return Some(CursorIcon::None);
     }
     Some(match h {
