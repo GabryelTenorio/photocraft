@@ -80,6 +80,24 @@ fn groups_keep_opacity_blend_and_nesting_while_plain_groups_vanish() {
 }
 
 #[test]
+fn svg_group_rasterization_threshold_is_configurable_and_clamped() {
+    let source = format!(
+        "<svg {NS} width=\"20\" height=\"20\"><g id=\"outer\"><rect width=\"2\" height=\"2\" fill=\"blue\"/><g id=\"inner\"><rect width=\"10\" height=\"10\" fill=\"red\"/><rect x=\"12\" width=\"5\" height=\"5\" fill=\"green\"/></g></g></svg>"
+    );
+    let shallow = import_with_svg_group_depth("nested.svg", source.as_bytes(), 1).unwrap();
+    let LayerContent::Group(outer) = &shallow.document.layers[0].content else { panic!("outer group should remain editable") };
+    assert!(outer.children.iter().any(|child| matches!(child.content, LayerContent::Raster(_))), "the subtree past the setting should be rasterized");
+    assert!(shallow.warnings.iter().any(|warning| warning.contains("nested too deeply")));
+
+    let unlimited = import_with_svg_group_depth("nested.svg", source.as_bytes(), 0).unwrap();
+    let LayerContent::Group(outer) = &unlimited.document.layers[0].content else { panic!("outer group should remain editable") };
+    assert!(outer.children.iter().any(|child| matches!(child.content, LayerContent::Group(_))), "zero disables the preference threshold");
+
+    let clamped = import_with_svg_group_depth("nested.svg", source.as_bytes(), usize::MAX).unwrap();
+    assert!(matches!(clamped.document.layers[0].content, LayerContent::Group(_)), "out-of-range settings clamp to the document's hard group limit");
+}
+
+#[test]
 fn transforms_curves_and_fill_rules_are_in_the_knots() {
     let r = open(&format!(
         "<svg {NS} width=\"60\" height=\"60\">\
@@ -130,10 +148,11 @@ fn gradients_are_approximated_with_a_warning() {
 
 #[test]
 fn clip_paths_masks_filters_patterns_and_images_are_rasterised() {
+    // A clip of one path becomes a vector mask (#4266); one of two shapes is still rasterised.
     let r = open(&format!(
         "<svg {NS} width=\"60\" height=\"30\">\
            <defs>\
-             <clipPath id=\"c\"><rect width=\"10\" height=\"30\"/></clipPath>\
+             <clipPath id=\"c\"><rect width=\"10\" height=\"30\"/><rect x=\"26\" width=\"2\" height=\"30\"/></clipPath>\
              <pattern id=\"p\" width=\"4\" height=\"4\" patternUnits=\"userSpaceOnUse\"><rect width=\"2\" height=\"4\" fill=\"black\"/></pattern>\
            </defs>\
            <g id=\"clipped\" clip-path=\"url(#c)\"><rect width=\"30\" height=\"30\" fill=\"#ff0000\"/></g>\

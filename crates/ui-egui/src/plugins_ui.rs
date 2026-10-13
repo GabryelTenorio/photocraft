@@ -189,6 +189,7 @@ fn linux_package_command() -> Option<&'static str> {
 }
 
 /// The install command for an `os-release` file's `ID` / `ID_LIKE`.
+#[cfg(not(target_arch = "wasm32"))]
 fn package_command(os_release: &str) -> Option<&'static str> {
     let mut ids = Vec::new();
     for line in os_release.lines() {
