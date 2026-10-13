@@ -33,6 +33,27 @@ pub enum DropTarget {
     Elsewhere,
 }
 
+/// `warnings` from an import, plus one for each font family the active document's type uses that
+/// isn't installed (#4559): Photoshop warns about missing fonts as a file opens, and the CLI and
+/// automation already report them; the type would otherwise silently render in a fallback face.
+pub(crate) fn with_missing_fonts(app: &PhotocraftApp, warnings: Vec<String>) -> Vec<String> {
+    match app.session.active() {
+        Some(st) => with_missing_fonts_of(&st.doc, warnings),
+        None => warnings,
+    }
+}
+
+/// [`with_missing_fonts`] for `doc` itself: a file held back for its profile prompt
+/// (`open_prompt`) isn't the active document yet.
+pub(crate) fn with_missing_fonts_of(doc: &photocraft_doc::Document, mut warnings: Vec<String>) -> Vec<String> {
+    for w in photocraft_engine::type_extra_cmds::missing_font_warnings(doc) {
+        if !warnings.contains(&w) {
+            warnings.push(w);
+        }
+    }
+    warnings
+}
+
 /// A dropped file's name ("dropped" when it has none).
 fn dropped_name(f: &egui::DroppedFileHandle) -> String {
     f.path().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "dropped".into())
