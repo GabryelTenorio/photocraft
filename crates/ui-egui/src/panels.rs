@@ -90,18 +90,17 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .exact_size(w)
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(m, 8)))
         .show(ui, |ui| {
-            if t.pro {
-                // Photoshop's toolbar header chevrons switch between one and two columns.
-                let (cr, resp) = ui.allocate_exact_size(vec2(bx, 14.0), Sense::click());
-                // The chevrons point the way the toolbar grows or shrinks: towards the canvas.
-                let (shrink, grow) = if crate::direction::is_rtl() { ("chevrons-right", "chevrons-left") } else { ("chevrons-left", "chevrons-right") };
-                icons::paint(ui, cr, if double { shrink } else { grow }, 11.0, if resp.hovered() { t.text } else { t.text_faint });
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Toolbar")));
-                if resp.clicked() {
-                    app.ui.panels.toolbar_double = !app.ui.panels.toolbar_double;
-                }
-                ui.add_space(4.0);
+            // Photoshop's toolbar header chevrons switch between one and two columns. Every theme
+            // draws them: toolbar_double is shared, so a theme without them could not undo it (#4653).
+            let (cr, resp) = ui.allocate_exact_size(vec2(bx, 14.0), Sense::click());
+            // The chevrons point the way the toolbar grows or shrinks: towards the canvas.
+            let (shrink, grow) = if crate::direction::is_rtl() { ("chevrons-right", "chevrons-left") } else { ("chevrons-left", "chevrons-right") };
+            icons::paint(ui, cr, if double { shrink } else { grow }, 11.0, if resp.hovered() { t.text } else { t.text_faint });
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Toolbar")));
+            if resp.clicked() {
+                app.ui.panels.toolbar_double = !app.ui.panels.toolbar_double;
             }
+            ui.add_space(4.0);
             // Subtle violet wash at the bottom of the toolbar.
             let full = ui.max_rect();
             if !t.bevel && !t.pro && t.dark() {
@@ -126,7 +125,8 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             let ctx = ui.ctx().clone();
             let footer = (if t.pro { 8.0 } else { 14.0 })
                 + chips_height(t.pro, t.round_chips, t.round_chips && double)
-                + if t.pro { 8.0 + if double { bx } else { bx * 2.0 + 3.0 } } else { 0.0 }
+                + 8.0
+                + if double { bx } else { bx * 2.0 + 3.0 }
                 + 6.0;
             // As tall as the tools, so the colour chips sit right under them (Photoshop); a column
             // taller than the window scrolls and keeps the chips at the bottom.
@@ -270,54 +270,52 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             });
                         }
                     }
-                    if t.pro && icons::button(ui, "ellipsis", bx, false, tl!("Edit Toolbar…")).clicked() {
+                    if icons::button(ui, "ellipsis", bx, false, tl!("Edit Toolbar…")).clicked() {
                         let _ = crate::menus::invoke(app, &ctx, "edit.toolbar", json!({}));
                     }
                     reveal_focused_control(ui);
                 });
             ui.add_space(if t.pro { 8.0 } else { 14.0 });
             color_chips(app, ui, double);
-            if t.pro {
-                ui.add_space(8.0);
+            ui.add_space(8.0);
 
-                let layout = if double { egui::Layout::left_to_right(egui::Align::Min) } else { egui::Layout::top_down(egui::Align::Min) };
+            let layout = if double { egui::Layout::left_to_right(egui::Align::Min) } else { egui::Layout::top_down(egui::Align::Min) };
 
-                ui.with_layout(layout, |ui| {
-                    let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
-                    if icons::button(
-                        ui,
-                        "square-dashed",
-                        bx,
-                        quick_mask,
-                        if quick_mask { tl!("Edit in Standard Mode  (Q)") } else { tl!("Edit in Quick Mask Mode  (Q)") },
-                    )
-                    .clicked()
-                    {
-                        let _ = crate::menus::invoke(app, &ctx, "select.editInQuickMaskMode", json!({}));
-                    }
-                    let sm = icons::button(ui, "app-window", bx, false, tl!("Change Screen Mode  (F)"));
-                    paint_toolbar_flyout_indicator(ui, &t, &sm);
+            ui.with_layout(layout, |ui| {
+                let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
+                if icons::button(
+                    ui,
+                    "square-dashed",
+                    bx,
+                    quick_mask,
+                    if quick_mask { tl!("Edit in Standard Mode  (Q)") } else { tl!("Edit in Quick Mask Mode  (Q)") },
+                )
+                .clicked()
+                {
+                    let _ = crate::menus::invoke(app, &ctx, "select.editInQuickMaskMode", json!({}));
+                }
+                let sm = icons::button(ui, "app-window", bx, false, tl!("Change Screen Mode  (F)"));
+                paint_toolbar_flyout_indicator(ui, &t, &sm);
 
-                    if sm.clicked() {
-                        let _ = crate::menus::invoke(app, &ctx, "view.screenMode.cycle", json!({}));
-                    }
-                    // Right-click (or long-press) lists the modes, like Photoshop's flyout.
-                    egui::Popup::context_menu(&sm).show(|ui| {
-                        ui.set_min_width(220.0);
-                        for (id, label) in [
-                            ("view.screenMode.standard", tl!("Standard Screen Mode")),
-                            ("view.screenMode.fullScreenWithMenuBar", tl!("Full Screen Mode With Menu Bar")),
-                            ("view.screenMode.fullScreen", tl!("Full Screen Mode")),
-                        ] {
-                            let on = crate::view_cmds::checked(app, id).unwrap_or(false);
-                            if ui.add(egui::Button::selectable(on, label)).clicked() {
-                                let _ = crate::menus::invoke(app, &ctx, id, json!({}));
-                                ui.close();
-                            }
+                if sm.clicked() {
+                    let _ = crate::menus::invoke(app, &ctx, "view.screenMode.cycle", json!({}));
+                }
+                // Right-click (or long-press) lists the modes, like Photoshop's flyout.
+                egui::Popup::context_menu(&sm).show(|ui| {
+                    ui.set_min_width(220.0);
+                    for (id, label) in [
+                        ("view.screenMode.standard", tl!("Standard Screen Mode")),
+                        ("view.screenMode.fullScreenWithMenuBar", tl!("Full Screen Mode With Menu Bar")),
+                        ("view.screenMode.fullScreen", tl!("Full Screen Mode")),
+                    ] {
+                        let on = crate::view_cmds::checked(app, id).unwrap_or(false);
+                        if ui.add(egui::Button::selectable(on, label)).clicked() {
+                            let _ = crate::menus::invoke(app, &ctx, id, json!({}));
+                            ui.close();
                         }
-                    });
+                    }
                 });
-            }
+            });
         });
 }
 
@@ -4897,6 +4895,31 @@ mod toolbar_tests {
         assert_eq!(left(&h), single);
     }
 
+    /// #4653: every theme draws the toolbar's own controls, not only Pro. Without the chevron a
+    /// two-column toolbar chosen under Pro could not go back to one column in Breeze or Studio.
+    #[test]
+    fn every_theme_has_the_toolbar_controls() {
+        for kind in crate::theme::ThemeKind::ALL {
+            let app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+            let mut h = egui_kittest::Harness::builder().with_size(vec2(800.0, 1400.0)).build_ui_state(
+                |ui, app: &mut PhotocraftApp| {
+                    if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                        toolbar(app, ui);
+                    }
+                },
+                app,
+            );
+            PhotocraftApp::setup_context(&h.ctx, kind);
+            h.run_steps(2);
+            for label in ["Edit Toolbar…", "Edit in Quick Mask Mode  (Q)", "Change Screen Mode  (F)"] {
+                assert!(h.query_by_label(label).is_some(), "{kind:?}: no {label:?} button");
+            }
+            h.get_by_label("Toolbar").click();
+            h.run_steps(2);
+            assert!(h.state().ui.panels.toolbar_double, "{kind:?}: the chevron did not switch to two columns");
+        }
+    }
+
     fn click(h: &mut egui_kittest::Harness<'_, PhotocraftApp>, p: egui::Pos2) {
         h.hover_at(p);
         h.run_steps(1);
@@ -5267,6 +5290,10 @@ mod compact_visual_regressions {
                     phase: egui::TouchPhase::Move,
                 });
                 harness.run_steps(30);
+                // Off the toolbar, so a tooltip of the tool scrolled under the pointer isn't a
+                // second "Zoom Tool" node.
+                harness.event(egui::Event::PointerMoved(pos2(300.0, 100.0)));
+                harness.run_steps(2);
                 let node = harness.get_by_label("Zoom Tool  (Z)");
                 let rect = node.rect();
                 assert!(rect.top() >= 0.0 && rect.bottom() <= 360.0, "{kind:?} at {scale}x: last tool remains outside the toolbar: {rect:?}");
@@ -5304,13 +5331,13 @@ mod compact_visual_regressions {
         }
     }
 
-    /// A window taller than the tools keeps the colour chips right under the last tool, as
-    /// Photoshop does, instead of at the bottom of the toolbar.
+    /// A window taller than the tools keeps the colour chips right under the tool column (its
+    /// last row is Edit Toolbar), as Photoshop does, instead of at the bottom of the toolbar.
     #[test]
     fn tall_toolbar_keeps_the_colour_chips_under_the_tools() {
         for kind in theme::ThemeKind::ALL {
             let harness = toolbar_harness_sized(kind, 1.0, 1600.0);
-            let last = harness.get_by_label("Zoom Tool  (Z)").rect();
+            let last = harness.get_by_label("Edit Toolbar…").rect();
             let swap = harness.get_by_label("Swap colours (X)").rect();
             assert!(swap.top() - last.bottom() < 80.0, "{kind:?}: the chips {swap:?} sit far below the last tool {last:?}");
         }
