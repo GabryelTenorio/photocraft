@@ -75,6 +75,7 @@ pub mod distort_ui;
 pub mod doc_props_ui;
 pub mod dock;
 pub mod duplicate_layer_ui;
+pub mod edit_history;
 pub mod egui_fonts;
 pub mod enable_rules;
 pub mod eraser_ui;
@@ -498,6 +499,9 @@ pub struct PhotocraftApp {
     canvases: HashMap<(DocId, u32), canvas::CanvasCache>,
     /// Navigator textures belong to open documents, not the lifetime of the egui context.
     navigator_textures: HashMap<DocId, canvas::NavigatorCache>,
+    /// `canvas::display_doc`'s live-adjust and Duotone documents per document: (snapshot,
+    /// preview key, the document shown).
+    display_memo: HashMap<DocId, (std::sync::Weak<Document>, u64, std::sync::Arc<Document>)>,
     /// Display profile readings (#569).
     monitors: monitor_status::State,
     checker: Option<egui::TextureHandle>,
@@ -665,6 +669,8 @@ pub struct PhotocraftApp {
     pub(crate) raw_redevelop: Option<camera_raw_ui::Redevelop>,
     /// Filter › Adaptive Wide Angle dialog (wide_angle_ui).
     pub(crate) wide_angle: Option<wide_angle_ui::WideAngleDialog>,
+    /// ⌘Z history of each open parameter dialog (edit_history).
+    pub(crate) dialog_edits: edit_history::DialogEdits,
     /// The filter a "Rasterize?" prompt answered for, run after the dialog closes, where the
     /// egui context is available again (rasterize_prompt).
     pub(crate) pending_after_prompt: Option<(String, serde_json::Value)>,
@@ -678,6 +684,10 @@ pub struct PhotocraftApp {
     pub(crate) clip_read_for_paste: bool,
     /// Pointer position over the canvas (document px), for the Info panel and status bar.
     pub(crate) hover_doc: Option<[f64; 2]>,
+    /// Layer hovered in the Layers panel, outlined on the canvas.
+    pub(crate) hover_layer: Option<photocraft_doc::LayerId>,
+    /// Layer hovered on the canvas, highlighted in the Layers panel.
+    pub(crate) canvas_hover_layer: Option<photocraft_doc::LayerId>,
     pub(crate) clone_preview: Option<crate::canvas::ClonePreviewCache>,
     /// Info panel sample cache: ((x, y, revision, Sample Size), composite RGBA).
     info_sample: Option<(InfoSampleKey, [f32; 4])>,
@@ -744,6 +754,7 @@ impl PhotocraftApp {
             services,
             canvases: HashMap::new(),
             navigator_textures: HashMap::new(),
+            display_memo: HashMap::new(),
             monitors: Default::default(),
             checker: None,
             drag: None,
@@ -819,6 +830,8 @@ impl PhotocraftApp {
             crop: Default::default(),
             pcrop: Default::default(),
             hover_doc: None,
+            hover_layer: None,
+            canvas_hover_layer: None,
             clone_preview: None,
             info_sample: None,
             os_clip_sig: None,
@@ -837,6 +850,7 @@ impl PhotocraftApp {
             pending_raw_open: None,
             raw_redevelop: None,
             wide_angle: None,
+            dialog_edits: Default::default(),
             pending_after_prompt: None,
             tone_hist: None,
             doc_hist: None,
@@ -993,12 +1007,17 @@ impl PhotocraftApp {
         let params = self.with_mask_target(id, params);
         let params = vector_ui::with_active_path(self, id, params);
         let path_mask = vector_ui::takes_path_mask(id) && params.get("path").is_some_and(|v| !v.is_null());
+        let on_active_layer = self
+            .session
+            .active()
+            .is_some_and(|st| st.active_layer.is_some_and(|layer| params.get("layer").and_then(Value::as_u64).is_none_or(|target| target == layer.0)));
         let creates_active_mask =
             matches!(id, "layer.layerMask.revealAll" | "layer.layerMask.hideAll" | "layer.layerMask.revealSelection" | "layer.layerMask.hideSelection")
-                && self
-                    .session
-                    .active()
-                    .is_some_and(|st| st.active_layer.is_some_and(|layer| params.get("layer").and_then(Value::as_u64).is_none_or(|target| target == layer.0)));
+                && on_active_layer;
+        let creates_active_vector_mask = matches!(
+            id,
+            "layer.vectorMask.add" | "layer.vectorMask.fromPath" | "layer.vectorMask.revealAll" | "layer.vectorMask.hideAll" | "layer.vectorMask.currentPath"
+        ) && on_active_layer;
         let r = if id == "actions.play" {
             actions::play(self, &params)
         } else if photocraft_engine::actions_cmds::shell_view_command(id) {
@@ -1038,6 +1057,15 @@ impl PhotocraftApp {
             // Adding a mask selects its thumbnail: the next brush or footer Delete targets it.
             self.ui.mask_target = true;
             self.ui.vector_mask_target = false;
+        }
+        if r.is_ok() && creates_active_vector_mask {
+            // Likewise a new vector mask (#4728): Properties shows its Density and Feather, and a
+            // mask made from a path becomes the active path.
+            self.ui.vector_mask_target = true;
+            self.ui.mask_target = false;
+            if matches!(id, "layer.vectorMask.currentPath" | "layer.vectorMask.fromPath") {
+                self.ui.selected_path = Some("layer".into());
+            }
         }
         if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
             self.clip_external = false;
@@ -1713,9 +1741,10 @@ impl eframe::App for PhotocraftApp {
             menu.raw_input(raw_input);
         }
         shortcuts::clipboard_keys(ctx, ctx.text_edit_focused() || self.ui.text_edit.is_some(), raw_input);
-        // Windows sends a touchpad pinch as Ctrl + wheel; make it a pinch again (wheel_nav.rs) —
-        // unless the pinch preference is off, leaving those fractions to scroll sideways.
-        if cfg!(target_os = "windows") && self.session.prefs().enhanced_controls.zoom_with_trackpad_pinch {
+        // Windows precision touchpads and some Linux Wayland compositors send pinches
+        // as fractional Ctrl + wheel rather than a native Zoom event (#4566).
+        // Leave Ctrl+whole-notch mouse scrolling alone, and honour the pinch preference.
+        if cfg!(any(target_os = "windows", target_os = "linux")) && self.session.prefs().enhanced_controls.zoom_with_trackpad_pinch {
             wheel_nav::fold_legacy_pinch(ctx, raw_input);
         }
         raw_input.events.extend(self.take_synthetic_step());
@@ -1729,6 +1758,7 @@ impl eframe::App for PhotocraftApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.hover_layer = None;
         i18n::set_current(i18n::Lang::from_pref(&self.session.prefs().interface.language));
         // Fonts registered via set_fonts only take effect next frame; named families would panic now.
         if !self.fonts_ready {

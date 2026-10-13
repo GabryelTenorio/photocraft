@@ -2448,7 +2448,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         if mask_btn.clicked()
             && let Some(cmd) = mask_cmd
         {
-            actions.push((cmd.into(), json!({})));
+            // A path selected in the Paths panel becomes the vector mask, as in Photoshop (#4728);
+            // Alt still inverts it.
+            match crate::vector_ui::selected_document_path(app).filter(|_| cmd.starts_with("layer.vectorMask.")) {
+                Some(name) => actions.push(("layer.vectorMask.currentPath".into(), json!({"name": name, "hide": alt}))),
+                None => actions.push((cmd.into(), json!({}))),
+            }
         }
         let fx = fx_button(ui, 26.0, tl!("Add a layer style"));
         crate::press_menu::show(&fx, |ui, menu| {
@@ -2683,17 +2688,23 @@ fn layer_row(
         return rect;
     }
     let painter = ui.painter_at(rect.expand(1.0));
+    let is_hovered = resp.hovered() || app.canvas_hover_layer == Some(l.id);
+    if resp.hovered() {
+        app.hover_layer = Some(l.id);
+    }
     if t.pro {
         if selected {
             painter.rect_filled(rect, 0.0, t.row_selected);
-        } else if resp.hovered() {
+        } else if is_hovered {
             painter.rect_filled(rect, 0.0, t.hover.gamma_multiply(0.5));
+            painter.rect_filled(rect, 0.0, t.accent.gamma_multiply(0.12));
         }
     } else if selected {
         painter.rect_filled(rect, t.radius, t.hover);
         painter.rect_stroke(rect, t.radius, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
-    } else if resp.hovered() {
+    } else if is_hovered {
         painter.rect_filled(rect, t.radius, t.hover.gamma_multiply(0.5));
+        painter.rect_filled(rect, t.radius, t.accent.gamma_multiply(0.12));
     }
     let eye_cell = Rect::from_min_max(rect.left_top(), pos2((rect.left() + 30.0).min(rect.right()), rect.bottom()));
     if let Some((_, background)) = t.layer_label_colors(l.label) {
@@ -2772,6 +2783,13 @@ fn layer_row(
         && ui.interact(badge, ui.id().with(("fx-badge", l.id.0)), Sense::drag()).drag_started()
     {
         start_fx_drag(ctx, l.id, None);
+    }
+    // Clicking the lock icon unlocks the layer, and makes the Background a normal one (Photoshop,
+    // #4723). It takes the click from the row, so the row isn't selected.
+    if let Some(&(_, lock)) = indicators.iter().find(|(k, _)| *k == crate::layer_row_ui::Indicator::Lock)
+        && ui.interact(lock, ui.id().with(("row-lock", l.id.0)), Sense::click()).clicked()
+    {
+        actions.push(simple_lock_toggle(doc.is_background(l.id), l));
     }
     let name_color = if l.visible { t.text } else { t.text_faint };
     let font = if selected && !t.pro { theme::medium(13.0) } else { egui::FontId::proportional(if t.pro { 12.0 } else { 13.0 }) };
@@ -3211,14 +3229,14 @@ pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
 fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj: &photocraft_doc::Adjustment) {
     crate::adjust_editors::layer_editor(app, ui, id, adj);
     ui.add_space(6.0);
-    let layer = app.session.active().and_then(|s| s.doc.layer(id).cloned());
-    if let Some(l) = layer {
+    let layer = app.session.active().and_then(|s| s.doc.layer(id).map(|l| (l.visible, l.clipped)));
+    if let Some((visible, clipped)) = layer {
         ui.horizontal(|ui| {
-            let mut vis = l.visible;
+            let mut vis = visible;
             if widgets::toggle(ui, &mut vis, tl!("Adjustment visible")).changed() {
                 let _ = app.run("layer.setProps", json!({"layer": id.0, "visible": vis}));
             }
-            let mut clip = l.clipped;
+            let mut clip = clipped;
             if widgets::toggle(ui, &mut clip, tl!("Clip to layer below")).changed() {
                 let _ = app.run("layer.setProps", json!({"layer": id.0, "clipped": clip}));
             }
@@ -3287,8 +3305,12 @@ fn properties_body_inner(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         crate::mask_props_ui::vector_properties(app, ui, layer);
         return;
     }
-    // Photoshop shows the Document properties when nothing or the Background layer is selected.
+    // Photoshop shows the Document properties when nothing or the Background layer is selected,
+    // with Align and Distribute above them when the Background is one of several (#4608).
     if crate::doc_props_ui::shows_document(&st.doc, st.active_layer) {
+        if t.pro && st.selected_layers().len() > 1 {
+            crate::layer_props_ui::selection_align(app, ui);
+        }
         crate::doc_props_ui::properties(app, ui);
         return;
     }
