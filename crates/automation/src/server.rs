@@ -482,6 +482,16 @@ fn bridge_only(name: &str) -> Result<CallToolResult, McpError> {
     )))
 }
 
+/// A capability-scoped document tool in bridge mode: the headed app's automation gate refuses
+/// the filesystem-bearing engine commands, so the error names the surfaces that run it.
+fn bridge_refusal(tool: &str, serve_method: &str) -> CallToolResult {
+    fail(format!(
+        "`{tool}` is not available in bridge mode; use headless MCP \
+         (`photocraft-cli mcp --automation-read-root <dir> --automation-write-root <dir>`) \
+         or `photocraft-cli serve` (`{serve_method}`)"
+    ))
+}
+
 impl PhotocraftMcp {
     pub fn headless() -> Self {
         Self::with_backend(Backend::Headless(Arc::new(Mutex::new(Headless::new()))))
@@ -628,7 +638,7 @@ impl PhotocraftMcp {
     }
 
     #[tool(
-        description = "Place a file into the document as a Smart Object layer (Place Embedded), reading `path` beneath the read root. `scale` (percent), `fit` and `center` are the command's own."
+        description = "Place a file into the document as a Smart Object layer (Place Embedded), reading `path` beneath the read root. `scale` (percent), `fit` and `center` are the command's own. (bridge mode: not available)"
     )]
     async fn doc_place(&self, Parameters(p): Parameters<PlaceParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
@@ -642,20 +652,18 @@ impl PhotocraftMcp {
             opts.insert("center".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        // Bridge mode runs the app on this machine, which reads the path itself like any command.
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("path".into(), Value::String(p.path.clone()));
-        }
         let (path, index) = (p.path, p.index);
         if let Some(r) = self.headless_op(move |h| h.place(index, &path, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.placeEmbedded".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_place", "doc.place"));
+        }
+        Ok(no_backend())
     }
 
     #[tool(
-        description = "Export each exported layer of the document as its own file beneath the write root (the capability-scoped Layers to Files). A file that already exists is an error, not an overwrite."
+        description = "Export each exported layer of the document as its own file beneath the write root (the capability-scoped Layers to Files). A file that already exists is an error, not an overwrite. (bridge mode: not available)"
     )]
     async fn doc_export_layers(&self, Parameters(p): Parameters<ExportLayersParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
@@ -672,20 +680,18 @@ impl PhotocraftMcp {
             opts.insert("quality".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        // Bridge mode runs the app on this machine, which writes its own paths like any command.
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("dir".into(), Value::String(p.dir.clone()));
-        }
         let (dir, index) = (p.dir, p.index);
         if let Some(r) = self.headless_op(move |h| h.export_layers(index, &dir, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.export.layersToFiles".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_export_layers", "doc.exportLayers"));
+        }
+        Ok(no_backend())
     }
 
     #[tool(
-        description = "Export every data set of the document as its own flattened file beneath the write root (the capability-scoped Export Data Sets). The batch is planned first, so colliding filenames are refused before any file is written."
+        description = "Export every data set of the document as its own flattened file beneath the write root (the capability-scoped Export Data Sets). The batch is planned first, so colliding filenames are refused before any file is written. (bridge mode: not available)"
     )]
     async fn doc_export_data_sets(&self, Parameters(p): Parameters<ExportDataSetsParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
@@ -699,33 +705,31 @@ impl PhotocraftMcp {
             opts.insert("naming".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("dir".into(), Value::String(p.dir.clone()));
-        }
         let (dir, index) = (p.dir, p.index);
         if let Some(r) = self.headless_op(move |h| h.export_data_sets(index, &dir, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.export.dataSetsAsFiles".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_export_data_sets", "doc.exportDataSets"));
+        }
+        Ok(no_backend())
     }
 
-    #[tool(description = "Import a data set CSV from the read root into the document (the capability-scoped Import Variable Data Sets).")]
+    #[tool(description = "Import a data set CSV from the read root into the document (the capability-scoped Import Variable Data Sets). (bridge mode: not available)")]
     async fn doc_import_data_sets(&self, Parameters(p): Parameters<ImportDataSetsParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
         if let Some(v) = p.delimiter {
             opts.insert("delimiter".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("path".into(), Value::String(p.path.clone()));
-        }
         let (path, index) = (p.path, p.index);
         if let Some(r) = self.headless_op(move |h| h.import_data_sets(index, &path, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.import.variableDataSets".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_import_data_sets", "doc.importDataSets"));
+        }
+        Ok(no_backend())
     }
 
     #[tool(description = "Create a new document (defaults: 1920x1080 RGB 8-bit white).")]

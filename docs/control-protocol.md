@@ -270,10 +270,10 @@ How each MCP tool maps onto control methods in bridge mode:
 | `doc_new {…}` | `engine.execute {command: "file.new", params}` |
 | `doc_inspect` | `engine.execute {command: "document.inspect"}` |
 | `doc_open {path}` | `app.open {path}` |
-| `doc_place {path, …}` | `engine.execute {command: "file.placeEmbedded", params}` |
-| `doc_export_layers {dir, …}` | `engine.execute {command: "file.export.layersToFiles", params}` |
-| `doc_export_data_sets {dir, …}` | `engine.execute {command: "file.export.dataSetsAsFiles", params}` |
-| `doc_import_data_sets {path, …}` | `engine.execute {command: "file.import.variableDataSets", params}` |
+| `doc_place {path, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
+| `doc_export_layers {dir, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
+| `doc_export_data_sets {dir, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
+| `doc_import_data_sets {path, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
 | `doc_save {path?, tgaBits?}` / `doc_export {path, tgaBits?}` | `app.save {path?, tgaBits?}` |
 | `doc_render_preview {max_side?}` | `ui.screenshot`, returned directly as PNG image content |
 | `session_list`, `ui_inspect` | `ui.inspect` |
@@ -285,7 +285,10 @@ How each MCP tool maps onto control methods in bridge mode:
 
 Bridge previews capture the app window; passing `index` is an error. Headless `doc_render_preview` supports `index` without changing the active document.
 
-`doc_select` and `doc_close` work only in headless mode. The `ui_*` tools and `control_call` work only in bridge mode; in headless mode they return a tool error that explains how to start bridge mode.
+`doc_select` and `doc_close` work only in headless mode. So do `doc_place`, `doc_export_layers`,
+`doc_export_data_sets` and `doc_import_data_sets`: the headed app's automation gate refuses the
+filesystem-bearing engine commands behind them, so in bridge mode they fail up front with a tool
+error naming headless MCP and `serve` as the working surfaces. The `ui_*` tools and `control_call` work only in bridge mode; in headless mode they return a tool error that explains how to start bridge mode.
 
 **Security note:** TCP control uses a bearer token, not client identity or general per-method
 authorization. A client that possesses the token receives the non-filesystem control surface,

@@ -26,6 +26,9 @@ described in [development.md](development.md). UI tools require a running deskto
   present, `null` when absent). A disabled vector mask still has `hasVectorMask:true`.
 - `render_preview`: bounded PNG content; `index` and `max_side` (default 1024, maximum 2048; `0` still means full size, but fails if the document's longest edge exceeds 2048; `doc_save` a .png for full resolution).
 - `ui_inspect` and `ui_screenshot`: live app state/window in bridge mode.
+- `doc_place`, `doc_export_layers`, `doc_export_data_sets`, `doc_import_data_sets`:
+  capability-scoped beneath the automation roots; headless and `photocraft-cli serve`
+  only — bridge mode refuses them up front, naming those surfaces in the error.
 
 Existing document/session/job/UI tools remain listed, including the documented
 `doc_render_preview` spelling. There are no hidden legacy aliases. Every tool has a title
