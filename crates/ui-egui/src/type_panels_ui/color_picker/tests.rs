@@ -131,7 +131,7 @@ fn inherited_colors_and_invalid_open_requests_are_atomic() {
     let picker = open(&mut app, Kind::Paragraph, 0).unwrap();
     set(&mut app, picker, "#abcdef");
     dialogs::confirm(&mut app, picker).unwrap();
-    assert_eq!(color_picker_ui::hex(color(&app.session.active().unwrap().doc, Kind::Paragraph, 0).unwrap().to_rgb()), "#ABCDEF");
+    assert_eq!(color_picker_ui::hex(color(&app.session.active().unwrap().doc, Kind::Paragraph, 0).unwrap().to_rgb()), "#abcdef");
 }
 
 fn harness(kind: Kind) -> Harness<'static, PhotocraftApp> {
