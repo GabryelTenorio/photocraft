@@ -1,7 +1,7 @@
 //! Direct Selection tool (A, #790), the Convert Point tool (#3204), the Pens' ⌘/Ctrl (Direct
 //! Selection: the Pen, Freeform Pen and Curvature Pen) and the Pen's ⌥/Alt (Convert Point)
 //! modifiers, as in Photoshop. It edits the paths the canvas shows: the targeted vector mask or
-//! the active shape layer's path, and the work path.
+//! the active shape layer's path, and the work or selected saved path.
 //!
 //! * Click an anchor to select it (⇧ adds or removes, ⌥ selects its whole subpath), drag on empty
 //!   canvas to marquee-select anchors, click empty canvas to deselect.
@@ -28,19 +28,21 @@ use crate::canvas::ToolEvent;
 use crate::state::Tool;
 
 /// A path Direct Selection edits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PathRef {
     Work,
+    Saved(String),
     /// A layer's shape path, or its vector mask.
     Layer(u64),
 }
 
 impl PathRef {
     /// The engine's target params for this path.
-    pub(crate) fn params(self) -> Value {
+    pub(crate) fn params(&self) -> Value {
         match self {
             PathRef::Work => json!({"name": "work"}),
+            PathRef::Saved(name) => json!({"name": name}),
             PathRef::Layer(id) => json!({"name": "layer", "layer": id}),
         }
     }
@@ -58,12 +60,88 @@ pub struct DirectSelection {
     pub segment: Option<[usize; 2]>,
     #[serde(skip)]
     pub drag: Option<Drag>,
+    #[serde(skip)]
+    pub(crate) owner: Option<Owner>,
+    #[serde(skip)]
+    pub(crate) cancelled_drag: bool,
+}
+
+/// Runtime selection ownership is never restored from settings onto another document.
+#[derive(Clone, Debug)]
+pub(crate) struct Owner {
+    document: photocraft_doc::DocId,
+    source: std::sync::Weak<photocraft_doc::Document>,
+    revision: u64,
+    layer: Option<photocraft_doc::LayerId>,
+    selected_path: Option<String>,
+    vector_mask: bool,
+    tool: Tool,
+}
+
+impl PartialEq for Owner {
+    fn eq(&self, other: &Self) -> bool {
+        self.source.ptr_eq(&other.source)
+            && (self.document, self.revision, self.layer, &self.selected_path, self.vector_mask, self.tool)
+                == (other.document, other.revision, other.layer, &other.selected_path, other.vector_mask, other.tool)
+    }
+}
+
+impl Owner {
+    fn current(app: &PhotocraftApp) -> Option<Self> {
+        let st = app.session.active()?;
+        Some(Self {
+            document: st.doc.id,
+            source: std::sync::Arc::downgrade(&st.doc),
+            revision: st.revision,
+            layer: st.active_layer,
+            selected_path: app.ui.selected_path.clone(),
+            vector_mask: app.ui.vector_mask_target || st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::VectorMask,
+            tool: app.ui.tool,
+        })
+    }
+
+    fn same_target(&self, app: &PhotocraftApp) -> bool {
+        self.same_path_target(app) && app.ui.tool == self.tool
+    }
+
+    fn same_path_target(&self, app: &PhotocraftApp) -> bool {
+        app.session.active().is_some_and(|st| {
+            st.doc.id == self.document
+                && st.active_layer == self.layer
+                && (app.ui.vector_mask_target || st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::VectorMask) == self.vector_mask
+        }) && app.ui.selected_path == self.selected_path
+    }
+
+    fn valid(&self, app: &PhotocraftApp) -> bool {
+        self.valid_path(app) && app.ui.tool == self.tool
+    }
+
+    fn valid_path(&self, app: &PhotocraftApp) -> bool {
+        self.same_path_target(app)
+            && app.session.active().is_some_and(|st| st.revision == self.revision && self.source.ptr_eq(&std::sync::Arc::downgrade(&st.doc)))
+    }
+}
+
+/// Clear stale anchors/gestures, retaining pointer ownership until their old release arrives.
+pub(crate) fn cancel_stale(app: &mut PhotocraftApp) -> bool {
+    let ds = &app.ui.direct_selection;
+    let stale = ds.owner.as_ref().map_or(ds.target.is_some() || !ds.anchors.is_empty() || ds.segment.is_some() || ds.drag.is_some(), |owner| {
+        // Convert Point works on the handles selected with Direct Selection. Only idle anchor
+        // selection can cross those tools; a drag retains its original tool ownership.
+        !(owner.valid(app) || (ds.drag.is_none() && owns(owner.tool) && owns(app.ui.tool) && owner.valid_path(app)))
+    });
+    if !stale {
+        return false;
+    }
+    let cancelled_drag = ds.cancelled_drag || ds.drag.is_some();
+    app.ui.direct_selection = DirectSelection { cancelled_drag, ..Default::default() };
+    cancelled_drag
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Drag {
     /// Editing `target`: `base` is its path at the press, `preview` the edit so far.
-    Edit { target: PathRef, base: Path, edit: Edit, start: [f64; 2], end: [f64; 2], preview: Option<Path> },
+    Edit { target: PathRef, base: Path, edit: Edit, start: [f64; 2], end: [f64; 2], preview: Option<Path>, converting: bool },
     /// Marquee-selecting anchors (⇧ adds to the selection).
     Marquee { start: [f64; 2], end: [f64; 2], add: bool },
 }
@@ -130,34 +208,53 @@ fn owns(tool: Tool) -> bool {
 /// Delete Anchor Point tools show it too: they edit the same paths.
 pub fn shows(app: &PhotocraftApp, mods: Modifiers) -> bool {
     direct(app.ui.tool, mods)
+        || (app.ui.tool == Tool::Pen && app.ui.pen.is_none() && (mods.alt || app.ui.tool_options.pen_auto_add_delete))
         || app.ui.direct_selection.drag.is_some()
         || matches!(app.ui.tool, Tool::AddAnchorPoint | Tool::DeleteAnchorPoint | Tool::ConvertPoint)
 }
 
-/// The active paths, front first: the targeted vector mask or the active shape layer's path, then
-/// the work path. The Pen's Auto Add/Delete edits these (`anchor_tools::pen_auto`).
+/// Paths available to automatic Pen editing: selected saved/work paths and targeted layers.
 pub(crate) fn active_paths(app: &PhotocraftApp) -> Vec<(PathRef, Path)> {
-    let layer = crate::vector_ui::targeted_vector_mask(app).or_else(|| crate::vector_ui::active_shape_path(app));
-    let work = app.session.active().and_then(|st| st.doc.work_path.clone());
-    layer.map(|(id, p)| (PathRef::Layer(id), p)).into_iter().chain(work.map(|p| (PathRef::Work, p))).collect()
+    candidates(app)
+        .into_iter()
+        .filter(|(target, _)| match target {
+            PathRef::Work => app.ui.selected_path.as_deref() == Some("work"),
+            PathRef::Saved(name) => app.ui.selected_path.as_deref() == Some(name.as_str()),
+            PathRef::Layer(id) => {
+                crate::vector_ui::targeted_vector_mask(app).or_else(|| crate::vector_ui::active_shape_path(app)).is_some_and(|(active, _)| active == *id)
+            }
+        })
+        .filter(|(target, _)| writable(app, target))
+        .collect()
 }
 
-/// The paths Direct Selection edits, front first: the active paths, then every visible shape layer.
+/// The selected work/saved path wins overlapping hits; otherwise the targeted layer is first.
 pub(crate) fn candidates(app: &PhotocraftApp) -> Vec<(PathRef, Path)> {
-    let mut out = active_paths(app);
-    if let Some(st) = app.session.active() {
-        for (path, _, l) in st.doc.walk().iter().rev() {
-            if !l.visible || !(1..=path.len()).all(|n| st.doc.layer_at(&path[..n]).is_some_and(|a| a.visible)) {
-                continue;
-            }
-            if let photocraft_doc::LayerContent::Shape(sh) = &l.content
-                && !out.iter().any(|(r, _)| *r == PathRef::Layer(l.id.0))
-            {
-                out.push((PathRef::Layer(l.id.0), sh.path.clone()));
-            }
+    let layer = crate::vector_ui::targeted_vector_mask(app).or_else(|| crate::vector_ui::active_shape_path(app));
+    let Some(st) = app.session.active() else { return Vec::new() };
+    let mut paths = Vec::new();
+    match app.ui.selected_path.as_deref() {
+        Some("work") => paths.extend(st.doc.work_path.clone().map(|path| (PathRef::Work, path))),
+        Some(name) if name != "layer" => {
+            paths.extend(st.doc.paths.iter().find(|path| path.name == name).map(|path| (PathRef::Saved(name.into()), path.path.clone())));
+        }
+        _ => {}
+    }
+    paths.extend(layer.map(|(id, path)| (PathRef::Layer(id), path)));
+    for (path, _, candidate) in st.doc.walk().iter().rev() {
+        if !candidate.visible || !(1..=path.len()).all(|n| st.doc.layer_at(&path[..n]).is_some_and(|parent| parent.visible)) {
+            continue;
+        }
+        if let photocraft_doc::LayerContent::Shape(shape) = &candidate.content
+            && !paths.iter().any(|(target, _)| *target == PathRef::Layer(candidate.id.0))
+        {
+            paths.push((PathRef::Layer(candidate.id.0), shape.path.clone()));
         }
     }
-    out
+    if !paths.iter().any(|(target, _)| *target == PathRef::Work) {
+        paths.extend(st.doc.work_path.clone().map(|path| (PathRef::Work, path)));
+    }
+    paths
 }
 
 fn retracted(k: &photocraft_doc::Knot, h: Handle) -> bool {
@@ -182,9 +279,57 @@ fn shown_handles(ds: &DirectSelection, path: &Path) -> Vec<([usize; 2], Handle)>
     out
 }
 
+/// Editable targets share the same lock and hit rules for the cursor and pointer press.
+pub(crate) fn writable(app: &PhotocraftApp, target: &PathRef) -> bool {
+    match target {
+        PathRef::Layer(id) => app.session.active().is_some_and(|st| {
+            let id = photocraft_doc::LayerId(*id);
+            let locks = st.doc.effective_locks(id);
+            st.doc.layer(id).is_some() && !locks.all && !locks.pixels
+        }),
+        _ => app.session.active().is_some(),
+    }
+}
+
+pub(crate) fn hit_target(app: &PhotocraftApp, p: [f64; 2], handles: bool) -> Option<(PathRef, Path, Hit)> {
+    hit_target_with(app, p, handles, |_| true)
+}
+
+pub(crate) fn hit_target_with(app: &PhotocraftApp, p: [f64; 2], handles: bool, accepts: impl Fn(&PathRef) -> bool) -> Option<(PathRef, Path, Hit)> {
+    let tol = 6.0 / f64::from(app.point_zoom().max(0.01));
+    let ds = &app.ui.direct_selection;
+    candidates(app).into_iter().filter(|(r, _)| accepts(r) && writable(app, r)).find_map(|(r, path)| {
+        let valid_selection =
+            ds.owner.as_ref().is_some_and(|owner| owner.valid(app) || (ds.drag.is_none() && owns(owner.tool) && owns(app.ui.tool) && owner.valid_path(app)));
+        let handles = if handles && valid_selection && ds.target.as_ref() == Some(&r) { shown_handles(ds, &path) } else { Vec::new() };
+        edit::hit(&path, Point::new(p[0], p[1]), tol, &handles).map(|hit| (r, path, hit))
+    })
+}
+
+pub(crate) fn conversion_drag(app: &PhotocraftApp) -> bool {
+    matches!(app.ui.tool, Tool::Pen | Tool::ConvertPoint)
+        && captured_drag(app)
+        && matches!(app.ui.direct_selection.drag, Some(Drag::Edit { converting: true, .. }))
+}
+
+pub(crate) fn captured_drag(app: &PhotocraftApp) -> bool {
+    app.ui.direct_selection.owner.as_ref().is_some_and(|owner| owner.valid(app)) && app.ui.direct_selection.drag.is_some()
+}
+
 /// Canvas pointer events for Direct Selection and the Pen's ⌘ / ⌥ modes; false when the event is
 /// not theirs.
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool {
+    cancel_stale(app);
+    if app.ui.direct_selection.cancelled_drag {
+        match ev {
+            ToolEvent::Down { .. } => app.ui.direct_selection.cancelled_drag = false,
+            ToolEvent::Up { .. } => {
+                app.ui.direct_selection.cancelled_drag = false;
+                return true;
+            }
+            ToolEvent::Move { .. } => return true,
+        }
+    }
     let tool = app.ui.tool;
     match ev {
         ToolEvent::Down { x, y, .. } => {
@@ -197,10 +342,18 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool 
             if !pen_idle && tool != Tool::DirectSelection {
                 // ⌘-click ends the path being drawn, which becomes editable, as in Photoshop.
                 crate::vector_ui::pen_commit(app, false);
+                if app.ui.pen.is_some() {
+                    app.ui.direct_selection.cancelled_drag = true;
+                    return true;
+                }
             }
             if tool == Tool::FreeformPen {
                 // The same for a Freeform Pen path waiting for its next ⌥-click.
                 crate::lasso_ui::commit(app);
+                if app.ui.pen.is_some() {
+                    app.ui.direct_selection.cancelled_drag = true;
+                    return true;
+                }
             }
             press(app, [x, y], mods, convert)
         }
@@ -234,28 +387,28 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: Modifiers) -> bool 
 /// that hit nothing; the Convert Point tool has nothing else to do, so it keeps the press.
 fn press(app: &mut PhotocraftApp, p: [f64; 2], mods: Modifiers, convert: bool) -> bool {
     let own_tool = app.ui.tool == Tool::ConvertPoint;
-    let tol = 6.0 / f64::from(app.point_zoom().max(0.01));
-    let ds = &app.ui.direct_selection;
-    let found = candidates(app).into_iter().find_map(|(r, path)| {
-        let handles = if ds.target == Some(r) { shown_handles(ds, &path) } else { Vec::new() };
-        edit::hit(&path, Point::new(p[0], p[1]), tol, &handles).map(|h| (r, path, h))
-    });
+    let found = hit_target(app, p, true);
     let Some((target, base, hit)) = found else {
         if convert {
             return own_tool;
         }
-        app.ui.direct_selection.drag = Some(Drag::Marquee { start: p, end: p, add: mods.shift });
+        let owner = Owner::current(app);
+        let ds = &mut app.ui.direct_selection;
+        ds.drag = Some(Drag::Marquee { start: p, end: p, add: mods.shift });
+        ds.owner = owner;
         return true;
     };
-    if let PathRef::Layer(id) = target
-        && app.session.active().and_then(|st| st.active_layer).map(|l| l.0) != Some(id)
+    if let PathRef::Layer(id) = &target
+        && app.session.active().and_then(|st| st.active_layer).map(|layer| layer.0) != Some(*id)
     {
         let _ = app.run("layer.select", json!({"layer": id}));
     }
+    let owner = Owner::current(app);
     let ds = &mut app.ui.direct_selection;
-    if ds.target != Some(target) {
-        *ds = DirectSelection { target: Some(target), ..Default::default() };
+    if ds.target.as_ref() != Some(&target) {
+        *ds = DirectSelection { target: Some(target.clone()), ..Default::default() };
     }
+    ds.owner = owner;
     let edit = match hit {
         Hit::Handle(k, h) => {
             let kn = base.subpaths.get(k[0]).and_then(|s| s.knots.get(k[1]));
@@ -264,7 +417,7 @@ fn press(app: &mut PhotocraftApp, p: [f64; 2], mods: Modifiers, convert: bool) -
             Edit::Handle(k, h, from, mods.alt || convert)
         }
         Hit::Anchor(k) if convert => {
-            if own_tool {
+            if own_tool || app.ui.tool == Tool::Pen {
                 // The tool selects the anchor it works on, so the anchor's handles show.
                 ds.segment = None;
                 ds.anchors = vec![k];
@@ -300,7 +453,7 @@ fn press(app: &mut PhotocraftApp, p: [f64; 2], mods: Modifiers, convert: bool) -
             Edit::Segment(k, t)
         }
     };
-    ds.drag = Some(Drag::Edit { target, base, edit, start: p, end: p, preview: None });
+    ds.drag = Some(Drag::Edit { target, base, edit, start: p, end: p, preview: None, converting: convert });
     true
 }
 
@@ -316,9 +469,22 @@ fn release(app: &mut PhotocraftApp, target: PathRef, edit: &Edit, start: [f64; 2
     if let (Some(p), Some(t)) = (params.as_object_mut(), target.params().as_object()) {
         p.extend(t.clone());
     }
-    if let Err(e) = app.run(id, params) {
-        app.ui.status = e;
-        app.ui.status_error = true;
+    // sync_views validates ownership during command dispatch. Keep this selection off the
+    // live UI until its own command finishes, then bind it to the resulting revision.
+    let mut selection = std::mem::take(&mut app.ui.direct_selection);
+    match app.run(id, params) {
+        Ok(_) if selection.owner.as_ref().is_some_and(|owner| owner.same_target(app)) => {
+            selection.owner = Owner::current(app);
+            app.ui.direct_selection = selection;
+        }
+        Ok(_) => {}
+        Err(e) => {
+            if selection.owner.as_ref().is_some_and(|owner| owner.valid(app)) {
+                app.ui.direct_selection = selection;
+            }
+            app.ui.status = e;
+            app.ui.status_error = true;
+        }
     }
 }
 
@@ -327,9 +493,10 @@ fn release(app: &mut PhotocraftApp, target: PathRef, edit: &Edit, start: [f64; 2
 fn marquee(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], add: bool) {
     let rect = [start[0], start[1], end[0], end[1]];
     let hits = candidates(app).into_iter().map(|(r, path)| (r, edit::anchors_in(&path, rect))).find(|(_, a)| !a.is_empty());
+    let owner = Owner::current(app);
     let ds = &mut app.ui.direct_selection;
     match hits {
-        Some((r, anchors)) if add && ds.target == Some(r) => {
+        Some((r, anchors)) if add && ds.target.as_ref() == Some(&r) => {
             for a in anchors {
                 if !ds.anchors.contains(&a) {
                     ds.anchors.push(a);
@@ -344,6 +511,7 @@ fn marquee(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], add: bool) {
             ds.segment = None;
         }
     }
+    ds.owner = owner;
 }
 
 /// Paths with their anchors (selected ones filled), the shown handles, the drag's preview in
@@ -353,11 +521,11 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, to_scr: &dyn F
     let ds = &app.ui.direct_selection;
     for (r, path) in if paths { candidates(app) } else { Vec::new() } {
         let path = match &ds.drag {
-            Some(Drag::Edit { target, preview: Some(p), .. }) if *target == r => p.clone(),
+            Some(Drag::Edit { target, preview: Some(p), .. }) if target == &r => p.clone(),
             _ => path,
         };
         crate::vector_ui::draw_outline(painter, &path, to_scr, accent);
-        let ours = ds.target == Some(r);
+        let ours = ds.target.as_ref() == Some(&r);
         for &(k, h) in if ours { shown_handles(ds, &path) } else { Vec::new() }.iter() {
             if let Some(kn) = path.subpaths.get(k[0]).and_then(|s| s.knots.get(k[1])) {
                 let c = if h == Handle::In { kn.in_ctrl } else { kn.out_ctrl };
@@ -379,3 +547,65 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, to_scr: &dyn F
 #[cfg(test)]
 #[path = "direct_select_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod freeform_command_tests {
+    use super::*;
+
+    fn app(tool: Tool) -> PhotocraftApp {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 200, "height": 200})).unwrap();
+        for name in ["work", "Saved drawing"] {
+            app.run("path.set", json!({"name": name, "path":{"subpaths":[{"knots":[[20,20],[120,20]]}]}})).unwrap();
+        }
+        app.sync_views();
+        app.ui.tool = tool;
+        app.ui.selected_path = Some("Saved drawing".into());
+        app
+    }
+
+    #[test]
+    fn command_with_freeform_and_curvature_edits_the_selected_saved_path_after_modifier_release() {
+        for tool in [Tool::FreeformPen, Tool::CurvaturePen] {
+            let mut app = app(tool);
+            let original = app.session.active().unwrap().doc.clone();
+            let n = app.session.active().unwrap().history.past_len();
+            let command = Modifiers { command: true, ctrl: true, ..Default::default() };
+            assert!(pointer(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, command));
+            assert_eq!(app.ui.direct_selection.target, Some(PathRef::Saved("Saved drawing".into())));
+            assert!(captured_drag(&app));
+            assert!(pointer(&mut app, ToolEvent::Move { x: 30.0, y: 40.0, pressure: 1.0 }, Modifiers::NONE));
+            assert!(pointer(&mut app, ToolEvent::Up { x: 30.0, y: 40.0 }, Modifiers::NONE));
+            let st = app.session.active().unwrap();
+            assert_eq!(st.doc.work_path, original.work_path);
+            assert_eq!(st.doc.paths[0].path.subpaths[0].knots[0].anchor, Point::new(30.0, 40.0));
+            assert_eq!(st.history.past_len(), n + 1);
+            assert!(app.ui.direct_selection.owner.as_ref().unwrap().valid(&app));
+            assert!(!captured_drag(&app));
+            assert!(app.session.undo());
+            assert_eq!(app.session.active().unwrap().doc.paths, original.paths);
+        }
+    }
+
+    #[test]
+    fn command_cannot_edit_an_existing_path_when_the_freeform_trace_failed_to_finish() {
+        let mut app = app(Tool::FreeformPen);
+        let original = app.session.active().unwrap().doc.clone();
+        let n = app.session.active().unwrap().history.past_len();
+        for [x, y] in [[40.0, 60.0], [1e40, 60.0], [140.0, 80.0]] {
+            assert!(crate::lasso_ui::pointer(&mut app, ToolEvent::Down { x, y, pressure: 1.0 }, Modifiers::ALT));
+            assert!(crate::lasso_ui::pointer(&mut app, ToolEvent::Up { x, y }, Modifiers::ALT));
+        }
+        let command = Modifiers { command: true, ctrl: true, ..Default::default() };
+        assert!(pointer(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, command));
+        let pen = app.ui.pen.as_ref().expect("failed Freeform commit must preserve its fitted draft");
+        assert!(pen.commit_failed && pen.owner.is_some());
+        assert!(app.ui.direct_selection.drag.is_none());
+        assert!(app.ui.direct_selection.cancelled_drag);
+        assert!(pointer(&mut app, ToolEvent::Up { x: 30.0, y: 40.0 }, command));
+        assert!(app.ui.direct_selection.drag.is_none());
+        assert_eq!(app.session.active().unwrap().doc.paths, original.paths);
+        assert_eq!(app.session.active().unwrap().doc.work_path, original.work_path);
+        assert_eq!(app.session.active().unwrap().history.past_len(), n);
+    }
+}

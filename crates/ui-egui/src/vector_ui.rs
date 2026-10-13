@@ -4,10 +4,11 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 use photocraft_doc::vector::Path;
-use photocraft_doc::{Document, LayerContent};
+use photocraft_doc::{DocId, Document, LayerContent};
 use photocraft_geom::Affine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::sync::{Arc, Weak};
 
 use crate::PhotocraftApp;
 use crate::canvas::ViewXform;
@@ -33,6 +34,77 @@ pub struct PenPath {
     /// Curvature Pen: the anchor being dragged.
     #[serde(skip)]
     pub moving: Option<usize>,
+    /// A draft belongs to the document and target on which its first anchor was placed.
+    #[serde(skip)]
+    pub(crate) owner: Option<PenOwner>,
+    #[serde(skip)]
+    pub(crate) commit_failed: bool,
+    #[serde(skip)]
+    pub(crate) edit: Option<pen_edit::DraftDrag>,
+    #[serde(skip)]
+    pub(crate) selected_anchor: Option<usize>,
+    #[serde(skip)]
+    pub(crate) edit_undo: Vec<pen_edit::Undo>,
+    #[serde(skip)]
+    pub(crate) pending_last_handle: Option<photocraft_doc::Path>,
+    /// A raw first-anchor press owns the stand-in used by a close-drag.
+    #[serde(skip)]
+    pub(crate) closing: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PenOwner {
+    document: DocId,
+    revision: u64,
+    source: Weak<Document>,
+    target: PenTarget,
+}
+
+impl PartialEq for PenOwner {
+    fn eq(&self, other: &Self) -> bool {
+        self.document == other.document && self.revision == other.revision && self.source.ptr_eq(&other.source) && self.target == other.target
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum PenTarget {
+    Shape { fill: Value, stroke: Value, open_stroke: Value },
+    VectorMask(u64),
+    Path { name: String, append: bool },
+}
+
+impl PenOwner {
+    fn valid(&self, app: &PhotocraftApp) -> bool {
+        app.session.active().is_some_and(|st| st.doc.id == self.document && st.revision == self.revision && self.source.ptr_eq(&Arc::downgrade(&st.doc)))
+    }
+}
+
+/// Snapshot the Pen's destination, including whether a selected path is being continued.
+pub(crate) fn capture_pen_owner(app: &PhotocraftApp) -> Option<PenOwner> {
+    let st = app.session.active()?;
+    let target = if app.ui.tool_options.vector_mode == "shape" {
+        let fill = fill_param(app);
+        let mut open_stroke = app.ui.tool_options.shape_stroke.params();
+        open_stroke["width"] = json!(app.ui.tool_options.stroke_width.max(1.0));
+        open_stroke["color"] = json!(app.session.tools.foreground);
+        PenTarget::Shape { fill, stroke: stroke_param(app), open_stroke }
+    } else if let Some((name, _)) = selected_document_geometry(app) {
+        PenTarget::Path { name, append: true }
+    } else if let Some(id) = targeted_vector_mask_id(app) {
+        PenTarget::VectorMask(id)
+    } else {
+        PenTarget::Path { name: "work".into(), append: false }
+    };
+    Some(PenOwner { document: st.doc.id, revision: st.revision, source: Arc::downgrade(&st.doc), target })
+}
+
+/// Restored drafts have no runtime owner; stale anchors must never be committed into a new tab.
+pub(crate) fn cancel_stale_pen(app: &mut PhotocraftApp) -> bool {
+    if app.ui.pen.as_ref().is_some_and(|p| p.owner.as_ref().is_none_or(|owner| !owner.valid(app))) {
+        app.ui.pen = None;
+        return true;
+    }
+    false
 }
 
 impl PenPath {
@@ -178,6 +250,21 @@ pub fn draw_shape_preview(app: &PhotocraftApp, painter: &egui::Painter, xf: &Vie
 // ---------------------------------------------------------------------------------------------
 // Pen
 
+fn pen_close_at(pen: &PenPath, point: [f64; 2], tolerance: f64) -> bool {
+    pen.knots.len() >= 2 && pen.knots.first().is_some_and(|k| (k[0][0] - point[0]).hypot(k[0][1] - point[1]) < tolerance)
+}
+
+/// Cursor feedback uses the same first-anchor hit test as the closing press. A stale draft
+/// cannot close a path in another document, and dragging a handle keeps the drawing cursor.
+#[cfg(test)]
+pub(crate) fn pen_cursor(app: &PhotocraftApp, point: [f64; 2]) -> crate::tool_cursor::PenCursor {
+    pen_cursor_with_modifiers(app, point, egui::Modifiers::NONE)
+}
+
+pub(crate) use pen_edit::{converting as pen_converting, cursor as pen_cursor_with_modifiers, pointer as pen_edit_pointer};
+#[path = "pen_edit.rs"]
+mod pen_edit;
+
 fn pen_to_json(pen: &PenPath, closed: bool) -> Value {
     let folded = fold_close(pen);
     let (pen, closed) = match &folded {
@@ -208,21 +295,41 @@ pub fn closes_path_at(app: &PhotocraftApp, tool: Tool, x: f64, y: f64) -> bool {
 /// Pen press: close on the first anchor, reshape the last anchor's outgoing handle,
 /// or add a new anchor (dragging a new anchor pulls symmetrical handles).
 pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
+    pen_down_at(app, [x, y], [x, y]);
+}
+
+/// Closing picks the existing anchor at the pointer, before snapping can move the press.
+/// New anchors and handle edits retain the snapped document coordinates.
+pub(crate) fn pen_down_at(app: &mut PhotocraftApp, [x, y]: [f64; 2], close_point: [f64; 2]) {
+    cancel_stale_pen(app);
+    if app.ui.pen.as_ref().is_some_and(|p| p.curvature) {
+        pen_commit(app, false);
+        if app.ui.pen.is_some() {
+            return;
+        }
+    }
+    let Some(owner) = capture_pen_owner(app) else { return };
     let tol = 6.0 / app.point_zoom().max(0.01) as f64;
-    let pen = app.ui.pen.get_or_insert_with(PenPath::default);
-    if let Some(first) = pen.knots.first().map(|k| k[0])
-        && on_closing_anchor(pen, x, y, tol)
-    {
+    let pen = app.ui.pen.get_or_insert_with(|| PenPath { owner: Some(owner), ..Default::default() });
+    pen.commit_failed = false;
+    if pen_close_at(pen, close_point, tol) {
+        app.prefs_rt.snap = None;
+        app.prefs_rt.snap_lines.clear();
         // Pressing the first anchor closes the path on release. Until then a stand-in for it
         // takes the drag, which pulls out that anchor's handles (close-drag, #3306).
+        let Some(first) = pen.knots.first().map(|k| k[0]) else { return };
         pen.knots.push([first; 3]);
         pen.dragging = true;
         pen.adjusting_last = false;
+        pen.pending_last_handle = None;
+        pen.closing = true;
         return;
     }
     // Clicking the last anchor breaks its outgoing handle without throwing away the incoming
     // curve. Dragging from that anchor then sets the outgoing handle independently (#1482).
     // This must precede adding a point, or a re-click creates a zero-length segment.
+    let last_hit = pen.knots.last().is_some_and(|last| (last[0][0] - x).hypot(last[0][1] - y) < tol);
+    let previous = last_hit.then(|| pen_edit::path(pen));
     if let Some((i, last)) = pen.knots.len().checked_sub(1).zip(pen.knots.last_mut())
         && (last[0][0] - x).hypot(last[0][1] - y) < tol
     {
@@ -232,14 +339,19 @@ pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
         }
         pen.dragging = true;
         pen.adjusting_last = true;
+        pen.pending_last_handle = previous;
         return;
     }
+    pen.selected_anchor = None;
+    pen.pending_last_handle = None;
+    pen.closing = false;
     pen.knots.push([[x, y]; 3]);
     pen.dragging = true;
     pen.adjusting_last = false;
 }
 
 pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
+    cancel_stale_pen(app);
     if let Some(pen) = app.ui.pen.as_mut()
         && pen.dragging
     {
@@ -259,7 +371,27 @@ pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
 /// clicking the first anchor commits the path. Therefore Cmd/Ctrl+Z must consume one
 /// knot rather than undoing an unrelated, already committed document operation.
 pub fn pen_undo_last_point(app: &mut PhotocraftApp) -> bool {
+    if cancel_stale_pen(app) {
+        return true;
+    }
     let Some(pen) = app.ui.pen.as_mut() else { return false };
+    pen_edit::cancel_drag(pen);
+    pen.closing = false;
+    if let Some(previous) = pen.pending_last_handle.take() {
+        let changed = pen_edit::path(pen) != previous;
+        pen_edit::restore(pen, previous);
+        pen.dragging = false;
+        pen.adjusting_last = false;
+        if changed {
+            return true;
+        }
+    }
+    if pen_edit::undo(pen) {
+        pen.edit = None;
+        pen.dragging = false;
+        pen.adjusting_last = false;
+        return true;
+    }
     if pen.knots.pop().is_none() {
         return false;
     }
@@ -269,6 +401,7 @@ pub fn pen_undo_last_point(app: &mut PhotocraftApp) -> bool {
         curvature_refresh(pen, false);
     }
     pen.dragging = false;
+    pen.adjusting_last = false;
     if pen.knots.is_empty() {
         app.ui.pen = None;
     }
@@ -276,10 +409,16 @@ pub fn pen_undo_last_point(app: &mut PhotocraftApp) -> bool {
 }
 
 pub fn pen_up(app: &mut PhotocraftApp) {
+    cancel_stale_pen(app);
     let jitter = 2.0 / f64::from(app.point_zoom().max(0.01));
     let Some(pen) = app.ui.pen.as_mut() else { return };
     pen.dragging = false;
     pen.adjusting_last = false;
+    if let Some(previous) = pen.pending_last_handle.take()
+        && pen_edit::path(pen) != previous
+    {
+        pen_edit::remember(pen, previous);
+    }
     if closing(pen) {
         // A click on the first anchor closes the path and leaves that anchor's handles alone.
         if let Some(k) = pen.knots.last_mut()
@@ -295,6 +434,7 @@ pub fn pen_up(app: &mut PhotocraftApp) {
 /// ⌥/Alt during a Pen drag breaks the pair of handles being pulled out: from then on only the
 /// outgoing handle follows the pointer and the incoming curve stays as it is (#3306).
 pub fn pen_break_handle(app: &mut PhotocraftApp) {
+    cancel_stale_pen(app);
     let Some(pen) = app.ui.pen.as_mut().filter(|p| p.dragging && !p.adjusting_last) else { return };
     let Some(i) = pen.knots.len().checked_sub(1) else { return };
     if !pen.unlinked.contains(&i) {
@@ -306,6 +446,7 @@ pub fn pen_break_handle(app: &mut PhotocraftApp) {
 /// ⌥/Alt-press on the last anchor's outgoing handle while drawing grabs that handle alone: the
 /// drag turns it and the incoming curve stays put (#3306). False when the press misses it.
 pub fn pen_grab_handle(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
+    cancel_stale_pen(app);
     let tol = 6.0 / f64::from(app.point_zoom().max(0.01));
     let Some(pen) = app.ui.pen.as_mut() else { return false };
     let Some((i, k)) = pen.knots.len().checked_sub(1).zip(pen.knots.last()) else { return false };
@@ -313,6 +454,7 @@ pub fn pen_grab_handle(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
     if k[2] == k[0] || dist(k[2]) >= tol || dist(k[2]) >= dist(k[0]) {
         return false;
     }
+    pen.pending_last_handle = Some(pen_edit::path(pen));
     if !pen.unlinked.contains(&i) {
         pen.unlinked.push(i);
     }
@@ -329,7 +471,7 @@ pub(crate) fn over_first_anchor(pen: &PenPath, at: [f64; 2], tol: f64) -> bool {
 
 /// Is a close-drag in progress: does the path end in the stand-in for its first anchor?
 fn closing(pen: &PenPath) -> bool {
-    pen.knots.len() >= 3 && pen.knots.first().map(|k| k[0]) == pen.knots.last().map(|k| k[0])
+    pen.closing && pen.knots.len() >= 3 && pen.knots.first().map(|k| k[0]) == pen.knots.last().map(|k| k[0])
 }
 
 /// The path with a close-drag's stand-in folded into the first knot, which takes the dragged
@@ -339,6 +481,7 @@ fn fold_close(pen: &PenPath) -> Option<PenPath> {
         return None;
     }
     let mut p = pen.clone();
+    p.closing = false;
     let stand_in = p.knots.pop()?;
     let broken = p.unlinked.contains(&p.knots.len());
     p.unlinked.retain(|&i| i < p.knots.len());
@@ -356,46 +499,88 @@ fn fold_close(pen: &PenPath) -> Option<PenPath> {
 
 /// Finish the pen path: a work path (Path mode) or a new shape layer (Shape mode).
 pub fn pen_commit(app: &mut PhotocraftApp, closed: bool) {
-    let Some(mut pen) = app.ui.pen.take() else { return };
+    let _ = try_pen_commit(app, closed);
+}
+
+pub(crate) fn finish_pen_if_left(app: &mut PhotocraftApp) {
+    cancel_stale_pen(app);
+    if let Some(pen) = &mut app.ui.pen
+        && !pen.drawn_with(app.ui.tool)
+    {
+        pen_edit::cancel_drag(pen);
+    }
+    if app.ui.pen.as_ref().is_some_and(|p| !p.commit_failed && !p.drawn_with(app.ui.tool)) {
+        pen_commit(app, false);
+    }
+}
+
+fn try_pen_commit(app: &mut PhotocraftApp, closed: bool) -> Result<(), String> {
+    cancel_stale_pen(app);
+    let Some(mut pen) = app.ui.pen.take() else { return Ok(()) };
+    let original = fold_close(&pen)
+        .map(|mut folded| {
+            folded.dragging = false;
+            folded.adjusting_last = false;
+            folded.pending_last_handle = None;
+            folded.edit = None;
+            folded
+        })
+        .unwrap_or_else(|| pen.clone());
     if pen.curvature {
         curvature_refresh(&mut pen, closed);
     }
-    commit_path(app, &pen, closed);
+    if let Err(error) = commit_path(app, &pen, closed) {
+        pen = original;
+        pen.commit_failed = true;
+        app.ui.pen = Some(pen);
+        app.ui.status = error.clone();
+        app.ui.status_error = true;
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// Commit a finished Pen, Freeform Pen or Curvature Pen path, as one History step: a new shape
 /// layer (Shape mode), else a subpath of the targeted vector mask, else the work path.
-fn commit_path(app: &mut PhotocraftApp, pen: &PenPath, closed: bool) {
+fn commit_path(app: &mut PhotocraftApp, pen: &PenPath, closed: bool) -> Result<(), String> {
+    let closed = closed || closing(pen);
     if pen.knots.len() < 2 {
-        return;
+        return Ok(());
     }
+    let Some(owner) = pen.owner.as_ref().filter(|owner| owner.valid(app)) else { return Ok(()) };
     let path = pen_to_json(pen, closed);
-    let r = if app.ui.tool_options.vector_mode == "shape" {
-        let fill = if closed { fill_param(app) } else { Value::Null };
-        let stroke = if closed {
-            stroke_param(app)
-        } else {
-            let mut stroke = app.ui.tool_options.shape_stroke.params();
-            stroke["width"] = json!(app.ui.tool_options.stroke_width.max(1.0));
-            stroke["color"] = json!(app.session.tools.foreground);
-            stroke
-        };
-        app.run("shape.create", json!({"kind": "path", "path": path, "fill": fill, "stroke": stroke}))
-    } else if let Some((id, existing)) = targeted_vector_mask(app) {
-        // A targeted vector mask takes the new subpath (#196), as in Photoshop.
-        let mut p = photocraft_engine::vector_cmds::path_json(&existing);
-        if let (Some(subs), Some(new)) = (p.get_mut("subpaths").and_then(Value::as_array_mut), path.get("subpaths").and_then(Value::as_array)) {
-            subs.extend(new.iter().cloned());
+    let r = match &owner.target {
+        PenTarget::Shape { fill, stroke, open_stroke } => {
+            let fill = if closed { fill.clone() } else { Value::Null };
+            let stroke = if closed { stroke } else { open_stroke };
+            app.run("shape.create", json!({"kind": "path", "path": path, "fill": fill, "stroke": stroke}))
+                .inspect(|_| app.ui.selected_path = Some("layer".into()))
         }
-        app.run("layer.vectorMask.edit", json!({"layer": id, "path": p}))
-    } else {
-        // The drawn work path is selected in the Paths panel, as in Photoshop.
-        app.run("path.set", json!({"name": "work", "path": path})).inspect(|_| app.ui.selected_path = Some("work".into()))
+        PenTarget::VectorMask(id) => {
+            // A targeted vector mask takes the new subpath (#196), as in Photoshop.
+            let existing = app
+                .session
+                .active()
+                .and_then(|st| st.doc.layer(photocraft_doc::LayerId(*id)))
+                .and_then(|l| l.vector_mask.as_ref())
+                .map(|m| &m.path)
+                .ok_or_else(|| "The Pen's vector mask is no longer available".to_string())?;
+            let mut p = photocraft_engine::vector_cmds::path_json(existing);
+            if let (Some(subs), Some(new)) = (p.get_mut("subpaths").and_then(Value::as_array_mut), path.get("subpaths").and_then(Value::as_array)) {
+                subs.extend(new.iter().cloned());
+            }
+            app.run("layer.vectorMask.edit", json!({"layer": id, "path": p})).inspect(|_| app.ui.selected_path = Some("layer".into()))
+        }
+        PenTarget::Path { name, append } => {
+            // The committed document path is selected in the Paths panel, as in Photoshop.
+            let mut params = json!({"name": name, "path": path});
+            if *append {
+                params["op"] = json!("combine");
+            }
+            app.run("path.set", params).inspect(|_| app.ui.selected_path = Some(name.clone()))
+        }
     };
-    if let Err(e) = r {
-        app.ui.status = e;
-        app.ui.status_error = true;
-    }
+    r.map(|_| ())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -405,6 +590,14 @@ fn commit_path(app: &mut PhotocraftApp, pen: &PenPath, closed: bool) {
 /// as the Pen does. Releasing on the start point closes the path; a click draws nothing. The
 /// points at indices `straight` were ⌥-clicked: the segment into each one stays straight.
 pub fn freeform_finish(app: &mut PhotocraftApp, points: &[[f64; 3]], straight: &[usize]) {
+    let Some(owner) = capture_pen_owner(app) else { return };
+    freeform_finish_owned(app, points, straight, owner);
+}
+
+pub(crate) fn freeform_finish_owned(app: &mut PhotocraftApp, points: &[[f64; 3]], straight: &[usize], owner: PenOwner) {
+    if !owner.valid(app) {
+        return;
+    }
     let trace: Vec<[f64; 2]> = points.iter().map(|p| [p[0], p[1]]).collect();
     let (Some(first), Some(last)) = (trace.first(), trace.last()) else { return };
     let tol = 6.0 / app.point_zoom().max(0.01) as f64;
@@ -419,7 +612,12 @@ pub fn freeform_finish(app: &mut PhotocraftApp, points: &[[f64; 3]], straight: &
     } else {
         fit_with_straight_segments(&trace, straight, fit, closed.then_some(tol))
     };
-    commit_path(app, &pen.0, pen.1);
+    let (mut pen, closed) = pen;
+    pen.owner = Some(owner);
+    if commit_path(app, &pen, closed).is_err() {
+        pen.commit_failed = true;
+        app.ui.pen = Some(pen);
+    }
 }
 
 fn knot_points(k: &photocraft_doc::Knot) -> [[f64; 2]; 3] {
@@ -501,15 +699,21 @@ fn curvature_hit(app: &PhotocraftApp, x: f64, y: f64) -> Option<usize> {
 /// Curvature Pen press: clicking the first anchor closes the path, pressing another anchor
 /// grabs it to move, anywhere else adds a smooth anchor (still draggable until the release).
 pub fn curvature_down(app: &mut PhotocraftApp, x: f64, y: f64) {
+    cancel_stale_pen(app);
     if app.ui.pen.as_ref().is_some_and(|p| !p.curvature) {
         pen_commit(app, false);
+        if app.ui.pen.is_some() {
+            return;
+        }
     }
     let hit = curvature_hit(app, x, y);
     if hit == Some(0) && app.ui.pen.as_ref().is_some_and(|p| p.knots.len() >= 3) {
         pen_commit(app, true);
         return;
     }
-    let pen = app.ui.pen.get_or_insert_with(|| PenPath { curvature: true, ..Default::default() });
+    let Some(owner) = capture_pen_owner(app) else { return };
+    let pen = app.ui.pen.get_or_insert_with(|| PenPath { curvature: true, owner: Some(owner), ..Default::default() });
+    pen.commit_failed = false;
     if hit.is_none() {
         pen.knots.push([[x, y]; 3]);
     }
@@ -518,6 +722,7 @@ pub fn curvature_down(app: &mut PhotocraftApp, x: f64, y: f64) {
 }
 
 pub fn curvature_move(app: &mut PhotocraftApp, x: f64, y: f64) {
+    cancel_stale_pen(app);
     if let Some(pen) = app.ui.pen.as_mut().filter(|p| p.curvature)
         && let Some(k) = pen.moving.and_then(|i| pen.knots.get_mut(i))
     {
@@ -527,6 +732,7 @@ pub fn curvature_move(app: &mut PhotocraftApp, x: f64, y: f64) {
 }
 
 pub fn curvature_up(app: &mut PhotocraftApp) {
+    cancel_stale_pen(app);
     if let Some(pen) = app.ui.pen.as_mut() {
         pen.moving = None;
     }
@@ -535,6 +741,7 @@ pub fn curvature_up(app: &mut PhotocraftApp) {
 /// Curvature Pen double-click: toggle the anchor under the pointer between smooth and corner
 /// (double-clicking empty canvas therefore places a corner point, as in Photoshop).
 pub fn curvature_toggle(app: &mut PhotocraftApp, x: f64, y: f64) {
+    cancel_stale_pen(app);
     let Some(i) = curvature_hit(app, x, y) else { return };
     let Some(pen) = app.ui.pen.as_mut() else { return };
     if let Some(at) = pen.unlinked.iter().position(|&c| c == i) {
@@ -598,11 +805,9 @@ pub fn with_active_path(app: &PhotocraftApp, id: &str, params: Value) -> Value {
 /// Selection tool or a path selected in the Paths panel. A path being drawn with the Pen is
 /// finished first and loads; otherwise [`active_path_name`]. `params` may set feather, mode…
 pub fn path_to_selection(app: &mut PhotocraftApp, params: Value) -> Result<Value, String> {
+    cancel_stale_pen(app);
     if app.ui.pen.as_ref().is_some_and(|p| p.knots.len() >= 2) {
-        // The finished path becomes the work path, or a shape layer's path or a vector mask.
-        let on_layer = app.ui.tool_options.vector_mode == "shape" || targeted_vector_mask(app).is_some();
-        pen_commit(app, false);
-        app.ui.selected_path = Some(if on_layer { "layer" } else { "work" }.into());
+        try_pen_commit(app, false)?;
     }
     let name = active_path_name(app)
         .ok_or_else(|| tl!("No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.").to_string())?;
@@ -620,15 +825,35 @@ enum PathTarget {
     /// The active layer's vector mask, when its Layers thumbnail is targeted (#196).
     VectorMask(u64),
     Work,
+    Saved(String),
+}
+
+/// Only an explicitly selected document path overrides the active layer's path.
+fn selected_document_geometry(app: &PhotocraftApp) -> Option<(String, &Path)> {
+    let st = app.session.active()?;
+    let selected = app.ui.selected_path.as_deref()?;
+    if selected == "work" {
+        return st.doc.work_path.as_ref().map(|p| ("work".into(), p));
+    }
+    if selected == "layer" {
+        return None;
+    }
+    st.doc.paths.iter().find(|p| p.name == selected).map(|p| (p.name.clone(), &p.path))
 }
 
 /// The targeted vector mask of the active layer, if the Layers panel targets it.
 pub(crate) fn targeted_vector_mask(app: &PhotocraftApp) -> Option<(u64, Path)> {
+    let id = targeted_vector_mask_id(app)?;
+    let mask = app.session.active()?.doc.layer(photocraft_doc::LayerId(id))?.vector_mask.as_ref()?;
+    Some((id, mask.path.clone()))
+}
+
+fn targeted_vector_mask_id(app: &PhotocraftApp) -> Option<u64> {
     let st = app.session.active()?;
     let l = st.active_layer.and_then(|id| st.doc.layer(id))?;
     let targeted = app.ui.vector_mask_target || st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::VectorMask;
     (targeted && !matches!(l.content, LayerContent::Shape(_))).then_some(())?;
-    l.vector_mask.as_ref().map(|m| (l.id.0, m.path.clone()))
+    l.vector_mask.as_ref().map(|_| l.id.0)
 }
 
 /// The active shape layer's path, if the active layer is a shape layer.
@@ -642,8 +867,12 @@ pub(crate) fn active_shape_path(app: &PhotocraftApp) -> Option<(u64, Path)> {
 }
 
 /// The path Path Selection edits: the targeted vector mask, the active shape layer's path, else
-/// the work path.
+/// the work path. An explicitly selected work or saved path takes precedence.
 fn target_path(app: &PhotocraftApp) -> Option<(PathTarget, Path)> {
+    if let Some((name, path)) = selected_document_geometry(app) {
+        let target = if name == "work" { PathTarget::Work } else { PathTarget::Saved(name) };
+        return Some((target, path.clone()));
+    }
     if let Some((id, p)) = targeted_vector_mask(app) {
         return Some((PathTarget::VectorMask(id), p));
     }
@@ -664,6 +893,7 @@ pub(crate) fn free_transform_path(app: &PhotocraftApp) -> Option<(Value, Path)> 
     let params = match target {
         PathTarget::Shape(id) | PathTarget::VectorMask(id) => json!({"name": "layer", "layer": id}),
         PathTarget::Work => json!({"name": "work"}),
+        PathTarget::Saved(name) => json!({"name": name}),
     };
     Some((params, path))
 }
@@ -770,6 +1000,10 @@ pub fn path_selection_finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64
         PathTarget::Work => {
             let moved = path.transform(&Affine::translate(dx.round(), dy.round()));
             app.run("path.set", json!({"name": "work", "path": photocraft_engine::vector_cmds::path_json(&moved)}))
+        }
+        PathTarget::Saved(name) => {
+            let moved = path.transform(&Affine::translate(dx.round(), dy.round()));
+            app.run("path.set", json!({"name": name, "path": photocraft_engine::vector_cmds::path_json(&moved)}))
         }
     };
 }
@@ -893,6 +1127,11 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
         }
     } else if paths {
         if vector_tool {
+            if let Some((name, p)) = selected_document_geometry(app)
+                && name != "work"
+            {
+                draw_path(p, tool == Tool::PathSelection);
+            }
             if let Some(wp) = &doc.work_path {
                 draw_path(wp, tool == Tool::PathSelection);
             }
@@ -911,7 +1150,7 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
         crate::anchor_tools::draw_pen_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
     }
     // Pen path in progress, with handles of the last knot and a rubber band to the pointer.
-    if let Some(pen) = &app.ui.pen {
+    if let Some(pen) = app.ui.pen.as_ref().filter(|p| p.owner.as_ref().is_some_and(|owner| owner.valid(app))) {
         let mut pts = Vec::new();
         // A close-drag shows the first segment bending with the handle being pulled out.
         let mut knots = pen.knots.clone();
@@ -946,12 +1185,12 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
         for (i, k) in pen.knots.iter().enumerate() {
             let c = to_scr(k[0]);
             let last = i + 1 == pen.knots.len();
-            if last && k[2] != k[0] && !pen.curvature {
+            if (last || pen.selected_anchor == Some(i)) && (k[1] != k[0] || k[2] != k[0]) && !pen.curvature {
                 for hnd in [k[1], k[2]] {
                     draw_handle(painter, c, to_scr(hnd), accent);
                 }
             }
-            draw_anchor(painter, c, last, accent);
+            draw_anchor(painter, c, last || pen.selected_anchor == Some(i), accent);
         }
         // Hovering the first anchor: Photoshop's close cue, a small ring beside the pointer.
         let tol = 6.0 / f64::from(app.point_zoom().max(0.01));
@@ -986,7 +1225,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
     let o = &mut app.ui.tool_options;
     let target = selected_shape(&app.session);
     if tool == Tool::PathSelection && target.is_none() {
-        lbl(ui, if app.ui.vector_mask_target { "Drag to move the targeted vector mask" } else { tl!("Drag to move the active shape's path or the Work Path") });
+        lbl(ui, if app.ui.vector_mask_target { "Drag to move the targeted vector mask" } else { tl!("Drag to move the selected path") });
         return true;
     }
     if tool == Tool::DirectSelection && target.is_none() {
@@ -1013,6 +1252,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         let opts = [("path".to_string(), tl!("Path")), ("shape".to_string(), tl!("Shape"))];
         crate::widgets::dropdown(ui, "pen-mode", &mut o.vector_mode, &opts, 80.0);
         crate::widgets::vline(ui, 22.0);
+        if tool == Tool::Pen {
+            crate::widgets::checkbox(ui, &mut o.pen_auto_add_delete, tl!("Auto Add/Delete"));
+            crate::widgets::vline(ui, 22.0);
+        }
         if o.vector_mode == "shape" {
             crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
             if let Some(change) =
@@ -1021,10 +1264,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                 o.shape_stroke = change.options;
                 o.stroke_width = enabled_stroke_width(o.stroke_width);
             }
-        }
-        if tool == Tool::Pen {
-            crate::widgets::vline(ui, 22.0);
-            crate::widgets::checkbox(ui, &mut o.pen_auto_add_delete, tl!("Auto Add/Delete"));
         }
         let enter = crate::shortcuts::pretty("Enter");
         match tool {
@@ -1844,7 +2083,7 @@ mod tests {
             a.run("edit.redo", json!({})).unwrap();
             assert_eq!(a.run("shape.info", json!({})).unwrap(), info);
             a.ui.tool_options.vector_mode = "shape".into();
-            a.ui.pen = Some(PenPath { knots: vec![[[30.0, 40.0]; 3], [[80.0, 40.0]; 3]], ..Default::default() });
+            a.ui.pen = Some(PenPath { knots: vec![[[30.0, 40.0]; 3], [[80.0, 40.0]; 3]], owner: capture_pen_owner(&a), ..Default::default() });
             pen_commit(&mut a, false);
             let open = a.run("shape.info", json!({})).unwrap();
             assert_eq!(open["stroke"]["dashes"], info["stroke"]["dashes"]);
@@ -1857,6 +2096,62 @@ mod tests {
         app.session.execute("file.new", json!({"width": 200, "height": 200})).unwrap();
         app.sync_views();
         app
+    }
+
+    #[test]
+    fn freeform_straight_segments_keep_the_captured_saved_path_and_reject_a_foreign_document() {
+        let mut app = app();
+        app.ui.tool = Tool::FreeformPen;
+        let seed = json!({"subpaths":[{"knots":[[20,20],[120,20]]}]});
+        for name in ["work", "Saved drawing"] {
+            app.run("path.set", json!({"name": name, "path": seed})).unwrap();
+        }
+        app.ui.selected_path = Some("Saved drawing".into());
+        let owner = capture_pen_owner(&app).unwrap();
+        let original = app.session.active().unwrap().doc.clone();
+        let n = app.session.active().unwrap().history.past_len();
+        let points = [[20.0, 60.0, 1.0], [60.0, 60.0, 1.0], [100.0, 80.0, 1.0], [140.0, 80.0, 1.0]];
+        app.ui.selected_path = Some("work".into());
+        app.ui.tool_options.vector_mode = "shape".into();
+        freeform_finish_owned(&mut app, &points, &[1, 3], owner);
+        let st = app.session.active().unwrap();
+        assert_eq!(st.doc.work_path, original.work_path);
+        let saved = &st.doc.paths.iter().find(|p| p.name == "Saved drawing").unwrap().path;
+        assert_eq!(saved.subpaths[0], original.paths[0].path.subpaths[0]);
+        assert_eq!(saved.subpaths.len(), 2);
+        let knots = &saved.subpaths[1].knots;
+        assert_eq!(knots.len(), 4);
+        for (a, b) in [(0, 1), (2, 3)] {
+            assert_eq!(knots[a].out_ctrl, knots[a].anchor, "straight segment starts at its anchor");
+            assert_eq!(knots[b].in_ctrl, knots[b].anchor, "straight segment ends at its anchor");
+        }
+        assert_eq!(st.history.past_len(), n + 1);
+        assert!(app.ui.pen.is_none());
+        app.ui.tool_options.vector_mode = "path".into();
+        let owner = capture_pen_owner(&app).unwrap();
+        app.run("file.new", json!({"width": 200, "height": 200})).unwrap();
+        let (source, n) = (app.session.active().unwrap().doc.clone(), app.session.active().unwrap().history.past_len());
+        freeform_finish_owned(&mut app, &points, &[1, 3], owner);
+        assert!(Arc::ptr_eq(&source, &app.session.active().unwrap().doc));
+        assert_eq!(app.session.active().unwrap().history.past_len(), n);
+    }
+
+    #[test]
+    fn failed_freeform_straight_segment_commit_keeps_its_owned_fitted_draft() {
+        let mut app = app();
+        app.ui.tool = Tool::FreeformPen;
+        let owner = capture_pen_owner(&app).unwrap();
+        let (source, n) = (app.session.active().unwrap().doc.clone(), app.session.active().unwrap().history.past_len());
+        let points = [[20.0, 60.0, 1.0], [1e40, 60.0, 1.0], [140.0, 80.0, 1.0]];
+        freeform_finish_owned(&mut app, &points, &[1, 2], owner.clone());
+        let pen = app.ui.pen.as_ref().expect("invalid fitted geometry must remain available after its failed commit");
+        assert!(pen.commit_failed);
+        assert_eq!(pen.owner.as_ref(), Some(&owner));
+        assert!(owner.valid(&app));
+        assert_eq!(pen.knots.len(), 3);
+        assert_eq!(pen.knots[1], [[1e40, 60.0]; 3]);
+        assert!(Arc::ptr_eq(&source, &app.session.active().unwrap().doc));
+        assert_eq!(app.session.active().unwrap().history.past_len(), n);
     }
 
     #[test]
@@ -1946,7 +2241,7 @@ mod tests {
         }
         // The Pen's path in progress is a gesture, not the target path: it stays visible.
         app.ui.tool = Tool::Pen;
-        app.ui.pen = Some(PenPath { knots: vec![[[20.0, 20.0]; 3], [[60.0, 40.0]; 3]], ..Default::default() });
+        app.ui.pen = Some(PenPath { knots: vec![[[20.0, 20.0]; 3], [[60.0, 40.0]; 3]], owner: capture_pen_owner(&app), ..Default::default() });
         toggle(&mut app, "view.show.targetPath");
         assert!(overlay_shapes(&app, &ctx) > 0, "the pen path in progress is still drawn");
     }
@@ -2242,8 +2537,14 @@ mod tests {
             assert_eq!(pen.knots[1][1], incoming);
             assert_eq!(pen.knots[1][2], pen.knots[1][0]);
             let saved = serde_json::to_value(pen).unwrap();
+            assert!(!pen.edit_undo.is_empty());
+            assert!(saved.get("edit_undo").is_none(), "draft editing history belongs to its runtime owner");
             let restored: PenPath = serde_json::from_value(saved).unwrap();
-            assert_eq!(restored, *pen);
+            assert!(restored.edit_undo.is_empty());
+            let mut expected = pen.clone();
+            expected.owner = None;
+            expected.edit_undo.clear();
+            assert_eq!(restored, expected);
             assert_eq!(pen_to_json(&restored, false)["subpaths"][0]["knots"][1]["smooth"], false);
             pen_down(&mut app, 100.0 + 7.0 / f64::from(zoom), 100.0);
             assert_eq!(app.ui.pen.as_ref().unwrap().knots.len(), 3);
@@ -2485,6 +2786,10 @@ mod tests {
 #[cfg(test)]
 #[path = "path_selection_tests.rs"]
 mod path_selection_tests;
+
+#[cfg(test)]
+#[path = "pen_cursor_tests.rs"]
+mod pen_cursor_tests;
 
 #[cfg(test)]
 #[path = "pen_draw_tests.rs"]

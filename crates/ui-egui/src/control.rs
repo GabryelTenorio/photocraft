@@ -131,7 +131,7 @@ pub enum Outcome {
 /// field's value is validated before the first one is applied, so a typo, an unknown field, a
 /// bad value or a bad nested key can't reply with success while nothing — or only half of it —
 /// changed (#412).
-pub const UI_SET_FIELDS: [&str; 35] = [
+pub const UI_SET_FIELDS: [&str; 36] = [
     "tool",
     "panels",
     "dock",
@@ -157,6 +157,7 @@ pub const UI_SET_FIELDS: [&str; 35] = [
     "brushSize",
     "gradientBlendMode",
     "gradientClassic",
+    "penAutoAddDelete",
     "eyedropperSampleSize",
     "eyedropperSample",
     "eyedropperRing",
@@ -490,6 +491,7 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                     None => None,
                 };
                 let gradient_classic = bool_field(p, "gradientClassic")?;
+                let pen_auto_add_delete = bool_field(p, "penAutoAddDelete")?;
                 // The Eyedropper's options bar (#1649): Sample Size, Sample, Show Sampling Ring.
                 let eyedropper_size = match p.get("eyedropperSampleSize") {
                     Some(v) => Some(
@@ -653,6 +655,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 }
                 if let Some(classic) = gradient_classic {
                     app.ui.tool_options.gradient_classic = classic;
+                }
+                if let Some(auto) = pen_auto_add_delete {
+                    app.ui.tool_options.pen_auto_add_delete = auto;
                 }
                 if gradient_blend.is_some() {
                     crate::gradient_ui::options_changed(app, &gradient_before);
@@ -1925,6 +1930,24 @@ mod tests {
         let r = call(&mut app, &ctx, "ui.set", json!({"eyedropperSampleSize": 101, "eyedropperSample": "nope"}));
         assert_eq!(r["ok"], false, "{r}");
         assert_eq!(app.ui.tool_options.eyedropper_size, 1);
+    }
+
+    #[test]
+    fn ui_set_drives_pen_auto_add_delete_and_rejects_invalid_values_atomically() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        assert!(app.ui.tool_options.pen_auto_add_delete);
+        assert_eq!(call(&mut app, &ctx, "ui.set", json!({"tool":"pen", "penAutoAddDelete":false}))["ok"], true);
+        assert_eq!(app.ui.tool, Tool::Pen);
+        assert_eq!(call(&mut app, &ctx, "ui.inspect", json!({}))["result"]["toolOptions"]["pen_auto_add_delete"], false);
+        for bad in [Value::Null, json!("yes"), json!(1), json!({})] {
+            let result = call(&mut app, &ctx, "ui.set", json!({"tool":"move", "penAutoAddDelete":bad}));
+            assert_eq!(result["ok"], false, "{result}");
+            assert_eq!(app.ui.tool, Tool::Pen, "invalid option must not switch the tool");
+            assert!(!app.ui.tool_options.pen_auto_add_delete);
+        }
+        assert_eq!(call(&mut app, &ctx, "ui.set", json!({"penAutoAddDelete":true}))["ok"], true);
+        assert!(app.ui.tool_options.pen_auto_add_delete);
     }
 
     /// #1046: the Color Sampler tool is selectable over the control channel and reported as active.

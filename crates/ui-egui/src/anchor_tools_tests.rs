@@ -28,6 +28,7 @@ fn with_path(app: &mut PhotocraftApp) {
         [40, 120],
     ]}]});
     app.run("path.set", json!({"name": "work", "path": path})).unwrap();
+    app.ui.selected_path = Some("work".into());
 }
 
 fn work(app: &PhotocraftApp) -> Path {
@@ -70,6 +71,32 @@ fn add_on_a_straight_segment_inserts_a_corner_in_one_step() {
     assert_eq!(app.session.active().unwrap().history.undo_label(), Some("Add Anchor Point"));
     assert!(app.session.undo());
     assert_eq!(work(&app), before);
+}
+
+#[test]
+fn add_and_delete_anchor_tools_edit_the_selected_saved_path() {
+    let mut app = app(Tool::AddAnchorPoint);
+    with_path(&mut app);
+    let before_work = work(&app);
+    let path = photocraft_engine::vector_cmds::path_json(&before_work);
+    app.run("path.set", json!({"name":"Saved", "path":path})).unwrap();
+    app.ui.selected_path = Some("Saved".into());
+    let n = steps(&app);
+    click(&mut app, [80.0, 120.0], Modifiers::NONE);
+    let saved = || app.session.active().unwrap().doc.paths.iter().find(|path| path.name == "Saved").unwrap().path.clone();
+    let added = saved();
+    assert_eq!(added.subpaths[0].knots.len(), 5);
+    assert_eq!(work(&app), before_work);
+    assert_eq!(steps(&app), n + 1);
+    app.ui.tool = Tool::DeleteAnchorPoint;
+    let anchor = added.subpaths[0].knots[3].anchor;
+    click(&mut app, [anchor.x, anchor.y], Modifiers::NONE);
+    let deleted = app.session.active().unwrap().doc.paths.iter().find(|path| path.name == "Saved").unwrap().path.clone();
+    assert_eq!(deleted.subpaths[0].knots.len(), 4);
+    assert_eq!(work(&app), before_work);
+    assert_eq!(steps(&app), n + 2);
+    assert!(app.session.undo());
+    assert_eq!(app.session.active().unwrap().doc.paths.iter().find(|path| path.name == "Saved").unwrap().path, added);
 }
 
 #[test]
@@ -133,7 +160,7 @@ fn shape_layer_paths_are_edited_and_a_direct_selection_is_cleared() {
     let mut app = app(Tool::DirectSelection);
     let id = app.run("shape.create", json!({"kind": "rect", "rect": [20, 20, 60, 60], "fill": "#3070c0"})).unwrap()["layer"].as_u64().unwrap();
     click(&mut app, [80.0, 80.0], Modifiers::NONE);
-    assert_eq!((app.ui.direct_selection.target, app.ui.direct_selection.anchors.clone()), (Some(PathRef::Layer(id)), vec![[0, 2]]));
+    assert_eq!((app.ui.direct_selection.target.clone(), app.ui.direct_selection.anchors.clone()), (Some(PathRef::Layer(id)), vec![[0, 2]]));
     app.ui.tool = Tool::AddAnchorPoint;
     click(&mut app, [50.0, 20.0], Modifiers::NONE);
     let info = app.run("shape.info", json!({"layer": id})).unwrap();
@@ -147,12 +174,14 @@ fn shape_layer_paths_are_edited_and_a_direct_selection_is_cleared() {
 
 #[test]
 fn the_cursor_shows_plus_or_minus() {
-    use crate::tool_feedback::{Badge, badge};
-    let app = app(Tool::AddAnchorPoint);
-    assert_eq!(badge(&app, Tool::AddAnchorPoint, Modifiers::NONE), Some(Badge::Add));
-    assert_eq!(badge(&app, Tool::AddAnchorPoint, Modifiers::ALT), Some(Badge::Subtract));
-    assert_eq!(badge(&app, Tool::DeleteAnchorPoint, Modifiers::NONE), Some(Badge::Subtract));
-    assert_eq!(badge(&app, Tool::DeleteAnchorPoint, Modifiers::COMMAND), None, "⌘ is Direct Selection");
+    use crate::tool_cursor::PenCursor;
+    let mut app = app(Tool::AddAnchorPoint);
+    assert_eq!(crate::vector_ui::pen_cursor_with_modifiers(&app, [0.0; 2], Modifiers::NONE), PenCursor::Add);
+    assert_eq!(crate::vector_ui::pen_cursor_with_modifiers(&app, [0.0; 2], Modifiers::ALT), PenCursor::Delete);
+    app.ui.tool = Tool::DeleteAnchorPoint;
+    assert_eq!(crate::vector_ui::pen_cursor_with_modifiers(&app, [0.0; 2], Modifiers::NONE), PenCursor::Delete);
+    assert_eq!(crate::tool_feedback::badge(&app, Tool::DeleteAnchorPoint, Modifiers::NONE), None, "the native image already contains its badge");
+    assert_eq!(crate::tool_feedback::badge(&app, Tool::DeleteAnchorPoint, Modifiers::COMMAND), None, "⌘ is Direct Selection");
 }
 
 /// #4144: with Auto Add/Delete (on by default) a Pen click on a segment of the active path adds
@@ -206,6 +235,7 @@ fn the_pen_leaves_open_end_points_alone() {
     let mut app = app(Tool::Pen);
     let path = json!({"subpaths": [{"closed": false, "knots": [[40, 40], [120, 40], [120, 120]]}]});
     app.run("path.set", json!({"name": "work", "path": path})).unwrap();
+    app.ui.selected_path = Some("work".into());
     let before = work(&app);
     for end in [[40.0, 40.0], [120.0, 120.0]] {
         click(&mut app, end, Modifiers::NONE);
@@ -218,15 +248,14 @@ fn the_pen_leaves_open_end_points_alone() {
 
 #[test]
 fn the_pen_cursor_shows_what_auto_add_delete_would_do() {
-    use crate::tool_feedback::{Badge, badge};
+    use crate::tool_cursor::PenCursor;
+    use crate::vector_ui::pen_cursor_with_modifiers;
     let mut app = app(Tool::Pen);
     with_path(&mut app);
-    for (at, want) in [([80.0, 120.0], Some(Badge::Add)), ([40.0, 120.0], Some(Badge::Subtract)), ([80.0, 80.0], None)] {
-        app.hover_doc = Some(at);
-        assert_eq!(badge(&app, Tool::Pen, Modifiers::NONE), want, "{at:?}");
+    for (at, want) in [([80.0, 120.0], PenCursor::Add), ([40.0, 120.0], PenCursor::Delete), ([80.0, 80.0], PenCursor::New)] {
+        assert_eq!(pen_cursor_with_modifiers(&app, at, Modifiers::NONE), want, "{at:?}");
     }
-    app.hover_doc = Some([80.0, 120.0]);
-    assert_eq!(badge(&app, Tool::Pen, Modifiers::SHIFT), None);
+    assert_eq!(pen_cursor_with_modifiers(&app, [80.0, 120.0], Modifiers::SHIFT), PenCursor::New);
     app.ui.tool_options.pen_auto_add_delete = false;
-    assert_eq!(badge(&app, Tool::Pen, Modifiers::NONE), None);
+    assert_eq!(pen_cursor_with_modifiers(&app, [80.0, 120.0], Modifiers::NONE), PenCursor::New);
 }

@@ -6,6 +6,25 @@ use egui_kittest::Harness;
 #[cfg(not(target_arch = "wasm32"))]
 use serde_json::json;
 
+const PEN_STATES: [PenCursor; 6] = [PenCursor::New, PenCursor::Draw, PenCursor::Close, PenCursor::Add, PenCursor::Delete, PenCursor::Convert];
+
+#[test]
+fn pen_and_shaped_brush_bitmaps_do_not_reuse_each_others_cache() {
+    let ctx = egui::Context::default();
+    let brush = Shape::Outline { rings: vec![vec![vec2(-10.0, -6.0), vec2(10.0, -6.0), vec2(10.0, 6.0), vec2(-10.0, 6.0)]].into(), centre: true };
+    for scale in [1.0, 1.5, 2.0] {
+        let before = cached_image(&ctx, &brush, scale).unwrap();
+        for state in PEN_STATES {
+            let pen = cached_image(&ctx, &Shape::Pen(state), scale).unwrap();
+            assert_eq!(pen.rgba, rasterize(&Shape::Pen(state), scale).unwrap().rgba);
+            assert_ne!(pen.rgba, before.rgba);
+        }
+        let after = cached_image(&ctx, &brush, scale).unwrap();
+        assert_eq!(after.rgba, before.rgba);
+        assert_eq!(after.hotspot, before.hotspot);
+    }
+}
+
 fn alpha(image: &CustomCursorImage, x: u16, y: u16) -> u8 {
     image.rgba[(usize::from(y) * usize::from(image.size[0]) + usize::from(x)) * 4 + 3]
 }
@@ -344,6 +363,39 @@ fn painting_preference_and_zoom_change_the_native_cursor_without_changing_pointe
     assert!(h.output().platform_output.cursor_image.as_ref().unwrap().size[0] > cross_size);
 }
 
+#[test]
+fn pen_states_share_the_nib_hotspot_and_scale_the_same_artwork() {
+    let mut previous_size = 0;
+    for scale in [1.0, 1.5, 2.0] {
+        let draw = rasterize(&Shape::Pen(PenCursor::Draw), scale).unwrap();
+        assert!(draw.size[0] > previous_size);
+        previous_size = draw.size[0];
+        let hot = 1 + (2.3 / 24.0 * (20.0 * scale).ceil()).round() as u16;
+        assert_eq!(draw.hotspot, [hot, hot]);
+        assert!(alpha(&draw, hot, hot) > 100, "the pointer is on the nib");
+        for state in [PenCursor::New, PenCursor::Close, PenCursor::Add, PenCursor::Delete] {
+            let image = rasterize(&Shape::Pen(state), scale).unwrap();
+            assert_eq!(image.hotspot, draw.hotspot);
+            assert_eq!(image.size, draw.size);
+            assert_ne!(image.rgba, draw.rgba, "the badge belongs to the OS image");
+            let side = usize::from(image.size[0]);
+            // The left half includes the nib; adding a badge must leave it unchanged.
+            for row in 0..side {
+                let start = row * side * 4;
+                assert_eq!(&image.rgba[start..start + side / 2 * 4], &draw.rgba[start..start + side / 2 * 4]);
+            }
+        }
+        let images = PEN_STATES.map(|state| rasterize(&Shape::Pen(state), scale).unwrap());
+        for (index, image) in images.iter().enumerate() {
+            assert_eq!(image.size, draw.size);
+            assert_eq!(image.hotspot, draw.hotspot);
+            for other in images.iter().skip(index + 1) {
+                assert_ne!(image.rgba, other.rgba, "every action has distinct cursor artwork");
+            }
+        }
+    }
+}
+
 /// #4596: the close-path pointer is the centre cross with a ring below right.
 #[test]
 fn close_path_bitmap_has_the_centre_cross_and_a_ring_beside_it() {
@@ -377,4 +429,153 @@ fn circle_bitmaps_evaluate_only_the_ring_and_match_every_pixel() {
             }
         }
     }
+}
+
+#[test]
+fn pen_point_editing_marks_show_plus_minus_and_a_corner_without_the_nib() {
+    for scale in [1.0, 1.5, 2.0] {
+        let add = rasterize(&Shape::Pen(PenCursor::Add), scale).unwrap();
+        let delete = rasterize(&Shape::Pen(PenCursor::Delete), scale).unwrap();
+        let badge = |x: f32, y: f32| [1 + (x * scale).round() as u16, 1 + (y * scale).round() as u16];
+        let [x, y] = badge(24.0, 7.5);
+        assert!(alpha(&add, x, y) > 100, "the plus has a vertical arm");
+        assert_eq!(alpha(&delete, x, y), 0, "the minus has no vertical arm");
+        let [x, y] = badge(26.5, 5.0);
+        assert!(alpha(&add, x, y) > 100);
+        assert!(alpha(&delete, x, y) > 100, "both marks have a horizontal arm");
+
+        let convert = rasterize(&Shape::Pen(PenCursor::Convert), scale).unwrap();
+        let [hx, hy] = convert.hotspot;
+        assert!(alpha(&convert, hx, hy) > 100, "the corner vertex is the pointer");
+        for [dx, dy] in [[6.0, 15.0], [15.0, 6.0]] {
+            assert!(alpha(&convert, hx + (dx * scale).round() as u16, hy + (dy * scale).round() as u16) > 100, "both slanted arms are visible");
+        }
+        let inside = (5.0 * scale).round() as u16;
+        assert_eq!(alpha(&convert, hx + inside, hy + inside), 0, "the corner interior has no old nib");
+        let draw = rasterize(&Shape::Pen(PenCursor::Draw), scale).unwrap();
+        assert!(alpha(&draw, hx + inside, hy + inside) > 0, "the old nib crosses the corner interior");
+    }
+}
+
+#[test]
+fn pen_nib_and_badges_remain_visible_on_dark_light_and_gray_backgrounds() {
+    for state in PEN_STATES {
+        for scale in [1.0, 1.5, 2.0] {
+            let image = rasterize(&Shape::Pen(state), scale).unwrap();
+            let side = usize::from(image.size[0]);
+            for background in [0.0_f32, 128.0, 255.0] {
+                let visible = |pixel: &[u8]| {
+                    let alpha = f32::from(pixel[3]) / 255.0;
+                    (f32::from(pixel[0]) * alpha + background * (1.0 - alpha) - background).abs() > 60.0
+                };
+                let pixels = image.rgba.as_chunks::<4>().0;
+                assert!(pixels.iter().enumerate().any(|(i, p)| i % side < side / 2 && visible(p)), "nib: {state:?}, {scale}, {background}");
+                if !matches!(state, PenCursor::Draw | PenCursor::Convert) {
+                    assert!(pixels.iter().enumerate().any(|(i, p)| i % side > side * 2 / 3 && visible(p)), "badge: {state:?}, {scale}, {background}");
+                }
+            }
+            assert_eq!(alpha(&image, 0, 0), 0);
+            assert_eq!(alpha(&image, image.size[0] - 1, image.size[1] - 1), 0);
+        }
+    }
+}
+
+#[test]
+fn pen_rejects_hostile_scales_and_reuses_unchanged_state_and_dpi() {
+    for state in PEN_STATES {
+        for scale in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.0, f32::MAX, 1000.0] {
+            assert!(rasterize(&Shape::Pen(state), scale).is_none(), "{state:?}, {scale}");
+        }
+        let ctx = egui::Context::default();
+        let first = cached_image(&ctx, &Shape::Pen(state), 1.0).unwrap();
+        let repeated = cached_image(&ctx, &Shape::Pen(state), 1.0).unwrap();
+        assert!(Arc::ptr_eq(&first.rgba, &repeated.rgba));
+        let scaled = cached_image(&ctx, &Shape::Pen(state), 2.0).unwrap();
+        assert!(!Arc::ptr_eq(&first.rgba, &scaled.rgba));
+        assert!(scaled.size[0] > first.size[0]);
+    }
+    let ctx = egui::Context::default();
+    let new = cached_image(&ctx, &Shape::Pen(PenCursor::New), 1.0).unwrap();
+    let close = cached_image(&ctx, &Shape::Pen(PenCursor::Close), 1.0).unwrap();
+    assert!(!Arc::ptr_eq(&new.rgba, &close.rgba));
+}
+
+#[test]
+fn pen_painter_fallback_uses_the_bitmap_pixels_hotspot_and_cached_texture() {
+    let ctx = egui::Context::default();
+    let at = egui::pos2(100.0, 80.0);
+    for state in PEN_STATES {
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            assert!(pen::paint(ui.painter(), at, state));
+        });
+        let image = rasterize(&Shape::Pen(state), ctx.pixels_per_point()).unwrap();
+        let mesh = output.shapes.iter().find_map(|s| if let egui::Shape::Mesh(m) = &s.shape { Some(m) } else { None }).unwrap();
+        let texture = &output.textures_delta.set.get(&mesh.texture_id).unwrap().last().unwrap().image;
+        let egui::ImageData::Color(texture) = texture;
+        assert_eq!(texture.as_ref(), &egui::ColorImage::from_rgba_unmultiplied(image.size.map(usize::from), &image.rgba));
+        let min = at - vec2(f32::from(image.hotspot[0]), f32::from(image.hotspot[1])) / ctx.pixels_per_point();
+        assert_eq!(mesh.calc_bounds().min, min);
+        let texture_id = mesh.texture_id;
+        output.textures_delta.clear();
+        let mut repeated = ctx.run_ui(Default::default(), |ui| {
+            assert!(pen::paint(ui.painter(), at + vec2(25.0, 12.0), state));
+        });
+        assert!(repeated.textures_delta.set.is_empty(), "pointer motion keeps the cached texture");
+        assert!(repeated.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Mesh(m) if m.texture_id == texture_id)));
+        repeated.textures_delta.clear();
+    }
+    let mut invalid = ctx.run_ui(Default::default(), |ui| {
+        assert!(!pen::paint(ui.painter(), egui::pos2(f32::NAN, 0.0), PenCursor::New));
+    });
+    assert!(invalid.shapes.iter().all(|s| matches!(s.shape, egui::Shape::Noop)));
+    invalid.textures_delta.clear();
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn pen_native_states_are_os_images_without_painted_overlays() {
+    let ctx = egui::Context::default();
+    ctx.add_plugin(CursorLifecycle);
+    for state in PEN_STATES {
+        let output = frame(&ctx, |ui| {
+            ui.ctx().set_cursor_icon(pen(ui.painter(), egui::pos2(100.0, 100.0), state));
+        });
+        let image = output.platform_output.cursor_image.unwrap();
+        assert_eq!(image.rgba, rasterize(&Shape::Pen(state), native_scale(&ctx)).unwrap().rgba);
+        assert!(output.shapes.iter().all(|s| matches!(s.shape, egui::Shape::Noop)));
+        assert_eq!(output.platform_output.cursor_icon, CursorIcon::Crosshair);
+    }
+}
+
+#[test]
+#[ignore = "writes target/pen-cursor-preview.png for visual inspection"]
+fn write_pen_cursor_preview() {
+    let (width, height) = (600_usize, PEN_STATES.len() * 300);
+    let mut rgba = vec![255; width * height * 4];
+    for (col, background) in [0_u8, 128, 255].into_iter().enumerate() {
+        for y in 0..height {
+            for x in col * 200..(col + 1) * 200 {
+                rgba[(y * width + x) * 4..(y * width + x) * 4 + 3].fill(background);
+            }
+        }
+        for (dpi, scale) in [1.0, 1.5, 2.0].into_iter().enumerate() {
+            for (state_index, state) in PEN_STATES.into_iter().enumerate() {
+                let image = rasterize(&Shape::Pen(state), scale).unwrap();
+                let side = usize::from(image.size[0]);
+                let x0 = col * 200 + 75 - usize::from(image.hotspot[0]);
+                let y0 = (dpi * PEN_STATES.len() + state_index) * 100 + 25 - usize::from(image.hotspot[1]);
+                for (i, pixel) in image.rgba.as_chunks::<4>().0.iter().enumerate() {
+                    let at = ((y0 + i / side) * width + x0 + i % side) * 4;
+                    let a = f32::from(pixel[3]) / 255.0;
+                    let value = (f32::from(pixel[0]) * a + f32::from(background) * (1.0 - a)).round() as u8;
+                    rgba[at..at + 3].fill(value);
+                }
+            }
+        }
+    }
+    let image = photocraft_codecs::Image::from_u8(width as u32, height as u32, photocraft_codecs::ChannelLayout::Rgba, rgba).unwrap();
+    let png = photocraft_codecs::encode(&image, photocraft_codecs::Format::Png, &Default::default()).unwrap();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/pen-cursor-preview.png");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, png).unwrap();
 }
