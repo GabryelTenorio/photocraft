@@ -349,7 +349,9 @@ mod tests {
         assert_eq!(icon_theme_name(Desktop::Kde, &found, &env(&[("PHOTOCRAFT_CAPTION_ICONS", " None ")])), None);
         assert_eq!(icon_theme_name(Desktop::Kde, &found, &env(&[("PHOTOCRAFT_CAPTION_ICONS", "Tela")])).as_deref(), Some("Tela"));
         // The style carries what the loader returns for that name.
-        let s = resolve(Desktop::Gnome, &found, &env(&[]), &|t| (t == "Papirus").then(|| CaptionIcons { theme: t.into(), render: std::sync::Arc::new(|_, _| None) }));
+        let s = resolve(Desktop::Gnome, &found, &env(&[]), &|t| {
+            (t == "Papirus").then(|| CaptionIcons { theme: t.into(), render: std::sync::Arc::new(|_, _| None) })
+        });
         assert_eq!(s.icons.map(|i| i.theme).as_deref(), Some("Papirus"));
     }
 

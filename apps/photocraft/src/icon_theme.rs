@@ -196,7 +196,13 @@ pub fn rasterize_mask(svg: &[u8], px: u32) -> Option<Vec<u8>> {
     if !(1..=256).contains(&px) {
         return None;
     }
-    let tree = usvg::Tree::from_data(svg, &usvg::Options::default()).ok()?;
+    // Glyphs are paths: no `<image>` is loaded, so an icon can't make us read another file
+    // (`/dev/zero`, a huge picture) or nest an SVG.
+    let opts = usvg::Options {
+        image_href_resolver: usvg::ImageHrefResolver { resolve_data: Box::new(|_, _, _| None), resolve_string: Box::new(|_, _| None) },
+        ..usvg::Options::default()
+    };
+    let tree = usvg::Tree::from_data(svg, &opts).ok()?;
     let size = tree.size();
     let side = size.width().max(size.height());
     if !side.is_finite() || side <= 0.0 {
@@ -262,7 +268,10 @@ mod tests {
         let base = tree(
             "hostile",
             &[
-                ("A/index.theme", "[Icon Theme]\nInherits=B,../etc,\nDirectories=../../x,,/abs,ok\n[ok]\nSize=99999999999999999999\nScale=-3\nType=Threshold\n"),
+                (
+                    "A/index.theme",
+                    "[Icon Theme]\nInherits=B,../etc,\nDirectories=../../x,,/abs,ok\n[ok]\nSize=99999999999999999999\nScale=-3\nType=Threshold\n",
+                ),
                 ("A/ok/x.svg", SQUARE),
                 ("B/index.theme", "[Icon Theme]\nInherits=A\n"),
             ],
@@ -292,6 +301,17 @@ mod tests {
         assert!(rasterize_mask(b"not svg", 16).is_none());
         assert!(rasterize_mask(SQUARE.as_bytes(), 0).is_none());
         assert!(rasterize_mask(SQUARE.as_bytes(), 100_000).is_none());
+    }
+
+    /// An icon's `<image>` is never loaded: not a device file, not an embedded picture.
+    #[test]
+    fn masks_load_no_images() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16">
+            <image href="/dev/zero" width="16" height="16"/>
+            <image xlink:href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'&gt;&lt;rect width='16' height='16'/&gt;&lt;/svg&gt;" width="16" height="16"/>
+        </svg>"##;
+        let mask = rasterize_mask(svg.as_bytes(), 16).expect("renders");
+        assert!(mask.iter().all(|a| *a == 0), "nothing drawn");
     }
 
     #[test]
