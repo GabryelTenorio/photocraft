@@ -78,6 +78,8 @@ fn workspace_open_dedupes_by_the_requested_path() {
     assert_eq!(second["deduped"], json!(true), "{second}");
     assert_eq!(h.session.documents().len(), 1);
 
+    // Release directory capabilities before cleanup on Windows.
+    drop(h);
     std::fs::remove_dir_all(root).unwrap();
 }
 
