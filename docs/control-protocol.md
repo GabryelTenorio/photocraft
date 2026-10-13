@@ -429,8 +429,9 @@ keeps the dialog open for correction. Nothing else writes document history.
 command line) of a camera raw developed from its sensor data shows this dialog first, titled
 "Camera Raw (name)", with **Open** and **Cancel**, as Photoshop opens raws in Adobe Camera Raw.
 `ui.inspect.cameraRaw.openingRaw` is then `{name, path}`. Commit (Open) re-develops the raw when
-Temperature, Tint or Exposure changed (as-shot white-balance gains and develop exposure on the
-sensor data; without an as-shot white balance, or without the file's bytes, they stay RGB
+Temperature, Tint, Exposure, Shadows, Highlights, Clarity, Texture or Dehaze changed (as-shot
+white-balance gains, develop exposure, and the other five in linear light before the camera's
+tone curve, as Camera Raw does for raw files; without an as-shot white balance, or without the file's bytes, they stay RGB
 adjustments), applies the remaining settings as one `filter.cameraRaw` step and leaves the
 document unmodified; its result is `{document, redeveloped, filter?}`. Cancel closes the
 document. `app.open` and other automation opens never show the dialog. The preference
@@ -524,6 +525,20 @@ Missing actions, recursive calls and nesting beyond 16 levels fail visibly; a ch
 the parent before its next step. Every nested command retains the normal automation permission check.
 Existing recordings containing expanded commands remain unchanged; remove those steps and record
 the named call again if desired.
+
+Actions sit in **set folders** (`set` on `actions.list` / `actions.get`, filled by Load Actions,
+written by Save Actions, changed with `actions.assignSet`): the panel shows loose actions first,
+then each set as a collapsible folder (`ui.actions.collapsedSets`); dropping an action among
+another set's rows moves it into that set. Each step has Photoshop's two toggles: the check
+(`actions.toggle`, skipped when off) and the **dialog** toggle (`actions.dialog`). Playing a
+step with its dialog on opens that command's dialog seeded with the recorded values and pauses:
+the play result carries `paused: {step, id, dialog}`, OK runs the dialog's values and continues
+from the next step, Cancel stops the action. Agents (`automation_input`) play headlessly with the
+recorded values. The panel menu's **Insert Stop…** adds an `actions.stopMessage` step after the
+selected step (`actions.insert` takes any command id and params). `actions.conditional {if, then,
+else}` is Photoshop's Insert Conditional as a step: it tests the document or active layer
+(`always`, `landscape`, `modeIsRGB`, `hasLayers`, `isBackground`, `hasPixelMask`… see its params)
+and plays the matching action by name, failing the caller when that action fails.
 
 Layer-panel **Quick Export as PNG** exports every selected layer as a separate PNG. A single
 Save dialog chooses the first filename; remaining files are numbered siblings with sanitized
