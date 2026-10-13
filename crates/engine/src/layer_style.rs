@@ -841,7 +841,13 @@ fn replace_effects(s: &mut Session, p: &Value) -> Result<Value> {
         Some(id) => photocraft_doc::LayerId(id),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into()))?,
     };
-    let entries = p.get("effects").and_then(Value::as_array).ok_or_else(|| bad(CMD, "need `effects`: [{kind, params, fx?}]"))?;
+    let entries = p.get("effects").and_then(Value::as_array).ok_or_else(|| {
+        let mut msg = String::from("need a top-level `effects` array: {\"effects\": [{kind, params, fx?}]}");
+        if p.get("style").is_some() || p.get("layerStyle").is_some() {
+            msg.push_str("; an `effects` list under a `style` key is not read; put `effects` at the top level, beside `layer`");
+        }
+        bad(CMD, msg)
+    })?;
     if entries.len() > MAX_EFFECTS {
         return Err(bad(CMD, format!("at most {MAX_EFFECTS} effects")));
     }
@@ -1290,10 +1296,19 @@ mod tests {
         ] {
             assert!(s.execute("layer.layerStyle.replace", p).is_err());
         }
+        // A `style`-wrapped list is refused, with the error naming where `effects` belongs.
+        for p in [json!({"style": {"effects": []}}), json!({"layerStyle": {"effects": []}})] {
+            let err = s.execute("layer.layerStyle.replace", p).unwrap_err().to_string();
+            assert!(err.contains("top-level"), "{err}");
+            assert!(err.contains("`style`"), "{err}");
+        }
         // A long list is refused, not run.
         let many: Vec<_> = (0..257).map(|_| json!({"kind": "stroke"})).collect();
         assert!(s.execute("layer.layerStyle.replace", json!({"effects": many})).is_err());
         assert!(effects(&s).is_empty(), "nothing was applied");
+        // The top-level envelope the error names is the one that applies.
+        s.execute("layer.layerStyle.replace", json!({"effects": [{"kind": "stroke", "params": {"size": 3}}]})).unwrap();
+        assert_eq!(effects(&s).len(), 1);
     }
 
     #[test]
