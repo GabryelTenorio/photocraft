@@ -15,6 +15,36 @@
 # entries the same way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...)
 # stay as they are; the trailing "…" of dialog commands is kept.
 
+# Plural status messages (complete catalog coverage)
+
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	Solte uma imagem, PSD ou PDF em qualquer lugar para abri-lo.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Cada prancheta se torna uma página PDF. As camadas são achatadas; a transparência é preservada.
+	Export All Tabs to PDF…	Exportar todas as abas para PDF…
+	Open PDF pages	Abrir páginas PDF
+	{count} pages • Each selected page opens in its own tab	{count} páginas • Cada página selecionada abre em sua própria aba
+	Click to select pages. Shift-click selects a range.	Clique para selecionar. Shift-clique seleciona um intervalo.
+	Page {number}	Página {number}
+	Page {number} — {width} × {height} in	Página {number} — {width} × {height} pol.
+	Loading preview…	Carregando prévia…
+	Resolution (ppi)	Resolução (ppi)
+	Preview page: {width} × {height} pixels	Página de prévia: {width} × {height} pixels
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	As páginas abrem como imagens RGB de 8 bits. Texto e objetos vetoriais PDF são rasterizados.
+	Open all {count} pages	Abrir todas as {count} páginas
+	Open selected ({count})	Abrir seleção ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} abas serão combinadas na ordem da esquerda para a direita.
+	Current edits are included. Each page keeps its size and resolution.	As alterações atuais são incluídas. Cada página mantém seu tamanho e resolução.
+	Close exported tabs after successful export	Fechar abas exportadas após uma exportação bem-sucedida
+	Canceled or failed exports leave every tab open.	Exportações canceladas ou malsucedidas deixam todas as abas abertas.
+	PDF saves the visible pages with flattened layers.	O PDF salva as páginas visíveis com as camadas achatadas.
+	Thumbnail size	Tamanho da miniatura
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd-clique adiciona páginas. Shift-clique seleciona um intervalo.
+	Place PDF pages as smart objects	Inserir páginas PDF como objetos inteligentes
+	{count} pages • Each selected page becomes a smart object layer	{count} páginas • Cada página selecionada vira uma camada de objeto inteligente
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Os objetos inteligentes contêm páginas rasterizadas nesta resolução. Textos e vetores PDF permanecem rasterizados.
+	Place all {count} pages	Inserir todas as {count} páginas
+	Place selected ({count})	Inserir seleção ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Não é possível pintar diretamente em objetos inteligentes. Rasterize a camada manualmente ou pinte em uma nova camada de pixels.
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -830,9 +860,6 @@
 	Appearance	Aparência
 	Appearance (Layer Style)	Aparência (estilo de camada)
 	Apply Layer Mask	Aplicar máscara de camada
-	Add Mask to Selection	Adicionar máscara à seleção
-	Subtract Mask from Selection	Subtrair máscara da seleção
-	Intersect Mask with Selection	Fazer interseção da máscara com a seleção
 	Apply Per Tip	Aplicar por ponta
 	Apply next selected layer comp	Aplicar a próxima composição de camadas selecionada
 	Apply previous selected layer comp	Aplicar a composição de camadas selecionada anterior
@@ -2972,6 +2999,12 @@ fontWeight	Italic	Itálico
 	Quick Selection found nothing there	A Seleção rápida não encontrou nada ali
 	Object Selection found nothing there — try a tighter rectangle	A Seleção de objeto não encontrou nada ali — tente um retângulo mais justo
 	No subject found — try a rectangle around the object	Nenhum assunto encontrado — tente um retângulo ao redor do objeto
+
+
+
+
+
+
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Clique no primeiro ponto ou pressione {key} para fechar · {del} remove um ponto · Esc cancela
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Clique e siga uma borda · clique para fixar um ponto · {alt}-clique para um segmento reto · clique duas vezes para fechar
 	Follows only edges this close to the pointer ([ and ] change it)	Segue só bordas a esta distância do ponteiro ([ e ] mudam o valor)

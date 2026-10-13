@@ -264,6 +264,12 @@ derived from UI `tl!` literals, the menu catalog and UI command table, and menu 
 the engine source. Catalog rows are validated for malformed and duplicate keys; unused legacy
 translations do not affect the denominator. Unregistered locale TSV files are ignored.
 
+`LangInfo::text()` returns the complete original TSV, including comments, row order and line
+endings. `LangInfo::source` is opaque build storage: catalogs use Main's lossless packed
+translation records with shared keys on native and WASM builds. External Rust consumers
+should use `text()` rather than decoding `source` directly. The shared key dictionary is
+loaded once; translation lookup and catalog contents stay unchanged.
+
 ## Testing strategy
 
 - **Unit and property tests** in every crate. proptest is used for tile COW, regions and codecs.

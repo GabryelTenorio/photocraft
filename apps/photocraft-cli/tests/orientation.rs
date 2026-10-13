@@ -1,7 +1,7 @@
 //! EXIF orientation end to end through the `photocraft-cli` binary (#285): a
 //! phone-style JPEG (stored landscape, Orientation = 6) converts to an upright
 //! portrait, an explicit rotation turns it back, and a `.pcraft` round trip
-//! changes nothing.
+//! preserves document contents and pixels apart from the saved filename.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -121,13 +121,14 @@ fn orientation_6_jpeg_converts_upright_and_rotates_back() {
     assert!(near(at(28, 12), upright_color(12, 4)), "{:?}", at(28, 12));
     assert!(near(at(4, 8), upright_color(8, 28)), "{:?}", at(4, 8));
 
-    // .pcraft save, reopen and save again: identical document and pixels.
+    // .pcraft save, reopen and save again: identical contents and pixels, with the new filename.
     let (a, b) = (d.join("a.pcraft"), d.join("b.pcraft"));
     ok(bin().arg("convert").arg(&jpg).arg(&a));
     ok(bin().arg("convert").arg(&a).arg(&b));
-    // Everything but the file's own path and saved document name must match.
+    // Each output must have its own filename; all remaining document data must match.
     let info = |p: &Path| {
         let mut v = serde_json::from_str::<Value>(&ok(bin().arg("info").arg(p))).unwrap();
+        assert_eq!(v["name"], p.file_name().unwrap().to_str().unwrap());
         v.as_object_mut().unwrap().remove("file");
         v.as_object_mut().unwrap().remove("path");
         v

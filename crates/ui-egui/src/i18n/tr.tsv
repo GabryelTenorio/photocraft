@@ -7,6 +7,34 @@
 # entries the same way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...)
 # stay as they are; the trailing "…" of dialog commands is kept.
 #
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	Açmak için bir görüntüyü, PSD veya PDF dosyasını herhangi bir yere bırakın.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Her çalışma yüzeyi bir PDF sayfası olur. Katmanlar birleştirilir; saydamlık korunur.
+	Export All Tabs to PDF…	Tüm Sekmeleri PDF Olarak Dışa Aktar…
+	Open PDF pages	PDF sayfalarını aç
+	{count} pages • Each selected page opens in its own tab	{count} sayfa • Seçilen her sayfa ayrı bir sekmede açılır
+	Click to select pages. Shift-click selects a range.	Sayfaları seçmek için tıklayın. Shift ile tıklamak bir aralık seçer.
+	Page {number}	Sayfa {number}
+	Page {number} — {width} × {height} in	Sayfa {number} — {width} × {height} inç
+	Loading preview…	Önizleme yükleniyor…
+	Resolution (ppi)	Çözünürlük (ppi)
+	Preview page: {width} × {height} pixels	Önizleme sayfası: {width} × {height} piksel
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Sayfalar 8 bit RGB görüntüler olarak açılır. PDF metni ve vektör nesneleri rasterleştirilir.
+	Open all {count} pages	{count} sayfanın tümünü aç
+	Open selected ({count})	Seçilenleri aç ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} sekme, soldan sağa sekme sırasıyla birleştirilecek.
+	Current edits are included. Each page keeps its size and resolution.	Mevcut düzenlemeler dahil edilir. Her sayfanın boyutu ve çözünürlüğü korunur.
+	Close exported tabs after successful export	Başarılı dışa aktarmadan sonra dışa aktarılan sekmeleri kapat
+	Canceled or failed exports leave every tab open.	İptal edilen veya başarısız dışa aktarmalarda tüm sekmeler açık kalır.
+	PDF saves the visible pages with flattened layers.	PDF, görünür sayfaları birleştirilmiş katmanlarla kaydeder.
+	Thumbnail size	Küçük resim boyutu
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd ile tıklamak seçime sayfa ekler. Shift ile tıklamak bir aralık seçer.
+	Place PDF pages as smart objects	PDF sayfalarını akıllı nesne olarak yerleştir
+	{count} pages • Each selected page becomes a smart object layer	{count} sayfa • Seçilen her sayfa bir akıllı nesne katmanı olur
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Akıllı nesneler, bu çözünürlükte rasterleştirilmiş sayfalar içerir. PDF metni ve vektörleri rasterleştirilmiş olarak kalır.
+	Place all {count} pages	{count} sayfanın tümünü yerleştir
+	Place selected ({count})	Seçilenleri yerleştir ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Akıllı nesneler doğrudan boyanamaz. Katmanı elle rasterleştirin veya yeni bir piksel katmanına boyayın.
 # Custom paper dimensions in Print Settings.
 	Paper Width	Kağıt Genişliği
 	Paper Height	Kağıt Yüksekliği
@@ -823,9 +851,6 @@
 	Appearance	Görünüm
 	Appearance (Layer Style)	Görünüm (Katman Stili)
 	Apply Layer Mask	Katman Maskesini Uygula
-	Add Mask to Selection	Maskeyi Seçime Ekle
-	Subtract Mask from Selection	Maskeyi Seçimden Çıkar
-	Intersect Mask with Selection	Maskeyi Seçimle Kesiştir
 	Apply Per Tip	İpucu Başına Uygula
 	Apply next selected layer comp	Sonraki seçilen katman kompozisyonunu uygula
 	Apply previous selected layer comp	Önceki seçilen katman kompozisyonunu uygula

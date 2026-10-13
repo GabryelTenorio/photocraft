@@ -103,7 +103,10 @@ pub fn list_images(dir: &str) -> Result<Vec<String>> {
     let mut out: Vec<String> = rd
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().and_then(|x| x.to_str()).is_some_and(|x| OPENABLE.contains(&x.to_ascii_lowercase().as_str())))
+        .filter(|p| {
+            p.is_file()
+                && p.extension().and_then(|x| x.to_str()).is_some_and(|x| x.eq_ignore_ascii_case("pdf") || OPENABLE.contains(&x.to_ascii_lowercase().as_str()))
+        })
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
     out.sort();
@@ -500,9 +503,10 @@ pub const PLACE_EMBEDDED: &str = "Place Embedded";
 /// With Preferences ▸ General ▸ Always Create Smart Objects When Placing off, an embedded place
 /// lands as a plain pixel layer instead (an explicit `"smartObject": false` asks for one).
 pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<String>, p: &Value) -> Result<Value> {
+    if linked.is_none() && (name.to_ascii_lowercase().ends_with(".pdf") || bytes.starts_with(b"%PDF-")) {
+        return place_pdf_bytes(s, name, &bytes, p);
+    }
     let d = s.active().ok_or(EngineError::NoDocument)?;
-    let (cw, ch) = (d.doc.size.width as f64, d.doc.size.height as f64);
-    let fmt = d.doc.pixel_format();
     let vector = photocraft_io::svg::is_svg(&bytes);
     let max_svg_group_depth = s.prefs().file_handling.rasterize_svg_groups_deeper_than as usize;
     let imported = photocraft_io::import_with_svg_group_depth(name, &bytes, max_svg_group_depth).map_err(|e| EngineError::Other(format!("{name}: {e}")))?;
@@ -512,9 +516,96 @@ pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<S
         )));
     }
     let src = imported.document;
+    let label = if linked.is_some() { "Place Linked" } else { PLACE_EMBEDDED };
+    let source = match linked {
+        Some(path) => SmartSource::Linked { path },
+        None => SmartSource::Embedded { file_name: file_name(name), bytes: Arc::new(bytes) },
+    };
+    let (layer, result) = prepare_placed_layer(&d.doc, &src, source, stem(name), vector, &s.prefs().general, p)?;
+    let id = s.edit(label, |doc, active| {
+        let id = doc.insert_above(*active, layer);
+        *active = Some(id);
+        Ok(id)
+    })?;
+    Ok(json!({"layer": id.0, "scale": result["scale"], "bounds": result["bounds"], "smartObject": result["smartObject"]}))
+}
+
+/// Selected PDF pages become independent layers in one history step, honoring the placement preferences.
+fn place_pdf_bytes(s: &mut Session, name: &str, bytes: &[u8], p: &Value) -> Result<Value> {
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let bad = |msg: &str| EngineError::BadParams { cmd: "file.placeEmbedded".into(), msg: msg.into() };
+    let pages = p
+        .get("pages")
+        .map(|v| {
+            let values = v.as_array().ok_or_else(|| bad("pages must be an array of zero-based page indices"))?;
+            if values.is_empty() || values.len() > 100 {
+                return Err(bad("select between 1 and 100 PDF pages"));
+            }
+            values.iter().map(|v| v.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad("invalid PDF page index"))).collect::<Result<Vec<_>>>()
+        })
+        .transpose()?;
+    let resolution = match p.get("resolution") {
+        Some(v) => v.as_f64().ok_or_else(|| bad("resolution must be a number"))? as f32,
+        None => 144.0,
+    };
+    let imported = photocraft_io::pdf::import_pdf_pages_with(
+        name,
+        bytes,
+        pages.as_deref(),
+        photocraft_io::pdf::ImportOptions { resolution },
+        &photocraft_raster::Interrupt::default(),
+    )
+    .map_err(|e| EngineError::Other(e.to_string()))?;
+    let documents = crate::jobs::pdf_page_documents(&imported.document)?;
+    let mut prepared = Vec::with_capacity(documents.len());
+    let mut placed_pixels = 0.0;
+    for src in documents {
+        if let Some(value) = p.get("scale") {
+            let scale = value.as_f64().filter(|v| v.is_finite() && *v > 0.0).ok_or_else(|| bad("scale must be a positive finite number"))? / 100.0;
+            let (w, h) = (src.size.width as f64 * scale, src.size.height as f64 * scale);
+            placed_pixels += w.ceil() * h.ceil();
+            if w > 16_384.0 || h > 16_384.0 || w.ceil() * h.ceil() > 64_000_000.0 || placed_pixels > 512_000_000.0 {
+                return Err(bad("placed PDF exceeds the output pixel limit; reduce scale"));
+            }
+        }
+        if let Some(value) = p.get("center") {
+            let values = value.as_array().filter(|v| v.len() == 2).ok_or_else(|| bad("center must contain two coordinates"))?;
+            if values.iter().any(|v| !v.as_f64().is_some_and(|n| n.is_finite() && n.abs() <= 300_000.0)) {
+                return Err(bad("center coordinates must be finite and within 300000 pixels"));
+            }
+        }
+        let page_name = stem(&src.name);
+        let source = SmartSource::Embedded { file_name: format!("{page_name}.pcraft"), bytes: Arc::new(crate::smart_cmds::encode_source(&src)?) };
+        prepared.push(prepare_placed_layer(&d.doc, &src, source, page_name, false, &s.prefs().general, p)?);
+    }
+    let layers = s.edit(PLACE_EMBEDDED, |doc, active| {
+        let mut ids = Vec::with_capacity(prepared.len());
+        // Insert in reverse so the Layers panel shows PDF pages in binder order.
+        for (layer, _) in prepared.into_iter().rev() {
+            let id = doc.insert_above(*active, layer);
+            *active = Some(id);
+            ids.push(id.0);
+        }
+        ids.reverse();
+        Ok(ids)
+    })?;
+    Ok(json!({"layer": layers.first(), "layers": layers}))
+}
+
+fn prepare_placed_layer(
+    doc: &Document,
+    src: &Document,
+    source: SmartSource,
+    layer_name: String,
+    vector: bool,
+    general: &crate::prefs::General,
+    p: &Value,
+) -> Result<(Layer, Value)> {
+    let (cw, ch) = (doc.size.width as f64, doc.size.height as f64);
+    let fmt = doc.pixel_format();
     let (w, h) = (src.size.width as f64, src.size.height as f64);
     // The implicit `fit` is Preferences ▸ General ▸ Resize Image During Place (on by default).
-    let fit = p.get("fit").and_then(Value::as_bool).unwrap_or(s.prefs().general.resize_image_during_place);
+    let fit = p.get("fit").and_then(Value::as_bool).unwrap_or(general.resize_image_during_place);
     let scale = match f64_param(p, "scale") {
         Some(k) => (k / 100.0).max(1e-4),
         None if fit && (w > cw || h > ch) => (cw / w).min(ch / h),
@@ -525,36 +616,26 @@ pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<S
         _ => (cw / 2.0, ch / 2.0),
     };
     let (dx, dy) = ((center.0 - w * scale / 2.0).round(), (center.1 - h * scale / 2.0).round());
-    let mut px = flattened(&src, fmt);
+    let mut px = flattened(src, fmt);
     if (scale - 1.0).abs() > 1e-9 {
         px = resize_surface(&px, scale, scale, Resample::Bicubic);
     }
     let px = translate_surface(&px, dx as i32, dy as i32);
     // Preferences ▸ General ▸ Always Create Smart Objects When Placing (on by default): off, an
     // embedded place lands as a plain pixel layer. A linked place is always a smart object.
-    let smart = linked.is_some() || p.get("smartObject").and_then(Value::as_bool).unwrap_or(s.prefs().general.always_create_smart_objects_when_placing);
-    let source = match linked {
-        Some(path) => SmartSource::Linked { path },
-        None => SmartSource::Embedded { file_name: file_name(name), bytes: Arc::new(bytes) },
+    let smart = matches!(&source, SmartSource::Linked { .. })
+        || p.get("smartObject").and_then(Value::as_bool).unwrap_or(general.always_create_smart_objects_when_placing);
+    let layer = if smart {
+        let mut so = SmartObject::new(source, Affine { m: [scale, 0.0, 0.0, scale, dx, dy] }, Some(px));
+        // A vector source (SVG) renders at its placement scale instead of as a resampled raster.
+        if vector && let Some(sharp) = crate::smart_cmds::render(doc, &so)? {
+            so.cache = Some(sharp);
+        }
+        Layer::new(layer_name, LayerContent::Smart(so))
+    } else {
+        Layer::new(layer_name, LayerContent::Raster(px))
     };
-    let layer_name = stem(name);
-    let label = if matches!(&source, SmartSource::Linked { .. }) { "Place Linked" } else { PLACE_EMBEDDED };
-    let id = s.edit(label, |doc, active| {
-        let layer = if smart {
-            let mut so = SmartObject::new(source, Affine { m: [scale, 0.0, 0.0, scale, dx, dy] }, Some(px));
-            // A vector source (SVG) renders at its placement scale instead of as a resampled raster.
-            if vector && let Some(sharp) = crate::smart_cmds::render(doc, &so)? {
-                so.cache = Some(sharp);
-            }
-            Layer::new(layer_name, LayerContent::Smart(so))
-        } else {
-            Layer::new(layer_name, LayerContent::Raster(px))
-        };
-        let id = doc.insert_above(*active, layer);
-        *active = Some(id);
-        Ok(id)
-    })?;
-    Ok(json!({"layer": id.0, "scale": scale * 100.0, "bounds": [dx, dy, dx + w * scale, dy + h * scale], "smartObject": smart}))
+    Ok((layer, json!({"scale": scale * 100.0, "bounds": [dx, dy, dx + w * scale, dy + h * scale], "smartObject": smart})))
 }
 
 fn place(s: &mut Session, p: &Value, linked: bool) -> Result<Value> {
@@ -1490,7 +1571,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place Embedded…",
             &["File"],
             None,
-            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool? (default: Preferences > General > Resize Image During Place),"smartObject":bool? (default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
+            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool? (default: Preferences > General > Resize Image During Place),"smartObject":bool? (default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?,"pages":[zero-based index,…]? (PDF),"resolution":ppi=144 (PDF)}"##,
             native_doc,
             |s, p| place(s, p, false)
         ),

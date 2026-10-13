@@ -610,6 +610,66 @@ mod tests {
     }
 
     #[test]
+    fn doc_place_pdf_preserves_page_options_target_and_atomic_history() {
+        use photocraft_doc::{Artboard, ColorMode, Document, Group, Layer, LayerContent, Rect, SampleType, Size, SmartSource};
+
+        let root = std::env::temp_dir().join(format!("pc-doc-place-pdf-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut binder = Document::new("binder", Size::new(12, 40), ColorMode::Rgb, SampleType::U8);
+        binder.resolution_dpi = 72.0;
+        for (name, rect) in [("Page 2", Rect::new(0, 24, 10, 32)), ("Page 1", Rect::new(0, 0, 12, 16))] {
+            binder.layers.push(Layer::new(name, LayerContent::Group(Group { children: vec![], expanded: true, artboard: Some(Artboard::new(rect)) })));
+        }
+        let bytes = photocraft_io::export(&binder, "pdf", &Default::default()).unwrap().bytes;
+        std::fs::write(root.join("binder.pdf"), &bytes).unwrap();
+        std::fs::write(root.join("broken.pdf"), b"%PDF-invalid").unwrap();
+
+        let mut h = Headless::with_workspace(crate::AuthorizedWorkspace::new(Some(&root), None).unwrap());
+        h.handle("doc.new", json!({"width": 40, "height": 30})).unwrap();
+        let before = h.session.active().unwrap().doc.clone();
+        let history = h.session.active().unwrap().history.past_len();
+        h.handle("doc.new", json!({"width": 9, "height": 7})).unwrap();
+        let unrelated = h.session.active().unwrap().doc.clone();
+
+        let placed = h.handle("doc.place", json!({"path": "binder.pdf", "index": 0, "pages": [1], "resolution": 72, "fit": false})).unwrap();
+        let layers = placed["layers"].as_array().unwrap();
+        assert_eq!(layers.len(), 1);
+        assert!(layers[0].as_u64().is_some(), "{placed}");
+        assert_eq!(placed["layer"], layers[0]);
+        assert_eq!(h.session.documents().len(), 2);
+        assert_eq!(h.session.active().unwrap().doc.id, before.id);
+        assert_eq!(h.session.active().unwrap().doc.size, before.size);
+        assert_eq!(h.session.documents()[1].doc, unrelated);
+        assert_eq!(h.session.active().unwrap().history.past_len(), history + 1);
+        let target = &h.session.active().unwrap().doc;
+        assert_eq!(target.layers.len(), before.layers.len() + 1);
+        let layer = target.layers.last().unwrap();
+        assert_eq!(placed["layer"].as_u64(), Some(layer.id.0));
+        assert_eq!(layer.name, "binder - Page 2");
+        let LayerContent::Smart(so) = &layer.content else { panic!("smart object required") };
+        let SmartSource::Embedded { file_name, bytes: source } = &so.source else { panic!("embedded source required") };
+        assert!(file_name.ends_with(".pcraft"));
+        let source = photocraft_format::load_from_bytes(source).unwrap();
+        assert_eq!(source.size, Size::new(10, 8));
+        assert_eq!(source.resolution_dpi, 72.0);
+        assert_eq!(so.transform.m[0], 1.0);
+
+        h.handle("engine.execute", json!({"command": "edit.undo", "params": {}})).unwrap();
+        assert_eq!(h.session.active().unwrap().doc, before);
+        assert_eq!(h.session.documents()[1].doc, unrelated);
+        let history = h.session.active().unwrap().history.past_len();
+        assert!(h.handle("doc.place", json!({"path": "broken.pdf", "index": 0})).is_err());
+        assert_eq!(h.session.documents().len(), 2);
+        assert_eq!(h.session.active().unwrap().doc, before);
+        assert_eq!(h.session.documents()[1].doc, unrelated);
+        assert_eq!(h.session.active().unwrap().history.past_len(), history);
+        assert_eq!(std::fs::read(root.join("binder.pdf")).unwrap(), bytes);
+        // Release directory capabilities before cleanup on Windows.
+        drop(h);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn doc_place_reads_through_the_read_root_and_never_outside_it() {
         let base = std::env::temp_dir().join(format!("pc-doc-place-{}", std::process::id()));
         let root = base.join("workspace");

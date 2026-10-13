@@ -440,6 +440,7 @@ fn is_input(p: &Path) -> bool {
     let known = |e: &str| {
         matches!(e, "pcraft" | "psd" | "psb" | "pdn" | "ora" | "kra" | "krz" | "af" | "afdesign" | "afphoto" | "afpub")
             || photocraft_codecs::from_extension(e).is_some_and(|f| photocraft_codecs::caps(f).read)
+            || e == "pdf"
     };
     p.is_file() && p.extension().is_some_and(|e| known(&e.to_string_lossy().to_ascii_lowercase()))
 }

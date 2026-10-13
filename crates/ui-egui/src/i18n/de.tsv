@@ -15,6 +15,36 @@
 # way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept. Plural rule: one|other (n != 1 -> other).
 
+# Plural status messages (complete catalog coverage)
+
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	Ziehe ein Bild, PSD oder PDF an eine beliebige Stelle, um es zu öffnen.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Jede Zeichenfläche wird zu einer PDF-Seite. Ebenen werden zusammengeführt; Transparenz bleibt erhalten.
+	Export All Tabs to PDF…	Alle Tabs als PDF exportieren…
+	Open PDF pages	PDF-Seiten öffnen
+	{count} pages • Each selected page opens in its own tab	{count} Seiten • Jede ausgewählte Seite öffnet sich in einem eigenen Tab
+	Click to select pages. Shift-click selects a range.	Klicken Sie zum Auswählen. Umschalt-Klick wählt einen Bereich.
+	Page {number}	Seite {number}
+	Page {number} — {width} × {height} in	Seite {number} — {width} × {height} Zoll
+	Loading preview…	Vorschau wird geladen…
+	Resolution (ppi)	Auflösung (ppi)
+	Preview page: {width} × {height} pixels	Vorschauseite: {width} × {height} Pixel
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Seiten öffnen sich als RGB-Bilder mit 8 Bit. PDF-Text und Vektorobjekte werden gerastert.
+	Open all {count} pages	Alle {count} Seiten öffnen
+	Open selected ({count})	Auswahl öffnen ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} Tabs werden in ihrer Reihenfolge von links nach rechts zusammengeführt.
+	Current edits are included. Each page keeps its size and resolution.	Aktuelle Änderungen werden übernommen. Jede Seite behält Größe und Auflösung.
+	Close exported tabs after successful export	Exportierte Tabs nach erfolgreichem Export schließen
+	Canceled or failed exports leave every tab open.	Bei Abbruch oder fehlgeschlagenem Export bleiben alle Tabs geöffnet.
+	PDF saves the visible pages with flattened layers.	PDF speichert sichtbare Seiten mit zusammengeführten Ebenen.
+	Thumbnail size	Miniaturgröße
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Strg/Cmd-Klick ergänzt Seiten. Umschalt-Klick wählt einen Bereich.
+	Place PDF pages as smart objects	PDF-Seiten als Smartobjekte einfügen
+	{count} pages • Each selected page becomes a smart object layer	{count} Seiten • Jede ausgewählte Seite wird eine Smartobjekt-Ebene
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Smartobjekte enthalten gerasterte Seiten in dieser Auflösung. PDF-Text und Vektoren bleiben gerastert.
+	Place all {count} pages	Alle {count} Seiten einfügen
+	Place selected ({count})	Auswahl einfügen ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Smartobjekte können nicht direkt bemalt werden. Ebene manuell rastern oder auf einer neuen Pixelebene malen.
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -839,9 +869,6 @@
 	Appearance	Erscheinungsbild
 	Appearance (Layer Style)	Erscheinungsbild (Ebenenstil)
 	Apply Layer Mask	Ebenenmaske anwenden
-	Add Mask to Selection	Maske zur Auswahl hinzufügen
-	Subtract Mask from Selection	Maske von Auswahl subtrahieren
-	Intersect Mask with Selection	Schnittmenge von Maske und Auswahl
 	Apply Per Tip	Pro Pinselspitze anwenden
 	Apply next selected layer comp	Nächste ausgewählte Ebenenkomposition anwenden
 	Apply previous selected layer comp	Vorherige ausgewählte Ebenenkomposition anwenden
@@ -2589,6 +2616,12 @@ fontWeight	Italic	Kursiv
 	Quick Selection found nothing there	Die Schnellauswahl hat dort nichts gefunden
 	Object Selection found nothing there — try a tighter rectangle	Die Objektauswahl hat dort nichts gefunden — versuchen Sie ein engeres Rechteck
 	No subject found — try a rectangle around the object	Kein Motiv gefunden — versuchen Sie ein Rechteck um das Objekt
+
+
+
+
+
+
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Klicke auf den ersten Punkt oder drücke {key} zum Schließen · {del} entfernt einen Punkt · Esc bricht ab
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Klicke und bewege dich entlang einer Kante · Klicken setzt einen Ankerpunkt · {alt}-Klick für ein gerades Segment · Doppelklick schließt
 	Follows only edges this close to the pointer ([ and ] change it)	Folgt nur Kanten so nah am Zeiger ([ und ] ändern den Wert)

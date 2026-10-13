@@ -1509,8 +1509,9 @@ impl Session {
             st.history.trim(&st.doc);
         }
         photocraft_compose::set_effect_cache_budget(budget << 20);
-        // Without waiting for the system font scan: this runs on the UI thread at launch.
-        photocraft_text::set_shared_missing_glyph_protection(self.prefs().type_.missing_glyph_protection());
+        if let Ok(mut engine) = photocraft_text::shared().lock() {
+            engine.fonts.set_missing_glyph_protection(self.prefs().type_.missing_glyph_protection());
+        }
         crate::plugin_cmds::sync_prefs(self);
     }
 

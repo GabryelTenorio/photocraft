@@ -19,6 +19,34 @@
 # stay as they are; the trailing "…" of dialog commands is kept. Plural rule: one form
 # (`plural_none` in i18n/mod.rs).
 
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	Thả ảnh, PSD hoặc PDF vào bất kỳ đâu để mở.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Mỗi artboard trở thành một trang PDF. Các lớp được gộp; độ trong suốt được giữ nguyên.
+	Export All Tabs to PDF…	Xuất tất cả tab thành PDF…
+	Open PDF pages	Mở các trang PDF
+	{count} pages • Each selected page opens in its own tab	{count} trang • Mỗi trang đã chọn được mở trong một tab riêng
+	Click to select pages. Shift-click selects a range.	Nhấp để chọn trang. Giữ Shift rồi nhấp để chọn một dải trang.
+	Page {number}	Trang {number}
+	Page {number} — {width} × {height} in	Trang {number} — {width} × {height} inch
+	Loading preview…	Đang tải bản xem trước…
+	Resolution (ppi)	Độ phân giải (ppi)
+	Preview page: {width} × {height} pixels	Trang xem trước: {width} × {height} pixel
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Các trang được mở dưới dạng ảnh RGB 8-bit. Văn bản và đối tượng vectơ trong PDF được raster hóa.
+	Open all {count} pages	Mở tất cả {count} trang
+	Open selected ({count})	Mở các trang đã chọn ({count})
+	{count} tabs will be combined in left-to-right tab order.	Sẽ gộp {count} tab theo thứ tự từ trái sang phải.
+	Current edits are included. Each page keeps its size and resolution.	Các chỉnh sửa hiện tại được bao gồm. Mỗi trang giữ nguyên kích thước và độ phân giải.
+	Close exported tabs after successful export	Đóng các tab đã xuất sau khi xuất thành công
+	Canceled or failed exports leave every tab open.	Khi hủy hoặc xuất thất bại, tất cả tab vẫn mở.
+	PDF saves the visible pages with flattened layers.	PDF lưu các trang hiển thị với các lớp đã gộp.
+	Thumbnail size	Cỡ hình thu nhỏ
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Giữ Ctrl/Cmd rồi nhấp để chọn thêm trang. Giữ Shift rồi nhấp để chọn một dải trang.
+	Place PDF pages as smart objects	Đặt các trang PDF dưới dạng đối tượng thông minh
+	{count} pages • Each selected page becomes a smart object layer	{count} trang • Mỗi trang đã chọn trở thành một lớp đối tượng thông minh
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Các đối tượng thông minh chứa các trang đã raster hóa ở độ phân giải này. Văn bản và vectơ PDF vẫn ở dạng raster.
+	Place all {count} pages	Đặt tất cả {count} trang
+	Place selected ({count})	Đặt các trang đã chọn ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Không thể vẽ trực tiếp lên đối tượng thông minh. Hãy raster hóa lớp thủ công hoặc vẽ trên một lớp pixel mới.
 
 # Phase 3.1 — top-level menus, File menu, Edit menu
 # Custom paper dimensions in Print Settings.
@@ -950,9 +978,6 @@
 	Duplicate Layers…	Nhân bản các lớp…
 	Add Layer Mask	Thêm mặt nạ lớp
 	Apply Layer Mask	Áp dụng mặt nạ lớp
-	Add Mask to Selection	Thêm mặt nạ vào vùng chọn
-	Subtract Mask from Selection	Trừ mặt nạ khỏi vùng chọn
-	Intersect Mask with Selection	Giao mặt nạ với vùng chọn
 	Delete Layer Mask	Xóa mặt nạ lớp
 	Disable Layer Mask	Tắt mặt nạ lớp
 	Release Clipping Mask	Nhả mặt nạ cắt

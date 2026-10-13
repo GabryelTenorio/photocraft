@@ -173,18 +173,6 @@ fn image_size(s: &mut Session, p: &Value) -> Result<Value> {
         pw = pw.or(Some(ow as f64 * pc / 100.0));
         ph = ph.or(Some(oh as f64 * pc / 100.0));
     }
-    // `keepPrintSize`: only the resolution given, the pixels follow it (Photoshop's Image Size
-    // with Resample on, as an action records it).
-    if p.get("keepPrintSize").and_then(Value::as_bool) == Some(true)
-        && pw.is_none()
-        && ph.is_none()
-        && let Some(r) = p.get("resolution").and_then(Value::as_f64)
-    {
-        let r = r.clamp(1.0, 10_000.0);
-        let old = f64::from(d.doc.resolution_dpi).max(1.0);
-        pw = Some(ow as f64 * r / old);
-        ph = Some(oh as f64 * r / old);
-    }
     // Missing dimension keeps the aspect ratio.
     let (nw, nh) = match (pw, ph) {
         (Some(w), Some(h)) => (w, h),
@@ -329,6 +317,17 @@ fn crop_doc(doc: &mut Document, cmd: &str, r: Rect, delete_pixels: bool, extensi
         surf.fill_rect(Rect::from_xywh(0, 0, r.width(), r.height()), &px);
         if !keep.is_empty() {
             surf.write_interleaved(keep, &saved);
+        }
+    }
+    // A single artboard is the page (including PDF pages opened in separate tabs).
+    // Keep its printable boundary in sync with Crop/Trim, rather than exporting the
+    // old sheet with the cropped pixels sitting in an oversized blank page.
+    // Multiple artboards have independent page boundaries and retain their layout.
+    if doc.artboards().len() == 1 {
+        let bounds = doc.bounds();
+        if let Some(board) = doc.layers.iter_mut().find_map(|layer| layer.artboard_mut()) {
+            board.rect = bounds;
+            board.preset.clear();
         }
     }
     crate::canvas_geom::refresh(doc, crate::canvas_geom::Refresh::Shapes);
@@ -731,7 +730,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "image.imageSize",
             "Image Size…",
             ["Image"],
-            r##"{"width":px,"height":px,"percent":%? (both sides; an explicit side wins),"resolution":ppi,"keepPrintSize":bool=false (with only a resolution: resample the pixels to keep the print size),"resample":"automatic|preserveDetails|bicubicSmoother|bicubicSharper|bicubicAutomatic|bicubic|nearest|bilinear|lanczos|none"="bicubic"} → {width,height} (the document's size after the command; "none" changes the resolution only)"##,
+            r##"{"width":px,"height":px,"percent":%? (both sides; an explicit side wins),"resolution":ppi,"resample":"automatic|preserveDetails|bicubicSmoother|bicubicSharper|bicubicAutomatic|bicubic|nearest|bilinear|lanczos|none"="bicubic"} → {width,height} (the document's size after the command; "none" changes the resolution only)"##,
             has_doc,
             image_size
         ),
@@ -872,21 +871,6 @@ mod tests {
 
     fn doc(s: &Session) -> &Document {
         &s.active().unwrap().doc
-    }
-
-    /// Resample on with only a new resolution keeps the print size, as Photoshop's Image Size
-    /// does (an action's `imageSize` with `Rslt` alone); without `keepPrintSize` only the
-    /// resolution changes.
-    #[test]
-    fn image_size_keep_print_size_resamples_to_the_resolution() {
-        let mut s = session();
-        s.execute("image.imageSize", json!({"resolution": 144, "resample": "bicubic"})).unwrap();
-        assert_eq!((doc(&s).size, doc(&s).resolution_dpi), (Size::new(40, 20), 144.0));
-        s.execute("image.imageSize", json!({"resolution": 288, "resample": "bicubic", "keepPrintSize": true})).unwrap();
-        assert_eq!((doc(&s).size, doc(&s).resolution_dpi), (Size::new(80, 40), 288.0));
-        // An explicit side still wins.
-        s.execute("image.imageSize", json!({"width": 20, "resolution": 72, "resample": "bicubic", "keepPrintSize": true})).unwrap();
-        assert_eq!(doc(&s).size, Size::new(20, 10));
     }
 
     #[test]
@@ -1135,6 +1119,42 @@ mod tests {
         s.execute("layer.new.layerFromBackground", json!({})).unwrap();
         s.execute("image.crop", json!({"x": -4, "y": 0, "width": 20, "height": 16})).unwrap();
         assert_eq!(doc(&s).layers[0].surface().unwrap().rgba(1, 8), [0.0; 4]);
+    }
+
+    #[test]
+    fn extending_crop_and_trim_keep_the_background_and_single_artboard_in_sync() {
+        for delete in [false, true] {
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width": 16, "height": 16, "background": "#ff0000"})).unwrap();
+            let board = s.execute("layer.new.artboard", json!({"rect": [0, 0, 16, 16], "background": "transparent"})).unwrap();
+            let board = LayerId(board["layer"].as_u64().unwrap());
+            s.tools.background = [0.0, 1.0, 0.0, 1.0];
+            let check = |s: &Session, width, border| {
+                assert_eq!(doc(s).size, Size::new(width, 16));
+                assert_eq!(doc(s).layer(board).unwrap().artboard().unwrap().rect, Rect::from_xywh(0, 0, width, 16));
+                let background = &doc(s).layers[0];
+                assert_eq!(background.name, "Background");
+                assert!(background.locks.transparency && background.locks.position);
+                assert_eq!(background.surface().unwrap().rgba(1, 8), border);
+                assert_eq!(background.surface().unwrap().rgba(8, 8), [1.0, 0.0, 0.0, 1.0]);
+            };
+            let past = s.active().unwrap().history.past_len();
+            s.execute("image.crop", json!({"x": -4, "y": 0, "width": 20, "height": 16, "deleteCroppedPixels": delete})).unwrap();
+            check(&s, 20, [0.0, 1.0, 0.0, 1.0]);
+            assert_eq!(s.active().unwrap().history.past_len(), past + 1);
+            s.execute("image.trim", json!({"basedOn": "topLeft"})).unwrap();
+            check(&s, 16, [1.0, 0.0, 0.0, 1.0]);
+            assert_eq!(s.active().unwrap().history.past_len(), past + 2);
+            s.execute("edit.undo", json!({})).unwrap();
+            check(&s, 20, [0.0, 1.0, 0.0, 1.0]);
+            s.execute("edit.undo", json!({})).unwrap();
+            check(&s, 16, [1.0, 0.0, 0.0, 1.0]);
+            assert_eq!(doc(&s).layers[0].surface().unwrap().content_bounds(), Rect::new(0, 0, 16, 16));
+            s.execute("edit.redo", json!({})).unwrap();
+            check(&s, 20, [0.0, 1.0, 0.0, 1.0]);
+            s.execute("edit.redo", json!({})).unwrap();
+            check(&s, 16, [1.0, 0.0, 0.0, 1.0]);
+        }
     }
 
     /// A document (`mode`, `depth`) with a white Background and a layer holding a red pixel at

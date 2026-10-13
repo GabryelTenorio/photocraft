@@ -19,6 +19,34 @@
 # (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin letters; the trailing "…" of
 # dialog commands is kept.
 
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	Přetáhněte sem obrázek, PSD nebo PDF a otevře se.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Každé kreslicí plátno se stane jednou stránkou PDF. Vrstvy se sloučí; průhlednost zůstane zachována.
+	Export All Tabs to PDF…	Exportovat všechny karty do PDF…
+	Open PDF pages	Otevřít stránky PDF
+	{count} pages • Each selected page opens in its own tab	{count} stránek • Každá vybraná stránka se otevře na vlastní kartě
+	Click to select pages. Shift-click selects a range.	Kliknutím vyberete stránky. Shift-kliknutí vybere rozsah.
+	Page {number}	Stránka {number}
+	Page {number} — {width} × {height} in	Stránka {number} — {width} × {height} palců
+	Loading preview…	Načítání náhledu…
+	Resolution (ppi)	Rozlišení (ppi)
+	Preview page: {width} × {height} pixels	Stránka náhledu: {width} × {height} pixelů
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Stránky se otevřou jako 8bitové obrázky RGB. Text a vektorové objekty PDF se rastrují.
+	Open all {count} pages	Otevřít všechny stránky ({count})
+	Open selected ({count})	Otevřít vybrané ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} karet bude spojeno v pořadí zleva doprava.
+	Current edits are included. Each page keeps its size and resolution.	Aktuální úpravy jsou zahrnuty. Každá stránka si zachová velikost a rozlišení.
+	Close exported tabs after successful export	Zavřít exportované karty po úspěšném exportu
+	Canceled or failed exports leave every tab open.	Zrušený nebo neúspěšný export ponechá všechny karty otevřené.
+	PDF saves the visible pages with flattened layers.	PDF ukládá viditelné stránky se sloučenými vrstvami.
+	Thumbnail size	Velikost miniatur
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	Ctrl/Cmd-klik přidá stránky. Shift-klik vybere rozsah.
+	Place PDF pages as smart objects	Vložit stránky PDF jako inteligentní objekty
+	{count} pages • Each selected page becomes a smart object layer	{count} stránek • Každá vybraná stránka vytvoří vrstvu inteligentního objektu
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Inteligentní objekty obsahují rastrové stránky v tomto rozlišení. Text a vektory PDF zůstávají rastrové.
+	Place all {count} pages	Vložit všech {count} stránek
+	Place selected ({count})	Vložit vybrané ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Inteligentní objekty nelze přímo malovat. Ručně rastrujte vrstvu nebo malujte na nové pixelové vrstvě.
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -861,9 +889,6 @@
 	Appearance	Vzhled
 	Appearance (Layer Style)	Vzhled (styl vrstvy)
 	Apply Layer Mask	Použít masku vrstvy
-	Add Mask to Selection	Přidat masku do výběru
-	Subtract Mask from Selection	Odečíst masku od výběru
-	Intersect Mask with Selection	Průnik masky s výběrem
 	Apply Per Tip	Použít pro každý hrot
 	Apply next selected layer comp	Použít další vybranou kompozici vrstev
 	Apply previous selected layer comp	Použít předchozí vybranou kompozici vrstev
@@ -2551,6 +2576,12 @@ fontWeight	Italic	Kurzíva
 	Quick Selection found nothing there	Rychlý výběr zde nic nenašel
 	Object Selection found nothing there — try a tighter rectangle	Výběr objektu zde nic nenašel — zkuste těsnější obdélník
 	No subject found — try a rectangle around the object	Nebyl nalezen žádný objekt — zkuste obdélník kolem objektu
+
+
+
+
+
+
 	Auto Erase	Automatické mazání
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Klikněte na první bod nebo stiskněte {key} pro uzavření · {del} odebere bod · Esc zruší
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Klikněte a veďte podél okraje · kliknutím připevníte bod · {alt}-kliknutí pro rovný úsek · dvojklik uzavře
@@ -3467,6 +3498,7 @@ cameraRaw	Whites	Bílé
 layerLabel	No Color	Žádná barva
 	Loading fonts…	Načítání písem…
 	Simulate Pressure	Simulovat přítlak
+	Stroke Path…	Obtáhnout cestu…
 	Background Eraser	Guma pozadí
 	Healing Brush	Retušovací štětec
 	Spot Healing Brush	Bodový retušovací štětec
@@ -3514,7 +3546,6 @@ curves	Smooth	Vyhladit
 	Create Vector Mask	Vytvořit vektorovou masku
 	Make Selection…	Vytvořit výběr…
 	Fill Path…	Vyplnit cestu…
-	Stroke Path…	Obtáhnout cestu…
 	Clipping Path…	Ořezová cesta…
 	Free Transform Path	Volná transformace cesty
 	Unite Shapes at Overlap	Sjednotit tvary v překryvu
@@ -3664,7 +3695,6 @@ curves	Smooth	Vyhladit
 	gradients	přechody
 @plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	Importován {n} štětec ze souboru {file}|Importovány {n} štětce ze souboru {file}|Importováno {n} štětců ze souboru {file}
 @plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	Importován {n} přechod ze souboru {file}|Importovány {n} přechody ze souboru {file}|Importováno {n} přechodů ze souboru {file}
-@plural	Imported {n} pattern from {file}|Imported {n} patterns from {file}	Importován {n} vzorek ze souboru {file}|Importovány {n} vzorky ze souboru {file}|Importováno {n} vzorků ze souboru {file}
 	Data Set: {name}  ({index}/{total})	Datová sada: {name}  ({index}/{total})
 	(none)	(žádná)
 navigator	Zoom	Zvětšení

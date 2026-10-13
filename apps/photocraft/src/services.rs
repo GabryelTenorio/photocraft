@@ -39,12 +39,14 @@ fn open_filter_extensions(extensions: &[&str]) -> Vec<String> {
 /// An explicit SVG filter keeps vector artwork discoverable even when a native picker defaults to
 /// the PhotoCraft-only filter. SVG is also included in All Formats for normal multi-format opens.
 fn open_filters() -> Vec<(&'static str, Vec<String>)> {
+    let all_formats: Vec<_> = OPEN_EXTS.iter().copied().chain(["pdf"]).collect();
     vec![
-        ("All Formats", open_filter_extensions(OPEN_EXTS)),
+        ("All Formats", open_filter_extensions(&all_formats)),
         ("PhotoCraft", open_filter_extensions(&["pcraft"])),
         ("OpenRaster", open_filter_extensions(&["ora"])),
         ("Krita", open_filter_extensions(&["kra", "krz"])),
         ("SVG", open_filter_extensions(SVG_EXTS)),
+        ("PDF", open_filter_extensions(&["pdf"])),
     ]
 }
 
@@ -55,6 +57,7 @@ const SAVE_FILTERS: &[(&str, &[&str])] = &[
     ("PSD Document", &["psd", "psb"]),
     ("PhotoCraft", &["pcraft"]),
     ("OpenRaster", &["ora"]),
+    ("PDF", &["pdf"]),
     ("PNG", &["png"]),
     ("JPEG", &["jpg"]),
     ("WebP", &["webp"]),
@@ -598,6 +601,16 @@ mod tests {
     }
 
     #[test]
+    fn open_filters_keep_pdf_and_new_upstream_formats() {
+        let filters = open_filters();
+        let all = &filters.iter().find(|(name, _)| *name == "All Formats").expect("all formats filter").1;
+        for ext in ["pdf", "kra", "pcx"] {
+            assert!(open_filter_extensions(&[ext]).iter().all(|glob| all.contains(glob)), "missing {ext}");
+        }
+        assert_eq!(filters.iter().find(|(name, _)| *name == "PDF").map(|(_, exts)| exts), Some(&open_filter_extensions(&["pdf"])));
+    }
+
+    #[test]
     fn xwayland_command_matches_how_photocraft_was_installed() {
         // Flatpak: WAYLAND_DISPLAY doesn't reach the sandbox's socket choice; flatpak's flags do.
         let flatpak = xwayland_command(Some("ai.storyteller.photocraft"), None, false);
@@ -699,6 +712,14 @@ mod tests {
         let layered = ["psd", "psb", "pcraft", "ora"];
         for (name, exts) in SAVE_FILTERS {
             for ext in exts.iter().filter(|e| !layered.contains(e)) {
+                if *ext == "pdf" {
+                    // PDF uses the IO writer rather than a flat-image codec.
+                    let mut session = Session::new();
+                    session.execute("file.new", json!({"width": 4, "height": 4})).unwrap();
+                    let pdf = photocraft_io::export(&session.active().unwrap().doc, "test.pdf", &Default::default()).unwrap();
+                    assert!(pdf.bytes.starts_with(b"%PDF-"), "{name}: PDF writer output");
+                    continue;
+                }
                 let format = photocraft_codecs::from_extension(ext).unwrap_or_else(|| panic!("{name}: .{ext} is no known format"));
                 assert!(format.caps().write, "{name}: .{ext} can't be written");
             }

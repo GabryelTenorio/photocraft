@@ -1234,25 +1234,16 @@ async fn convention_resources_are_live_json() {
     assert!(read("photocraft://document").await["document"].is_null());
     json_of(&call(&client, "doc_new", json!({"width":8,"height":6})).await);
     assert_eq!(read("photocraft://document").await["width"], 8);
-    // Edit › Purge › All is enabled while the process-wide effect, mask and stack caches hold
-    // anything, and the other tests in this binary fill and purge those caches concurrently, so
-    // its `enabled` flag and paired `disabledReason` can flip between the two reads. Validate
-    // each availability pair; every stable field and every other command must match exactly.
-    let stable = |mut v: Value| {
-        for c in v.as_array_mut().into_iter().flatten() {
-            if c["id"] == "edit.purge.all" {
-                let reason = if c["enabled"].as_bool().unwrap() { Value::Null } else { json!("nothing to purge") };
-                assert_eq!(c["disabledReason"], reason, "purge availability stays internally consistent");
-                let command = c.as_object_mut().unwrap();
-                command.remove("enabled");
-                command.remove("disabledReason");
-            }
-        }
-        v
-    };
-    let commands = stable(read("photocraft://commands").await);
+    // Local undo history keeps Purge All enabled while other tests change global caches.
+    json_of(&call(&client, "command_run", json!({"id":"layer.new.layer", "params":{}})).await);
+    let commands = read("photocraft://commands").await;
     assert!(commands.as_array().is_some_and(|a| a.len() > 100), "{commands}");
-    assert_eq!(commands, stable(json_of(&call(&client, "command_list", json!({})).await)));
+    for id in ["edit.undo", "edit.purge.all"] {
+        assert!(commands.as_array().unwrap().iter().any(|command| command["id"] == id && command["enabled"] == true), "{id} must be enabled by local history");
+        let command = commands.as_array().unwrap().iter().find(|command| command["id"] == id).unwrap();
+        assert_eq!(command["disabledReason"], Value::Null, "enabled {id} has no disabled reason");
+    }
+    assert_eq!(commands, json_of(&call(&client, "command_list", json!({})).await));
     assert!(client.read_resource(rmcp::model::ReadResourceRequestParams::new("photocraft://missing")).await.is_err());
     let preview = call(&client, "render_preview", json!({"max_side":4})).await;
     assert!(preview.content.iter().any(|c| c.as_image().is_some()));

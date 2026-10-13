@@ -16,6 +16,35 @@
 # letters; the trailing "…" of dialog commands is kept. Plural rule: a count is followed by the
 # singular noun in Hungarian, so every @plural entry has a single form.
 
+# PDF import, export and Smart Object painting.
+	Drop an image, PSD or PDF anywhere to open it.	A megnyitáshoz húzz egy képet, PSD- vagy PDF-fájlt bárhová.
+	Each artboard becomes one PDF page. Layers are flattened; transparency is preserved.	Minden rajztábla egy PDF-oldallá válik. A rétegek összeolvadnak; az átlátszóság megmarad.
+	Export All Tabs to PDF…	Összes lap exportálása PDF-be…
+	Open PDF pages	PDF-oldalak megnyitása
+	{count} pages • Each selected page opens in its own tab	{count} oldal • Minden kijelölt oldal külön lapon nyílik meg
+	Click to select pages. Shift-click selects a range.	Kattints az oldalak kijelöléséhez. A Shift+kattintás egy tartományt jelöl ki.
+	Page {number}	{number}. oldal
+	Page {number} — {width} × {height} in	{number}. oldal — {width} × {height} hüvelyk
+	Loading preview…	Előnézet betöltése…
+	Resolution (ppi)	Felbontás (ppi)
+	Preview page: {width} × {height} pixels	Előnézeti oldal: {width} × {height} képpont
+	Pages open as RGB 8-bit images. PDF text and vector objects are rasterized.	Az oldalak 8 bites RGB-képként nyílnak meg. A PDF szövege és vektoros objektumai raszterizálva lesznek.
+	Open all {count} pages	Mind a(z) {count} oldal megnyitása
+	Open selected ({count})	Kijelöltek megnyitása ({count})
+	{count} tabs will be combined in left-to-right tab order.	{count} lap lesz egyesítve a lapok balról jobbra haladó sorrendjében.
+	Current edits are included. Each page keeps its size and resolution.	A jelenlegi módosítások is bekerülnek. Minden oldal megőrzi méretét és felbontását.
+	Close exported tabs after successful export	Exportált lapok bezárása sikeres exportálás után
+	Canceled or failed exports leave every tab open.	Megszakított vagy sikertelen exportálás esetén minden lap nyitva marad.
+	PDF saves the visible pages with flattened layers.	A PDF a látható oldalakat összeolvasztott rétegekkel menti.
+	Thumbnail size	Bélyegkép mérete
+	Ctrl/Cmd-click adds pages. Shift-click selects a range.	A Ctrl/Cmd+kattintás oldalakat ad a kijelöléshez. A Shift+kattintás egy tartományt jelöl ki.
+	Place PDF pages as smart objects	PDF-oldalak elhelyezése intelligens objektumként
+	{count} pages • Each selected page becomes a smart object layer	{count} oldal • Minden kijelölt oldal intelligensobjektum-réteggé válik
+	Smart objects contain rasterized pages at this resolution. PDF text and vectors remain rasterized.	Az intelligens objektumok ezen a felbontáson raszterizált oldalakat tartalmaznak. A PDF szövege és vektorai raszterizálva maradnak.
+	Place all {count} pages	Mind a(z) {count} oldal elhelyezése
+	Place selected ({count})	Kijelöltek elhelyezése ({count})
+	Smart Objects cannot be painted directly. Rasterize the layer manually or paint on a new pixel layer.	Az intelligens objektumokra nem lehet közvetlenül festeni. Raszterizáld kézzel a réteget, vagy fess egy új képpontrétegre.
+
 # Plural messages and command id overrides
 # Custom paper dimensions in Print Settings.
 	Paper Width	Papír szélessége
@@ -31,7 +60,6 @@
 @plural	Imported {n} brush from {file}|Imported {n} brushes from {file}	{n} ecset importálva. Forrás: {file}
 @plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{n} ecset importálva. Csoport: {group}
 @plural	Imported {n} gradient from {file}|Imported {n} gradients from {file}	{n} színátmenet importálva. Forrás: {file}
-@plural	Imported {n} pattern from {file}|Imported {n} patterns from {file}	{n} mintázat importálva. Forrás: {file}
 @plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{n} színminta importálva. Forrás: {file}
 @plural	Played {n} step|Played {n} steps	{n} lépés lejátszva
 @plural	Saved for Web: {n} file|Saved for Web: {n} files	Mentés webre: {n} fájl
@@ -446,9 +474,6 @@
 	Appearance	Megjelenés
 	Apply Data Set	Adatkészlet alkalmazása
 	Apply Layer Mask	Rétegmaszk alkalmazása
-	Add Mask to Selection	Maszk hozzáadása a kijelöléshez
-	Subtract Mask from Selection	Maszk kivonása a kijelölésből
-	Intersect Mask with Selection	Maszk metszése a kijelöléssel
 	Artboard Guides	Rajztábla-segédvonalak
 	Artboards to Files	Rajztáblák fájlokba
 	Artboards to PDF	Rajztáblák PDF-be

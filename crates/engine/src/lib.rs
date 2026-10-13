@@ -80,6 +80,7 @@ mod param_check;
 mod path_edit_cmds;
 pub mod pattern_cmds;
 pub mod pattern_fill_cmds;
+pub mod pdf_export_cmds;
 pub mod perspective_crop_cmds;
 pub mod photo_cmds;
 pub mod pick_cmds;
@@ -613,10 +614,6 @@ impl Session {
     fn precondition(&self, spec: &commands::CommandSpec, params: &Value) -> std::result::Result<(), String> {
         if self.names_existing_layer(spec.id, params) {
             return Ok(());
-        }
-        // `ifPresent`: with no Background there is nothing to do, which isn't an error.
-        if spec.id == "layer.new.layerFromBackground" && params.get("ifPresent").and_then(Value::as_bool) == Some(true) {
-            return self.active().map(|_| ()).ok_or_else(|| "no document open".into());
         }
         channel_cmds::mask_target_enabled(self, spec.id, params).unwrap_or_else(|| (spec.enabled)(self))
     }

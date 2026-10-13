@@ -102,8 +102,7 @@ pub fn dab_rect(d: &Dab) -> Rect {
 
 /// Rasterize one dab's coverage.
 pub fn footprint(d: &Dab, index: usize, hardness: f32) -> Footprint {
-    // A soft tip paints past its nominal radius.
-    let rect = crate::render::rect_around(d, crate::tip_reach(d.radius, hardness).max(d.radius));
+    let rect = dab_rect(d);
     let (cx, cy) = (d.center.x as f32, d.center.y as f32);
     let mut cov = Vec::with_capacity(rect.width() as usize * rect.height() as usize);
     for y in rect.y0..rect.y1 {
@@ -555,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn footprint_stays_inside_the_tips_reach() {
+    fn footprint_stays_inside_the_full_size_ring() {
         let radius = 10.5f32;
         for hardness in [1.0, 0.5, 0.0] {
             let dab = Dab::round(Point::new(32.0, 32.0), radius, 1.0);
@@ -570,9 +569,8 @@ mod tests {
                     }
                     painted += 1;
                     farthest = farthest.max(dist);
-                    let reach = f64::from(crate::tip_reach(radius, hardness));
                     assert!(
-                        dist < reach.max(radius as f64) + 0.5,
+                        dist < radius as f64 + 0.5,
                         "hardness {hardness}: pixel ({x}, {y}) at {dist} px from \
                          the centre is painted past the Full Size ring of \
                          {radius} px"
