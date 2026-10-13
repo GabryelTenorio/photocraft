@@ -97,6 +97,13 @@
 	Script Events Manager…	Komut Dosyası Olay Yöneticisi…
 	Import	İthalat
 	Browse…	Göz at…
+	Source Files	Kaynak Dosyalar
+	Use:	Kullan:
+	Files	Dosyalar
+	Add Open Files	Açık Dosyaları Ekle
+	Sort By Name	Ada Göre Sırala
+	Attempt to Automatically Align Source Images	Kaynak Görüntüleri Otomatik Hizalamayı Dene
+	Create Smart Object after Loading Layers	Katmanları Yükledikten Sonra Akıllı Nesne Oluştur
 	Reveal in Finder	Finder'da Göster
 	Show in Explorer	Explorer'da Göster
 	Show in Folder	Klasörde Göster
@@ -704,6 +711,10 @@
 	Breeze Dark Theme	Esinti Koyu Tema
 	Breeze light	Esinti ışığı
 	Breeze Light Theme	Esinti Işık Teması
+	Soft dark	Yumuşak koyu
+	Soft light	Yumuşak açık
+	Soft Dark Theme	Yumuşak koyu tema
+	Soft Light Theme	Yumuşak açık tema
 	Adwaita Light Theme	Adwaita Işık Teması
 	Adwaita Dark Theme	Adwaita Karanlık Tema
 	Adwaita	Adwaita
