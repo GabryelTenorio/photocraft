@@ -2,7 +2,8 @@
 //! Import Brushes…, the Preset Manager's Load…): Photoshop brushes (`.abr`) go to the brush
 //! library through `brush.presets.importAbr`, gradients (`.grd`) to the Gradients panel through
 //! `gradient.presets.importGrd`, swatches (`.aco`, `.ase`) to the Swatches panel through
-//! `swatches.import`, keyboard shortcut sets (`.kys`) to Edit › Keyboard Shortcuts through
+//! `swatches.import`, patterns (`.pat`) to the Patterns panel through `pattern.import`, keyboard
+//! shortcut sets (`.kys`) to Edit › Keyboard Shortcuts through
 //! [`crate::kys_import`], instead of opening as documents.
 
 use serde_json::{Value, json};
@@ -13,7 +14,7 @@ use crate::PhotocraftApp;
 /// the Swatches panel through [`crate::swatches_ui::import_bytes`]).
 /// `.psp` is Photoshop's live `Keyboard Shortcuts.psp` (the same XML as a `.kys`); other `.psp`
 /// settings files are refused with a clear message.
-pub const PRESET_EXTS: &[&str] = &["abr", "grd", "aco", "ase", "kys", "psp", "atn", "pcactions"];
+pub const PRESET_EXTS: &[&str] = &["abr", "grd", "pat", "aco", "ase", "kys", "psp", "atn", "pcactions"];
 
 fn ext(name: &str) -> String {
     std::path::Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
@@ -57,6 +58,7 @@ pub fn open(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Option<Result<
         "atn" | "pcactions" => return Some(crate::actions::import_bytes(app, name, bytes).map(|_| ())),
         "abr" => ("brush.presets.importAbr", "brushes"),
         "grd" => ("gradient.presets.importGrd", "gradients"),
+        "pat" => ("pattern.import", "patterns"),
         "aco" | "ase" => return Some(crate::swatches_ui::import_bytes(app, name, bytes, false).map(|_| ())),
         "kys" | "psp" => return Some(crate::kys_import::open_bytes(app, name, bytes).map(|_| ())),
         _ => return None,
@@ -78,10 +80,10 @@ pub fn open(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Option<Result<
         let n = r.get("count").and_then(Value::as_u64).unwrap_or(0);
         let warnings: Vec<String> = r.get("warnings").and_then(|w| serde_json::from_value(w.clone()).ok()).unwrap_or_default();
         app.ui.status_error = false;
-        let (one, other) = if what == "brushes" {
-            ("Imported {n} brush from {file}", "Imported {n} brushes from {file}")
-        } else {
-            ("Imported {n} gradient from {file}", "Imported {n} gradients from {file}")
+        let (one, other) = match what {
+            "brushes" => ("Imported {n} brush from {file}", "Imported {n} brushes from {file}"),
+            "patterns" => ("Imported {n} pattern from {file}", "Imported {n} patterns from {file}"),
+            _ => ("Imported {n} gradient from {file}", "Imported {n} gradients from {file}"),
         };
         let imported = crate::i18n::fmt(&crate::i18n::trn(crate::i18n::current(), n, one, other), &[("file", &stem)]);
         app.ui.status = match warnings.first() {
@@ -111,6 +113,7 @@ mod tests {
         assert!(is_preset_file("exchange.ase"));
         assert!(is_preset_file("Studio.ATN"));
         assert!(is_preset_file("Actions.pcactions"));
+        assert!(is_preset_file("Debaser-ColourLibrary-Part6.PAT"));
         assert!(!is_preset_file("photo.psd"));
         assert!(!is_preset_file("abr"));
     }

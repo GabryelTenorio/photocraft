@@ -88,7 +88,7 @@ fn translate(step: &photocraft_psd::atn::AtnItem) -> Result<(String, Value)> {
                 }),
             )
         }
-        "exposure" => {
+        "exposure" | "Exps" => {
             descriptor_keys(d, &["Exps", "Ofst", "gammaCorrection"])?;
             (
                 "image.adjustments.exposure",
@@ -486,6 +486,38 @@ mod tests {
         assert_eq!(translate(&step).unwrap().1, json!({"exposure":1.0,"offset":0.0,"gamma":1.2}));
         step.descriptor = Some(Descriptor::new("exposure").with("gammaCorrection", DValue::Double(f64::NAN)));
         assert!(translate(&step).is_err());
+    }
+
+    #[test]
+    fn exposure_event_aliases_import_and_replay_at_all_depths() {
+        let expected = json!({"exposure":1.0,"offset":0.1,"gamma":1.2});
+        for event in ["exposure", "Exps"] {
+            let descriptor = Descriptor::new("Exps")
+                .with("Exps", DValue::Double(1.0))
+                .with("Ofst", DValue::Double(0.1))
+                .with("gammaCorrection", DValue::Double(1.2));
+            let mut file = photocraft_psd::atn::parse(&atn(&[(event, true, Some(descriptor))])).unwrap();
+            if event == "Exps" {
+                file.actions[0].items[0].event = photocraft_psd::atn::AtnEvent::Code(*b"Exps");
+            }
+            let bytes = photocraft_psd::atn::write(&file).unwrap();
+            for depth in [8, 16, 32] {
+                let mut s = Session::new();
+                s.execute("file.new", json!({"width":2,"height":2,"depth":depth,"background":"black"})).unwrap();
+                let before = s.active().unwrap().doc.clone();
+                s.execute("image.adjustments.exposure", expected.clone()).unwrap();
+                let pixel = s.active().unwrap().doc.layers[0].surface().unwrap().pixel(0, 0);
+                s.execute("edit.undo", json!({})).unwrap();
+                s.execute(IMPORT, json!({"format":"atn","data":crate::paint::tile::b64_encode(&bytes)})).unwrap();
+                assert_eq!(s.actions.list[0].steps[0], ("image.adjustments.exposure".into(), expected.clone()));
+                let played = s.execute("actions.play", json!({"action":"Imported"})).unwrap();
+                assert_eq!(played["ran"], 1, "{played}");
+                assert!(played.get("failed").is_none(), "{played}");
+                assert_eq!(s.active().unwrap().doc.layers[0].surface().unwrap().pixel(0, 0), pixel);
+                s.execute("edit.undo", json!({})).unwrap();
+                assert_eq!(s.active().unwrap().doc, before);
+            }
+        }
     }
 
     #[test]
