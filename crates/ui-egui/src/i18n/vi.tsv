@@ -20,7 +20,8 @@
 # (`plural_none` in i18n/mod.rs).
 
 
-# Shape tool and independent paint controls
+# Channel Options and New Spot Channel (#3761)
+# PR #3446 shape/paint labels (kept before shared catalog entries)
 	Align Edges	Căn cạnh
 	Align to Canvas	Căn theo vùng vẽ
 	Arrowheads	Đầu mũi tên
@@ -48,6 +49,11 @@
 	Start	Đầu
 	Stop opacity	Độ mờ điểm dừng
 	Unconstrained	Không ràng buộc
+
+	Channel Color	Màu kênh
+	Color Indicates:	Màu biểu thị:
+	Solidity:	Độ đặc:
+	Ink Characteristics	Đặc tính mực
 
 # Phase 3.1 — top-level menus, File menu, Edit menu
 # Custom paper dimensions in Print Settings.
@@ -185,6 +191,8 @@
 	Rotate 90° Counter Clockwise	Xoay 90° ngược chiều kim đồng hồ
 	Save	Lưu
 	Save a Copy…	Lưu bản sao…
+	{name} can't keep everything in this document	{name} không thể giữ mọi thứ trong tài liệu này
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Hãy chọn một định dạng giữ được mọi thứ, như Photoshop (PSD), hoặc lưu bản sao.
 	Save As…	Lưu thành…
 	Save for Web (Legacy)…	Lưu cho Web (cũ)…
 	Scale	Tỷ lệ
@@ -3631,3 +3639,4 @@ curves	Smooth	Làm mượt
 	Import .GRD	Nhập .GRD
 	Choose a gradient file (.grd).	Chọn tệp chuyển sắc (.grd).
 	Auto Add/Delete	Tự động thêm/xóa
+	ICO is limited to 256 × 256 pixels	ICO giới hạn ở 256 × 256 pixel

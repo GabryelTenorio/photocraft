@@ -15,6 +15,12 @@
 # Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin
 # letters; the trailing "…" of dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	チャンネルカラー
+	Color Indicates:	着色表示:
+	Solidity:	濃度:
+	Ink Characteristics	インキの特性
+
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -73,6 +79,8 @@
 	Save	保存
 	Save As…	名前を付けて保存…
 	Save a Copy…	コピーを保存…
+	{name} can't keep everything in this document	{name} にはこのドキュメントの内容をすべて保存できません
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Photoshop (PSD) などすべてを保持できる形式を選ぶか、コピーを保存してください。
 	Revert	復帰
 	Export	書き出し
 	Quick Export as PNG	PNG としてクイック書き出し
@@ -3812,14 +3820,8 @@ curves	Smooth	スムーズ
 	Auto Add/Delete	自動追加・削除
 
 # Restored rows (custom print paper #3820, brush presets, Vanishing Point help, brush panel menu)
-	Paper Width	用紙の幅
-	Paper Height	用紙の高さ
-	Capture Brush Size in Preset	ブラシサイズをプリセットに保存
-	Include Tool Settings	ツール設定を含める
-	Include Color	カラーを含める
-	Enter a name for the brush preset	ブラシプリセットの名前を入力してください
-	A brush preset with this name already exists	この名前のブラシプリセットは既に存在します
 	Drag to pan · Scroll to zoom · Double-click to fit	ドラッグで移動 · スクロールでズーム · ダブルクリックで全体表示
 	Clear Brush Controls	ブラシのコントロールを消去
 	Reset All Locked Settings	ロックされた設定をすべて初期化
 	Copy Texture to Other Tools	テクスチャを他のツールにコピー
+	ICO is limited to 256 × 256 pixels	ICO は 256 × 256 ピクセルまでです

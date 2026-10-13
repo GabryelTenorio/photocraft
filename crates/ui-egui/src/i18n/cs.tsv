@@ -19,6 +19,12 @@
 # (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...) stay in Latin letters; the trailing "…" of
 # dialog commands is kept.
 
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Barva kanálu
+	Color Indicates:	Barva označuje:
+	Solidity:	Plnost:
+	Ink Characteristics	Vlastnosti inkoustu
+
 # Guide layout dialog
 
 # Custom print paper (#3820)
@@ -81,6 +87,8 @@
 	Save	Uložit
 	Save As…	Uložit jako…
 	Save a Copy…	Uložit kopii…
+	{name} can't keep everything in this document	{name} nedokáže uchovat vše z tohoto dokumentu
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Zvolte formát, který vše zachová, například Photoshop (PSD), nebo uložte kopii.
 	Revert	Vrátit k uložené verzi
 	Export	Export
 	Quick Export as PNG	Rychlý export do PNG
@@ -3751,3 +3759,4 @@ navigator	Zoom	Zvětšení
 	Step {step} is waiting for its dialog	Krok {step} čeká na svůj dialog
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
 	Auto Add/Delete	Automaticky přidat/odstranit
+	ICO is limited to 256 × 256 pixels	ICO je omezen na 256 × 256 pixelů

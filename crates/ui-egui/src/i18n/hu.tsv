@@ -218,6 +218,8 @@
 	Rotate 90° Counter Clockwise	Forgatás 90°-kal az óramutató járásával szemben
 	Save	Mentés
 	Save a Copy…	Másolat mentése…
+	{name} can't keep everything in this document	Nem őrizhető meg minden a dokumentumból ebben a formátumban: {name}
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Válassz olyan formátumot, amely mindent megőriz, például Photoshop (PSD), vagy ments másolatot.
 	Save As…	Mentés másként…
 	Save for Web (Legacy)…	Mentés webre (régi)…
 	Scale	Méretarány
@@ -4065,3 +4067,10 @@ cameraRaw	Yellow	Sárga
 	Loaded Camera Raw settings from {file}	Camera Raw-beállítások betöltve innen: {file}
 	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw-beállítások betöltve innen: {file} ({n} nem támogatott)
 	Auto Add/Delete	Automatikus hozzáadás/törlés
+	ICO is limited to 256 × 256 pixels	Az ICO legfeljebb 256 × 256 képpont lehet
+
+# Channel Options and New Spot Channel (#3761)
+	Channel Color	Csatorna színe
+	Color Indicates:	A szín jelzése:
+	Ink Characteristics	Festék jellemzői
+	Solidity:	Fedőképesség:
