@@ -46,6 +46,7 @@ const KNOWN: &[(&str, f32, &str)] = &[
     ("blend-darker_color.ora", 0.02, "Krita weighs the channels differently when it picks the darker colour; near-ties pick the other pixel"),
     ("blend-lighter_color.ora", 0.02, "Krita weighs the channels differently when it picks the lighter colour; near-ties pick the other pixel"),
     ("blend-hard_mix_photoshop.ora", 0.02, "a channel sum of exactly 1 goes up in Photoshop's Hard Mix (ours) and down in Krita's"),
+    ("depth-rgba-u16.ora", 1.0, "Krita blends this linear-light 16-bit document in linear light, but its ORA export stores sRGB 8-bit layers"),
     ("blend-darker_color.kra", 0.02, "as for the .ora"),
     ("blend-lighter_color.kra", 0.02, "as for the .ora"),
     ("blend-hard_mix_photoshop.kra", 0.02, "as for the .ora"),
