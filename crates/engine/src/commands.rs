@@ -549,14 +549,15 @@ fn build() -> Vec<CommandSpec> {
             "Layer…",
             ["Layer", "New"],
             Some("Cmd+Shift+N"),
-            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error)}"##,
+            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error),"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)}"##,
             has_doc,
             crate::new_layer::run
         ),
-        cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
+        cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?,"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)}"##, has_doc, |s, p| {
+            let place = crate::new_layer::placement("layer.new.group", p)?;
             let id = s.edit("New Group", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
-                let id = doc.insert_above(*active, Layer::group(name, vec![]));
+                let id = crate::new_layer::insert_at(doc, *active, place, Layer::group(name, vec![]))?;
                 *active = Some(id);
                 Ok(id)
             })?;
