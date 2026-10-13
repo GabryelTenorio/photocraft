@@ -494,7 +494,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "image.adjustments.replaceColor",
             "Replace Color…",
             ["Image", "Adjustments"],
-            r##"{"color":color,"fuzziness":0..200=40,"hue":-180..180=0,"saturation":-100..100=0,"lightness":-100..100=0} (color: "#rrggbb", default the foreground colour; Localized Color Clusters: "points":[[x,y],…] where it was picked, "localized":bool=false, "range":0..100=100 % of the longer side)"##,
+            r##"{"localized":bool=false,"color":color,"fuzziness":0..200=40,"range":0..100=100,"hue":-180..180=0,"saturation":-100..100=0,"lightness":-100..100=0,"points":[[x,y],…]?} (color: "#rrggbb", default the foreground colour; Localized Color Clusters: "points" where the colour was picked, "range" % of the longer side)"##,
             has_pixels,
             replace_color
         ),
