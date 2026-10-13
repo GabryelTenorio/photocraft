@@ -848,11 +848,21 @@ pub mod transcode {
                 b"TySh" => {
                     self.u16()?;
                     self.f64s(6)?;
-                    self.u16()?;
-                    self.versioned_descriptor()?;
-                    self.u16()?;
-                    self.versioned_descriptor()?;
-                    self.i32s(4)?;
+                    // Photoshop on Windows writes everything after the transform big-endian in
+                    // a little-endian TIFF (#4758). A little-endian text version 50 reads
+                    // `32 00`, so `00 32` cannot be one. That part is already in the model's
+                    // order, and kept as is in a little-endian output, as Photoshop wrote it.
+                    if self.from.is_little() && self.r.peek_rest().starts_with(&50u16.to_be_bytes()) {
+                        let tail = self.r.bytes(self.remaining())?;
+                        let mut t = Tx::new(tail, self.version, ByteOrder::Big, ByteOrder::Big);
+                        t.depth = self.depth;
+                        t.type_tail()?;
+                        t.rest()?;
+                        self.warnings.append(&mut t.warnings);
+                        self.out.extend_from_slice(&t.out);
+                    } else {
+                        self.type_tail()?;
+                    }
                 }
                 b"vmsk" | b"vsms" => {
                     self.u32()?;
@@ -1147,6 +1157,16 @@ pub mod transcode {
                 read_real(self)?;
             }
             Ok((height(top, bottom), real_h))
+        }
+
+        /// A `TySh` after its transform: text version + descriptor, warp version + descriptor,
+        /// and the four bounds.
+        fn type_tail(&mut self) -> Result<()> {
+            self.u16()?;
+            self.versioned_descriptor()?;
+            self.u16()?;
+            self.versioned_descriptor()?;
+            self.i32s(4)
         }
 
         // ---- descriptors ----
@@ -1792,6 +1812,35 @@ mod tests {
         let (_, little) = block_rt(*b"TySh", data);
         assert!(little[48..].starts_with(&[1, 0]));
         assert_eq!(&little[50..58], &1.0f64.to_le_bytes());
+    }
+
+    #[test]
+    fn mixed_order_type_block_from_photoshop_on_windows() {
+        // Photoshop on Windows writes a little-endian TySh version and transform, then the text
+        // version, descriptors and bounds big-endian (#4758).
+        let mut data = Vec::new();
+        data.put_u16(1);
+        for v in [1.8054202887117468, 0.0, 0.0, 1.8054202887117468, 120.0, 340.5] {
+            data.put_f64(v);
+        }
+        data.put_u16(50);
+        let desc = Descriptor::new("TxLr").with("Txt ", Value::Text(UnicodeString::new_nul("Headline")));
+        data.extend(VersionedDescriptor::new(desc).to_bytes());
+        data.put_u16(1);
+        data.extend(VersionedDescriptor::new(Descriptor::new("warp")).to_bytes());
+        for v in [0i32, 0, 0, 0] {
+            data.put_i32(v);
+        }
+        let d = ImageSourceData { global_blocks: vec![TaggedBlock::new(*b"TySh", data.clone())], ..Default::default() };
+        let (mut file, _) = d.to_bytes(ByteOrder::Little).unwrap();
+        let at = file.windows(8).position(|w| w == b"MIB8hSyT").unwrap() + 12;
+        file[at + 50..at + data.len()].copy_from_slice(&data[50..]);
+        assert_eq!(&file[at + 50..at + 56], &[0, 0x32, 0, 0, 0, 0x10]);
+        let (back, w) = ImageSourceData::from_bytes(&file).unwrap();
+        assert!(w.is_empty(), "{w:?}");
+        let b = &back.global_blocks[0];
+        assert!(!b.is_foreign_order());
+        assert_eq!(b.data, data);
     }
 
     #[test]

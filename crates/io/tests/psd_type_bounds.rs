@@ -396,3 +396,33 @@ fn blank_engine_text_is_not_rendered_on_import() {
     assert!(!photocraft_text::psd::engine_text_is_blank(&tysh("M", &[Run { len: 1, size: 24.0, leading: None }], None, Affine::IDENTITY, [0.0; 4])));
     assert!(!photocraft_text::psd::engine_text_is_blank(b"not a TySh"));
 }
+
+#[test]
+fn unusable_type_data_imports_as_its_pixels() {
+    // #4758: a `TySh` still in a little-endian TIFF's layout, or with a non-finite transform,
+    // would give a model with NaN or absurd geometry. The layer keeps Photoshop's pixels.
+    let c = &cases()[0];
+    for (what, foreign) in [("non-finite transform", false), ("little-endian layout", true)] {
+        let mut doc = Document::new("t", Size::new(900, 700), ColorMode::Rgb, SampleType::U8);
+        doc.resolution_dpi = c.dpi;
+        let data = tysh(c.text, &c.runs, c.box_bounds, c.transform, [40.0, 50.0, 400.0, 110.0]);
+        let mut t = photocraft_text::psd::text_layer_from_tysh(&data, c.dpi).unwrap();
+        photocraft_text::TextEngine::new().render_layer(&mut t, c.dpi, doc.pixel_format());
+        let drawn = t.cache.as_ref().unwrap().content_bounds();
+        t.psd_raw = Some(std::sync::Arc::new(data));
+        doc.layers.push(Layer::new(c.name, LayerContent::Text(t)));
+        let mut bytes = photocraft_io::export(&doc, "t.psd", &Default::default()).unwrap().bytes;
+        let at = bytes.windows(8).position(|w| w == b"8BIMTySh").unwrap();
+        if foreign {
+            bytes[at..at + 4].copy_from_slice(b"MIB8");
+        } else {
+            bytes[at + 14..at + 22].copy_from_slice(&f64::NAN.to_be_bytes());
+        }
+        let r = photocraft_io::import("t.psd", &bytes).unwrap();
+        let l = &r.document.layers[0];
+        let LayerContent::Raster(px) = &l.content else { panic!("{what}: imported as {:?}", l.content.kind_name()) };
+        assert_eq!(px.content_bounds(), drawn, "{what}");
+        assert!(r.warnings.iter().any(|w| w.contains("its type could not be read")), "{what}: {:?}", r.warnings);
+        assert_eq!(l.psd_blocks.iter().any(|(k, _)| k == b"TySh"), !foreign, "{what}");
+    }
+}

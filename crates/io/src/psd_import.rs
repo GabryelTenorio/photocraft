@@ -311,7 +311,12 @@ impl Ctx<'_> {
         let adj_key = ADJUSTMENT_KEYS.into_iter().find(|k| rec.block(k).is_some());
         // `SoLE` (a linked smart object) before `PlLd`: a `PlLd` alone is Photoshop CS2's record.
         let smart_key = [b"SoLd", b"SoLE", b"PlLd"].into_iter().find(|k| rec.block(k).is_some());
-        let blocks = preserved_blocks(rec);
+        let mut blocks = preserved_blocks(rec);
+        let unreadable_type = rec.block(b"TySh").and_then(unreadable_tysh);
+        // A `TySh` kept in a little-endian layout cannot be saved as a big-endian block either.
+        if rec.block(b"TySh").is_some_and(TaggedBlock::is_foreign_order) {
+            blocks.retain(|(k, _)| k != b"TySh");
+        }
         // `psd_raw` shares the Arc of the matching `psd_blocks` entry.
         let principal = |k: &[u8; 4]| blocks.iter().find(|(bk, _)| bk == k).map(|(_, d)| d.clone());
         let mut fill_cache = None;
@@ -341,6 +346,11 @@ impl Ctx<'_> {
                 ));
             }
             LayerContent::Adjustment(adj)
+        } else if let Some(why) = unreadable_type {
+            // Editing or re-rendering such a model would draw garbage or fail on its geometry
+            // (#4758): Photoshop's pixels are what the file shows.
+            self.warn(format!("layer \"{name}\": its type could not be read ({why}); imported as pixels"));
+            LayerContent::Raster(self.record_surface(rec, &name))
         } else if rec.block(b"TySh").is_some() {
             // Typed model from TySh/EngineData (photocraft-text); Photoshop's pixels stay the cache.
             let data = rec.block(b"TySh").map(|b| b.data.clone()).unwrap_or_default();
@@ -563,6 +573,19 @@ pub(crate) fn group_depth(file: &PsdFile) -> usize {
 
 fn preserved_blocks(rec: &LayerRecord) -> Vec<([u8; 4], Arc<Vec<u8>>)> {
     rec.blocks.iter().filter(|b| !REGENERATED.contains(&&b.key)).map(|b| (b.key, Arc::new(b.data.clone()))).collect()
+}
+
+/// Why a `TySh` block cannot become an editable type layer: its bytes are still in a
+/// little-endian TIFF's layout ([`TaggedBlock::is_foreign_order`]), or its transform is not
+/// finite. `None` when it can.
+fn unreadable_tysh(b: &TaggedBlock) -> Option<&'static str> {
+    if b.is_foreign_order() {
+        Some("its data is in a byte order PhotoCraft cannot convert")
+    } else if blocks::parse_tysh(&b.data).is_some_and(|(_, t)| t.m.iter().any(|v| !v.is_finite())) {
+        Some("its transform is not a finite number")
+    } else {
+        None
+    }
 }
 
 fn be_to_ne_plane(plane: &[u8], s: SampleType, n: usize) -> Vec<u8> {
