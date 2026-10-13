@@ -852,10 +852,22 @@ fn reveal_focused_control(ui: &egui::Ui) {
 
 // ----------------------------------------------------------------------------- options bar
 
+/// Options bar height: Preferences ▸ Workspace ▸ Enable Narrow Options Bar trims it, as in
+/// Photoshop, leaving the document more room.
+fn options_bar_height(pro: bool, narrow: bool) -> f32 {
+    match (pro, narrow) {
+        (true, false) => 36.0,
+        (true, true) => 30.0,
+        (false, false) => 42.0,
+        (false, true) => 34.0,
+    }
+}
+
 pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
+    let narrow = app.session.prefs().workspace.narrow_options_bar();
     egui::Panel::top("options_bar")
-        .exact_size(if t.pro { 36.0 } else { 42.0 })
+        .exact_size(options_bar_height(t.pro, narrow))
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(10, 0)))
         .show(ui, |ui| {
             ui.style_mut().spacing.scroll = egui::style::ScrollStyle { bar_width: 4.0, ..egui::style::ScrollStyle::floating() };
@@ -2254,6 +2266,16 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 let below = Rect::from_min_max(pos2(last_rect.left(), last_rect.bottom()), pos2(last_rect.right(), ui.clip_rect().bottom()));
                 layer_drop_zone(app, &ctx, ui, below, (last, last_rect), "below", &mut actions);
             }
+            // Tab / ⇧Tab in a rename: rename the layer below / above next, as in Photoshop. The
+            // Background isn't renamed in place (double-clicking it converts it), so it ends there.
+            if let Some((from, up)) = crate::layer_row_ui::take_next_rename(ui.ctx())
+                && let Some(at) = drawn.iter().position(|(id, _)| id.0 == from)
+                && let Some(&(next, _)) = if up { at.checked_sub(1).and_then(|i| drawn.get(i)) } else { drawn.get(at + 1) }
+                && let Some(l) = doc.layer(next).filter(|l| !crate::doc_props_ui::is_background(&doc, l))
+                && let Some(done) = crate::layer_row_ui::start_rename(ui.ctx(), next.0, &l.name)
+            {
+                actions.push(done);
+            }
             // ⌥-click the line between two layers: clip / release the upper one (#967).
             crate::clip_line_ui::show(ui, &doc, &mut actions);
             // A rename whose row is gone (deleted, filtered out, inside a closed group) ends,
@@ -2753,6 +2775,11 @@ fn layer_row(
             actions.push(("ui.maskTarget".into(), json!(true)));
         } else if on_thumb || !row.primary {
             actions.push(("ui.maskTarget".into(), json!(false)));
+        }
+        // ⌥-click the layer thumbnail: fit the layer on screen, as Photoshop does.
+        let m = ui.input(|i| i.modifiers);
+        if on_thumb && m.alt && !m.shift && !m.command {
+            actions.push(("view.fitLayersOnScreen".into(), Value::Null));
         }
     }
     // Double-click: the name renames in place (over the row's full height, not just the glyphs:
@@ -3580,6 +3607,7 @@ fn paint_mode_dropdown(ui: &mut egui::Ui, id: &str, b: &mut photocraft_engine::B
 fn smoothing_field(ui: &mut egui::Ui, b: &mut photocraft_engine::BrushSettings, width: f32) {
     let mut sm = (b.smoothing.amount * 100.0).round();
     if widgets::value_field(ui, &mut sm, 0.0..=100.0, "%", width).changed() {
+        b.smoothing.enabled = true;
         b.smoothing.amount = (sm / 100.0).clamp(0.0, 1.0);
     }
 }
@@ -3904,7 +3932,7 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
         );
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone()));
         if resp.double_clicked() {
-            crate::layer_style::open(app, kind);
+            crate::layer_style::open_for_layer(app, l.id, kind);
         }
         // #2846: right-click opens the layer style menu (Create Layer, Copy Layer Style…), as in Photoshop.
         resp.context_menu(|ui| {
@@ -5539,6 +5567,34 @@ mod compact_visual_regressions {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_narrow_options_bar_preference_shortens_the_bar() {
+        assert_eq!(options_bar_height(true, false), 36.0);
+        assert_eq!(options_bar_height(true, true), 30.0);
+        assert_eq!(options_bar_height(false, false), 42.0);
+        assert_eq!(options_bar_height(false, true), 34.0);
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        crate::theme::apply(&ctx, crate::theme::ThemeKind::ALL[0]);
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let screen = Rect::from_min_size(egui::Pos2::ZERO, vec2(1600.0, 900.0));
+        let run = |app: &mut PhotocraftApp| {
+            let mut top = 0.0;
+            let mut out = ctx.run_ui(input_at_scale(screen, 1.0), |ui| {
+                options_bar(app, ui);
+                top = ui.available_rect_before_wrap().top();
+            });
+            out.textures_delta.clear();
+            top
+        };
+        let normal = run(&mut app);
+        assert_eq!(normal, options_bar_height(Tokens::get(&ctx).pro, false));
+        app.session.execute("prefs.set", json!({"path": "workspace.enableNarrowOptionsBar", "value": true})).unwrap();
+        let narrow = run(&mut app);
+        assert_eq!(narrow, options_bar_height(Tokens::get(&ctx).pro, true));
+        assert!(narrow < normal, "narrow {narrow} must trim the bar under {normal}");
     }
 
     #[test]
