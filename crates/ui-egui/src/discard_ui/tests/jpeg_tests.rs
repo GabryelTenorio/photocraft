@@ -65,12 +65,14 @@ fn save_as_to_a_jpeg_asks_for_jpeg_options() {
 
 /// Re-saving an opened JPEG starts at the file's own quality (`file_encoding`, as File › Save
 /// keeps it since #4032), not the Export preference's; left there, OK writes that quality exactly
-/// rather than its nearest step on the 0–12 scale (95 would come back as 92). Save a Copy does the
-/// same; a quality changed in the prompt is written on the scale.
+/// rather than its nearest step on the 0–12 scale (95 would come back as 92), and the recorded step
+/// leaves the quality out, so playback keeps it too. Save a Copy does the same; a quality changed
+/// in the prompt is written and recorded on the scale.
 #[test]
 fn resaving_an_opened_jpeg_starts_at_its_own_quality() {
     let (mut h, writes) = jpeg_app("copy.jpg");
     std::sync::Arc::make_mut(&mut h.state_mut().session.active_mut().unwrap().doc).file_encoding.jpeg_quality = Some(95);
+    h.state_mut().run("actions.record", json!({})).unwrap();
     h.state_mut().save_as(Some("p.jpg".into())).unwrap();
     h.run_steps(2);
     assert_eq!(h.state().jpeg_options.as_ref().map(|p| p.quality), Some(11), "95 is 11 on Photoshop's scale");
@@ -88,14 +90,42 @@ fn resaving_an_opened_jpeg_starts_at_its_own_quality() {
     h.run_steps(2);
     h.key_press(Key::Enter);
     h.run_steps(3);
+    h.state_mut().run("actions.stop", json!({})).unwrap();
+    let expected = [
+        ("p.jpg".to_string(), asked(Some(95), JpegFormat::Baseline)),
+        ("copy.jpg".to_string(), asked(Some(95), JpegFormat::Baseline)),
+        ("q.jpg".to_string(), asked(pct(12), JpegFormat::Baseline)),
+    ];
+    assert_eq!(writes.borrow().as_slice(), &expected);
     assert_eq!(
-        writes.borrow().as_slice(),
-        &[
-            ("p.jpg".to_string(), asked(Some(95), JpegFormat::Baseline)),
-            ("copy.jpg".to_string(), asked(Some(95), JpegFormat::Baseline)),
-            ("q.jpg".to_string(), asked(pct(12), JpegFormat::Baseline)),
+        h.state().session.actions.list[0].steps,
+        [
+            ("file.saveAs".into(), json!({"path": "p.jpg", "jpegFormat": "baseline"})),
+            ("file.saveACopy".into(), json!({"path": "copy.jpg", "jpegFormat": "baseline"})),
+            ("file.saveAs".into(), json!({"path": "q.jpg", "quality": 12, "jpegFormat": "baseline"})),
         ]
     );
+    writes.borrow_mut().clear();
+    let played = h.state_mut().run("actions.play", json!({"action": 0})).unwrap();
+    assert!(played.get("failed").is_none(), "{played}");
+    assert_eq!(writes.borrow().as_slice(), &expected, "playback writes the file's own quality again");
+}
+
+/// A `file.saveACopy` step recorded from the engine command keeps its params as given, and the
+/// engine clamps a quality past 12; playing it back writes the copy the same way instead of
+/// failing on the quality.
+#[test]
+fn a_copy_recorded_from_the_engine_command_replays() {
+    let (mut h, writes) = jpeg_app("unused.jpg");
+    let path = std::env::temp_dir().join(format!("photocraft-jpeg-copy-{}.jpg", std::process::id())).to_string_lossy().into_owned();
+    h.state_mut().run("actions.record", json!({})).unwrap();
+    h.state_mut().run("file.saveACopy", json!({"path": path, "quality": 90})).unwrap();
+    h.state_mut().run("actions.stop", json!({})).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(h.state().session.actions.list[0].steps, [("file.saveACopy".into(), json!({"path": path, "quality": 90}))]);
+    let played = h.state_mut().run("actions.play", json!({"action": 0})).unwrap();
+    assert!(played.get("failed").is_none(), "{played}");
+    assert_eq!(writes.borrow().as_slice(), &[(path, asked(pct(12), JpegFormat::Baseline))]);
 }
 
 /// The quality and format chosen in the prompt are the ones written; Cancel writes nothing.

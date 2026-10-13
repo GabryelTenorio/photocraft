@@ -257,6 +257,12 @@ impl SaveChoices {
         Ok(SaveChoices { tga_bits: targa_options_ui::bits_param(params, cmd)?, jpeg: jpeg_options_ui::choice_param(params, cmd)? })
     }
 
+    /// The choices in a recorded save step, read as leniently as the engine command that may have
+    /// recorded it (see [`jpeg_options_ui::recorded_choice`]).
+    fn from_step(params: &Value, cmd: &str) -> Result<Self, String> {
+        Ok(SaveChoices { tga_bits: targa_options_ui::bits_param(params, cmd)?, jpeg: jpeg_options_ui::recorded_choice(params, cmd)? })
+    }
+
     /// `settings` writing these choices.
     pub fn apply(self, settings: ExportSettings) -> ExportSettings {
         let settings = ExportSettings { tga_bits: self.tga_bits, ..settings };
@@ -1436,7 +1442,7 @@ impl PhotocraftApp {
             return self.save_in_place(path);
         }
         let path = params.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("Save As needs a `path`")?;
-        let choices = SaveChoices::from_params(params, id)?;
+        let choices = SaveChoices::from_step(params, id)?;
         if id == "file.saveACopy" {
             // A copy: the document keeps its own file and unsaved state, as when recorded (#4373).
             let doc = self.session.active().ok_or("no document")?.doc.clone();

@@ -150,8 +150,15 @@ fn save_as_flat_keeps_the_layered_original() {
     }
     // An untitled layered document saved as a JPEG is still untitled and unsaved.
     let mut app = app();
+    let written = Rc::new(RefCell::new(Vec::new()));
+    let w = written.clone();
+    app.services.write = Some(Box::new(move |path, _| {
+        w.borrow_mut().push(path.to_string());
+        Ok(())
+    }));
     let before = identity(&app);
-    app.save_as(Some("flat.jpg".into())).unwrap();
+    menus::invoke(&mut app, &ctx, "file.saveAs", json!({"path": "flat.jpg", "jpegFormat": "baseline"})).unwrap();
+    assert_eq!(*written.borrow(), ["flat.jpg"]);
     assert_eq!(identity(&app), before);
 }
 

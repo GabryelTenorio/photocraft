@@ -23,7 +23,8 @@ USAGE:
       its alpha, 24 none. Without it: 32 with an alpha channel or transparency, else 24.
       --dpx-bits sets a DPX's bits per sample. Without it: 8 for an 8-bit document, else 16.
       --jpeg-format picks a JPEG's scans, as JPEG Options does: baseline (the default), optimized
-      (Huffman tables fitted to the image) or progressive.
+      (Huffman tables fitted to the image; RGB is written 4:2:0 and keeps the standard tables, so
+      only Gray and CMYK shrink) or progressive.
   photocraft-cli info <file> [--compact]
       Print the document as JSON (size, mode, depth, layer tree).
   photocraft-cli run (<file> | --new <json>) --cmd <id> [--params <json>] [--cmd …] [--out <file>] [--format <ext>] [--quality <1-100>] [--tiff-layers] [--tga-bits <24|32>] [--dpx-bits <8|10|12|16>] [--jpeg-format <baseline|optimized|progressive>]

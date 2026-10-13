@@ -61,6 +61,16 @@ pub fn choice_param(params: &Value, cmd: &str) -> Result<Option<JpegChoice>, Str
     Ok((quality.is_some() || format.is_some()).then(|| JpegChoice { quality, format: format.unwrap_or_default() }))
 }
 
+/// The JPEG Options in a recorded save step, which replays without asking. A `file.saveACopy`
+/// step from the engine command keeps its params as they were given, and the engine clamps a
+/// `quality` to 0–12 and ignores one that isn't a number, so the replay reads it the same way. A
+/// format other than the three names is still an error, as it is for the engine.
+pub fn recorded_choice(params: &Value, cmd: &str) -> Result<Option<JpegChoice>, String> {
+    let format = photocraft_engine::file_cmds::jpeg_format_param(params, cmd).map_err(|e| e.to_string())?;
+    let quality = params.get("quality").and_then(Value::as_f64).filter(|q| q.is_finite()).map(|q| q.clamp(0.0, f64::from(MAX_QUALITY)).round() as u8);
+    Ok((quality.is_some() || format.is_some()).then(|| JpegChoice { quality, format: format.unwrap_or_default() }))
+}
+
 /// Photoshop's name for a quality, in the UI language: Low, Medium, High or Maximum.
 pub fn quality_label(q: u8) -> &'static str {
     match q {
@@ -171,14 +181,16 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
 /// OK: writes the waiting save with the prompt's quality and format.
 pub fn confirm(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(p) = app.jpeg_options.take() else { return };
-    let choice = JpegChoice { quality: Some(p.quality), format: p.format };
+    // Left where it started, an opened JPEG keeps its own quality exactly rather than the nearest
+    // step on the 0–12 scale (95 would be written as 92). The recorded step then leaves the
+    // quality out, so a replay keeps the file's own quality too, as File › Save does (#4032).
+    let own = p.own_quality.filter(|&q| quality_from_percent(u32::from(q)) == p.quality);
+    let choice = JpegChoice { quality: own.is_none().then_some(p.quality), format: p.format };
     let mut step = serde_json::json!({"path": p.path});
     choice.record(&mut step);
     let mut settings = choice.apply(app.save_settings());
-    // Left where it started, an opened JPEG keeps its own quality exactly rather than the nearest
-    // step on the 0–12 scale (95 would be written as 92).
-    if let Some(q) = p.own_quality.filter(|&q| quality_from_percent(u32::from(q)) == p.quality) {
-        settings.jpeg_quality = Some(q);
+    if own.is_some() {
+        settings.jpeg_quality = own;
     }
     app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, (p.record, step));
 }
@@ -209,6 +221,20 @@ mod tests {
         for bad in [json!({"quality": 13}), json!({"quality": -1}), json!({"quality": "8"}), json!({"quality": true}), json!({"jpegFormat": "Optimized"})] {
             assert!(choice_param(&bad, "file.saveAs").is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn recorded_steps_read_like_the_engine() {
+        let base = JpegFormat::Baseline;
+        assert_eq!(recorded_choice(&json!({"path": "a.jpg"}), "file.saveACopy"), Ok(None));
+        assert_eq!(recorded_choice(&json!({"quality": 90}), "file.saveACopy"), Ok(Some(JpegChoice { quality: Some(12), format: base })));
+        assert_eq!(recorded_choice(&json!({"quality": -3}), "file.saveACopy"), Ok(Some(JpegChoice { quality: Some(0), format: base })));
+        assert_eq!(recorded_choice(&json!({"quality": "8"}), "file.saveACopy"), Ok(None), "a quality that isn't a number is ignored");
+        assert_eq!(
+            recorded_choice(&json!({"quality": 7.6, "jpegFormat": "optimized"}), "file.saveAs"),
+            Ok(Some(JpegChoice { quality: Some(8), format: JpegFormat::Optimized }))
+        );
+        assert!(recorded_choice(&json!({"jpegFormat": "fast"}), "file.saveACopy").is_err());
     }
 
     #[test]
