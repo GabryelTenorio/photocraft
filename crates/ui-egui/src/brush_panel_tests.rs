@@ -1177,6 +1177,17 @@ fn section_boxes_show_a_pressed_state() {
     h.drop_at(boxr.center());
     h.run_steps(3);
     assert!(!h.state().session.tools.brush.shape_dynamics.enabled);
+    // A checkbox-only row (no settings of its own) is one checkbox across the row: a press
+    // anywhere on it presses its box, and the release toggles it.
+    let wet = h.get_by_label("Wet Edges").rect();
+    let wet_box = egui::Rect::from_center_size(egui::pos2(wet.left() + 12.0, wet.center().y), vec2(13.0, 13.0));
+    let was = h.state().session.tools.brush.wet_edges;
+    h.drag_at(wet.center());
+    h.run_steps(2);
+    assert_eq!(box_fill(&h, wet_box), Some(widgets::check_box_fill(was, true, &t)), "pressed checkbox-only row");
+    h.drop_at(wet.center());
+    h.run_steps(3);
+    assert_ne!(h.state().session.tools.brush.wet_edges, was);
     // The four looks are distinct.
     let looks = [(false, false), (false, true), (true, false), (true, true)].map(|(on, pressed)| widgets::check_box_fill(on, pressed, &t));
     for (i, a) in looks.iter().enumerate() {
