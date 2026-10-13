@@ -3687,3 +3687,7 @@ curves	Smooth	Wygładź
 	Action playback stopped	Odtwarzanie operacji zatrzymane
 	Step {step} is waiting for its dialog	Krok {step} czeka na swoje okno dialogowe
 @plural	{n} action|{n} actions	{n} operacja|{n} operacje|{n} operacji
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Przyciemnij interfejs
+	Lighten Interface	Rozjaśnij interfejs

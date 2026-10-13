@@ -3850,3 +3850,7 @@ curves	Smooth	Vloeiend maken
 	Action playback stopped	Afspelen van de handeling gestopt
 	Step {step} is waiting for its dialog	Stap {step} wacht op zijn dialoogvenster
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Interface donkerder maken
+	Lighten Interface	Interface lichter maken

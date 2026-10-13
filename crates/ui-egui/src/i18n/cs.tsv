@@ -3698,3 +3698,7 @@ navigator	Zoom	Zvětšení
 	Action playback stopped	Přehrávání akce zastaveno
 	Step {step} is waiting for its dialog	Krok {step} čeká na svůj dialog
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Ztmavit rozhraní
+	Lighten Interface	Zesvětlit rozhraní

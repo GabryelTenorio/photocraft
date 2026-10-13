@@ -3700,3 +3700,7 @@ curves	Smooth	スムーズ
 	Action playback stopped	アクションの再生を停止しました
 	Step {step} is waiting for its dialog	ステップ {step} はダイアログを待っています
 @plural	{n} action|{n} actions	アクション {n} 個
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	インターフェイスを暗くする
+	Lighten Interface	インターフェイスを明るくする

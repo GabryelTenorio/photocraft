@@ -2771,3 +2771,7 @@ curves	Smooth	Suavizar
 	Action playback stopped	Reproducción de la acción detenida
 	Step {step} is waiting for its dialog	El paso {step} está esperando su cuadro de diálogo
 @plural	{n} action|{n} actions	{n} acción|{n} acciones
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Oscurecer interfaz
+	Lighten Interface	Aclarar interfaz

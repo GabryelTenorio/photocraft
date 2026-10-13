@@ -3880,3 +3880,7 @@ layerLabel	No Color	Sem cor
 	Action playback stopped	Reprodução da ação interrompida
 	Step {step} is waiting for its dialog	A etapa {step} está aguardando sua caixa de diálogo
 @plural	{n} action|{n} actions	{n} ação|{n} ações
+
+# Darken / Lighten Interface (⇧⌘F1 / ⇧⌘F2)
+	Darken Interface	Escurecer interface
+	Lighten Interface	Clarear interface
