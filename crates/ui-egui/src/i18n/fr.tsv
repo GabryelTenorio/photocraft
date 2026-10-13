@@ -1130,6 +1130,9 @@
 	Ignore All	Tout ignorer
 	Image Size	Taille de l'image
 	Import Brushes…	Importer des pinceaux…
+	Gradient Preset Options	Options des paramètres prédéfinis de dégradé
+	Import .GRD	Importer .GRD
+	Choose a gradient file (.grd).	Choisissez un fichier de dégradés (.grd).
 	Import brushes (.abr)	Importer des pinceaux (.abr)
 	Import Presets	Importer des préréglages
 	Imported	Importé
@@ -3051,9 +3054,14 @@ curves	Smooth	Lisser
 	Light Red	Rouge clair
 	Medium Blue	Bleu moyen
 	Light Gray	Gris clair
+	Object Finder	Outil de recherche d’objets
+	No object found there — drag a rectangle around it	Aucun objet trouvé ici — tracez un rectangle autour
 	Remove after each stroke	Supprimer après chaque trait
 	Apply the removal ({key})	Appliquer la suppression ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traits à supprimer : {n} (Entrée applique, Échap annule)
+	Clear Brush Controls	Effacer les commandes de pinceau
+	Reset All Locked Settings	Réinitialiser tous les paramètres verrouillés
+	Copy Texture to Other Tools	Copier la texture dans d'autres outils
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Charger des actions…

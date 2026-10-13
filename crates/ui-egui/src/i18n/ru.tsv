@@ -1018,6 +1018,9 @@
 	Rename Brush…	Переименовать кисть…
 	Delete Brush	Удалить кисть
 	Import Brushes…	Импортировать кисти…
+	Gradient Preset Options	Параметры наборов градиентов
+	Import .GRD	Импортировать .GRD
+	Choose a gradient file (.grd).	Выберите файл градиентов (.grd).
 	Brush Name	Имя кисти
 	Brush Stroke	Мазок кисти
 	New Brush Preset…	Новый набор параметров кисти…
@@ -2995,9 +2998,14 @@ curves	Smooth	Сгладить
 	Light Red	Светло-красный
 	Medium Blue	Средне-синий
 	Light Gray	Светло-серый
+	Object Finder	Поиск объектов
+	No object found there — drag a rectangle around it	Там не найден объект — обведите его прямоугольником
 	Remove after each stroke	Удалять после каждого штриха
 	Apply the removal ({key})	Применить удаление ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Штрихов к удалению: {n} (Enter применяет, Esc отменяет)
+	Clear Brush Controls	Очистить параметры кисти
+	Reset All Locked Settings	Сбросить все заблокированные параметры
+	Copy Texture to Other Tools	Скопировать текстуру в другие инструменты
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Загрузить операции…

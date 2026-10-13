@@ -1124,6 +1124,9 @@
 	Ignore All	Abaikan Semua
 	Image Size	Ukuran Gambar
 	Import Brushes…	Impor Kuas…
+	Gradient Preset Options	Opsi Preset Gradien
+	Import .GRD	Impor .GRD
+	Choose a gradient file (.grd).	Pilih file gradien (.grd).
 	Import brushes (.abr)	Impor kuas (.abr)
 	Import Presets	Impor Preset
 	Imported	Diimpor
@@ -3038,9 +3041,14 @@ curves	Smooth	Haluskan
 	Light Red	Merah Terang
 	Medium Blue	Biru Sedang
 	Light Gray	Abu-abu Muda
+	Object Finder	Pencari Objek
+	No object found there — drag a rectangle around it	Tidak ada objek ditemukan di sana — seret persegi panjang di sekelilingnya
 	Remove after each stroke	Hapus setelah setiap goresan
 	Apply the removal ({key})	Terapkan penghapusan ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Goresan untuk dihapus: {n} (Enter menerapkan, Esc membatalkan)
+	Clear Brush Controls	Hapus Kontrol Kuas
+	Reset All Locked Settings	Atur Ulang Semua Pengaturan Terkunci
+	Copy Texture to Other Tools	Salin Tekstur ke Alat Lain
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Muat Tindakan…

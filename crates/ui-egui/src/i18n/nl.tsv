@@ -1131,6 +1131,9 @@
 	Ignore All	Alles negeren
 	Image Size	Afbeeldingsgrootte
 	Import Brushes…	Penselen importeren…
+	Gradient Preset Options	Opties voor verloopvoorinstellingen
+	Import .GRD	.GRD importeren
+	Choose a gradient file (.grd).	Kies een verloopbestand (.grd).
 	Import brushes (.abr)	Penselen (.abr) importeren
 	Import Presets	Voorinstellingen importeren
 	Imported	Geïmporteerd
@@ -3810,9 +3813,14 @@ curves	Smooth	Vloeiend maken
 	Light Red	Lichtrood
 	Medium Blue	Middelblauw
 	Light Gray	Lichtgrijs
+	Object Finder	Objectzoeker
+	No object found there — drag a rectangle around it	Daar is geen object gevonden — sleep er een rechthoek omheen
 	Remove after each stroke	Verwijderen na elke streek
 	Apply the removal ({key})	Verwijdering toepassen ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Streken om te verwijderen: {n} (Enter past toe, Esc annuleert)
+	Clear Brush Controls	Penseelbesturing wissen
+	Reset All Locked Settings	Alle vergrendelde instellingen opnieuw instellen
+	Copy Texture to Other Tools	Structuur kopiëren naar andere gereedschappen
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Handelingen laden…
