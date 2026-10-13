@@ -203,14 +203,31 @@ pub fn size_param(cmd: &str, p: &Value) -> Result<u32> {
     }
 }
 
-/// The `sampleLayer` param (default `all`).
-pub fn layers_param(cmd: &str, p: &Value) -> Result<SampleLayers> {
+/// The optional `layer` param: the id of the layer the Sample modes call "current", `None` for
+/// the session's active layer.
+fn layer_id_param(cmd: &str, p: &Value) -> Result<Option<LayerId>> {
+    match p.get("layer") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_u64().map(|id| Some(LayerId(id))).ok_or_else(|| bad(cmd, format!("`layer` = {v} must be a layer id"))),
+    }
+}
+
+/// The `sampleLayer` param (default `all`, or `current` when `layer` names the layer to sample).
+/// The composite modes ignore the layer, so naming both is rejected rather than silently
+/// dropping it.
+pub fn layers_param(cmd: &str, p: &Value, layer_given: bool) -> Result<SampleLayers> {
     match p.get("sampleLayer") {
-        None | Some(Value::Null) => Ok(SampleLayers::All),
-        Some(Value::String(s)) => SampleLayers::parse(s).ok_or_else(|| {
-            let ids: Vec<&str> = SampleLayers::ALL.iter().map(|(_, n)| *n).collect();
-            bad(cmd, format!("unknown sampleLayer `{s}` ({})", ids.join("|")))
-        }),
+        None | Some(Value::Null) => Ok(if layer_given { SampleLayers::Current } else { SampleLayers::All }),
+        Some(Value::String(s)) => {
+            let which = SampleLayers::parse(s).ok_or_else(|| {
+                let ids: Vec<&str> = SampleLayers::ALL.iter().map(|(_, n)| *n).collect();
+                bad(cmd, format!("unknown sampleLayer `{s}` ({})", ids.join("|")))
+            })?;
+            if layer_given && matches!(which, SampleLayers::All | SampleLayers::AllNoAdjustments) {
+                return Err(bad(cmd, format!("`sampleLayer` = `{s}` ignores `layer`")));
+            }
+            Ok(which)
+        }
         Some(v) => Err(bad(cmd, format!("`sampleLayer` = {v} must be a string"))),
     }
 }
@@ -225,15 +242,20 @@ pub fn specs() -> Vec<CommandSpec> {
         label: "Sample Color",
         menu: &[],
         shortcut: None,
-        params: r##"{"x":f64,"y":f64,"size":"point"|1|3|5|11|31|51|101=1,"sampleLayer":"current"|"currentAndBelow"|"all"|"allNoAdjustments"|"currentAndBelowNoAdjustments"="all"} → [r,g,b,a] (the Eyedropper's Sample Size and Sample: the composite pixel, or the average of the size×size square centred on it, clipped to the canvas; transparent off the canvas)"##,
+        params: r##"{"x":f64,"y":f64,"size":"point"|1|3|5|11|31|51|101=1,"sampleLayer":"current"|"currentAndBelow"|"all"|"allNoAdjustments"|"currentAndBelowNoAdjustments"="all" ("current" with "layer"),"layer":id?} → [r,g,b,a] (the Eyedropper's Sample Size and Sample: the composite pixel, or the average of the size×size square centred on it, clipped to the canvas; transparent off the canvas; "layer" samples that layer instead of the active one — "sampleLayer" then defaults to "current", the composite modes are rejected, unknown ids are NoLayer, and an adjustment layer has no pixels of its own)"##,
         enabled: |s| s.active().map(|_| ()).ok_or_else(|| "no document open".into()),
         run: |s: &mut Session, p: &Value| {
             const CMD: &str = "document.sampleColor";
             let (x, y) = (coord(CMD, p, "x")?, coord(CMD, p, "y")?);
             let size = size_param(CMD, p)?;
-            let which = layers_param(CMD, p)?;
+            let by_id = layer_id_param(CMD, p)?;
+            let which = layers_param(CMD, p, by_id.is_some())?;
             let d = s.active().ok_or(EngineError::NoDocument)?;
-            Ok(json!(sample_color(&d.doc, d.active_layer, x, y, size, which)))
+            let active = match by_id {
+                Some(id) => Some(d.doc.layer(id).ok_or(EngineError::NoLayer(id))?.id),
+                None => d.active_layer,
+            };
+            Ok(json!(sample_color(&d.doc, active, x, y, size, which)))
         },
         journal: false,
     }]
@@ -455,6 +477,49 @@ mod tests {
             json!({"x": 1, "y": 1, "sampleLayer": "below"}),
             json!({"x": 1, "y": 1, "sampleLayer": 3}),
             json!([1, 2]),
+        ] {
+            assert!(matches!(s.execute("document.sampleColor", bad.clone()), Err(EngineError::BadParams { .. })), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_layer_param_samples_one_layer_by_id() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8, "background": "transparent"})).unwrap();
+        s.execute("edit.fill", json!({"contents": "color", "color": [0.0, 0.0, 1.0, 1.0]})).unwrap();
+        let b = s.active().unwrap().active_layer.unwrap().0;
+        let t = s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap();
+        s.execute("edit.fill", json!({"contents": "color", "color": [1.0, 0.0, 0.0, 1.0]})).unwrap();
+        let probe = |s: &mut Session, p: Value| -> [f32; 4] {
+            let v: Vec<f32> = serde_json::from_value(s.execute("document.sampleColor", p).unwrap()).unwrap();
+            [v[0], v[1], v[2], v[3]]
+        };
+        let before = (s.active().unwrap().active_layer, s.active().unwrap().selected_layers());
+        // The composite at a point both layers cover: the red top wins.
+        assert_eq!(probe(&mut s, json!({"x": 4.0, "y": 4.0})), [1.0, 0.0, 0.0, 1.0]);
+        // `layer` reads that layer's own pixels, without selecting it: the blue one under the
+        // red composite.
+        assert_eq!(probe(&mut s, json!({"x": 4.0, "y": 4.0, "layer": t})), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(probe(&mut s, json!({"x": 4.0, "y": 4.0, "layer": b})), [0.0, 0.0, 1.0, 1.0]);
+        // The named layer plays "current" in the Sample modes.
+        assert_eq!(probe(&mut s, json!({"x": 4.0, "y": 4.0, "layer": t, "sampleLayer": "currentAndBelow"})), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(probe(&mut s, json!({"x": 4.0, "y": 4.0, "layer": b, "sampleLayer": "currentAndBelow"})), [0.0, 0.0, 1.0, 1.0]);
+        // The probe left the active layer and the selection alone.
+        assert_eq!((s.active().unwrap().active_layer, s.active().unwrap().selected_layers()), before);
+        assert_eq!(s.active().unwrap().active_layer, Some(LayerId(t)));
+        // A group id samples the group solo, like the active layer does.
+        let g = s.execute("layer.groupLayers", json!({"layer": t})).unwrap()["layer"].as_u64().unwrap();
+        assert_eq!(probe(&mut s, json!({"x": 4.0, "y": 4.0, "layer": g})), [1.0, 0.0, 0.0, 1.0]);
+        // An unknown id is an error, not transparent black.
+        assert!(matches!(s.execute("document.sampleColor", json!({"x": 4.0, "y": 4.0, "layer": 999_999})), Err(EngineError::NoLayer(_))));
+        // The composite modes ignore `layer`; a non-id `layer` is a bad param.
+        for bad in [
+            json!({"x": 4.0, "y": 4.0, "layer": "t"}),
+            json!({"x": 4.0, "y": 4.0, "layer": -1}),
+            json!({"x": 4.0, "y": 4.0, "layer": 1.5}),
+            json!({"x": 4.0, "y": 4.0, "layer": true}),
+            json!({"x": 4.0, "y": 4.0, "layer": t, "sampleLayer": "all"}),
+            json!({"x": 4.0, "y": 4.0, "layer": t, "sampleLayer": "allNoAdjustments"}),
         ] {
             assert!(matches!(s.execute("document.sampleColor", bad.clone()), Err(EngineError::BadParams { .. })), "{bad}");
         }
