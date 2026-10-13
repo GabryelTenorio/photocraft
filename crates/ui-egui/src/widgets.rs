@@ -17,6 +17,9 @@ pub use type_ahead::list_open as dropdown_list_open;
 /// The setting is local to this popup's Ui and leaves other themes unchanged.
 pub fn style_spectrum_popup_menu(ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    // The 6 pt gap between rows was outside both buttons, so a drag across a menu
+    // dropped the highlight (#4602). Padding stays inside the row, which is the hit target.
+    ui.spacing_mut().item_spacing.y = 0.0;
     if !t.pro {
         return;
     }
@@ -26,7 +29,9 @@ pub fn style_spectrum_popup_menu(ui: &mut Ui) {
     v.widgets.hovered.bg_fill = t.accent;
     v.widgets.hovered.fg_stroke = Stroke::new(1.0, Color32::WHITE);
     v.widgets.hovered.bg_stroke = Stroke::NONE;
-    v.widgets.hovered.corner_radius = CornerRadius::same(3);
+    v.widgets.inactive.corner_radius = CornerRadius::ZERO;
+    v.widgets.hovered.corner_radius = CornerRadius::ZERO;
+    v.widgets.active.corner_radius = CornerRadius::ZERO;
 }
 
 /// An accent insertion line on one edge of `r` while a drag hovers it (vertical: on its left or,
@@ -1598,21 +1603,12 @@ pub fn checkbox(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
             ui.spacing_mut().item_spacing.x = 6.0;
             let (rect, resp) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::click());
             let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-            let p = ui.painter();
-            if *on {
-                p.rect_filled(rect, 2.0, t.accent);
-                let a = rect.left_center() + vec2(3.0, 0.5);
-                let b = rect.center_bottom() + vec2(-1.0, -3.5);
-                let c = rect.right_top() + vec2(-3.0, 3.5);
-                p.line_segment([a, b], Stroke::new(1.8, Color32::WHITE));
-                p.line_segment([b, c], Stroke::new(1.8, Color32::WHITE));
-            } else {
-                p.rect_filled(rect, 2.0, t.field);
-                p.rect_stroke(rect, 2.0, Stroke::new(1.5, if resp.hovered() { t.text_dim } else { t.text_faint }), StrokeKind::Inside);
-            }
             let l = ui
                 .add(egui::Label::new(egui::RichText::new(tl!(label)).color(t.text_dim)).selectable(false).sense(Sense::click()))
                 .on_hover_cursor(egui::CursorIcon::PointingHand);
+            // Pressing the label presses the box (#4476).
+            let pressed = resp.is_pointer_button_down_on() || l.is_pointer_button_down_on();
+            check_box(ui.painter(), rect, *on, resp.hovered() || l.hovered(), pressed, &t);
             resp.union(l)
         })
         .inner;
@@ -1621,6 +1617,34 @@ pub fn checkbox(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
         resp.mark_changed();
     }
     resp
+}
+
+/// The fill of a check box: the accent when `on`, else the field colour. While it's pressed
+/// (the mouse is down on it or on its label) Photoshop shows that a release will act: an
+/// unchecked box darkens a little and a checked one turns a little less opaque (#4476).
+pub fn check_box_fill(on: bool, pressed: bool, t: &Tokens) -> Color32 {
+    match (on, pressed) {
+        (true, false) => t.accent,
+        (true, true) => t.accent.gamma_multiply(0.75),
+        (false, false) => t.field,
+        (false, true) => t.field.lerp_to_gamma(Color32::BLACK, 0.18),
+    }
+}
+
+/// Paint a check box in `rect`: [`check_box_fill`] with a white tick when `on`, else an
+/// outline that brightens while `hovered` or `pressed`.
+pub fn check_box(p: &egui::Painter, rect: Rect, on: bool, hovered: bool, pressed: bool, t: &Tokens) {
+    p.rect_filled(rect, 2.0, check_box_fill(on, pressed, t));
+    if on {
+        let a = rect.left_center() + vec2(3.0, 0.5);
+        let b = rect.center_bottom() + vec2(-1.0, -3.5);
+        let c = rect.right_top() + vec2(-3.0, 3.5);
+        let tick = Stroke::new(rect.width() * 0.125, Color32::WHITE);
+        p.line_segment([a, b], tick);
+        p.line_segment([b, c], tick);
+    } else {
+        p.rect_stroke(rect, 2.0, Stroke::new(1.5, if hovered || pressed { t.text_dim } else { t.text_faint }), StrokeKind::Inside);
+    }
 }
 
 /// Small chevron for dropdowns (replaces egui's filled triangle).
@@ -1751,6 +1775,7 @@ mod tests {
                 let original_padding = ui.spacing().button_padding;
                 let original_hover = ui.visuals().widgets.hovered.fg_stroke;
                 super::style_spectrum_popup_menu(ui);
+                assert_eq!(ui.spacing().item_spacing.y, 0.0, "{kind:?}: menu rows meet so the gap is selectable");
                 if tokens.pro {
                     assert_eq!(ui.spacing().button_padding, egui::vec2(10.0, 4.0));
                     assert_eq!(ui.visuals().widgets.hovered.bg_fill, tokens.accent);
