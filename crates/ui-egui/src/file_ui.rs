@@ -373,6 +373,94 @@ fn printer_options(list: Option<&Value>, current: &str) -> Vec<(String, String)>
     opts
 }
 
+/// Print Settings…: Windows opens the driver's Printing Preferences window; elsewhere the driver's
+/// own options (`file.printerOptions`, read once per printer) show in the dialog.
+fn print_settings(app: &mut PhotocraftApp, f: &mut Map<String, Value>) {
+    let printer = s(f, "printer", "");
+    f.remove("__driverError");
+    if cfg!(windows) {
+        if let Err(e) = app.session.execute("file.printerPreferences", json!({"printer": printer})) {
+            f.insert("__driverError".into(), json!(e.to_string()));
+        }
+        return;
+    }
+    if f.get("__driverFor").and_then(Value::as_str) != Some(printer.as_str()) {
+        match app.session.execute("file.printerOptions", json!({"printer": printer})) {
+            Ok(r) => {
+                f.insert("__driverOptions".into(), r["options"].clone());
+                f.insert("__driverFor".into(), json!(printer));
+            }
+            Err(e) => {
+                f.insert("__driverError".into(), json!(e.to_string()));
+                return;
+            }
+        }
+    }
+    let shown = b(f, "__showDriver", false);
+    f.insert("__showDriver".into(), json!(!shown));
+}
+
+/// The printer driver's options as dropdowns, grouped as the driver groups them. Only choices
+/// that differ from the printer's default go into Print's `"options"`.
+fn driver_options_panel(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+    let t = Tokens::get(ui.ctx());
+    let options = f.get("__driverOptions").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut chosen = f.get("options").and_then(Value::as_object).cloned().unwrap_or_default();
+    egui::Frame::new().fill(t.card).stroke(egui::Stroke::new(1.0, t.card_border)).corner_radius(t.radius_sm).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(tl!("Print Settings…").trim_end_matches('…')).font(crate::theme::semibold(12.0)).color(t.text));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if crate::widgets::secondary_button(ui, tl!("Done"), 0.0).clicked() {
+                    f.insert("__showDriver".into(), json!(false));
+                }
+                if !chosen.is_empty() && crate::widgets::secondary_button(ui, tl!("Reset"), 0.0).clicked() {
+                    chosen.clear();
+                }
+            });
+        });
+        if options.is_empty() {
+            ui.label(egui::RichText::new(tl!("This printer has no settings of its own.")).color(t.text_dim).size(11.0));
+            return;
+        }
+        egui::ScrollArea::vertical().id_salt("print-driver-options").max_height(220.0).show(ui, |ui| {
+            let mut group = "";
+            for o in &options {
+                let (Some(key), Some(choices)) = (o.get("key").and_then(Value::as_str), o.get("choices").and_then(Value::as_array)) else { continue };
+                let g = o.get("group").and_then(Value::as_str).unwrap_or("");
+                if g != group && !g.is_empty() {
+                    ui.add_space(4.0);
+                    // Option, group and choice names are the driver's own text.
+                    ui.label(egui::RichText::new(g).color(t.text_faint).size(11.0));
+                }
+                group = g;
+                let default = o.get("default").and_then(Value::as_str).unwrap_or("").to_string();
+                let opts: Vec<(String, &str)> = choices
+                    .iter()
+                    .filter_map(|c| Some((c.get("value")?.as_str()?.to_string(), c.get("label").and_then(Value::as_str).unwrap_or(""))))
+                    .collect();
+                let mut v = chosen.get(key).and_then(Value::as_str).map_or_else(|| default.clone(), str::to_string);
+                ui.horizontal(|ui| {
+                    let label = o.get("label").and_then(Value::as_str).unwrap_or(key);
+                    ui.add_sized([(ui.available_width() - 160.0).max(40.0), 20.0], egui::Label::new(egui::RichText::new(label).color(t.text_dim)).truncate());
+                    if crate::widgets::dropdown(ui, &format!("print-driver-{key}"), &mut v, &opts, 150.0) {
+                        if v == default {
+                            chosen.remove(key);
+                        } else {
+                            chosen.insert(key.to_string(), json!(v));
+                        }
+                    }
+                });
+            }
+        });
+    });
+    if chosen.is_empty() {
+        f.remove("options");
+    } else {
+        f.insert("options".into(), Value::Object(chosen));
+    }
+}
+
 fn dropdown_str(ui: &mut egui::Ui, id: &str, f: &mut Map<String, Value>, key: &str, opts: &[(&str, &str)], w: f32) {
     let mut v = s(f, key, opts.first().map_or("", |o| o.0));
     let o: Vec<(String, &str)> = opts.iter().map(|(k, l)| (k.to_string(), *l)).collect();
@@ -908,9 +996,25 @@ fn print_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Va
                 let o: Vec<(String, &str)> = opts.iter().map(|(k, l)| (k.clone(), l.as_str())).collect();
                 if crate::widgets::dropdown(ui, "print-printer", &mut pr, &o, 240.0) {
                     f.insert("printer".into(), json!(pr));
+                    // Driver options belong to the printer they were read from.
+                    for k in ["options", "__driverOptions", "__driverFor", "__driverError", "__showDriver"] {
+                        f.remove(k);
+                    }
                 }
             });
-            number(ui, f, "copies", tl!("Copies"), 1.0..=999.0, "", 1.0);
+            ui.horizontal(|ui| {
+                number(ui, f, "copies", tl!("Copies"), 1.0..=999.0, "", 1.0);
+                ui.add_space(8.0);
+                if crate::widgets::secondary_button(ui, tl!("Print Settings…"), 0.0).clicked() {
+                    print_settings(app, f);
+                }
+            });
+            if let Some(e) = f.get("__driverError").and_then(Value::as_str) {
+                ui.label(egui::RichText::new(e).color(t.warning).size(11.0));
+            }
+            if b(f, "__showDriver", false) {
+                driver_options_panel(ui, f);
+            }
             print_paper_controls(ui, f);
             head(ui, tl!("Color Management"));
             dropdown_str(
@@ -1327,6 +1431,30 @@ mod tests {
         let f = &app.ui.dialog_mut(id).unwrap().fields;
         assert!(f.get("__printers").is_some_and(Value::is_array));
         assert!(params(f).get("__printers").is_none());
+    }
+
+    #[test]
+    fn print_settings_reads_the_driver_options_once_per_printer() {
+        let (mut app, ctx) = app();
+        let id = crate::menus::invoke(&mut app, &ctx, "file.print", json!({})).unwrap()["dialog"].as_u64().unwrap();
+        let mut f = app.ui.dialog_mut(id).unwrap().fields.clone();
+        f.insert("printer".into(), json!("No_Such_Queue_PhotoCraft"));
+        print_settings(&mut app, &mut f);
+        if cfg!(windows) {
+            // The driver's own window; a queue that doesn't exist is reported, not a crash.
+            assert!(f.get("__driverError").is_some());
+            return;
+        }
+        assert_eq!(f["__driverFor"], "No_Such_Queue_PhotoCraft");
+        assert_eq!(f["__driverOptions"], json!([]));
+        assert!(b(&f, "__showDriver", false));
+        print_settings(&mut app, &mut f);
+        assert!(!b(&f, "__showDriver", false), "the button toggles the panel");
+        // Chosen driver options reach file.print; the panel's own state doesn't.
+        f.insert("options".into(), json!({"Finish": "Matte"}));
+        let p = params(&f);
+        assert_eq!(p["options"]["Finish"], "Matte");
+        assert!(p.get("__driverOptions").is_none() && p.get("__showDriver").is_none());
     }
 
     #[test]
