@@ -3783,3 +3783,9 @@ navigator	Zoom	Zvětšení
 	Could not pin the message. The file was still sent.	Zprávu se nepodařilo připnout. Soubor byl přesto odeslán.
 	Get from Telegram	Vzít z Telegramu
 	No files yet. Send your bot a file or a photo, then try again.	Zatím žádné soubory. Pošlete botovi soubor nebo fotku a zkuste to znovu.
+	Open the Telegram message	Otevřít zprávu v Telegramu
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Deset nejnovějších souborů poslaných tomuto botovi. Kliknutím jeden otevřete ve PhotoCraftu.
+	Get files	Získat soubory
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Soubory odeslané z PhotoCraftu a deset nejnovějších souborů tomuto botovi. Kliknutím jeden otevřete ve PhotoCraftu.
+	No files yet. Send one from here, or send the bot a file, then try again.	Zatím žádné soubory. Pošlete jeden odsud nebo botovi a zkuste to znovu.
+	Telegram did not return a link for this chat.	Telegram nevrátil odkaz na tento chat.

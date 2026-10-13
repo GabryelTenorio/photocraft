@@ -4230,3 +4230,9 @@ shape	Appearance	Izgled
 	Send automatically	Šalji automatski
 	Sending needs an internet connection.	Za slanje je potrebna veza sa internetom.
 	The bot token is kept in the system keychain, not in PhotoCraft's settings file.	Token bota ostaje u sistemskom privezku ključeva, ne u datoteci podešavanja PhotoCraft-a.
+	Open the Telegram message	Otvori Telegram poruku
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Deset najnovijih datoteka poslatih ovom botu. Klik otvara jednu u PhotoCraftu.
+	Get files	Preuzmi datoteke
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Datoteke koje je PhotoCraft poslao i deset najnovijih ovom botu. Klik otvara jednu u PhotoCraftu.
+	No files yet. Send one from here, or send the bot a file, then try again.	Još nema datoteka. Pošaljite jednu odavde ili botu, pa pokušajte ponovo.
+	Telegram did not return a link for this chat.	Telegram nije vratio vezu za ovaj razgovor.

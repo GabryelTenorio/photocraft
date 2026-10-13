@@ -3928,3 +3928,9 @@ curves	Smooth	Vloeiend maken
 	Could not pin the message. The file was still sent.	Het bericht kon niet worden vastgezet. Het bestand is wel verzonden.
 	Get from Telegram	Ophalen uit Telegram
 	No files yet. Send your bot a file or a photo, then try again.	Nog geen bestanden. Stuur je bot een bestand of een foto en probeer het opnieuw.
+	Open the Telegram message	Telegram-bericht openen
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	De tien nieuwste bestanden naar deze bot. Een klik opent er een in PhotoCraft.
+	Get files	Bestanden ophalen
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Bestanden die PhotoCraft stuurde, en de tien nieuwste naar deze bot. Een klik opent er een in PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Nog geen bestanden. Stuur er een vanaf hier of naar de bot, en probeer het opnieuw.
+	Telegram did not return a link for this chat.	Telegram gaf geen link voor deze chat.

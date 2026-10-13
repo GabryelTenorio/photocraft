@@ -2811,3 +2811,9 @@ curves	Smooth	Glätten
 	Could not pin the message. The file was still sent.	Die Nachricht konnte nicht angeheftet werden. Die Datei wurde trotzdem gesendet.
 	Get from Telegram	Von Telegram holen
 	No files yet. Send your bot a file or a photo, then try again.	Noch keine Dateien. Schick deinem Bot eine Datei oder ein Foto und versuch es noch einmal.
+	Open the Telegram message	Telegram-Nachricht öffnen
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Die zehn neuesten Dateien an diesen Bot. Ein Klick öffnet sie in PhotoCraft.
+	Get files	Dateien holen
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Dateien, die PhotoCraft gesendet hat, und die zehn neuesten Dateien an diesen Bot. Ein Klick öffnet sie in PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Noch keine Dateien. Sende eine von hier oder dem Bot eine Datei und versuch es noch einmal.
+	Telegram did not return a link for this chat.	Telegram hat für diesen Chat keinen Link geliefert.

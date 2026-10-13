@@ -3654,3 +3654,9 @@ curves	Smooth	Làm mượt
 	Could not pin the message. The file was still sent.	Không ghim được tin nhắn. Tệp vẫn đã được gửi.
 	Get from Telegram	Lấy từ Telegram
 	No files yet. Send your bot a file or a photo, then try again.	Chưa có tệp. Hãy gửi cho bot một tệp hoặc ảnh, rồi thử lại.
+	Open the Telegram message	Mở tin nhắn Telegram
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Mười tệp mới nhất gửi cho bot này. Nhấp một tệp để mở trong PhotoCraft.
+	Get files	Lấy tệp
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Tệp PhotoCraft đã gửi và mười tệp mới nhất gửi cho bot này. Nhấp một tệp để mở trong PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Chưa có tệp. Hãy gửi một tệp từ đây hoặc cho bot, rồi thử lại.
+	Telegram did not return a link for this chat.	Telegram không trả về liên kết cho cuộc trò chuyện này.

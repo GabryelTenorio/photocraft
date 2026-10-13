@@ -2762,3 +2762,9 @@ curves	Smooth	平滑
 	Could not pin the message. The file was still sent.	無法置頂訊息。檔案仍已傳送。
 	Get from Telegram	從 Telegram 取得
 	No files yet. Send your bot a file or a photo, then try again.	還沒有檔案。請先傳檔案或照片給機器人，然後再試。
+	Open the Telegram message	開啟 Telegram 訊息
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	傳給這個機器人的最新十個檔案。點一個即可在 PhotoCraft 中開啟。
+	Get files	取回檔案
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	PhotoCraft 發出的檔案，以及傳給這個機器人的最新十個檔案。點一個即可在 PhotoCraft 中開啟。
+	No files yet. Send one from here, or send the bot a file, then try again.	還沒有檔案。從這裡傳送一個，或傳給機器人一個檔案，然後再試。
+	Telegram did not return a link for this chat.	Telegram 沒有返回這個聊天的連結。

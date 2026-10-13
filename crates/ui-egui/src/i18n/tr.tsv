@@ -3901,3 +3901,9 @@ cameraData	Lens	Lens
 	Could not pin the message. The file was still sent.	İleti sabitlenemedi. Dosya yine de gönderildi.
 	Get from Telegram	Telegram'dan al
 	No files yet. Send your bot a file or a photo, then try again.	Henüz dosya yok. Botuna bir dosya veya fotoğraf gönder, sonra yeniden dene.
+	Open the Telegram message	Telegram mesajını aç
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Bu bota gönderilen en yeni on dosya. Birine tıklamak onu PhotoCraft'ta açar.
+	Get files	Dosyaları getir
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	PhotoCraft'ın gönderdiği dosyalar ve bu bota gelen en yeni on dosya. Birine tıklamak onu PhotoCraft'ta açar.
+	No files yet. Send one from here, or send the bot a file, then try again.	Henüz dosya yok. Buradan bir tane gönderin ya da bota bir dosya gönderip yeniden deneyin.
+	Telegram did not return a link for this chat.	Telegram bu sohbet için bir bağlantı vermedi.

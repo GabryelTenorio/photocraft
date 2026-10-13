@@ -3766,3 +3766,9 @@ curves	Smooth	Wygładź
 	Could not pin the message. The file was still sent.	Nie udało się przypiąć wiadomości. Plik został wysłany.
 	Get from Telegram	Pobierz z Telegrama
 	No files yet. Send your bot a file or a photo, then try again.	Nie ma jeszcze plików. Wyślij botowi plik lub zdjęcie i spróbuj ponownie.
+	Open the Telegram message	Otwórz wiadomość Telegram
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Dziesięć najnowszych plików wysłanych do tego bota. Kliknięcie otwiera jeden w PhotoCraft.
+	Get files	Pobierz pliki
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Pliki wysłane z PhotoCraft i dziesięć najnowszych do tego bota. Kliknięcie otwiera jeden w PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Jeszcze nie ma plików. Wyślij jeden stąd albo do bota i spróbuj ponownie.
+	Telegram did not return a link for this chat.	Telegram nie zwrócił linku do tego czatu.

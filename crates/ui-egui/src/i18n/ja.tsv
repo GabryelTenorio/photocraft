@@ -3846,3 +3846,9 @@ curves	Smooth	スムーズ
 	Could not pin the message. The file was still sent.	メッセージを固定できませんでした。ファイルは送信されています。
 	Get from Telegram	Telegram から取得
 	No files yet. Send your bot a file or a photo, then try again.	まだファイルがありません。ボットにファイルか写真を送ってから、もう一度試してください。
+	Open the Telegram message	Telegram のメッセージを開く
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	このボットに送られた新しい順10件。クリックすると PhotoCraft で開きます。
+	Get files	ファイルを取得
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	PhotoCraft から送ったファイルと、このボットに送られた新しい順10件。クリックすると PhotoCraft で開きます。
+	No files yet. Send one from here, or send the bot a file, then try again.	まだファイルがありません。ここから送るか、ボットにファイルを送ってからもう一度。
+	Telegram did not return a link for this chat.	Telegram はこのチャットのリンクを返しませんでした。

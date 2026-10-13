@@ -3866,3 +3866,9 @@ curves	Smooth	Εξομάλυνση
 	Could not pin the message. The file was still sent.	Το μήνυμα δεν καρφιτσώθηκε. Το αρχείο στάλθηκε.
 	Get from Telegram	Λήψη από το Telegram
 	No files yet. Send your bot a file or a photo, then try again.	Δεν υπάρχουν αρχεία ακόμα. Στείλτε στο bot ένα αρχείο ή μια φωτογραφία και δοκιμάστε ξανά.
+	Open the Telegram message	Άνοιγμα του μηνύματος στο Telegram
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Τα δέκα νεότερα αρχεία προς αυτό το bot. Κλικ για άνοιγμα στο PhotoCraft.
+	Get files	Λήψη αρχείων
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Αρχεία που έστειλε το PhotoCraft και τα δέκα νεότερα προς αυτό το bot. Κλικ για άνοιγμα στο PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Δεν υπάρχουν αρχεία ακόμα. Στείλτε ένα από εδώ ή στο bot και δοκιμάστε ξανά.
+	Telegram did not return a link for this chat.	Το Telegram δεν έδωσε σύνδεσμο για αυτή τη συνομιλία.

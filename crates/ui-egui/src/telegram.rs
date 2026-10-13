@@ -39,6 +39,8 @@ pub struct Settings {
     pub also_png: bool,
     /// Pin the sent message. Off until the user opts in. Needs the bot to be an admin.
     pub pin_message: bool,
+    /// Files this app sent, newest first, so they can be opened again. The bot token is not here.
+    pub sent_files: Vec<Value>,
 }
 
 impl Settings {
@@ -71,6 +73,7 @@ pub fn settings_from_json(text: &str) -> Settings {
         send_on_save_copy: v.get("sendOnSaveCopy").and_then(Value::as_bool).unwrap_or(false),
         also_png: v.get("alsoPng").and_then(Value::as_bool).unwrap_or(false),
         pin_message: v.get("pinMessage").and_then(Value::as_bool).unwrap_or(false),
+        sent_files: v.get("sentFiles").and_then(Value::as_array).cloned().unwrap_or_default(),
     }
 }
 
@@ -84,6 +87,7 @@ fn settings_json(s: &Settings) -> String {
         "sendOnSaveCopy": s.send_on_save_copy,
         "alsoPng": s.also_png,
         "pinMessage": s.pin_message,
+        "sentFiles": s.sent_files,
     }))
     .unwrap_or_else(|_| "{}".to_string())
 }
@@ -171,28 +175,28 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 }
                 return;
             }
-            let (body, pin_failed) = body.split_once("\nPINFAIL").map(|(ok, _)| (ok.to_string(), true)).unwrap_or((body, false));
-            let url = if body.starts_with("http") { Some(body.clone()) } else { message_link(&body) };
-            let status = match &url {
-                Some(url) => format!("Sent {}. {url}", job.name),
-                None => format!("Sent {} to Telegram.", job.name),
+            let report = send_report(&body);
+            let url = report.urls.first().cloned();
+            let links = if report.urls.is_empty() {
+                tl!("Telegram did not return a link for this chat.").to_string()
+            } else {
+                report.urls.join("\n")
             };
+            let mut status = crate::i18n::fmt(tl!("Sent {name}. {url}"), &[("name", &job.name), ("url", &links)]);
+            if report.pin_failed {
+                let note = tl!("Could not pin the message. The file was still sent.").to_string();
+                status = format!("{status}\n{note}");
+            }
+            remember_sent_files(app, &report.files);
             app.ui.status = status.clone();
             app.ui.status_error = false;
-            let mut lines = vec![status];
-            if let Some(url) = url {
-                lines.push(url);
-            }
-            if pin_failed {
-                let note = "Could not pin the message. The file was still sent.".to_string();
-                app.ui.status = format!("{}\n{note}", app.ui.status);
-                lines.push(note);
-            }
-            crate::notices::post(app, "Sent to Telegram", lines, false, None);
+            show_result(app, status, url);
         }
         Some(Err(error)) => {
-            app.ui.status = redact(&error, &job.token);
+            let message = redact(&error, &job.token);
+            app.ui.status = message.clone();
             app.ui.status_error = true;
+            show_result(app, message, None);
         }
         None => {}
     }
@@ -200,6 +204,35 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
 
 pub fn owns(fields: &serde_json::Map<String, Value>) -> bool {
     fields.get("__telegram").and_then(Value::as_bool) == Some(true)
+}
+
+pub fn result_owns(fields: &serde_json::Map<String, Value>) -> bool {
+    fields.get("__telegram_result").and_then(Value::as_bool) == Some(true)
+}
+
+pub fn result_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &serde_json::Map<String, Value>) {
+    ui.set_min_width(420.0);
+    if let Some(message) = f.get("message").and_then(Value::as_str) {
+        ui.label(message);
+        ui.add_space(8.0);
+    }
+    let Some(url) = f.get("url").and_then(Value::as_str) else { return };
+    ui.hyperlink(url);
+    ui.add_space(4.0);
+    if crate::widgets::secondary_button(ui, tl!("Open the Telegram message"), 220.0).clicked() {
+        crate::links::open(app, ui.ctx(), url);
+    }
+}
+
+fn show_result(app: &mut PhotocraftApp, message: String, url: Option<String>) {
+    let mut fields = serde_json::Map::new();
+    fields.insert("__telegram_result".into(), json!(true));
+    fields.insert("__label".into(), json!("Telegram"));
+    fields.insert("message".into(), json!(message));
+    if let Some(url) = url {
+        fields.insert("url".into(), json!(url));
+    }
+    app.ui.open_dialog(crate::state::DialogKind::Command, fields);
 }
 
 fn dialog_open(app: &PhotocraftApp) -> bool {
@@ -283,7 +316,9 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut serde_json::Map<
         }
     }
     ui.add_space(4.0);
-    if crate::widgets::secondary_button(ui, tl!("Get from Telegram"), 220.0).clicked() {
+    ui.label(egui::RichText::new(tl!("Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.")).color(t.text_dim));
+    ui.add_space(4.0);
+    if crate::widgets::secondary_button(ui, tl!("Get files"), 160.0).clicked() {
         match fetch_inbox(app, &token) {
             Ok(files) => {
                 f.insert("inbox".into(), json!(files));
@@ -296,7 +331,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut serde_json::Map<
     }
     if let Some(files) = f.get("inbox").and_then(Value::as_array).cloned() {
         if files.is_empty() {
-            ui.label(tl!("No files yet. Send your bot a file or a photo, then try again."));
+            ui.label(tl!("No files yet. Send one from here, or send the bot a file, then try again."));
         }
         for file in files {
             let id = file.get("id").and_then(Value::as_str).unwrap_or("").to_string();
@@ -373,6 +408,7 @@ pub fn confirm(app: &mut PhotocraftApp, f: &serde_json::Map<String, Value>) -> R
         send_on_save_copy: f.get("onSaveCopy").and_then(Value::as_bool).unwrap_or(false),
         also_png: f.get("alsoPng").and_then(Value::as_bool).unwrap_or(false),
         pin_message: f.get("pin").and_then(Value::as_bool).unwrap_or(false),
+        sent_files: app.telegram.sent_files.clone(),
     };
     let text = settings_json(&next);
     let pending = f.get("pending").and_then(Value::as_str).map(str::to_string);
@@ -531,7 +567,18 @@ fn fetch_inbox(app: &PhotocraftApp, token: &str) -> Result<Vec<Value>, String> {
     };
     let url = format!("https://api.telegram.org/bot{token}/getUpdates");
     let body = get(&url).map_err(|error| redact(&error, token))?;
-    Ok(files_from_updates(&body))
+    let mut rows = app.telegram.sent_files.clone();
+    for row in files_from_updates(&body) {
+        let id = row.get("id").and_then(Value::as_str).unwrap_or("");
+        if id.is_empty() || rows.iter().any(|have| have.get("id").and_then(Value::as_str) == Some(id)) {
+            continue;
+        }
+        rows.push(row);
+        if rows.len() == 10 {
+            break;
+        }
+    }
+    Ok(rows)
 }
 
 fn start_download(app: &mut PhotocraftApp, token: &str, file_id: &str, name: &str) -> Result<(), String> {
@@ -606,22 +653,106 @@ pub fn chats_from_updates(text: &str) -> Vec<Value> {
     out
 }
 
-/// Public link to the sent message, when Telegram has one (a public username, or a
-/// channel/supergroup id that starts with -100).
+/// Link to the sent message. A public chat gets `https://t.me/…`. A private chat has no web
+/// page; Telegram's own app link still opens the message.
 pub fn message_link(body: &str) -> Option<String> {
     let v: Value = serde_json::from_str(body).ok()?;
     let result = v.get("result")?;
-    let message_id = result.get("message_id")?.as_i64()?;
-    let chat = result.get("chat")?;
+    let message = result.as_array().and_then(|items| items.first()).unwrap_or(result);
+    let message_id = message.get("message_id")?.as_i64()?;
+    let chat = message.get("chat")?;
     if let Some(username) = chat.get("username").and_then(Value::as_str).filter(|name| !name.is_empty()) {
         return Some(format!("https://t.me/{username}/{message_id}"));
     }
     let id = chat.get("id")?.as_i64()?;
-    let internal = id.to_string().strip_prefix("-100")?.to_string();
-    if internal.is_empty() {
-        return None;
+    if let Some(internal) = id.to_string().strip_prefix("-100").filter(|rest| !rest.is_empty()) {
+        return Some(format!("https://t.me/c/{internal}/{message_id}"));
     }
-    Some(format!("https://t.me/c/{internal}/{message_id}"))
+    if id > 0 {
+        Some(format!("tg://openmessage?user_id={id}&message_id={message_id}"))
+    } else {
+        Some(format!("tg://openmessage?chat_id={id}&message_id={message_id}"))
+    }
+}
+
+/// Documents and photos in a successful send reply, newest first.
+pub fn sent_files_from_reply(body: &str) -> Vec<Value> {
+    let Ok(value) = serde_json::from_str::<Value>(body) else { return Vec::new() };
+    let Some(result) = value.get("result") else { return Vec::new() };
+    let messages: Vec<&Value> = result.as_array().map(|items| items.iter().collect()).unwrap_or_else(|| vec![result]);
+    let mut out = Vec::new();
+    for message in messages {
+        push_message_file(message, &mut out);
+    }
+    out
+}
+
+fn push_message_file(message: &Value, out: &mut Vec<Value>) {
+    let message_id = message.get("message_id").and_then(Value::as_i64).unwrap_or(0);
+    if let Some(document) = message.get("document") {
+        let file_id = document.get("file_id").and_then(Value::as_str).unwrap_or("");
+        if file_id.is_empty() {
+            return;
+        }
+        let name = document.get("file_name").and_then(Value::as_str).unwrap_or("file");
+        out.push(json!({"id": file_id, "name": name, "label": name}));
+        return;
+    }
+    let Some(photos) = message.get("photo").and_then(Value::as_array) else { return };
+    let Some(photo) = photos.iter().max_by_key(|p| p.get("file_size").and_then(Value::as_u64).unwrap_or(0)) else { return };
+    let file_id = photo.get("file_id").and_then(Value::as_str).unwrap_or("");
+    if file_id.is_empty() {
+        return;
+    }
+    let name = format!("telegram-{message_id}.jpg");
+    out.push(json!({"id": file_id, "name": name, "label": name}));
+}
+
+struct SendReport {
+    urls: Vec<String>,
+    files: Vec<Value>,
+    pin_failed: bool,
+}
+
+/// The send thread returns either the new JSON report or, from an older build, a bare link.
+fn send_report(body: &str) -> SendReport {
+    if let Ok(value) = serde_json::from_str::<Value>(body) {
+        if let Some(urls) = value.get("urls").and_then(Value::as_array) {
+            let urls = urls.iter().filter_map(|v| v.as_str().map(str::to_string)).filter(|url| !url.is_empty()).collect();
+            let files = value.get("files").and_then(Value::as_array).cloned().unwrap_or_default();
+            let pin_failed = value.get("pinFailed").and_then(Value::as_bool).unwrap_or(false);
+            return SendReport { urls, files, pin_failed };
+        }
+    }
+    let (text, pin_failed) = body.split_once("\nPINFAIL").map(|(ok, _)| (ok.to_string(), true)).unwrap_or((body.to_string(), false));
+    let urls = if text.starts_with("http") || text.starts_with("tg:") {
+        text.lines().map(str::to_string).filter(|line| !line.is_empty()).collect()
+    } else {
+        Vec::new()
+    };
+    SendReport { urls, files: Vec::new(), pin_failed }
+}
+
+fn remember_sent_files(app: &mut PhotocraftApp, fresh: &[Value]) {
+    if fresh.is_empty() {
+        return;
+    }
+    let mut kept = fresh.to_vec();
+    for old in app.telegram.sent_files.drain(..) {
+        let id = old.get("id").and_then(Value::as_str).unwrap_or("");
+        if id.is_empty() || kept.iter().any(|row| row.get("id").and_then(Value::as_str) == Some(id)) {
+            continue;
+        }
+        kept.push(old);
+        if kept.len() == 10 {
+            break;
+        }
+    }
+    app.telegram.sent_files = kept;
+    let text = settings_json(&app.telegram);
+    if let Some(save) = app.services.save_telegram.as_mut() {
+        let _ = save(&text);
+    }
 }
 
 fn read_file(path: &str) -> Result<(String, Vec<u8>), String> {
@@ -809,6 +940,7 @@ fn send_to_chats(
     pin: bool,
 ) -> Result<String, String> {
     let mut links = Vec::new();
+    let mut files = Vec::new();
     let mut pin_failed = false;
     for chat in chats {
         let (method, content_type, body) = if let Some((preview_name, preview_bytes, _)) = preview {
@@ -832,6 +964,7 @@ fn send_to_chats(
                 return Err(format!("Sent to the earlier chats. The next chat failed: {error}"));
             }
         };
+        files.extend(sent_files_from_reply(&text));
         if let Some(link) = message_link(&text) {
             links.push(link);
         }
@@ -847,11 +980,7 @@ fn send_to_chats(
             }
         }
     }
-    let mut out = links.join("\n");
-    if pin_failed {
-        out.push_str("\nPINFAIL");
-    }
-    Ok(out)
+    Ok(json!({"urls": links, "files": files, "pinFailed": pin_failed}).to_string())
 }
 
 fn is_image_name(name: &str) -> bool {
@@ -1206,7 +1335,12 @@ mod tests {
         assert_eq!(message_link(channel).as_deref(), Some("https://t.me/c/555/9"));
         let public = r#"{"ok":true,"result":{"message_id":4,"chat":{"id":1,"username":"mychan"}}}"#;
         assert_eq!(message_link(public).as_deref(), Some("https://t.me/mychan/4"));
-        assert!(message_link(r#"{"ok":true,"result":{"message_id":1,"chat":{"id":42}}}"#).is_none());
+        assert_eq!(
+            message_link(r#"{"ok":true,"result":{"message_id":1,"chat":{"id":42}}}"#).as_deref(),
+            Some("tg://openmessage?user_id=42&message_id=1")
+        );
+        let sent = r#"{"ok":true,"result":{"message_id":2,"document":{"file_id":"abc","file_name":"hill.psd"}}}"#;
+        assert_eq!(sent_files_from_reply(sent)[0].get("id").and_then(Value::as_str), Some("abc"));
         let updates = r#"{"ok":true,"result":[{"message":{"chat":{"id":42,"first_name":"Sam"}}},{"message":{"chat":{"id":42,"first_name":"Sam"}}},{"channel_post":{"chat":{"id":-1007,"title":"Desk"}}}]}"#;
         let chats = chats_from_updates(updates);
         assert_eq!(chats.len(), 2);

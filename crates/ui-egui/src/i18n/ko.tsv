@@ -3342,3 +3342,9 @@ curves	Smooth	매끄럽게
 	Could not pin the message. The file was still sent.	메시지를 고정하지 못했습니다. 파일은 보내졌습니다.
 	Get from Telegram	텔레그램에서 가져오기
 	No files yet. Send your bot a file or a photo, then try again.	아직 파일이 없습니다. 봇에게 파일이나 사진을 보낸 뒤 다시 시도하세요.
+	Open the Telegram message	Telegram 메시지 열기
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	이 봇에 보낸 최신 파일 10개. 하나를 클릭하면 PhotoCraft에서 열립니다.
+	Get files	파일 가져오기
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	PhotoCraft에서 보낸 파일과 이 봇에 보낸 최신 파일 10개. 하나를 클릭하면 PhotoCraft에서 열립니다.
+	No files yet. Send one from here, or send the bot a file, then try again.	아직 파일이 없습니다. 여기서 보내거나 봇에게 파일을 보낸 다음 다시 시도하세요.
+	Telegram did not return a link for this chat.	Telegram이 이 채팅의 링크를 주지 않았습니다.

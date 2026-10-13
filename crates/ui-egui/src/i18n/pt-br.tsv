@@ -3958,3 +3958,9 @@ layerLabel	No Color	Sem cor
 	Could not pin the message. The file was still sent.	Não foi possível fixar a mensagem. O arquivo foi enviado.
 	Get from Telegram	Trazer do Telegram
 	No files yet. Send your bot a file or a photo, then try again.	Ainda não há arquivos. Envie um arquivo ou uma foto ao bot e tente de novo.
+	Open the Telegram message	Abrir a mensagem do Telegram
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Os dez arquivos mais novos enviados a este bot. Um clique abre um no PhotoCraft.
+	Get files	Trazer arquivos
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Arquivos enviados pelo PhotoCraft e os dez mais novos enviados a este bot. Um clique abre um no PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Ainda não há arquivos. Envie um daqui ou para o bot e tente de novo.
+	Telegram did not return a link for this chat.	O Telegram não devolveu um link para este chat.

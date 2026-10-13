@@ -3114,3 +3114,9 @@ curves	Smooth	Сгладить
 	Could not pin the message. The file was still sent.	Не удалось закрепить сообщение. Файл всё равно отправлен.
 	Get from Telegram	Взять из Telegram
 	No files yet. Send your bot a file or a photo, then try again.	Файлов пока нет. Отправьте боту файл или фото и попробуйте снова.
+	Open the Telegram message	Открыть сообщение в Telegram
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Десять новых файлов, отправленных этому боту. Щелчок открывает один в PhotoCraft.
+	Get files	Забрать файлы
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Файлы, отправленные из PhotoCraft, и десять новых файлов этому боту. Щелчок открывает один в PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Файлов пока нет. Отправьте один отсюда или боту и попробуйте снова.
+	Telegram did not return a link for this chat.	Telegram не вернул ссылку на этот чат.

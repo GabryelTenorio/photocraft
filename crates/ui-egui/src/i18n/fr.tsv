@@ -3170,3 +3170,9 @@ curves	Smooth	Lisser
 	Could not pin the message. The file was still sent.	Le message n'a pas pu être épinglé. Le fichier a bien été envoyé.
 	Get from Telegram	Récupérer depuis Telegram
 	No files yet. Send your bot a file or a photo, then try again.	Pas encore de fichiers. Envoyez un fichier ou une photo à votre bot, puis réessayez.
+	Open the Telegram message	Ouvrir le message Telegram
+	The ten newest files sent to this bot. Click one to open it in PhotoCraft.	Les dix fichiers les plus récents envoyés à ce bot. Un clic en ouvre un dans PhotoCraft.
+	Get files	Récupérer les fichiers
+	Files sent from PhotoCraft, and the ten newest files sent to this bot. Click one to open it in PhotoCraft.	Fichiers envoyés depuis PhotoCraft et les dix plus récents envoyés à ce bot. Un clic en ouvre un dans PhotoCraft.
+	No files yet. Send one from here, or send the bot a file, then try again.	Pas encore de fichiers. Envoyez-en un d'ici ou au bot, puis réessayez.
+	Telegram did not return a link for this chat.	Telegram n'a pas renvoyé de lien pour cette discussion.
