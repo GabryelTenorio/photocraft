@@ -163,9 +163,6 @@ what an agent can't finish alone.
 - **Estimate:** 60–110 h.
 
 ### G9. Panels, preferences and workspace
-- **2026-10-11 implemented:** pixel-mask Copy/Paste between tabs, Alt-drag copy / drag move,
-  and explicit replacement confirmation (#2928); [workflow and test evidence](mask-transfer.md).
-  This is separate from the whole-layer clipboard gap below; headline estimates are unchanged.
 - **Missing:** 46 of 149 preferences do nothing (scorecard prefs audit); panel groups can't
   float or tear off into OS windows (UI-217-5, #1828, #1213, #2305); Color panel lacks wheel and
   slider modes (UI-217-17, #2569); UI scale presets (UI-217-9, #2492); more themes (UI-217-11,
@@ -174,6 +171,9 @@ what an agent can't finish alone.
   ([context-menu-parity.md](context-menu-parity.md)); Libraries, Comments, Contextual Task Bar
   panels.
 - **Estimate:** 150–250 h.
+- **2026-10-11 implemented:** pixel-mask Copy/Paste between tabs, Alt-drag copy / drag move,
+  and explicit replacement confirmation (#2928); [workflow and test evidence](mask-transfer.md).
+  This is separate from the whole-layer clipboard gap above; headline estimates are unchanged.
 
 ### G2. Interactive performance
 - **Measured progress (2026-10-10):** Tilt-Shift's existing per-level halo/copy
