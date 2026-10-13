@@ -753,11 +753,13 @@ pub fn focus_first_field(ctx: &egui::Context, on: bool) {
 /// first digit in 123.45 selects tens; a caret after the first fractional digit selects tenths.
 /// Keep the sign out of the count, and cap exponents for extreme but valid field values.
 fn wheel_step_at_caret(display: &str, caret: usize) -> Option<f64> {
-    if display.is_empty() || !display.bytes().all(|b| b.is_ascii_digit() || b == b'.' || b == b'-') {
-        return None;
-    }
     let start = usize::from(display.starts_with('-'));
-    if !display[start..].bytes().any(|b| b.is_ascii_digit()) {
+    let digits = display.get(start..)?;
+    if digits.is_empty()
+        || !digits.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        || digits.bytes().filter(|b| *b == b'.').count() > 1
+        || !digits.bytes().any(|b| b.is_ascii_digit())
+    {
         return None;
     }
     let dot = display.find('.').unwrap_or(display.len());
