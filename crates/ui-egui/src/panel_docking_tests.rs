@@ -806,7 +806,8 @@ fn pointer_tab_and_docked_group_drags_can_create_regions_and_float_whole_groups(
     assert_eq!(h.state().ui.dock_regions.side("layers"), DockSide::Top);
     assert_ne!(h.state().ui.dock_regions.side("channels"), DockSide::Top);
     h.state_mut().run("window.panel.move", json!({"panel":"channels","anchor":"layers"})).unwrap();
-    h.run_steps(3);
+    // Preview controls remain disabled until the 150 ms post-drop transition finishes.
+    h.run_steps(12);
     let grip = h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("dock-group-grip", &"channels".to_owned()))).unwrap().rect.center();
     let to = canvas_region(&h).center();
     drag(&mut h, grip, to);
@@ -1532,4 +1533,64 @@ fn hidden_floating_panel_keeps_its_dock_return_and_floating_memory() {
     assert_eq!(app.ui.dock_regions.side("properties"), DockSide::Bottom);
     app.run("window.panel.float", json!({"panel":"properties"})).unwrap();
     assert_eq!(&app.ui.dock_regions.floating_memory["properties"][2..], &[345.0, 465.0]);
+}
+
+#[test]
+fn pointer_shared_divider_inserts_between_both_neighbors_with_fixed_strips() {
+    for horizontal in [false, true] {
+        let mut app = app();
+        let side = if horizontal { "bottom" } else { "left" };
+        app.run("window.panel.dock", json!({"panel":"color","side":side})).unwrap();
+        if horizontal {
+            app.run("window.panel.layout", json!({"side":side,"size":400})).unwrap();
+        }
+        app.run("window.panel.move", json!({"panel":"properties","anchor":"color","zone":if horizontal { "right" } else { "bottom" }})).unwrap();
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let a = rendered_group(&h, "color");
+        let b = rendered_group(&h, "properties");
+        let a_tab = tab_rect(&h, "color");
+        let b_tab = tab_rect(&h, "properties");
+        let to = if horizontal { egui::pos2((a.right() + b.left()) * 0.5, a.center().y) } else { egui::pos2(a.center().x, (a.bottom() + b.top()) * 0.5) };
+        let from = tab_rect(&h, "layers").center();
+        hold_drag(&mut h, from, to);
+        assert_eq!(tab_rect(&h, "color"), a_tab);
+        assert_eq!(tab_rect(&h, "properties"), b_tab);
+        let destination = drop_preview(&h).and_then(|feedback| feedback.preview).expect("shared-divider destination");
+        capture_insertion(&mut h, &format!("between-{horizontal}-drag"));
+        h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.run_steps(16);
+        let actual = rendered_group(&h, "layers");
+        assert!((actual.min - destination.min).length() <= 1.5 && (actual.max - destination.max).length() <= 1.5);
+        let extent = |rect: egui::Rect| if horizontal { rect.width() } else { rect.height() };
+        assert!(extent(rendered_group(&h, "color")) < extent(a));
+        assert!(extent(rendered_group(&h, "properties")) < extent(b));
+        let combined = a.union(b);
+        let settled = rendered_group(&h, "color").union(rendered_group(&h, "properties")).union(actual);
+        assert!((combined.min - settled.min).length() <= 1.5 && (combined.max - settled.max).length() <= 1.5);
+        capture_insertion(&mut h, &format!("between-{horizontal}-settled"));
+    }
+}
+
+#[test]
+fn insertion_marker_is_visible_in_rendered_pixels_above_drag_and_fixed_header() {
+    for floating in [false, true] {
+        let mut app = app();
+        app.run("window.panel.dock", json!({"panel":"color","side":"left"})).unwrap();
+        if floating {
+            app.run("window.panel.group", json!({"panel":"layers","operation":"float","x":350,"y":250,"width":360,"height":400})).unwrap();
+        }
+        let mut h = harness(app, vec2(1440.0, 1000.0));
+        let from = tab_rect(&h, "layers").center();
+        let last = tab_rect(&h, "paths");
+        let to = egui::pos2(last.right() - 2.0, last.center().y);
+        hold_drag(&mut h, from, to);
+        assert_insertion_only(&h, "layers");
+        let marker = drop_preview(&h).unwrap().insertion.unwrap();
+        let scale = h.ctx.pixels_per_point();
+        let image = h.render().unwrap();
+        let pixel = image.get_pixel((marker.center().x * scale).floor() as u32, ((marker.top() + 3.0) * scale).floor() as u32).0;
+        let expected = crate::theme::Tokens::get(&h.ctx).accent.to_array();
+        assert!(pixel.iter().zip(expected).all(|(actual, expected)| actual.abs_diff(expected) <= 1), "marker is covered: {pixel:?}, expected {expected:?}");
+        capture_insertion(&mut h, &format!("visible-marker-{floating}"));
+    }
 }

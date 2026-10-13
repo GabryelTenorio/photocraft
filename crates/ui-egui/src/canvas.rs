@@ -1690,8 +1690,12 @@ fn document_area_preview(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         let _ = tabs(app, ui);
     }
     let count = app.session.documents().len();
-    let Some(active) = app.session.active_index().filter(|index| !crate::document_docking::detached(app, *index))
-        .or_else(|| (0..count).find(|index| !crate::document_docking::detached(app, *index))) else {
+    let Some(active) = app
+        .session
+        .active_index()
+        .filter(|index| !crate::document_docking::detached(app, *index))
+        .or_else(|| (0..count).find(|index| !crate::document_docking::detached(app, *index)))
+    else {
         return;
     };
     let rect = ui.available_rect_before_wrap();

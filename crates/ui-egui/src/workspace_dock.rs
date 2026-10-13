@@ -179,8 +179,7 @@ impl DockRegions {
     }
 
     pub(crate) fn region_tree(&self, layout: &Layout<String>, panel: &str) -> Option<Node<String>> {
-        project(layout.root.as_ref()?, self, (self.host(panel), self.side(panel), self.band(panel)), &mut Vec::new(), 0)
-            .map(|projected| projected.node)
+        project(layout.root.as_ref()?, self, (self.host(panel), self.side(panel), self.band(panel)), &mut Vec::new(), 0).map(|projected| projected.node)
     }
 
     pub(crate) fn render_host(&self, layout: &Layout<String>, host: DockHost, canvas: &str) -> RenderLayout {
@@ -202,11 +201,7 @@ impl DockRegions {
                         splits.insert(prefixed(first_region, path), target);
                     }
                     splits.insert(Vec::new(), SplitTarget::Region(host, side, band));
-                    let size = self
-                        .band_sizes
-                        .get(&band)
-                        .copied()
-                        .unwrap_or_else(|| self.sizes_for(host).get(side.index()).copied().unwrap_or(290.0));
+                    let size = self.band_sizes.get(&band).copied().unwrap_or_else(|| self.sizes_for(host).get(side.index()).copied().unwrap_or(290.0));
                     let (first, second) = if first_region { (region.node, rendered.node) } else { (rendered.node, region.node) };
                     rendered = Projected {
                         node: Node::Split {
@@ -255,11 +250,7 @@ fn project(node: &Node<String>, regions: &DockRegions, region: (DockHost, DockSi
     match node {
         Node::Tabs { panels, active } => {
             let selected = panels.get(*active);
-            let panels: Vec<_> = panels
-                .iter()
-                .filter(|id| regions.side(id) == side && regions.host(id) == host && regions.band(id) == band)
-                .cloned()
-                .collect();
+            let panels: Vec<_> = panels.iter().filter(|id| regions.side(id) == side && regions.host(id) == host && regions.band(id) == band).cloned().collect();
             if panels.is_empty() {
                 return None;
             }

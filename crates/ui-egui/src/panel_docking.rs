@@ -559,11 +559,7 @@ fn side_command(app: &mut PhotocraftApp, params: &Value, whole_group: bool) -> R
     if adjacent && host == DockHost::Workspace {
         return Err("adjacent requires a document destination".into());
     }
-    let band = if adjacent {
-        regions.bands.values().copied().max().unwrap_or(0).checked_add(1).ok_or("dock nesting limit reached")?
-    } else {
-        0
-    };
+    let band = if adjacent { regions.bands.values().copied().max().unwrap_or(0).checked_add(1).ok_or("dock nesting limit reached")? } else { 0 };
     if band > 0 {
         regions.band_sizes.insert(band, regions.sizes_for(host).get(side.index()).copied().unwrap_or(290.0));
     }
@@ -1198,9 +1194,10 @@ fn group_command(app: &mut PhotocraftApp, params: &Value) -> Result<Value, Strin
             let groups: Vec<_> = root_groups(&layout)
                 .into_iter()
                 .filter(|ids| {
-                    !regions.enabled || ids.first().is_some_and(|id| {
-                        regions.side(id) == regions.side(panel) && regions.host(id) == regions.host(panel) && regions.band(id) == regions.band(panel)
-                    })
+                    !regions.enabled
+                        || ids.first().is_some_and(|id| {
+                            regions.side(id) == regions.side(panel) && regions.host(id) == regions.host(panel) && regions.band(id) == regions.band(panel)
+                        })
                 })
                 .collect();
             let index = groups.iter().position(|g| g.contains(&panel.to_owned())).ok_or("floating groups cannot move within the dock")?;
@@ -1506,7 +1503,12 @@ fn eligible_drag_targets(
         let workspace = registry.entry(DockHost::Workspace).or_default();
         if !workspace.iter().any(|target| target.anchor == CANVAS) {
             workspace.push(craft_ui::docking::DropTarget {
-                anchor: CANVAS.into(), rect, tab_strip: None, tabs: Vec::new(), allow_splits: true, accepts_tabs: false,
+                anchor: CANVAS.into(),
+                rect,
+                tab_strip: None,
+                tabs: Vec::new(),
+                allow_splits: true,
+                accepts_tabs: false,
             });
         }
     }
@@ -1550,10 +1552,11 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn preview_geometry_origin(&self, ctx: &egui::Context, panel: &String) -> Option<egui::Rect> {
         ctx.data(|data| {
             data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
-                .and_then(|registry| registry.get(&self.host).and_then(|targets| {
-                    targets.iter().find(|target| &target.anchor == panel || target.tabs.iter().any(|(member, _)| member == panel))
-                        .map(|target| target.rect)
-                }))
+                .and_then(|registry| {
+                    registry.get(&self.host).and_then(|targets| {
+                        targets.iter().find(|target| &target.anchor == panel || target.tabs.iter().any(|(member, _)| member == panel)).map(|target| target.rect)
+                    })
+                })
                 .or_else(|| (panel == CANVAS).then(|| data.get_temp::<egui::Rect>(egui::Id::new("photocraft-document-area-rect"))).flatten())
         })
     }
@@ -1584,7 +1587,8 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             let _ = self.resolve_drag(ctx, style, request);
         }
         let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange) else {
-            if self.host == DockHost::Workspace && !self.app.ui.dock_regions.enabled
+            if self.host == DockHost::Workspace
+                && !self.app.ui.dock_regions.enabled
                 && ctx.data(|data| data.get_temp::<bool>(key.with("regional-presentation"))).unwrap_or(false)
             {
                 return self.app.ui.docking.as_ref().map(|layout| self.app.ui.dock_regions.render(layout).layout);
@@ -1592,7 +1596,8 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             return None;
         };
         let candidate = preview.candidate.layout.as_ref()?;
-        if self.host == DockHost::Workspace && preview.candidate.regions.enabled
+        if self.host == DockHost::Workspace
+            && preview.candidate.regions.enabled
             && !ctx.data(|data| data.get_temp::<bool>(key.with("regional-presentation"))).unwrap_or(false)
         {
             return None;
@@ -1616,7 +1621,8 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         Some(layout)
     }
     fn preview_targets(&mut self, ctx: &egui::Context, targets: &[craft_ui::docking::DropTarget<String>]) {
-        let Some(mut preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange && preview.feedback.insertion.is_some()) else {
+        let Some(mut preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange && preview.feedback.insertion.is_some())
+        else {
             return;
         };
         let Some(first) = preview.moving.first() else { return };
@@ -1630,9 +1636,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     }
     fn paint_preview(&mut self, ctx: &egui::Context) {
         let key = egui::Id::new("photocraft-panel-docking");
-        if craft_ui::docking::is_dragging::<String>(ctx, key)
-            && ctx.data(|data| data.get_temp::<bool>(key.with("same-group-strip"))).unwrap_or(false)
-        {
+        if craft_ui::docking::is_dragging::<String>(ctx, key) && ctx.data(|data| data.get_temp::<bool>(key.with("same-group-strip"))).unwrap_or(false) {
             return;
         }
         let rects = ctx.data(|data| data.get_temp::<Vec<egui::Rect>>(key.with(("affected", self.host)))).unwrap_or_default();
@@ -1699,14 +1703,14 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     ) -> Option<craft_ui::docking::DropFeedback> {
         use craft_ui::docking::{DropFeedback, measure_layout, resolve_drop};
         let key = egui::Id::new("photocraft-panel-docking");
-        if let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.pointer == request.pointer) {
-            if !self.app.session.prefs().workspace_locked {
-                if request.released {
-                    *self.pending_drop = Some(preview.candidate);
-                }
-                ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), preview.feedback.clone()));
-                return Some(preview.feedback);
+        if let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.pointer == request.pointer)
+            && !self.app.session.prefs().workspace_locked
+        {
+            if request.released {
+                *self.pending_drop = Some(preview.candidate);
             }
+            ctx.data_mut(|data| data.insert_temp(key.with("resolved-preview"), preview.feedback.clone()));
+            return Some(preview.feedback);
         }
         ctx.data_mut(|data| data.remove::<LiveDockPreview>(key.with("live-preview")));
         ctx.data_mut(|data| data.remove::<DropFeedback>(key.with("resolved-preview")));
@@ -1732,17 +1736,13 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let edge = (!panel_strip).then(|| crate::workspace_dock::edge_at(self.workspace_rect, request.pointer)).flatten();
         // Inset document targets remain reachable even where document/workspace edges coincide.
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, key.with("document-targets")));
-        let canvas_target = eligible
-            .iter()
-            .rev()
-            .find(|target| target.rect.contains(request.pointer))
-            .filter(|target| crate::document_docking::is_canvas(&target.anchor));
+        let canvas_target =
+            eligible.iter().rev().find(|target| target.rect.contains(request.pointer)).filter(|target| crate::document_docking::is_canvas(&target.anchor));
         let mut document_target = if panel_strip {
             None
         } else {
             canvas_target.and_then(|target| {
-                crate::workspace_dock::edge_within(target.rect, request.pointer, 36.0)
-                    .map(|side| (crate::document_docking::canvas_host(&target.anchor), side))
+                crate::workspace_dock::edge_within(target.rect, request.pointer, 36.0).map(|side| (crate::document_docking::canvas_host(&target.anchor), side))
             })
         };
         if let Some(target) = canvas_target {
@@ -1771,18 +1771,18 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 }
             }
         }
-        let seam = if !panel_strip && edge.is_none() && document_target.is_none() {
-            between::hit(self.app, request.pointer, &members, &eligible)
-        } else {
-            None
-        };
+        let seam =
+            if !panel_strip && edge.is_none() && document_target.is_none() { between::hit(self.app, request.pointer, &members, &eligible) } else { None };
         if seam.as_ref().is_some_and(|hit| hit.before.is_none() || hit.after.is_none()) {
             // Moving an entire neighbor to its own boundary leaves the order unchanged.
             return Some(DropFeedback::default());
         }
         let receiver = if edge.is_none() && document_target.is_none() {
             proposal.as_ref().and_then(|proposal| {
-                eligible.iter().rev().find(|target| target.anchor == proposal.anchor || target.tabs.iter().any(|(panel, _)| panel == &proposal.anchor))
+                eligible
+                    .iter()
+                    .rev()
+                    .find(|target| target.anchor == proposal.anchor || target.tabs.iter().any(|(panel, _)| panel == &proposal.anchor))
                     .filter(|target| target.accepts_tabs && target.tab_strip.is_some())
                     .and_then(|target| {
                         let anchor = target.tabs.iter().find(|(panel, _)| !members.contains(panel)).map(|(panel, _)| panel.clone())?;
@@ -1801,9 +1801,15 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let operation = if let Some(side) = edge {
             Some((if whole { "window.panel.group" } else { "window.panel.dock" }, json!({"panel":panel,"operation":"dock","side":side})))
         } else if let Some((host, side)) = document_target {
-            Some((if whole { "window.panel.group" } else { "window.panel.dock" }, host_params(host, json!({"panel":panel,"operation":"dock","side":side,"adjacent":true}))))
+            Some((
+                if whole { "window.panel.group" } else { "window.panel.dock" },
+                host_params(host, json!({"panel":panel,"operation":"dock","side":side,"adjacent":true})),
+            ))
         } else if let Some(hit) = &seam {
-            Some((if whole { "window.panel.group" } else { "window.panel.move" }, json!({"panel":panel,"operation":"insertBetween","before":hit.before,"after":hit.after})))
+            Some((
+                if whole { "window.panel.group" } else { "window.panel.move" },
+                json!({"panel":panel,"operation":"insertBetween","before":hit.before,"after":hit.after}),
+            ))
         } else if let Some(proposal) = proposal {
             if proposal.noop {
                 let feedback = DropFeedback { preview: None, insertion: proposal.insertion };
@@ -1863,17 +1869,19 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         let frame = ctx.cumulative_frame_nr();
         ctx.data_mut(|data| {
             data.insert_temp(key.with("resolved-preview"), feedback.clone());
-            data.insert_temp(key.with("live-preview"), LiveDockPreview {
-                frame,
-                generation: self.app.ui.docking_generation,
-                pointer: request.pointer,
-                feedback: feedback.clone(),
-                candidate: candidate.clone(),
-                moving: members,
-                receivers,
-                rearrange: !same_group_strip && !matches!(id, "window.panel.float")
-                    && params.get("operation").and_then(Value::as_str) != Some("float"),
-            });
+            data.insert_temp(
+                key.with("live-preview"),
+                LiveDockPreview {
+                    frame,
+                    generation: self.app.ui.docking_generation,
+                    pointer: request.pointer,
+                    feedback: feedback.clone(),
+                    candidate: candidate.clone(),
+                    moving: members,
+                    receivers,
+                    rearrange: !same_group_strip && !matches!(id, "window.panel.float") && params.get("operation").and_then(Value::as_str) != Some("float"),
+                },
+            );
         });
         if request.released {
             *self.pending_drop = Some(candidate);
@@ -1883,18 +1891,26 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn group_rect(&mut self, ctx: &egui::Context, panels: &[String], rect: egui::Rect) {
         let key = egui::Id::new("photocraft-panel-docking");
         if let Some(preview) = live_preview(ctx, self.app.ui.docking_generation).filter(|preview| preview.rearrange) {
-            let original = ctx.data(|data| {
-                data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
-                    .and_then(|registry| registry.get(&self.host).and_then(|targets| {
-                        targets.iter().find(|target| {
-                            (panels.contains(&target.anchor) && !preview.moving.contains(&target.anchor))
-                                || target.tabs.iter().any(|(panel, _)| panels.contains(panel) && !preview.moving.contains(panel))
-                        }).map(|target| target.rect)
-                    }))
-            }).or_else(|| {
-                (self.host == DockHost::Workspace && panels.iter().any(|panel| panel == CANVAS))
-                    .then(|| ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::new("photocraft-document-area-rect")))).flatten()
-            });
+            let original = ctx
+                .data(|data| {
+                    data.get_temp::<std::collections::BTreeMap<DockHost, Vec<craft_ui::docking::DropTarget<String>>>>(egui::Id::new("photocraft-dock-targets"))
+                        .and_then(|registry| {
+                            registry.get(&self.host).and_then(|targets| {
+                                targets
+                                    .iter()
+                                    .find(|target| {
+                                        (panels.contains(&target.anchor) && !preview.moving.contains(&target.anchor))
+                                            || target.tabs.iter().any(|(panel, _)| panels.contains(panel) && !preview.moving.contains(panel))
+                                    })
+                                    .map(|target| target.rect)
+                            })
+                        })
+                })
+                .or_else(|| {
+                    (self.host == DockHost::Workspace && panels.iter().any(|panel| panel == CANVAS))
+                        .then(|| ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::new("photocraft-document-area-rect"))))
+                        .flatten()
+                });
             if original.is_some_and(|original| (original.min - rect.min).length() > 0.5 || (original.max - rect.max).length() > 0.5) {
                 ctx.data_mut(|data| {
                     let rects = data.get_temp_mut_or_default::<Vec<egui::Rect>>(key.with(("affected", self.host)));

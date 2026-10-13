@@ -20,51 +20,68 @@ fn same_region(regions: &crate::workspace_dock::DockRegions, a: &str, b: &str) -
     regions.host(a) == regions.host(b) && regions.side(a) == regions.side(b) && regions.band(a) == regions.band(b)
 }
 
-pub(super) fn hit(
-    app: &PhotocraftApp, pointer: egui::Pos2, members: &[String], targets: &[craft_ui::docking::DropTarget<String>],
-) -> Option<Hit> {
+pub(super) fn hit(app: &PhotocraftApp, pointer: egui::Pos2, members: &[String], targets: &[craft_ui::docking::DropTarget<String>]) -> Option<Hit> {
     let layout = app.ui.docking.as_ref()?;
-    if targets.iter().rev().find(|target| target.rect.contains(pointer))
+    if targets
+        .iter()
+        .rev()
+        .find(|target| target.rect.contains(pointer))
         .is_some_and(|target| layout.floating.iter().any(|group| group.panels.contains(&target.anchor)))
     {
         return None;
     }
     let collapsed = collapsed_members(app, layout);
     for (host, geometry) in app.docking_geometry.iter().rev() {
-        if geometry.generation != app.ui.docking_generation || !geometry.workspace.contains(pointer)
+        if geometry.generation != app.ui.docking_generation
+            || !geometry.workspace.contains(pointer)
             || matches!(host, DockHost::DocumentView(id) if !app.ui.floating_documents.contains_key(id))
         {
             continue;
         }
         let display = projection(layout, &app.ui.dock_regions, *host);
         let measured = craft_ui::docking::measure_layout_with_boundaries(
-            &display, geometry.workspace, geometry.screen, &geometry.style,
-            |id| panel_permissions(id, false), |id| panel_limits(id, &collapsed),
-        ).ok()?;
-        let boundary = measured.boundaries.iter().filter(|boundary| {
-            boundary.divider.expand(8.0).intersect(boundary.rect).contains(pointer)
-                && boundary.first.first().is_some_and(|anchor| {
-                    boundary.first.iter().chain(&boundary.second).all(|id| normalize(id).is_some() && same_region(&app.ui.dock_regions, anchor, id))
-                })
-        }).min_by(|a, b| {
-            let distance = |boundary: &craft_ui::docking::SplitBoundary<String>| match boundary.axis {
-                SplitAxis::Horizontal => (boundary.divider.center().x - pointer.x).abs(),
-                SplitAxis::Vertical => (boundary.divider.center().y - pointer.y).abs(),
-            };
-            distance(a).total_cmp(&distance(b)).then_with(|| a.rect.area().total_cmp(&b.rect.area()))
-        });
+            &display,
+            geometry.workspace,
+            geometry.screen,
+            &geometry.style,
+            |id| panel_permissions(id, false),
+            |id| panel_limits(id, &collapsed),
+        )
+        .ok()?;
+        let boundary = measured
+            .boundaries
+            .iter()
+            .filter(|boundary| {
+                boundary.divider.expand(8.0).intersect(boundary.rect).contains(pointer)
+                    && boundary.first.first().is_some_and(|anchor| {
+                        boundary.first.iter().chain(&boundary.second).all(|id| normalize(id).is_some() && same_region(&app.ui.dock_regions, anchor, id))
+                    })
+            })
+            .min_by(|a, b| {
+                let distance = |boundary: &craft_ui::docking::SplitBoundary<String>| match boundary.axis {
+                    SplitAxis::Horizontal => (boundary.divider.center().x - pointer.x).abs(),
+                    SplitAxis::Vertical => (boundary.divider.center().y - pointer.y).abs(),
+                };
+                distance(a).total_cmp(&distance(b)).then_with(|| a.rect.area().total_cmp(&b.rect.area()))
+            });
         if let Some(boundary) = boundary {
             let before = boundary.first.iter().find(|panel| !members.contains(panel)).cloned();
             let after = boundary.second.iter().find(|panel| !members.contains(panel)).cloned();
             let mut receivers = Vec::new();
             for target in targets {
-                if target.tab_strip.is_none() || !target.accepts_tabs { continue; }
-                let anchor = target.tabs.iter().find(|(panel, _)| {
-                    !members.contains(panel) && (boundary.first.contains(panel) || boundary.second.contains(panel))
-                }).map(|(panel, _)| panel.clone());
+                if target.tab_strip.is_none() || !target.accepts_tabs {
+                    continue;
+                }
+                let anchor = target
+                    .tabs
+                    .iter()
+                    .find(|(panel, _)| !members.contains(panel) && (boundary.first.contains(panel) || boundary.second.contains(panel)))
+                    .map(|(panel, _)| panel.clone());
                 if let Some(anchor) = anchor {
                     let mut target = target.clone();
-                    if members.contains(&target.anchor) { target.anchor = anchor; }
+                    if members.contains(&target.anchor) {
+                        target.anchor = anchor;
+                    }
                     if !receivers.iter().any(|known: &craft_ui::docking::DropTarget<String>| known.anchor == target.anchor) {
                         receivers.push(target);
                     }
@@ -73,23 +90,29 @@ pub(super) fn hit(
             return Some(Hit { before, after, receivers });
         }
         // A floating document occludes the main host even when its divider is not a target.
-        if matches!(host, DockHost::DocumentView(_)) { return None; }
+        if matches!(host, DockHost::DocumentView(_)) {
+            return None;
+        }
     }
     None
 }
 
 pub(super) fn command(app: &mut PhotocraftApp, params: &Value, whole: bool) -> Result<Value, String> {
-    if app.session.prefs().workspace_locked { return Err("workspace is locked".into()); }
+    if app.session.prefs().workspace_locked {
+        return Err("workspace is locked".into());
+    }
     if ["side", "anchor", "zone", "placement", "scope", "documentView"].iter().any(|key| params.get(*key).is_some()) {
         return Err("insertBetween uses before/after neighbors and cannot be combined with other destinations".into());
     }
-    let read = |key: &str| params.get(key).and_then(Value::as_str).and_then(normalize).map(str::to_owned)
-        .ok_or_else(|| format!("{key} must name a registered panel"));
+    let read =
+        |key: &str| params.get(key).and_then(Value::as_str).and_then(normalize).map(str::to_owned).ok_or_else(|| format!("{key} must name a registered panel"));
     let panel = read("panel")?;
     let before = read("before")?;
     let after = read("after")?;
     let original = app.ui.docking.clone().unwrap_or_else(|| legacy(app));
-    if !valid(&original) || !app.ui.dock_regions.valid() { return Err("invalid panel layout".into()); }
+    if !valid(&original) || !app.ui.dock_regions.valid() {
+        return Err("invalid panel layout".into());
+    }
     if !original.contains(&panel) || !original.contains(&before) || !original.contains(&after) || before == after {
         return Err("insertBetween requires a visible panel and two distinct visible neighbors".into());
     }
@@ -99,10 +122,18 @@ pub(super) fn command(app: &mut PhotocraftApp, params: &Value, whole: bool) -> R
         return Err("neighbors must share a dock region".into());
     }
     let members = if whole { group_members(&original, &panel) } else { vec![panel.clone()] };
-    if members.contains(&before) || members.contains(&after) { return Err("neighbors must remain after the source moves".into()); }
+    if members.contains(&before) || members.contains(&after) {
+        return Err("neighbors must remain after the source moves".into());
+    }
     let selected = if whole { selected_member(&original, &panel) } else { panel };
-    let host = match app.ui.dock_regions.host(&before) { DockHost::Document => DockHost::Workspace, host => host };
-    let geometry = app.docking_geometry.get(&host).filter(|geometry| geometry.generation == app.ui.docking_generation)
+    let host = match app.ui.dock_regions.host(&before) {
+        DockHost::Document => DockHost::Workspace,
+        host => host,
+    };
+    let geometry = app
+        .docking_geometry
+        .get(&host)
+        .filter(|geometry| geometry.generation == app.ui.docking_generation)
         .ok_or("dock geometry is unavailable; render the workspace before inserting")?;
     let mut layout = original.clone();
     let mut hidden = app.ui.docking_hidden.clone();
@@ -114,18 +145,38 @@ pub(super) fn command(app: &mut PhotocraftApp, params: &Value, whole: bool) -> R
     let display = projection(&layout, &regions, host);
     let collapsed = collapsed_members(app, &layout);
     let measured = craft_ui::docking::measure_layout_with_boundaries(
-        &display, geometry.workspace, geometry.screen, &geometry.style,
-        |id| panel_permissions(id, false), |id| panel_limits(id, &collapsed),
-    ).map_err(|error| error.to_string())?;
+        &display,
+        geometry.workspace,
+        geometry.screen,
+        &geometry.style,
+        |id| panel_permissions(id, false),
+        |id| panel_limits(id, &collapsed),
+    )
+    .map_err(|error| error.to_string())?;
     let mut region_layout = Layout { root: regions.region_tree(&layout, &before), floating: Vec::new() };
     let region_members: Vec<_> = region_layout.panels().into_iter().cloned().collect();
-    let bounds = measured.panels.iter().filter(|(id, _)| region_members.contains(id)).map(|(_, rect)| *rect)
-        .reduce(|a, b| a.union(b)).ok_or("missing receiving dock region")?;
-    region_layout.floating.push(Floating { panels: members.clone(), active: members.iter().position(|id| id == &selected).unwrap_or(0), rect: [0.0, 0.0, 300.0, 400.0] });
+    let bounds = measured
+        .panels
+        .iter()
+        .filter(|(id, _)| region_members.contains(id))
+        .map(|(_, rect)| *rect)
+        .reduce(|a, b| a.union(b))
+        .ok_or("missing receiving dock region")?;
+    region_layout.floating.push(Floating {
+        panels: members.clone(),
+        active: members.iter().position(|id| id == &selected).unwrap_or(0),
+        rect: [0.0, 0.0, 300.0, 400.0],
+    });
     craft_ui::docking::insert_between(
-        &mut region_layout, craft_ui::docking::BetweenRequest { members: &members, selected: &selected, before: &before, after: &after },
-        bounds, geometry.screen, &geometry.style, |id| panel_permissions(id, false), |id| panel_limits(id, &collapsed),
-    ).map_err(|error| error.to_string())?;
+        &mut region_layout,
+        craft_ui::docking::BetweenRequest { members: &members, selected: &selected, before: &before, after: &after },
+        bounds,
+        geometry.screen,
+        &geometry.style,
+        |id| panel_permissions(id, false),
+        |id| panel_limits(id, &collapsed),
+    )
+    .map_err(|error| error.to_string())?;
     for member in &region_members {
         layout.apply(Action::Close { panel: member.clone() }).map_err(|error| error.to_string())?;
     }
@@ -141,10 +192,14 @@ pub(super) fn command(app: &mut PhotocraftApp, params: &Value, whole: bool) -> R
         regions.sides.insert(member.clone(), side);
         regions.hosts.insert(member.clone(), destination_host);
     }
-    if !valid(&layout) || !regions.valid() { return Err("invalid inserted panel layout".into()); }
+    if !valid(&layout) || !regions.valid() {
+        return Err("invalid inserted panel layout".into());
+    }
     projection(&layout, &regions, host).validate().map_err(|error| error.to_string())?;
     regions.remember(&layout);
-    if !regions.valid() { return Err("invalid dock return locations".into()); }
+    if !regions.valid() {
+        return Err("invalid dock return locations".into());
+    }
     app.ui.docking = Some(layout);
     app.ui.docking_hidden = hidden;
     app.ui.dock_regions = regions;
