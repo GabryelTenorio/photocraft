@@ -24,6 +24,7 @@ pub mod analysis_ui;
 pub mod anchor_tools;
 pub mod artboard_tool;
 pub mod artboard_ui;
+pub mod bidi_label;
 mod blend_keys;
 pub(crate) mod blend_preview;
 mod brand;

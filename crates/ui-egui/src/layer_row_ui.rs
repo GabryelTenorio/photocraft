@@ -89,15 +89,54 @@ pub fn indent(depth: usize, row_width: f32, fixed: f32) -> f32 {
     (depth as f32 * 14.0).min((row_width - fixed - MIN_NAME_W).max(0.0))
 }
 
-/// A single-line galley cut with "…" to `max_width` (nothing when there's no room).
+/// A single-line galley cut with "…" to `max_width` (nothing when there's no room). Right-to-left
+/// text (an Arabic or Hebrew layer name) is drawn in visual order, see [`crate::bidi_label`].
 pub fn truncated(painter: &Painter, text: &str, font: FontId, color: egui::Color32, italics: bool, max_width: f32) -> Option<Arc<Galley>> {
     if max_width < 8.0 {
         return None;
+    }
+    if crate::bidi_label::has_rtl(text) {
+        return truncated_bidi(painter, text, font, color, italics, max_width);
     }
     let mut job = egui::text::LayoutJob::default();
     job.append(text, 0.0, egui::TextFormat { font_id: font, color, italics, ..Default::default() });
     job.wrap = egui::text::TextWrapping { max_width, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
     Some(painter.layout_job(job))
+}
+
+/// [`truncated`] for text with right-to-left characters. egui elides the end of the string it is
+/// given, which after reordering would be the start of a right-to-left name, so the name is cut in
+/// logical order (keeping its beginning) and then reordered; the "…" lands at its reading end.
+fn truncated_bidi(painter: &Painter, text: &str, font: FontId, color: egui::Color32, italics: bool, max_width: f32) -> Option<Arc<Galley>> {
+    let lay = |s: &str| {
+        let mut job = egui::text::LayoutJob::single_section(
+            crate::bidi_label::for_egui(s).into_owned(),
+            egui::TextFormat { font_id: font.clone(), color, italics, ..Default::default() },
+        );
+        job.wrap.max_rows = 1;
+        painter.layout_job(job)
+    };
+    let whole = lay(text);
+    if whole.size().x <= max_width {
+        return Some(whole);
+    }
+    // The longest prefix (in characters) that fits with "…" after it. Galleys are cached by
+    // content, so an unchanged row costs no layout on later frames.
+    let ends: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
+    let (mut lo, mut hi) = (0usize, ends.len());
+    let mut best = None;
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let cut = ends.get(mid).copied().unwrap_or(text.len());
+        let g = lay(&format!("{}…", text.get(..cut).unwrap_or(text).trim_end()));
+        if g.size().x <= max_width {
+            best = Some(g);
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    best.or_else(|| Some(lay("…")).filter(|g| g.size().x <= max_width))
 }
 
 /// Paint `l`'s right-hand indicators in `row` and handle the effects triangle. Returns the
