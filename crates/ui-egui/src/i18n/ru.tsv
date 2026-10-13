@@ -3050,3 +3050,6 @@ curves	Smooth	Сгладить
 	Step {step} is waiting for its dialog	Шаг {step} ожидает своего диалога
 @plural	{n} action|{n} actions	{n} операция|{n} операции|{n} операций
 	Auto Add/Delete	Автодобавление/удаление
+	Install Plug-in	Установить плагин
+	Plug-in Installed	Плагин установлен
+	The plug-in is now available under Filter › Plug-ins.	Плагин теперь доступен в меню Фильтр › Плагины.

@@ -2745,3 +2745,6 @@ curves	Smooth	Glätten
 	Step {step} is waiting for its dialog	Schritt {step} wartet auf seinen Dialog
 @plural	{n} action|{n} actions	{n} Aktion|{n} Aktionen
 	Auto Add/Delete	Autom. hinzuf./löschen
+	Install Plug-in	Plug-in installieren
+	Plug-in Installed	Zusatzmodul installiert
+	The plug-in is now available under Filter › Plug-ins.	Das Zusatzmodul ist jetzt unter Filter › Zusatzmodule verfügbar.

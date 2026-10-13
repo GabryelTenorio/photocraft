@@ -4180,3 +4180,5 @@ shape	Appearance	Izgled
 	Import .GRD	Uvezi .GRD
 	Choose a gradient file (.grd).	Izaberite datoteku gradijenta (.grd).
 	Auto Add/Delete	Automatsko dodavanje/brisanje
+	Plug-in Installed	Dodatak je instaliran
+	The plug-in is now available under Filter › Plug-ins.	Dodatak je sada dostupan u meniju Filter › Dodaci.

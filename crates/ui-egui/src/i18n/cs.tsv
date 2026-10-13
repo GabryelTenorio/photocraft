@@ -3712,3 +3712,6 @@ navigator	Zoom	Zvětšení
 	Step {step} is waiting for its dialog	Krok {step} čeká na svůj dialog
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
 	Auto Add/Delete	Automaticky přidat/odstranit
+	Install Plug-in	Instalovat zásuvný modul
+	Plug-in Installed	Zásuvný modul nainstalován
+	The plug-in is now available under Filter › Plug-ins.	Zásuvný modul je nyní dostupný v nabídce Filtr › Zásuvné moduly.

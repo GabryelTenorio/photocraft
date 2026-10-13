@@ -3894,3 +3894,5 @@ layerLabel	No Color	Sem cor
 	Step {step} is waiting for its dialog	A etapa {step} está aguardando sua caixa de diálogo
 @plural	{n} action|{n} actions	{n} ação|{n} ações
 	Auto Add/Delete	Adicionar/excluir automaticamente
+	Plug-in Installed	Plug-in instalado
+	The plug-in is now available under Filter › Plug-ins.	O plug-in já está disponível em Filtro › Plug-ins.

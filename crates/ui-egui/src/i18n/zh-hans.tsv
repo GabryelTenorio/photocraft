@@ -2710,3 +2710,6 @@ curves	Smooth	平滑
 	Step {step} is waiting for its dialog	步骤 {step} 正在等待其对话框
 @plural	{n} action|{n} actions	{n} 个动作
 	Auto Add/Delete	自动添加/删除
+	Install Plug-in	安装插件
+	Plug-in Installed	增效工具已安装
+	The plug-in is now available under Filter › Plug-ins.	该增效工具现可在「滤镜 › 增效工具」中使用。

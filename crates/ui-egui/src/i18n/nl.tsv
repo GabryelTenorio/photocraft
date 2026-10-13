@@ -3864,3 +3864,5 @@ curves	Smooth	Vloeiend maken
 	Step {step} is waiting for its dialog	Stap {step} wacht op zijn dialoogvenster
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
 	Auto Add/Delete	Automatisch toevoegen/verwijderen
+	Plug-in Installed	Plug-in geïnstalleerd
+	The plug-in is now available under Filter › Plug-ins.	De plug-in is nu beschikbaar onder Filter › Plug-ins.

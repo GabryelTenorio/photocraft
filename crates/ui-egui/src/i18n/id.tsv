@@ -3093,3 +3093,6 @@ curves	Smooth	Haluskan
 	Step {step} is waiting for its dialog	Langkah {step} menunggu dialognya
 @plural	{n} action|{n} actions	{n} tindakan
 	Auto Add/Delete	Tambah/Hapus Otomatis
+	Install Plug-in	Pasang Plug-in
+	Plug-in Installed	Plug-in Terinstal
+	The plug-in is now available under Filter › Plug-ins.	Plug-in kini tersedia di bawah Filter › Plug-in.
