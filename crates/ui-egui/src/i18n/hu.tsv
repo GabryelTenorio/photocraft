@@ -1651,6 +1651,11 @@ fontWeight	Thin	Hajszálvékony
 	Show the layer's effects  ({key}-click: all layers)	Réteg effektusainak megjelenítése  ({key}+kattintás: minden réteg)
 	Skip	Kihagy
 	Smart Filters	Intelligens szűrők
+# Smart Filter row actions.
+	Move Up	Mozgatás felfelé
+	Move Down	Mozgatás lefelé
+	Delete Smart Filter	Intelligens szűrő törlése
+
 	Soft Light	Lágy fény
 	Soften	Lágyítás
 	Source	Forrás

@@ -2626,6 +2626,11 @@ shape	Appearance	Diện mạo
 	SemiBold	Nửa đậm
 	Show Extras Options	Tuỳ chọn hiện phụ
 	Smart Filters	Các bộ lọc thông minh
+# Smart Filter row actions.
+	Move Up	Di chuyển lên
+	Move Down	Di chuyển xuống
+	Delete Smart Filter	Xóa bộ lọc thông minh
+
 	Soft	Mềm
 	Source: set	Nguồn: bộ
 	Square, 12 x 12	Vuông, 12 x 12

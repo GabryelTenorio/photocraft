@@ -1777,6 +1777,11 @@
 	Slice Select Tool	Alat Slice Select
 	Slice Tool	Alat Slice
 	Smart Filters	Smart Filter
+# Smart Filter row actions (#1265)
+	Move Up	Pindahkan ke Atas
+	Move Down	Pindahkan ke Bawah
+	Delete Smart Filter	Hapus Smart Filter
+
 	Smudge Tool	Alat Smudge
 	Soft	Lembut
 	Soften	Lembutkan

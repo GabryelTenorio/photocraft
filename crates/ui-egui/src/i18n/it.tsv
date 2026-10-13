@@ -1803,6 +1803,11 @@
 	Slice Select Tool	Strumento Selezione sezioni
 	Slice Tool	Strumento Sezione
 	Smart Filters	Filtri avanzati
+# Smart Filter row actions (#1265)
+	Move Up	Sposta su
+	Move Down	Sposta giù
+	Delete Smart Filter	Elimina filtro avanzato
+
 	Smudge Tool	Strumento Sfumino
 	Soft	Morbido
 	Soften	Ammorbidisci

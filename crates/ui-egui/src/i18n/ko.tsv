@@ -1777,6 +1777,11 @@
 	Slice Select Tool	분할 영역 선택 도구
 	Slice Tool	분할 영역 도구
 	Smart Filters	스마트 필터
+# Smart Filter row actions (#1265)
+	Move Up	위로 이동
+	Move Down	아래로 이동
+	Delete Smart Filter	스마트 필터 삭제
+
 	Smudge Tool	손가락 도구
 	Soft	부드럽게
 	Soften	부드럽게 하기

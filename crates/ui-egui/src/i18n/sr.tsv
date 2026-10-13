@@ -1763,6 +1763,11 @@
 	Slice Select Tool	Alatka za izbor isečka
 	Slice Tool	Alatka za isecanje na isečke
 	Smart Filters	Pametni filteri
+# Smart Filter row actions (#1265).
+	Move Up	Pomeri nagore
+	Move Down	Pomeri nadole
+	Delete Smart Filter	Obriši pametni filter
+
 	Smudge Tool	Alatka za razmazivanje
 	Soft	Meko
 	Soften	Omekšaj

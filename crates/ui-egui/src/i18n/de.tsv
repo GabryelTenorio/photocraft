@@ -1799,6 +1799,11 @@
 	Slice Select Tool	Slice-Auswahl-Werkzeug
 	Slice Tool	Slice-Werkzeug
 	Smart Filters	Smart-Filter
+# Smart Filter row actions (#1265)
+	Move Up	Nach oben verschieben
+	Move Down	Nach unten verschieben
+	Delete Smart Filter	Smartfilter löschen
+
 	Smudge Tool	Wischfinger-Werkzeug
 	Soft	Weich
 	Soften	Erweichen

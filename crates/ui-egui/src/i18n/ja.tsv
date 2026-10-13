@@ -1805,6 +1805,11 @@
 	Slice Select Tool	スライス選択ツール
 	Slice Tool	スライスツール
 	Smart Filters	スマートフィルター
+# Smart Filter row actions (#1265)
+	Move Up	上へ移動
+	Move Down	下へ移動
+	Delete Smart Filter	スマートフィルターを削除
+
 	Smudge Tool	指先ツール
 	Soft	ソフト
 	Soften	ぼかし

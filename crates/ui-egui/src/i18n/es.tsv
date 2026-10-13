@@ -1808,6 +1808,11 @@
 	Slice Select Tool	Herramienta Selección de sector
 	Slice Tool	Herramienta Sector
 	Smart Filters	Filtros inteligentes
+# Smart Filter row actions (#1265)
+	Move Up	Mover arriba
+	Move Down	Mover abajo
+	Delete Smart Filter	Eliminar filtro inteligente
+
 	Smudge Tool	Herramienta Dedo
 	Soft	Suave
 	Soften	Suavizar

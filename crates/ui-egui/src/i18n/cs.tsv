@@ -1821,6 +1821,11 @@
 	Slice Select Tool	Nástroj výběr řezu
 	Slice Tool	Nástroj řez
 	Smart Filters	Chytré filtry
+# Smart Filter row actions (#1265)
+	Move Up	Přesunout nahoru
+	Move Down	Přesunout dolů
+	Delete Smart Filter	Odstranit chytrý filtr
+
 	Smudge Tool	Nástroj rozmazání
 	Soft	Měkké
 	Soften	Změkčení

@@ -2,6 +2,8 @@
 //! (eye toggles; double-click a filter to re-open its dialog with the recorded parameters; click
 //! to select one; drag onto another smart object to move it there, ⌥-drag to copy it, #4271).
 
+pub(crate) mod context_menu;
+
 use egui::{Align2, Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use photocraft_doc::{Document, Layer, LayerContent, LayerId, SmartObject};
 use serde_json::{Value, json};
@@ -134,6 +136,9 @@ pub fn filter_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth:
             && resp.double_clicked()
         {
             open_editor(app, ui.ctx(), l.id.0, sm, i);
+        }
+        if let Some(i) = index {
+            context_menu::show(app, &resp, l.id, i, actions);
         }
     }
 }
@@ -303,3 +308,9 @@ mod tests {
         assert!(drawn.iter().all(|(_, c)| *c != t.icon));
     }
 }
+
+#[cfg(test)]
+mod context_tests;
+
+#[cfg(test)]
+mod menu_guard_tests;

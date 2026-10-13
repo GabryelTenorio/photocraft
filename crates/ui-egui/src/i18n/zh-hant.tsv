@@ -1815,6 +1815,11 @@
 	Slice Select Tool	切片選取工具
 	Slice Tool	切片工具
 	Smart Filters	智慧型濾鏡
+# Smart Filter row actions (#1265)
+	Move Up	上移
+	Move Down	下移
+	Delete Smart Filter	刪除智慧型濾鏡
+
 	Smudge Tool	指尖工具
 	Soft	柔邊
 	Soften	柔化

@@ -1799,6 +1799,11 @@
 	Slice Select Tool	Narzędzie Zaznaczanie plasterków
 	Slice Tool	Narzędzie Plasterek
 	Smart Filters	Filtry inteligentne
+# Smart Filter row actions (#1265)
+	Move Up	Przenieś w górę
+	Move Down	Przenieś w dół
+	Delete Smart Filter	Usuń filtr inteligentny
+
 	Smudge Tool	Narzędzie Palec
 	Soft	Miękkie
 	Soften	Zmiękcz

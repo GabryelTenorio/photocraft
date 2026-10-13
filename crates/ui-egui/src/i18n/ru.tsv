@@ -231,6 +231,11 @@
 	New Video Layer from File…	Новый видеослой из файла…
 	New Blank Video Layer	Новый пустой видеослой
 	Smart Filters	Смарт-фильтры
+# Smart Filter row actions (#1265)
+	Move Up	Переместить вверх
+	Move Down	Переместить вниз
+	Delete Smart Filter	Удалить смарт-фильтр
+
 	Delete Smart Filters	Удалить смарт-фильтры
 	Enable Smart Filters	Включить смарт-фильтры
 	Disable Smart Filters	Отключить смарт-фильтры

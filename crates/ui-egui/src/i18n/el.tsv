@@ -464,6 +464,11 @@
 	Smart Object	Έξυπνο αντικείμενο
 	Smart Objects	Έξυπνα αντικείμενα
 	Smart Filters	Έξυπνα φίλτρα
+# Smart Filter row actions (#1265)
+	Move Up	Μετακίνηση πάνω
+	Move Down	Μετακίνηση κάτω
+	Delete Smart Filter	Διαγραφή έξυπνου φίλτρου
+
 	Adjustment Layer	Επίπεδο προσαρμογής
 	Adjustment Layers	Επίπεδα προσαρμογής
 	Pixel Layer	Επίπεδο εικονοστοιχείων

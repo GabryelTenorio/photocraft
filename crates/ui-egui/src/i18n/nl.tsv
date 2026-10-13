@@ -1781,6 +1781,11 @@
 	Slice Select Tool	Segmentselectiegereedschap
 	Slice Tool	Segmentgereedschap
 	Smart Filters	Slimme filters
+# Smart Filter row actions (#1265)
+	Move Up	Omhoog verplaatsen
+	Move Down	Omlaag verplaatsen
+	Delete Smart Filter	Slim filter verwijderen
+
 	Smudge Tool	Uitsmeergereedschap
 	Soft	Zacht
 	Soften	Verzachten

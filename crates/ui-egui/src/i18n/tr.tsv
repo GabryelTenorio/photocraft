@@ -1758,6 +1758,11 @@
 	Slice Select Tool	Dilim Seçme Aracı
 	Slice Tool	Dilim Aracı
 	Smart Filters	Akıllı Filtreler
+# Smart Filter row actions.
+	Move Up	Yukarı Taşı
+	Move Down	Aşağı Taşı
+	Delete Smart Filter	Akıllı Filtreyi Sil
+
 	Smudge Tool	Leke Aracı
 	Soft	Yumuşak
 	Soften	Yumuşat

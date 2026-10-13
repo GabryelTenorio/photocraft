@@ -1778,6 +1778,11 @@
 	Slice Select Tool	Ferramenta Seleção de fatia
 	Slice Tool	Ferramenta Fatia
 	Smart Filters	Filtros inteligentes
+# Smart Filter row actions (#1265)
+	Move Up	Mover para cima
+	Move Down	Mover para baixo
+	Delete Smart Filter	Excluir filtro inteligente
+
 	Smudge Tool	Ferramenta Borrar
 	Soft	Suave
 	Soften	Suavizar

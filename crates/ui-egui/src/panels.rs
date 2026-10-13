@@ -2117,6 +2117,7 @@ fn opacity_row_layout(available: f32, label_width: f32, gap: f32) -> (f32, bool)
 }
 
 fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    crate::smart_ui::context_menu::close_stale(app, ui.ctx());
     // A new active layer opens its parent groups and is scrolled into view (#152).
     let reveal = crate::layer_reveal::track(app, ui.ctx());
     let Some(st) = app.session.active() else {
@@ -2507,7 +2508,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
             continue;
         }
-        let _ = app.run(&id, p);
+        let selection = crate::smart_ui::context_menu::selection_update(app, ui.ctx(), &id, &p);
+        if app.run(&id, p).is_ok()
+            && let Some(selection) = selection
+        {
+            selection.apply(ui.ctx());
+        }
     }
 }
 

@@ -1783,6 +1783,11 @@
 	Slice Select Tool	Outil Sélection de tranche
 	Slice Tool	Outil Tranche
 	Smart Filters	Filtres intelligents
+# Smart Filter row actions (#1265)
+	Move Up	Déplacer vers le haut
+	Move Down	Déplacer vers le bas
+	Delete Smart Filter	Supprimer le filtre intelligent
+
 	Smudge Tool	Outil Doigt
 	Soft	Doux
 	Soften	Adoucir
