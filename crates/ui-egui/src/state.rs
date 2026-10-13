@@ -1076,6 +1076,10 @@ pub struct UiState {
     /// Free Transform session, if any.
     #[serde(default)]
     pub transform: Option<TransformSession>,
+    /// The options bar's Maintain Aspect Ratio link is off: W/H change on their own, and handle
+    /// drags stretch freely (⇧ keeps the proportions), as in Photoshop (#4174).
+    #[serde(default)]
+    pub transform_unlinked: bool,
     /// Temporary symmetry-axis editing, exposed to automation but never restored from settings.
     #[serde(default, skip_deserializing)]
     pub symmetry_transform: Option<crate::symmetry_ui::Transform>,
@@ -1276,6 +1280,7 @@ impl Default for UiState {
             type_transform_pivot: None,
             cam_transform: None,
             transform: None,
+            transform_unlinked: false,
             symmetry_transform: None,
             layer_picker: None,
             mask_target: false,
