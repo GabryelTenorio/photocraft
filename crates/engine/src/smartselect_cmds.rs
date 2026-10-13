@@ -130,8 +130,124 @@ fn rect_param(p: &Value) -> Option<Rect> {
     Some(Rect::new(x0.floor() as i32, y0.floor() as i32, x1.ceil() as i32, y1.ceil() as i32))
 }
 
+fn point_param(p: &Value) -> Option<(f32, f32)> {
+    let a = p.get("point")?.as_array()?;
+    let (x, y) = (a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32);
+    (x.is_finite() && y.is_finite()).then_some((x, y))
+}
+
+/// The layer [`with_doc_sampler`] samples for `layer` / `all_layers`: `None` = the composite.
+pub fn sampled_target(doc: &Document, layer: Option<LayerId>, all_layers: bool) -> Option<LayerId> {
+    layer.filter(|id| !all_layers && doc.layer(*id).and_then(Layer::surface).is_some())
+}
+
+/// Object Finder (#4087): the object Object Selection would select at document point `(x, y)`,
+/// sampling `layer` (or the composite). Pure, so the UI can run it on a worker thread while the
+/// pointer hovers; `select.object` with `"point"` commits the same result.
+pub fn find_object(doc: &Document, layer: Option<LayerId>, all_layers: bool, x: f32, y: f32) -> Option<Region> {
+    with_doc_sampler(doc, layer, all_layers, |smp, doc| grabcut::object_at(smp, doc.bounds(), x, y, grabcut::OBJECT_AT_WORK_PX))
+}
+
+/// Most objects remembered by [`ObjectFinderCache`].
+pub const OBJECT_FINDER_ENTRIES: usize = 12;
+
+/// Object Finder results for one document's pixels (#4087): hovering over an object already
+/// found, or clicking it, answers at once. Keyed like [`SubjectCache`] (valid while the pixels
+/// are the same, the document held weakly) plus the sampled layer; a lookup hits any cached
+/// object that covers the point, so one computation serves the whole object.
+#[derive(Debug, Default)]
+pub struct ObjectFinderCache {
+    doc: std::sync::Weak<Document>,
+    doc_id: Option<photocraft_doc::DocId>,
+    target: Option<LayerId>,
+    regions: Vec<std::sync::Arc<Region>>,
+}
+
+impl ObjectFinderCache {
+    fn valid(&self, doc: &Document, target: Option<LayerId>) -> bool {
+        self.doc_id == Some(doc.id) && self.target == target && self.doc.upgrade().is_some_and(|old| crate::layer_multi_cmds::same_pixels(&old, doc))
+    }
+
+    /// A cached object of `doc` (sampling `target`) covering `(x, y)`.
+    pub fn lookup(&self, doc: &Document, target: Option<LayerId>, x: f32, y: f32) -> Option<std::sync::Arc<Region>> {
+        if !x.is_finite() || !y.is_finite() || !self.valid(doc, target) {
+            return None;
+        }
+        let (px, py) = (x.floor() as i32, y.floor() as i32);
+        self.regions.iter().find(|r| r.at(px, py) >= 0.5).cloned()
+    }
+
+    /// Remembers `region`, found in `doc` sampling `target`. A different document or pixels
+    /// start over; the oldest object is dropped beyond [`OBJECT_FINDER_ENTRIES`].
+    pub fn insert(&mut self, doc: &std::sync::Arc<Document>, target: Option<LayerId>, region: std::sync::Arc<Region>) {
+        if !self.valid(doc, target) {
+            self.regions.clear();
+        }
+        self.doc = std::sync::Arc::downgrade(doc);
+        self.doc_id = Some(doc.id);
+        self.target = target;
+        if self.regions.len() >= OBJECT_FINDER_ENTRIES {
+            self.regions.remove(0);
+        }
+        self.regions.push(region);
+    }
+
+    /// Number of remembered objects.
+    pub fn len(&self) -> usize {
+        self.regions.len()
+    }
+
+    /// Whether nothing is remembered.
+    pub fn is_empty(&self) -> bool {
+        self.regions.is_empty()
+    }
+
+    /// Forget the results if they were computed from the document `id` (it is closing).
+    pub(crate) fn forget_doc(&mut self, id: photocraft_doc::DocId) {
+        if self.doc_id == Some(id) {
+            *self = Self::default();
+        }
+    }
+
+    /// Follows `doc` past a selection-only edit (same pixels), so the next lookup still hits.
+    fn follow(&mut self, doc: &std::sync::Arc<Document>) {
+        if self.doc_id == Some(doc.id) && self.doc.upgrade().is_some_and(|old| crate::layer_multi_cmds::same_pixels(&old, doc)) {
+            self.doc = std::sync::Arc::downgrade(doc);
+        }
+    }
+}
+
+/// `select.object` with `"point"`: the Object Finder's object under the point (cached).
+fn object_at_point(s: &mut Session, p: &Value, (x, y): (f32, f32)) -> Result<Value> {
+    let all_layers = b(p, "sampleAllLayers", false);
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let target = sampled_target(&d.doc, d.active_layer, all_layers);
+    let region = match s.object_finder.lookup(&d.doc, target, x, y) {
+        Some(r) => Some(r),
+        None => {
+            let doc = std::sync::Arc::clone(&d.doc);
+            let found = find_object(&doc, d.active_layer, all_layers, x, y).map(std::sync::Arc::new);
+            if let Some(r) = &found {
+                s.object_finder.insert(&doc, target, std::sync::Arc::clone(r));
+            }
+            found
+        }
+    };
+    let out = apply(s, "Object Selection", region.as_deref(), mode(p, "replace"))?;
+    if let Some(d) = s.active() {
+        let doc = std::sync::Arc::clone(&d.doc);
+        s.object_finder.follow(&doc);
+    }
+    Ok(out)
+}
+
 fn object_selection(s: &mut Session, p: &Value) -> Result<Value> {
-    let rect = rect_param(p).ok_or_else(|| bad("select.object", "needs \"rect\": [x, y, w, h]"))?;
+    if p.get("rect").is_none()
+        && let Some(pt) = point_param(p)
+    {
+        return object_at_point(s, p, pt);
+    }
+    let rect = rect_param(p).ok_or_else(|| bad("select.object", "needs \"rect\": [x, y, w, h] or \"point\": [x, y]"))?;
     let region = with_sampler(s, b(p, "sampleAllLayers", false), |smp, doc| grabcut::object_select(smp, doc.bounds(), rect, 160_000))?;
     apply(s, "Object Selection", region.as_ref(), mode(p, "replace"))
 }
@@ -259,9 +375,10 @@ fn refine_strokes(p: &Value) -> Result<Vec<matting::EdgeStroke>> {
 }
 
 /// Select and Mask: refines the selection edge, then outputs to the selection, a layer mask on
-/// the active layer, or a new layer (with or without a mask). Decontaminating colours needs a
-/// new layer, so it upgrades `selection` / `layerMask` output to `newLayerWithMask` (as
-/// Photoshop does). New-layer outputs hide the source layer.
+/// the active layer, a new layer or a new document (each with or without a mask).
+/// Decontaminating colours needs new pixels, so it upgrades `selection` / `layerMask` output to
+/// `newLayerWithMask` (as Photoshop does). New-layer outputs hide the source layer; new-document
+/// outputs leave the source document untouched.
 fn refine_edge(s: &mut Session, p: &Value) -> Result<Value> {
     let params = refine_params(p);
     let strokes = refine_strokes(p)?;
@@ -272,8 +389,8 @@ fn refine_edge(s: &mut Session, p: &Value) -> Result<Value> {
     let default_output =
         if d.doc.selection.is_none() && active.and_then(|id| d.doc.layer(id)).and_then(|l| l.mask.as_ref()).is_some() { "layerMask" } else { "selection" };
     let mut output = p.get("output").and_then(Value::as_str).unwrap_or(default_output).to_string();
-    if !matches!(output.as_str(), "selection" | "layerMask" | "newLayer" | "newLayerWithMask") {
-        return Err(bad("select.refineEdge", "output must be selection|layerMask|newLayer|newLayerWithMask"));
+    if !matches!(output.as_str(), "selection" | "layerMask" | "newLayer" | "newLayerWithMask" | "newDocument" | "newDocumentWithMask") {
+        return Err(bad("select.refineEdge", "output must be selection|layerMask|newLayer|newLayerWithMask|newDocument|newDocumentWithMask"));
     }
     if decontaminate && matches!(output.as_str(), "selection" | "layerMask") {
         output = "newLayerWithMask".into();
@@ -315,12 +432,26 @@ fn refine_edge(s: &mut Session, p: &Value) -> Result<Value> {
             let empty = Region { bbox: Rect::EMPTY, mask: Vec::new() };
             let reg = region.as_ref().unwrap_or(&empty);
             let pixels = if decontaminate { matting::decontaminate(src, reg, params.radius, amount) } else { src.clone() };
-            let with_mask = output == "newLayerWithMask";
+            let with_mask = matches!(output.as_str(), "newLayerWithMask" | "newDocumentWithMask");
             let (content, mask) = if with_mask {
                 (pixels, Some(LayerMask { surface: matting::region_surface(reg), ..LayerMask::reveal_all() }))
             } else {
                 (matting::masked_copy(&pixels, reg), None)
             };
+            if output.starts_with("newDocument") {
+                // Same canvas, colour mode, depth and profile, so the pixels need no conversion.
+                let mut doc = Document::new("Untitled", d.doc.size, d.doc.mode, d.doc.depth);
+                doc.resolution_dpi = d.doc.resolution_dpi;
+                doc.icc_profile = d.doc.icc_profile.clone();
+                doc.color_table = d.doc.color_table.clone();
+                doc.duotone = d.doc.duotone.clone();
+                let mut layer = Layer::new(src_layer.name.clone(), LayerContent::Raster(content));
+                layer.mask = mask;
+                let layer_id = layer.id;
+                doc.layers.push(layer);
+                let i = s.add_document(doc, None);
+                return Ok(json!({ "output": output, "document": i, "layer": layer_id.0, "selected": false }));
+            }
             let new_id = s.edit("Select and Mask", |doc, act| {
                 let mut layer = Layer::new(name, LayerContent::Raster(content));
                 layer.mask = mask;
@@ -358,7 +489,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.object",
             "Object Selection",
             [],
-            r##"{"rect":[x,y,w,h],"mode":"replace|add|subtract|intersect"="replace","sampleAllLayers":bool=false}"##,
+            r##"{"rect":[x,y,w,h] | "point":[x,y],"mode":"replace|add|subtract|intersect"="replace","sampleAllLayers":bool=false} (point: the Object Finder's object under the point, as hovering previews it)"##,
             has_doc,
             object_selection
         ),
@@ -374,7 +505,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.refineEdge",
             "Refine Edge",
             [],
-            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask"="selection","sampleAllLayers":bool=false,"refineStrokes":[{"points":[[x,y],…],"size":px=30,"mode":"add|subtract"="add"},…]=[]} (refineStrokes: the Refine Edge Brush, in painting order: add refines the painted area from the image, subtract keeps the original edge there)"##,
+            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask|newDocument|newDocumentWithMask"="selection","sampleAllLayers":bool=false,"refineStrokes":[{"points":[[x,y],…],"size":px=30,"mode":"add|subtract"="add"},…]=[]} (refineStrokes: the Refine Edge Brush, in painting order: add refines the painted area from the image, subtract keeps the original edge there)"##,
             has_selection_or_mask,
             refine_edge
         ),
@@ -530,6 +661,59 @@ mod tests {
     }
 
     #[test]
+    fn object_selection_point_selects_the_object_under_it() {
+        for depth in [8, 16, 32] {
+            let (mut s, inside) = disc(depth);
+            let r = s.execute("select.object", json!({"point": [100, 80]})).unwrap();
+            assert_eq!(r["changed"], true, "depth {depth}");
+            let v = sel_iou(&s, 200, 160, &inside);
+            assert!(v > 0.9, "depth {depth}: IoU {v}");
+        }
+        // The background is no object: nothing changes.
+        let (mut s, _) = disc(8);
+        let r = s.execute("select.object", json!({"point": [3, 3]})).unwrap();
+        assert_eq!(r["changed"], false);
+        assert!(s.active().unwrap().doc.selection.is_none());
+        assert!(s.execute("select.object", json!({"point": ["a", 1]})).is_err());
+    }
+
+    #[test]
+    fn object_selection_point_honours_the_modes() {
+        let (mut s, _) = disc(8);
+        s.execute("select.all", json!({})).unwrap();
+        s.execute("select.object", json!({"point": [100, 80], "mode": "subtract"})).unwrap();
+        assert!(cov(&s, 100, 80) < 0.5 && cov(&s, 3, 3) >= 0.5);
+        s.execute("select.object", json!({"point": [100, 80], "mode": "add"})).unwrap();
+        assert!(cov(&s, 100, 80) >= 0.5 && cov(&s, 3, 3) >= 0.5);
+        s.execute("select.object", json!({"point": [100, 80], "mode": "intersect"})).unwrap();
+        assert!(cov(&s, 100, 80) >= 0.5 && cov(&s, 3, 3) < 0.5);
+    }
+
+    #[test]
+    fn object_finder_cache_serves_the_whole_object_until_pixels_change() {
+        let (mut s, _) = disc(8);
+        let d = s.active().unwrap();
+        let doc = std::sync::Arc::clone(&d.doc);
+        let target = sampled_target(&doc, d.active_layer, false);
+        assert!(s.object_finder.lookup(&doc, target, 100.0, 80.0).is_none());
+        let r = std::sync::Arc::new(find_object(&doc, d.active_layer, false, 100.0, 80.0).unwrap());
+        s.object_finder.insert(&doc, target, std::sync::Arc::clone(&r));
+        // Any point on the object hits; the background and another target miss.
+        assert!(std::sync::Arc::ptr_eq(&s.object_finder.lookup(&doc, target, 120.0, 90.0).unwrap(), &r));
+        assert!(s.object_finder.lookup(&doc, target, 3.0, 3.0).is_none());
+        assert!(s.object_finder.lookup(&doc, Some(LayerId(9999)), 100.0, 80.0).is_none());
+        // The click reuses it, and a selection-only edit keeps it.
+        s.execute("select.object", json!({"point": [110, 70]})).unwrap();
+        assert_eq!(s.object_finder.len(), 1);
+        s.execute("select.deselect", json!({})).unwrap();
+        let d = s.active().unwrap();
+        assert!(s.object_finder.lookup(&std::sync::Arc::clone(&d.doc), target, 100.0, 80.0).is_some());
+        // A pixel edit drops it.
+        s.execute("paint.pencil", json!({"points": [[5, 5], [30, 5]], "size": 4, "color": "#000000"})).unwrap();
+        assert!(s.object_finder.is_empty());
+    }
+
+    #[test]
     fn object_selection_disc() {
         for depth in [8, 16, 32] {
             let (mut s, inside) = disc(depth);
@@ -590,7 +774,11 @@ mod tests {
 
     /// A vertical Gaussian-blurred edge at x = 40 (warm left, cool right) with the left half selected.
     fn blurred_edge_selected() -> Session {
-        let mut s = session_with(80, 40, 8, |x, _| {
+        blurred_edge_selected_at(8)
+    }
+
+    fn blurred_edge_selected_at(depth: u32) -> Session {
+        let mut s = session_with(80, 40, depth, |x, _| {
             let t = 1.0 / (1.0 + ((x as f32 + 0.5 - 40.0) / 1.8).exp());
             [0.9 * t + 0.1 * (1.0 - t), 0.8 * t + 0.2 * (1.0 - t), 0.2 * t + 0.6 * (1.0 - t)]
         });
@@ -663,6 +851,47 @@ mod tests {
         assert!(s.execute("select.refineEdge", json!({"output": "bogus"})).is_err());
         s.execute("select.deselect", json!({})).unwrap();
         assert!(!s.is_enabled("select.refineEdge"));
+    }
+
+    /// Output To New Document (with or without a layer mask) opens a document like the source,
+    /// at every depth, and leaves the source document as it was.
+    #[test]
+    fn refine_edge_outputs_to_a_new_document() {
+        for depth in [8, 16, 32] {
+            let mut s = blurred_edge_selected_at(depth);
+            s.edit("profile", |doc, _| {
+                doc.resolution_dpi = 300.0;
+                Ok(())
+            })
+            .unwrap();
+            let before = s.active().unwrap().doc.clone();
+            let r = s.execute("select.refineEdge", json!({"radius": 8, "output": "newDocument"})).unwrap();
+            assert_eq!((r["output"].as_str(), r["document"].as_u64()), (Some("newDocument"), Some(1)), "depth {depth}");
+            assert_eq!(s.active_index(), Some(1));
+            let nd = &s.active().unwrap().doc;
+            assert_eq!((nd.size, nd.mode, nd.depth, nd.resolution_dpi), (before.size, before.mode, before.depth, 300.0));
+            assert_eq!(nd.layers.len(), 1);
+            assert!(nd.selection.is_none() && nd.layers[0].mask.is_none());
+            let surf = nd.layers[0].surface().unwrap();
+            let a = |x: i32| surf.pixel(x, 20)[3];
+            assert!(a(5) > 0.99 && a(75) == 0.0 && a(40) > 0.05 && a(40) < 0.95, "depth {depth}: {} {} {}", a(5), a(40), a(75));
+            // The source is untouched: same layers, still visible, selection kept, no history step.
+            let src = &s.documents()[0];
+            assert_eq!(src.doc.layers, before.layers);
+            assert_eq!(src.doc.selection, before.selection);
+            assert_eq!(src.history.undo_label(), Some("profile"));
+
+            // With a layer mask: full pixels, the refined matte as the mask.
+            s.execute("file.close", json!({"document": 1})).unwrap();
+            let r = s.execute("select.refineEdge", json!({"radius": 8, "output": "newDocumentWithMask"})).unwrap();
+            assert_eq!(r["output"], "newDocumentWithMask");
+            let nd = &s.active().unwrap().doc;
+            let l = &nd.layers[0];
+            assert_eq!(l.surface().unwrap().pixel(75, 20), before.layers[0].surface().unwrap().pixel(75, 20), "depth {depth}");
+            let m = l.mask.as_ref().unwrap();
+            assert!(soft_count(&m.surface, 20) >= 4, "depth {depth}");
+            assert!(m.value(5, 20) > 0.99 && m.value(75, 20) < 0.01, "depth {depth}");
+        }
     }
 
     #[test]

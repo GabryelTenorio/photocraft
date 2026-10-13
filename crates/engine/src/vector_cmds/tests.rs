@@ -389,6 +389,55 @@ fn fill_and_stroke_path_on_pixel_layer() {
     assert!(s.execute("path.fill", json!({})).is_err());
 }
 
+/// #2978: Simulate Pressure tapers the stroke at both ends (the brush's size follows pen
+/// pressure); without it the stroke is as wide near its ends as in the middle.
+#[test]
+fn stroke_path_simulate_pressure_tapers_both_ends() {
+    let coverage = |simulate: bool, x: i32| -> usize {
+        let mut s = session(200, 60, 8);
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("path.set", json!({"path": {"subpaths": [{"closed": false, "knots": [[20, 30], [180, 30]]}]}})).unwrap();
+        let p = json!({"tool": "brush", "size": 20, "hardness": 1.0, "color": "#000000", "opacity": 100, "simulatePressure": simulate});
+        s.execute("path.stroke", p).unwrap();
+        let d = doc(&s);
+        let surf = d.layer(s.active().unwrap().active_layer.unwrap()).unwrap().surface().unwrap();
+        (0..60).filter(|&y| surf.rgba(x, y)[3] > 0.5).count()
+    };
+    let (end, middle) = (coverage(true, 26), coverage(true, 100));
+    assert!(middle >= 18 && end * 3 < middle, "simulated: {end} px near the start, {middle} px in the middle");
+    let (end, middle) = (coverage(false, 26), coverage(false, 100));
+    assert!(middle >= 18 && end + 2 >= middle, "plain: {end} px near the start, {middle} px in the middle");
+}
+
+/// #2978: Stroke Path runs the other brush-based tools along the path (here the Blur tool) as one
+/// history step, and only the path.stroke call is journalled, so an action replays it once.
+#[test]
+fn stroke_path_with_the_blur_tool_is_one_step() {
+    let mut s = session(100, 60, 8);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let id = s.active().unwrap().active_layer.unwrap();
+    s.execute("path.set", json!({"path": {"subpaths": [{"knots": [[0, 0], [100, 0], [100, 60], [0, 60]]}]}})).unwrap();
+    s.execute("path.fill", json!({"color": "#ffffff"})).unwrap();
+    s.execute("path.set", json!({"path": {"subpaths": [{"knots": [[0, 0], [50, 0], [50, 60], [0, 60]]}]}})).unwrap();
+    s.execute("path.fill", json!({"color": "#000000"})).unwrap();
+    let px = |s: &Session, x: i32| doc(s).layer(id).unwrap().surface().unwrap().rgba(x, 30)[0];
+    assert!(px(&s, 49) < 0.01 && px(&s, 50) > 0.99);
+    // Two subpaths along the edge: still one step.
+    let edge = json!({"subpaths": [{"closed": false, "knots": [[50, 5], [50, 28]]}, {"closed": false, "knots": [[50, 28], [50, 55]]}]});
+    s.execute("path.set", json!({"path": edge})).unwrap();
+    let steps = s.active().unwrap().history.past_len();
+    let journal = s.journal.len();
+    s.execute("path.stroke", json!({"tool": "blur", "size": 10, "strength": 100})).unwrap();
+    assert!(px(&s, 49) > 0.02 && px(&s, 50) < 0.98, "the edge is blurred: {} {}", px(&s, 49), px(&s, 50));
+    assert_eq!(s.active().unwrap().history.past_len(), steps + 1);
+    let ids: Vec<&str> = s.journal[journal..].iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(ids, ["path.stroke"]);
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(px(&s, 49) < 0.01 && px(&s, 50) > 0.99);
+    assert!(s.execute("path.stroke", json!({"tool": "blur", "simulatePressure": "yes"})).is_err());
+    assert!(s.execute("path.stroke", json!({"tool": "airbrush"})).is_err());
+}
+
 #[test]
 fn fill_path_stays_inside_the_selection() {
     let alpha = |s: &Session, x, y| {
@@ -465,6 +514,37 @@ fn transform_work_saved_and_shape_paths() {
     s.execute("path.transform", json!({"name":"layer","layer":id,"matrix":[1,0,0,1,5,0]})).unwrap();
     assert_eq!(shape(&s, id).path.subpaths[0].knots[0].anchor.x, 15.0);
     assert!(shape(&s, id).cache.is_some());
+}
+
+/// Distort / Perspective and Warp of a path (#3027): the anchors land on the quad's corners, one
+/// undo step; hostile quads and warps are refused without a step.
+#[test]
+fn transform_path_distort_and_warp() {
+    let mut s = session(100, 100, 8);
+    s.execute("path.set", json!({"path":{"subpaths":[{"closed":true,"knots":[[10,10],[30,10],[30,20],[10,20]]}]}})).unwrap();
+    let steps = s.active().unwrap().history.past_len();
+    for bad in [
+        json!({"quad":[[0,0],[0,0],[0,0],[0,0]]}),
+        json!({"quad":[[10,10],[40,5],[45,30]]}),
+        json!({"quad":[[10,10],[40,5],[45,30],[5,"x"]]}),
+        json!({"quad":[[10,10],[40,5],[45,30],[5,1e30]]}),
+        json!({"quad":[[10,10],[40,5],[45,30],[5,25]],"rect":[10,10,10,20]}),
+        json!({"style":"nope"}),
+        json!({"style":"arc","rect":[0,0,1e30,1]}),
+    ] {
+        assert!(s.execute("path.transform", bad.clone()).is_err(), "{bad}");
+    }
+    assert_eq!(s.active().unwrap().history.past_len(), steps);
+    let quad = [[12.0, 8.0], [40.0, 5.0], [45.0, 30.0], [5.0, 25.0]];
+    s.execute("path.transform", json!({ "quad": quad })).unwrap();
+    assert_eq!(s.active().unwrap().history.past_len(), steps + 1, "one step");
+    let anchors: Vec<[f64; 2]> = doc(&s).work_path.as_ref().unwrap().subpaths[0].knots.iter().map(|k| [k.anchor.x, k.anchor.y]).collect();
+    assert_eq!(anchors.len(), 4);
+    for (a, q) in anchors.iter().zip(quad) {
+        assert!((a[0] - q[0]).abs() < 1e-9 && (a[1] - q[1]).abs() < 1e-9, "{anchors:?}");
+    }
+    s.execute("path.transform", json!({"style":"arc","bend":50})).unwrap();
+    assert!(doc(&s).work_path.as_ref().unwrap().subpaths[0].knots.len() > 4, "the warp bends the edges");
 }
 
 #[test]
@@ -558,8 +638,7 @@ fn rasterizing_a_vector_mask_keeps_what_the_masks_show() {
             s.execute("layer.rasterize.vectorMask", json!({})).unwrap();
             let l = doc(&s).layer(id).unwrap();
             assert!(l.vector_mask.is_none() && l.mask.is_some(), "{what}");
-            // An integer mask stores the soft values rounded to its depth (a mask made from a
-            // selection is 8-bit at every document depth).
+            // An integer mask stores the soft values rounded to its depth.
             let tol = match l.mask.as_ref().unwrap().surface.format().sample {
                 photocraft_color::SampleType::U8 => 1.5 / 255.0,
                 _ => 1e-3,
@@ -620,6 +699,28 @@ fn vector_mask_commands_and_compositing() {
     // Shape layers cannot take a separate vector mask.
     s.execute("shape.create", json!({"kind": "rect", "rect": [0, 0, 10, 10]})).unwrap();
     assert!(s.execute("layer.vectorMask.revealAll", json!({})).is_err());
+}
+
+/// #4201: the vector mask's feather takes the pixel mask's range (finite 0..=1000 px); anything
+/// else is refused before the edit, so no infinite feather can block a .pcraft save.
+#[test]
+fn vector_mask_edit_rejects_out_of_range_feather() {
+    let mut s = session(32, 32, 8);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let id = s.active().unwrap().active_layer.unwrap();
+    s.execute("layer.vectorMask.revealAll", json!({})).unwrap();
+    let feather = |s: &Session| doc(s).layer(id).unwrap().vector_mask.as_ref().unwrap().feather;
+    let steps = s.active().unwrap().history.past_len();
+    for bad in [json!(1e39), json!(-1), json!(1001), json!("x"), json!(null)] {
+        assert!(s.execute("layer.vectorMask.edit", json!({"feather": bad})).is_err(), "feather {bad}");
+        assert_eq!(feather(&s), 0.0, "feather {bad}");
+        assert_eq!(s.active().unwrap().history.past_len(), steps, "feather {bad}");
+    }
+    let r = s.execute("layer.vectorMask.edit", json!({"feather": 12.5})).unwrap();
+    assert_eq!(r["feather"], 12.5);
+    assert_eq!(feather(&s), 12.5);
+    s.execute("layer.vectorMask.edit", json!({"feather": 1000})).unwrap();
+    assert_eq!(feather(&s), 1000.0);
 }
 
 #[test]
@@ -691,6 +792,31 @@ fn shape_info_bounds_of_curved_shapes_are_exact() {
             let id = s.execute("shape.create", params.clone()).unwrap()["layer"].as_u64().unwrap();
             let info = s.execute("shape.info", json!({"layer": id})).unwrap();
             assert_eq!(info["bounds"], want, "{params} at {depth}-bit");
+        }
+    }
+}
+
+#[test]
+fn shape_create_negative_size_rect_covers_the_ellipse_box() {
+    // Issue #4203: a rectangle with a negative width spanned x 50..70 while the ellipse and
+    // polygon with the same `rect` spanned 30..50.
+    for depth in [8, 16, 32] {
+        let mut s = session(100, 60, depth);
+        let ell = s.execute("shape.create", json!({"kind": "ellipse", "rect": [50, 10, -20, 30], "fill": "#0000ff"})).unwrap()["bounds"].clone();
+        assert_eq!(ell, json!([30, 10, 20, 30]), "{depth}-bit");
+        for params in [
+            json!({"kind": "rect", "rect": [50, 10, -20, 30], "fill": "#0000ff"}),
+            json!({"kind": "roundedRect", "rect": [50, 10, -20, 30], "radii": 5, "fill": "#0000ff"}),
+            json!({"kind": "rect", "rect": [50, 40, -20, -30], "fill": "#0000ff"}),
+        ] {
+            let r = s.execute("shape.create", params.clone()).unwrap();
+            assert_eq!(r["bounds"], ell, "{params} at {depth}-bit");
+            let sh = shape(&s, r["layer"].as_u64().unwrap());
+            let c = sh.cache.as_ref().unwrap();
+            let fmt = c.format();
+            let alpha = |x: i32, y: i32| photocraft_raster::to_rgba(&fmt, &c.read_region(photocraft_doc::Rect::from_xywh(x, y, 1, 1)))[3];
+            assert!(alpha(40, 25) > 0.99, "{params} at {depth}-bit");
+            assert!(alpha(60, 25) < 0.01, "{params} at {depth}-bit");
         }
     }
 }

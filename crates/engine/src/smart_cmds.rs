@@ -387,6 +387,20 @@ fn place(name: &str, bytes: &[u8], fmt: PixelFormat, sm: &SmartObject) -> Result
     })
 }
 
+/// The box of a smart object's source in source pixels (what its warp's `us`/`vs` span), or `None`
+/// when the source can't be read.
+pub(crate) fn source_box(doc: &Document, sm: &SmartObject) -> Option<[f64; 4]> {
+    let (name, bytes) = source_bytes(&doc.metadata, &sm.source)?;
+    let fmt = doc.pixel_format();
+    let img = match sm.stack_mode {
+        Some(mode) => stack_image(&name, &bytes, fmt, mode),
+        None => source_image(&name, &bytes, fmt),
+    }
+    .ok()?;
+    let r = img.bounds;
+    Some([f64::from(r.x0), f64::from(r.y0), f64::from(r.x1), f64::from(r.y1)])
+}
+
 /// Renders a smart object from its source. `Ok(None)` when the source is unavailable (a missing
 /// linked file, or a PSD placed layer without embedded data): callers keep the existing cache.
 pub fn render(doc: &Document, sm: &SmartObject) -> Result<Option<Surface>> {
@@ -666,7 +680,7 @@ fn any_layer(l: &Layer, f: &dyn Fn(&Layer) -> bool) -> bool {
 /// blend mode, clipping and label stay on the smart layer. The cache is the exact composite, so
 /// the document looks the same before and after.
 pub fn layer_to_smart(doc: &Document, l: &Layer) -> Result<Layer> {
-    let background = l.name == "Background" && l.locks.position;
+    let background = doc.is_background(l.id);
     let mut inner = l.clone();
     inner.visible = true;
     inner.opacity = 1.0;
@@ -1056,24 +1070,6 @@ fn move_filter(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 // ---------- enablement ----------
-
-/// Whether smart-filter or contents command `spec` can run with `p`: its precondition is checked on an
-/// explicit `"layer"` of the active document (the layer it then edits) rather than on the
-/// active layer, which stays active (#466). `None` for other commands or without that target.
-pub(crate) fn target_enabled(s: &mut Session, spec: &CommandSpec, p: &Value) -> Option<std::result::Result<(), String>> {
-    if !spec.id.starts_with("layer.smartFilter.") && !matches!(spec.id, "layer.smartObjects.editContents" | "layer.smartObjects.convertToLayers") {
-        return None;
-    }
-    let target = LayerId(p.get("layer")?.as_u64()?);
-    let d = s.active_mut()?;
-    d.doc.layer(target)?;
-    let active = d.active_layer.replace(target);
-    let r = (spec.enabled)(s);
-    if let Some(d) = s.active_mut() {
-        d.active_layer = active;
-    }
-    Some(r)
-}
 
 fn active_smart(s: &Session) -> std::result::Result<&SmartObject, String> {
     let d = s.active().ok_or("no document open")?;
