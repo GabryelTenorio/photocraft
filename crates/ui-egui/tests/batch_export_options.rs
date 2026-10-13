@@ -71,10 +71,11 @@ fn replace_text(h: &mut Harness, value: &str) {
 fn edit_path(h: &mut Harness, name: &str, value: &Path) {
     let label = h.get_by_label(name).rect();
     h.query_all_by_role(egui::accesskit::Role::TextInput)
-        .find(|n| {
+        .filter(|n| {
             let r = n.rect();
             r.left() >= label.right() && (r.center().y - label.center().y).abs() < 3.0
         })
+        .min_by_key(|n| n.rect().left() as i32)
         .expect("path text field beside its label")
         .click();
     h.run_steps(2);
@@ -85,11 +86,14 @@ fn edit_path(h: &mut Harness, name: &str, value: &Path) {
 
 fn edit_quality(h: &mut Harness, value: &str) {
     let label = h.get_by_label("Quality").rect();
+    // The nearest numeric field to the right on the label's row: a panel's field (the Layers
+    // panel's opacity) can share the row's height now that the dialog is taller.
     h.query_all_by_role(egui::accesskit::Role::SpinButton)
-        .find(|n| {
+        .filter(|n| {
             let r = n.rect();
             r.left() >= label.right() && (r.center().y - label.center().y).abs() < 3.0
         })
+        .min_by_key(|n| n.rect().left() as i32)
         .expect("quality numeric field beside its label")
         .click();
     h.run_steps(2);

@@ -96,6 +96,12 @@ pub(crate) fn write_file(path: &str, _bytes: &[u8]) -> Result<()> {
     Err(EngineError::Other(format!("cannot write {path}: no file system on the web")))
 }
 
+/// Whether a file name's extension is one the batch commands open.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn openable_name(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(_, ext)| OPENABLE.contains(&ext.to_ascii_lowercase().as_str()))
+}
+
 /// Files of a folder that look like images we can open, sorted by name.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn list_images(dir: &str) -> Result<Vec<String>> {
@@ -919,25 +925,57 @@ fn parse_steps(v: &Value) -> Result<Vec<(String, Value)>> {
         .collect()
 }
 
-/// Inputs of a batch command: `"input"` is a folder or an array of files.
-pub(crate) fn batch_inputs(p: &Value, cmd: &str) -> Result<Vec<String>> {
-    match p.get("input").or_else(|| p.get("files")) {
-        Some(Value::Array(a)) => Ok(a.iter().filter_map(Value::as_str).map(str::to_string).collect()),
-        Some(Value::String(dir)) => list_images(dir),
-        _ => Err(EngineError::BadParams { cmd: cmd.into(), msg: "missing \"input\" (folder or array of files)".into() }),
-    }
+/// Inputs of a batch command: `"input"` is a folder (with `"includeSubfolders"`, its subfolders
+/// too) or an array of files. See [`crate::batch::inputs`].
+pub(crate) fn batch_inputs(p: &Value, cmd: &str) -> Result<Vec<crate::batch::Input>> {
+    crate::batch::inputs(p, cmd)
 }
 
-/// Opens each input in a scratch session, runs `f` on it and saves it to `output` as `format`
-/// (`"same"` keeps the input's extension). Errors per file are collected, not fatal.
-pub(crate) fn process_files(inputs: &[String], output: &str, format: &str, save: SaveOpts, suffix: &str, f: &dyn Fn(&mut Session) -> Result<()>) -> Value {
+#[cfg(not(target_arch = "wasm32"))]
+fn ensure_dir(dir: &str) -> Result<()> {
+    std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("{dir}: {e}")))
+}
+#[cfg(target_arch = "wasm32")]
+fn ensure_dir(dir: &str) -> Result<()> {
+    Err(EngineError::Other(format!("cannot create {dir}: no file system on the web")))
+}
+
+/// Opens each input in a scratch session, runs `f` on it and saves it to `output` (in the
+/// input's subfolder, mirrored) as `format` (`"same"` keeps the input's extension), named by
+/// `options.naming`. Errors per file are collected, not fatal, unless `options.stop_on_error`;
+/// they also go to `options.error_log` when set. With a job context, progress is reported per
+/// file and a cancel stops after the current file (`Err(Cancelled)`; the files written so far
+/// stay, the log is still written).
+pub(crate) fn process_files(
+    inputs: &[crate::batch::Input],
+    output: &str,
+    format: &str,
+    save: SaveOpts,
+    options: &crate::batch::Options,
+    ctx: Option<&crate::jobs::JobCtx>,
+    f: &dyn Fn(&mut Session) -> Result<()>,
+) -> Result<Value> {
     let mut files = Vec::new();
     let mut errors = Vec::new();
     let mut written = OutputClaims::default();
-    for path in inputs {
+    let date = crate::batch::Date::today();
+    let total = inputs.len();
+    let mut stopped = None;
+    let mut cancelled = false;
+    let mut done = 0;
+    for (i, input) in inputs.iter().enumerate() {
+        if let Some(ctx) = ctx {
+            if ctx.cancelled() {
+                cancelled = true;
+                break;
+            }
+            ctx.progress(i as f32 / total.max(1) as f32, &format!("{} of {total}: {}", i + 1, file_name(&input.path)));
+        }
+        let path = &input.path;
         let ext =
             if format == "same" { path.rsplit('.').next().unwrap_or("png").to_ascii_lowercase() } else { format.trim_start_matches('.').to_ascii_lowercase() };
-        let out = join(output, &format!("{}{suffix}.{ext}", stem(path)));
+        let dir = if input.subdir.is_empty() { output.to_string() } else { join(output, &input.subdir) };
+        let out = join(&dir, &options.naming.file_name(&stem(path), &ext, i as u64, date));
         let r = (|| -> Result<()> {
             written.check(&out).map_err(EngineError::Other)?;
             let bytes = read_file(path)?;
@@ -946,18 +984,38 @@ pub(crate) fn process_files(inputs: &[String], output: &str, format: &str, save:
             scratch.add_document(doc, Some(path.clone()));
             f(&mut scratch)?;
             let d = scratch.active().ok_or(EngineError::NoDocument)?;
+            ensure_dir(&dir)?;
             save_doc(&d.doc, &out, save)?;
             Ok(())
         })();
+        done = i + 1;
         match r {
             Ok(()) => {
                 written.record(&out, path);
                 files.push(out);
             }
-            Err(e) => errors.push(json!({"file": path, "error": e.to_string()})),
+            Err(e) => {
+                errors.push(json!({"file": path, "error": e.to_string()}));
+                if options.stop_on_error {
+                    stopped = Some(path.clone());
+                    break;
+                }
+            }
         }
     }
-    json!({"files": files, "errors": errors})
+    if let Some(log) = &options.error_log
+        && !errors.is_empty()
+    {
+        crate::batch::write_error_log(log, &errors, date)?;
+    }
+    if cancelled {
+        return Err(EngineError::Cancelled);
+    }
+    if let Some(ctx) = ctx {
+        ctx.progress(1.0, "");
+    }
+    let skipped = || inputs.iter().skip(done).map(|i| i.path.clone()).collect();
+    Ok(crate::batch::outcome(files, errors, stopped.map(|at| (at, skipped())), options.error_log.as_deref()))
 }
 
 /// The output paths a batch run has written, so a later input whose output name matches an
@@ -992,9 +1050,12 @@ fn batch(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some((id, _)) = steps.iter().find(|(id, _)| crate::commands::find(id).is_none()) {
         return Err(EngineError::BadParams { cmd: cmd.into(), msg: format!("unknown command `{id}` in the action") });
     }
-    let inputs = batch_inputs(p, cmd)?;
-    let output = str_param(p, "output", cmd)?.to_string();
+    let options = crate::batch::Options::from_params(p, cmd)?;
     let format = p.get("format").and_then(Value::as_str).unwrap_or("same").to_string();
+    let source = p.get("source").and_then(Value::as_str).unwrap_or("folder");
+    if !matches!(source, "folder" | "open") {
+        return Err(EngineError::BadParams { cmd: cmd.into(), msg: format!("unknown source `{source}` (folder or open)") });
+    }
     // Steps that call another action play it from the caller's actions; the playback stack comes
     // along so an action that batches itself is caught as a recursive call.
     let list = match p.get("calledActions") {
@@ -1010,17 +1071,109 @@ fn batch(s: &mut Session, p: &Value) -> Result<Value> {
         }
     };
     let actions = crate::actions_cmds::ActionState { list, playing: s.actions.playing, playback_stack: s.actions.playback_stack.clone(), ..Default::default() };
-    let r = process_files(&inputs, &output, &format, SaveOpts::from_params(s, p, cmd)?, "", &|scratch| {
-        scratch.actions = actions.clone();
-        for (id, params) in &steps {
-            let r = scratch.execute(id, params.clone())?;
-            // A failed step inside a called action makes this file an error, not a saved result.
-            if let Some(error) = crate::actions_cmds::nested_failure(id, &r) {
-                return Err(EngineError::Other(error));
+    let save = SaveOpts::from_params(s, p, cmd)?;
+    if source == "open" {
+        return batch_open_documents(s, &steps, p, &options, &format, save, cmd);
+    }
+    let inputs = batch_inputs(p, cmd)?;
+    let output = str_param(p, "output", cmd)?.to_string();
+    // The files are processed on a worker when started as a job (the UI does): the status bar
+    // shows "n of total: file" and Cancel stops after the current file.
+    crate::jobs::run(
+        s,
+        "Batch",
+        false,
+        move |ctx| {
+            process_files(&inputs, &output, &format, save, &options, Some(ctx), &|scratch| {
+                scratch.actions = actions.clone();
+                for (id, params) in &steps {
+                    let r = scratch.execute(id, params.clone())?;
+                    // A failed step inside a called action makes this file an error, not a saved result.
+                    if let Some(error) = crate::actions_cmds::nested_failure(id, &r) {
+                        return Err(EngineError::Other(error));
+                    }
+                }
+                Ok(())
+            })
+        },
+        |_, v| Ok(v),
+    )
+}
+
+/// Batch with Source: Opened Files. The steps run on every open document in turn (as history
+/// steps of each); with `"output"` a copy of each is saved there, named by the template from
+/// the document's name (an untitled document saved as `"same"` becomes a PSD, as it would in
+/// Photoshop); without, the documents just stay changed (Destination: None).
+fn batch_open_documents(
+    s: &mut Session,
+    steps: &[(String, Value)],
+    p: &Value,
+    options: &crate::batch::Options,
+    format: &str,
+    save: SaveOpts,
+    cmd: &str,
+) -> Result<Value> {
+    let n = s.documents().len();
+    if n == 0 {
+        return Err(EngineError::NoDocument);
+    }
+    let output = p.get("output").and_then(Value::as_str).map(str::trim).filter(|o| !o.is_empty()).map(str::to_string);
+    let date = crate::batch::Date::today();
+    let prev = s.active_index();
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    let mut written = OutputClaims::default();
+    let mut stopped = None;
+    let mut done = 0;
+    let names: Vec<String> = s.documents().iter().map(|d| d.path.clone().unwrap_or_else(|| d.doc.name.clone())).collect();
+    for (i, name) in names.iter().enumerate() {
+        if !s.set_active(i) {
+            break;
+        }
+        let r = (|| -> Result<()> {
+            for (id, params) in steps {
+                let r = s.execute(id, params.clone())?;
+                if let Some(error) = crate::actions_cmds::nested_failure(id, &r) {
+                    return Err(EngineError::Other(error));
+                }
+            }
+            let Some(output) = &output else { return Ok(()) };
+            let ext = if format == "same" {
+                let d = s.documents().get(i).ok_or(EngineError::NoDocument)?;
+                d.path.as_deref().and_then(|p| p.rsplit_once('.')).map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_else(|| "psd".into())
+            } else {
+                format.trim_start_matches('.').to_ascii_lowercase()
+            };
+            let out = join(output, &options.naming.file_name(&stem(name), &ext, i as u64, date));
+            written.check(&out).map_err(EngineError::Other)?;
+            ensure_dir(output)?;
+            let d = s.documents().get(i).ok_or(EngineError::NoDocument)?;
+            save_doc(&d.doc, &out, save)?;
+            written.record(&out, name);
+            files.push(out);
+            Ok(())
+        })();
+        done = i + 1;
+        if let Err(e) = r {
+            errors.push(json!({"document": name, "error": e.to_string()}));
+            if options.stop_on_error {
+                stopped = Some(name.clone());
+                break;
             }
         }
-        Ok(())
-    });
+    }
+    if let Some(i) = prev {
+        s.set_active(i);
+    }
+    if let Some(log) = &options.error_log
+        && !errors.is_empty()
+    {
+        crate::batch::write_error_log(log, &errors, date)?;
+    }
+    let _ = cmd;
+    let skipped = || names.iter().skip(done).cloned().collect();
+    let mut r = crate::batch::outcome(files, errors, stopped.map(|at| (at, skipped())), options.error_log.as_deref());
+    r["documents"] = json!(n);
     Ok(r)
 }
 
@@ -1034,7 +1187,8 @@ fn image_processor(s: &mut Session, p: &Value) -> Result<Value> {
         (w, h) => Some(json!({"width": w.unwrap_or(1e9), "height": h.unwrap_or(1e9), "dontEnlarge": true})),
     };
     let to_srgb = p.get("convertToSrgb").and_then(Value::as_bool).unwrap_or(false);
-    let r = process_files(&inputs, &output, &format, SaveOpts::from_params(s, p, cmd)?.or_quality(8.0), "", &|scratch| {
+    let options = crate::batch::Options::from_params(p, cmd)?;
+    process_files(&inputs, &output, &format, SaveOpts::from_params(s, p, cmd)?.or_quality(8.0), &options, None, &|scratch| {
         if to_srgb && scratch.active().is_some_and(|d| d.doc.mode != ColorMode::Rgb) {
             scratch.execute("image.mode.rgb", json!({}))?;
         }
@@ -1042,8 +1196,7 @@ fn image_processor(s: &mut Session, p: &Value) -> Result<Value> {
             fit_image(scratch, fp)?;
         }
         Ok(())
-    });
-    Ok(r)
+    })
 }
 
 fn load_files_into_stack(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1535,7 +1688,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Batch…",
             &["File", "Automate"],
             None,
-            r##"{"steps":[[commandId,params]|{"command":id,"params":{}}…] (a recorded action),"input":folder|[paths],"output":folder,"format":"same|png|jpg|psd|tiff|…"="same","quality":0..12?,"tiffLayers":bool=false,"tgaBits":24|32?,"dpxBits":8|10|12|16? (DPX: bits per sample; unset, 8 for an 8-bit document, else 16),"calledActions":[{"name","steps"}…]? (the actions Play Action steps call; default: the session's)} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
+            r##"{"steps":[[commandId,params]|{"command":id,"params":{}}…] (a recorded action),"source":"folder|open"="folder" (open: the steps run on every open document; "input" is ignored, "output" optional: a copy of each is saved there, else they just stay changed),"input":folder|[paths],"includeSubfolders":bool=false (the output mirrors the subfolders),"output":folder,"format":"same|png|jpg|psd|tiff|…"="same","naming":"{name}.{ext}"? (template: {name} {NAME} {Name} {serial} {serial:2..4} {letter} {LETTER} {date:mmddyy|mmdd|yyyymmdd|yymmdd|yyddmm|ddmmyy} {ext} {EXT}, other text literal),"startSerial":int=1,"stopOnError":bool=false (else every file is tried),"errorLog":path? (the errors, one per line),"quality":0..12?,"tiffLayers":bool=false,"tgaBits":24|32?,"dpxBits":8|10|12|16? (DPX: bits per sample; unset, 8 for an 8-bit document, else 16),"calledActions":[{"name","steps"}…]? (the actions Play Action steps call; default: the session's)} → {files, errors, stopped?, skipped?, errorLog?} (an input whose output name was already written in the run goes to errors). Runs as a job: progress per file, Cancel stops after the current one"##,
             native,
             batch
         ),
@@ -1544,7 +1697,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Image Processor…",
             &["File", "Scripts"],
             None,
-            r##"{"input":folder|[paths],"output":folder,"format":"jpg|png|psd|tiff|…"="jpg","quality":0..12=8,"tiffLayers":bool=false,"tgaBits":24|32?,"dpxBits":8|10|12|16? (DPX: bits per sample; unset, 8 for an 8-bit document, else 16),"width":px?,"height":px? (fit, never enlarge),"convertToSrgb":bool=false} → {files, errors} (an input whose output name was already written in the run goes to errors)"##,
+            r##"{"input":folder|[paths],"includeSubfolders":bool=false,"output":folder,"format":"jpg|png|psd|tiff|…"="jpg","naming":"{name}.{ext}"? (as file.automate.batch),"startSerial":int=1,"stopOnError":bool=false,"errorLog":path?,"quality":0..12=8,"tiffLayers":bool=false,"tgaBits":24|32?,"dpxBits":8|10|12|16? (DPX: bits per sample; unset, 8 for an 8-bit document, else 16),"width":px?,"height":px? (fit, never enlarge),"convertToSrgb":bool=false} → {files, errors, stopped?, skipped?, errorLog?} (an input whose output name was already written in the run goes to errors)"##,
             native,
             image_processor
         ),

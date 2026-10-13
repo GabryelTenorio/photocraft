@@ -1049,6 +1049,31 @@ mod form_reset_tests {
     }
 }
 
+/// The fields a `__form` dialog shows, in order: as `__order` lists them (a dialog's grouping,
+/// such as Batch's Play / Source / Destination / Errors), the rest alphabetically after them.
+fn form_keys(f: &Map<String, Value>) -> Vec<String> {
+    let mut keys: Vec<String> = f.keys().filter(|k| !k.starts_with("__")).cloned().collect();
+    if let Some(order) = f.get("__order").and_then(Value::as_array) {
+        let order: Vec<&str> = order.iter().filter_map(Value::as_str).collect();
+        keys.sort_by_key(|k| order.iter().position(|o| o == k).unwrap_or(usize::MAX));
+    }
+    keys
+}
+
+#[cfg(test)]
+mod form_order_tests {
+    use super::form_keys;
+    use serde_json::json;
+
+    #[test]
+    fn order_hint_puts_listed_fields_first_and_the_rest_alphabetically() {
+        let f = json!({"zeta": 1, "alpha": 2, "mid": 3, "__order": ["mid", "zeta"], "__form": true});
+        assert_eq!(form_keys(f.as_object().unwrap()), ["mid", "zeta", "alpha"]);
+        let f = json!({"b": 1, "a": 2});
+        assert_eq!(form_keys(f.as_object().unwrap()), ["a", "b"], "without a hint, alphabetical as before");
+    }
+}
+
 /// Body of a `__form` dialog: text fields, number fields, checkboxes and `__choices` dropdowns.
 pub fn form_body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let choices = f.get("__choices").cloned().unwrap_or(Value::Null);
@@ -1056,7 +1081,7 @@ pub fn form_body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     // come from `__labels` verbatim; everything else goes through the catalogue.
     let labels = f.get("__labels").cloned().unwrap_or(Value::Null);
     let label = |k: &str| labels.get(k).and_then(Value::as_str).map_or_else(|| label_of(k), str::to_string);
-    let keys: Vec<String> = f.keys().filter(|k| !k.starts_with("__")).cloned().collect();
+    let keys = form_keys(f);
     egui::Grid::new("form-dialog").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
         for k in keys {
             let v = f.get(&k).cloned().unwrap_or(Value::Null);
@@ -1307,10 +1332,17 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
             };
             let steps = crate::actions::action_steps(action);
             let name = action.name.clone();
+            // Photoshop's Batch dialog: Source (folder with Include All Subfolders, or the open
+            // documents), Destination, File Naming, Errors (stop, or log to a file).
             dialog(
                 app,
-                json!({"action": name, "steps": steps, "input": dir, "output": format!("{dir}/batch"), "format": "same", "quality": null, "__batchQuality": 8}),
-                json!({"format": ["same", "png", "jpg", "psd", "tiff", "webp"]}),
+                json!({
+                    "action": name, "steps": steps, "source": "folder", "input": dir, "includeSubfolders": false,
+                    "output": format!("{dir}/batch"), "format": "same", "naming": photocraft_engine::batch::Naming::DEFAULT, "startSerial": 1,
+                    "stopOnError": false, "errorLog": "", "quality": null, "__batchQuality": 8,
+                    "__order": ["action", "source", "input", "includeSubfolders", "output", "format", "naming", "startSerial", "quality", "stopOnError", "errorLog"],
+                }),
+                json!({"format": ["same", "png", "jpg", "psd", "tiff", "webp"], "source": ["folder", "open"]}),
             )
         }
         // Channel workflow dialogs (see channels_panel.rs for the channel references).

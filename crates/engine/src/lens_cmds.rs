@@ -418,20 +418,20 @@ fn lens_batch(s: &mut Session, p: &Value) -> Result<Value> {
     let format = p.get("format").and_then(Value::as_str).unwrap_or("same").to_string();
     let mut params = p.clone();
     if let Value::Object(m) = &mut params {
-        for k in ["input", "files", "output", "format", "quality"] {
+        for k in ["input", "files", "includeSubfolders", "output", "format", "naming", "startSerial", "stopOnError", "errorLog", "quality"] {
             m.remove(k);
         }
         // Batch default: the EXIF-driven profile, as Photoshop's dialog suggests.
         m.entry("profile").or_insert(json!("auto"));
     }
-    let r = crate::file_cmds::process_files(&inputs, &output, &format, crate::file_cmds::SaveOpts::from_params(s, p, LENS_BATCH)?, "", &|scratch| {
+    let options = crate::batch::Options::from_params(p, LENS_BATCH)?;
+    crate::file_cmds::process_files(&inputs, &output, &format, crate::file_cmds::SaveOpts::from_params(s, p, LENS_BATCH)?, &options, None, &|scratch| {
         if scratch.active().is_some_and(|d| d.doc.layers.len() > 1) {
             scratch.execute("layer.flattenImage", json!({}))?;
         }
         scratch.execute(LENS, params.clone())?;
         Ok(())
-    });
-    Ok(r)
+    })
 }
 
 const LENS_DOC: &str = r##"{"profile":"none|auto|generic","focalLength":mm=0,"correctDistortion":bool=true,"correctVignette":bool=true,"correctCA":bool=true,"autoScale":bool=false,"distortion":-100..100=0,"redCyan":-100..100=0,"blueYellow":-100..100=0,"vignetteAmount":-100..100=0,"vignetteMidpoint":0..100=50,"vertical":-100..100=0,"horizontal":-100..100=0,"angle":-180..180=0,"scale":50..150=100,"edge":"transparency|edgeExtension|black|white","straighten":[[x,y],[x,y]]?}"##;

@@ -27,8 +27,13 @@ USAGE:
   photocraft-cli run (<file> | --new <json>) --cmd <id> [--params <json>] [--cmd …] [--out <file>] [--format <ext>] [--quality <1-100>] [--tiff-layers] [--tga-bits <24|32>] [--dpx-bits <8|10|12|16>]
       Open a file, run engine commands in order, save the result. Each --params
       applies to the preceding --cmd. Prints each command's JSON result.
-  photocraft-cli batch --actions <actions.json|set.atn> [--action <name>] --in <dir> --out <dir> [--format <ext>] [--quality <1-100>] [--in-place] [--tiff-layers] [--tga-bits <24|32>] [--dpx-bits <8|10|12|16>]
-      Apply an action list to every image in a directory. A Photoshop Actions file (.atn) is a
+  photocraft-cli batch --actions <actions.json|set.atn> [--action <name>] --in <dir> --out <dir> [--recursive] [--naming <template>] [--start-serial <n>] [--stop-on-error] [--error-log <file>] [--format <ext>] [--quality <1-100>] [--in-place] [--tiff-layers] [--tga-bits <24|32>] [--dpx-bits <8|10|12|16>]
+      Apply an action list to every image in a directory (--recursive: its subfolders too, mirrored
+      under --out). --naming names the results, default {name}.{ext}; tokens: {name} {NAME} {Name},
+      {serial} {serial:2} {serial:3} {serial:4} (from --start-serial, default 1), {letter} {LETTER},
+      {date:mmddyy|mmdd|yyyymmdd|yymmdd|yyddmm|ddmmyy}, {ext} {EXT}; other text is literal.
+      --stop-on-error stops at the first failing file (the rest are skipped) instead of going on;
+      --error-log writes the failures to a text file. A Photoshop Actions file (.atn) is a
       set: its action --action names plays, as below. JSON steps are [id, params] pairs,
       {\"command\": id, \"params\": {…}} objects or bare ids, as a recorded action or droplet stores them
       (a list, or wrapped in {\"actions\": …}, {\"steps\": …} or a droplet). An Actions set (the Actions
@@ -79,8 +84,8 @@ const SUBCOMMANDS: &[Subcommand] = &[
     },
     Subcommand {
         name: "batch",
-        values: &["--actions", "--action", "--in", "--out", "--format", "--quality", "--tga-bits", "--dpx-bits"],
-        bare: &["--in-place", "--tiff-layers"],
+        values: &["--actions", "--action", "--in", "--out", "--naming", "--start-serial", "--error-log", "--format", "--quality", "--tga-bits", "--dpx-bits"],
+        bare: &["--in-place", "--tiff-layers", "--recursive", "--stop-on-error"],
         run: batch,
     },
     Subcommand { name: "droplet", values: &["--out"], bare: &[], run: droplet },
@@ -462,20 +467,32 @@ fn batch(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
         ));
     }
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
-    let mut inputs: Vec<PathBuf> =
-        std::fs::read_dir(&in_dir).map_err(|e| format!("{}: {e}", in_dir.display()))?.flatten().map(|e| e.path()).filter(|p| is_input(p)).collect();
-    inputs.sort();
+    let start = match a.get("--start-serial") {
+        Some(n) => n.parse::<u64>().map_err(|_| format!("--start-serial {n}: not a non-negative integer"))?,
+        None => 1,
+    };
+    let naming = photocraft_engine::batch::Naming::parse(a.get("--naming").unwrap_or(photocraft_engine::batch::Naming::DEFAULT), start)
+        .map_err(|e| format!("--naming: {e}"))?;
+    let date = photocraft_engine::batch::Date::today();
+    let stop_on_error = a.has("--stop-on-error");
+    // (file, subfolder relative to --in, mirrored under --out)
+    let inputs: Vec<(PathBuf, PathBuf)> = if a.has("--recursive") { list_inputs_recursive(&in_dir)? } else { list_inputs(&in_dir)? };
     let (mut ok, mut failed) = (0, 0);
+    let mut failures = Vec::new();
+    let mut skipped = 0;
     let mut written = photocraft_engine::file_cmds::OutputClaims::default();
     // `--format .jpg` names outputs `<stem>.jpg`, as `--format jpg` does (#490).
     let format = a.get("--format").map(|f| f.strip_prefix('.').unwrap_or(f));
-    for input in &inputs {
+    for (i, (input, sub)) in inputs.iter().enumerate() {
         let ext = format.map(str::to_owned).or_else(|| input.extension().map(|e| e.to_string_lossy().into_owned())).unwrap_or_else(|| "png".into());
         let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let target = out_dir.join(format!("{stem}.{ext}"));
+        let target = out_dir.join(sub).join(naming.file_name(&stem, &ext, i as u64, date));
         let target_text = target.to_string_lossy();
         let r = (|| -> Result<Vec<String>, String> {
             written.check(&target_text)?;
+            if !sub.as_os_str().is_empty() {
+                std::fs::create_dir_all(out_dir.join(sub)).map_err(|e| format!("{}: {e}", out_dir.join(sub).display()))?;
+            }
             let mut h = Headless::trusted_local();
             // Steps that play another action find it in the set; the session's playback stack
             // stops an action that calls itself.
@@ -504,11 +521,68 @@ fn batch(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
             Err(e) => {
                 failed += 1;
                 let _ = writeln!(err, "FAIL  {}: {e}", input.display());
+                failures.push(format!("{}: {e}", input.display()));
+                if stop_on_error {
+                    skipped = inputs.len() - i - 1;
+                    let _ = writeln!(err, "stopped at the first error (--stop-on-error); {skipped} file(s) skipped");
+                    break;
+                }
             }
         }
     }
-    let _ = writeln!(out, "{ok} succeeded, {failed} failed");
+    if let Some(log) = a.get("--error-log")
+        && !failures.is_empty()
+    {
+        let text = format!("PhotoCraft Batch: {} error(s)\n{}\n", failures.len(), failures.join("\n"));
+        std::fs::write(log, text).map_err(|e| format!("--error-log {log}: {e}"))?;
+    }
+    if skipped > 0 {
+        let _ = writeln!(out, "{ok} succeeded, {failed} failed, {skipped} skipped");
+    } else {
+        let _ = writeln!(out, "{ok} succeeded, {failed} failed");
+    }
     if failed > 0 { Err(format!("{failed} file(s) failed")) } else { Ok(()) }
+}
+
+/// The input images of `dir`, sorted by name, at the top (an empty subfolder).
+fn list_inputs(dir: &Path) -> Result<Vec<(PathBuf, PathBuf)>, String> {
+    let mut inputs: Vec<PathBuf> =
+        std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().map(|e| e.path()).filter(|p| is_input(p)).collect();
+    inputs.sort();
+    Ok(inputs.into_iter().map(|p| (p, PathBuf::new())).collect())
+}
+
+/// The input images of `dir` and its subfolders (each folder's files sorted by name, then its
+/// subfolders), with the subfolder relative to `dir`. Links to folders are not followed; a tree
+/// deeper than the engine's limit is an error.
+fn list_inputs_recursive(dir: &Path) -> Result<Vec<(PathBuf, PathBuf)>, String> {
+    fn walk(root: &Path, sub: &Path, depth: usize, out: &mut Vec<(PathBuf, PathBuf)>) -> Result<(), String> {
+        let dir = root.join(sub);
+        let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().collect();
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        let mut folders = Vec::new();
+        for e in entries {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() {
+                folders.push(e.file_name());
+            } else if is_input(&e.path()) {
+                if out.len() >= photocraft_engine::batch::MAX_FILES {
+                    return Err(format!("{}: more than {} images", root.display(), photocraft_engine::batch::MAX_FILES));
+                }
+                out.push((e.path(), sub.to_path_buf()));
+            }
+        }
+        for name in folders {
+            if depth >= photocraft_engine::batch::MAX_DEPTH {
+                return Err(format!("{}: folders nested deeper than {} levels", dir.join(&name).display(), photocraft_engine::batch::MAX_DEPTH));
+            }
+            walk(root, &sub.join(name), depth + 1, out)?;
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(dir, Path::new(""), 0, &mut out)?;
+    Ok(out)
 }
 
 fn droplet(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
@@ -751,6 +825,58 @@ mod batch_action_set_tests {
             assert_eq!(stderr.matches("FAIL").count(), 2, "{stderr}");
             assert!(!dir.join(action).join("a.png").exists(), "a file whose called action failed is not saved");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `--recursive` mirrors the subfolders under `--out`, `--naming` names the results,
+    /// `--stop-on-error` skips the rest after a failure and `--error-log` records the failures.
+    #[test]
+    fn batch_recursive_naming_stop_and_log() {
+        let dir = std::env::temp_dir().join(format!("photocraft-cli-batch-opts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = |name: &str| dir.join(name).to_string_lossy().to_string();
+        std::fs::create_dir_all(dir.join("in/sub")).unwrap();
+        for name in ["in/a", "in/sub/a", "in/sub/c"] {
+            let (code, _, stderr) = invoke(&["run", "--new", r#"{"width":8,"height":6}"#, "--out", &path(&format!("{name}.png"))]);
+            assert_eq!(code, 0, "{stderr}");
+        }
+        std::fs::write(dir.join("in/sub/b.png"), b"not a png").unwrap();
+        std::fs::write(dir.join("steps.json"), r#"[["image.imageRotation.90cw", {}]]"#).unwrap();
+        let (code, stdout, stderr) = invoke(&[
+            "batch",
+            "--actions",
+            &path("steps.json"),
+            "--in",
+            &path("in"),
+            "--out",
+            &path("out"),
+            "--recursive",
+            "--naming",
+            "{name}-{serial:2}.{ext}",
+            "--start-serial",
+            "5",
+            "--error-log",
+            &path("errors.txt"),
+        ]);
+        assert_ne!(code, 0, "{stdout}");
+        assert!(dir.join("out/a-05.png").is_file() && dir.join("out/sub/a-06.png").is_file() && dir.join("out/sub/c-08.png").is_file(), "{stdout}\n{stderr}");
+        assert!(stdout.contains("3 succeeded, 1 failed"), "{stdout}");
+        let log = std::fs::read_to_string(dir.join("errors.txt")).unwrap();
+        assert!(log.contains("1 error(s)") && log.contains("b.png"), "{log}");
+
+        let (code, stdout, stderr) =
+            invoke(&["batch", "--actions", &path("steps.json"), "--in", &path("in"), "--out", &path("out2"), "--recursive", "--stop-on-error"]);
+        assert_ne!(code, 0, "{stdout}");
+        assert!(stdout.contains("2 succeeded, 1 failed, 1 skipped"), "{stdout}");
+        assert!(stderr.contains("--stop-on-error"), "{stderr}");
+        assert!(!dir.join("out2/sub/c.png").exists(), "c comes after the failure and is skipped");
+
+        let (code, _, stderr) = invoke(&["batch", "--actions", &path("steps.json"), "--in", &path("in"), "--out", &path("out3"), "--naming", "{nope}"]);
+        assert_ne!(code, 0);
+        assert!(stderr.contains("--naming"), "{stderr}");
+        let (code, _, stderr) = invoke(&["batch", "--actions", &path("steps.json"), "--in", &path("in"), "--out", &path("out3"), "--start-serial", "x"]);
+        assert_ne!(code, 0);
+        assert!(stderr.contains("--start-serial"), "{stderr}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
