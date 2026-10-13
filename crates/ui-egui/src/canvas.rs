@@ -3670,6 +3670,15 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                         paint_bucket_cursor(ui.ctx(), p)
                     }
                 }
+                // Over the first anchor, the close-path pointer (#4596), before the pens' own cursors.
+                Tool::Pen | Tool::CurvaturePen
+                    if {
+                        let [x, y] = xf.to_doc(p);
+                        crate::vector_ui::closes_path_at(app, tool, x, y)
+                    } =>
+                {
+                    crate::tool_cursor::close_path(&painter, p)
+                }
                 // The pen tools: their own icon with its nib on the point, or the crosshair for
                 // precise Other Cursors (#4639).
                 Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint | Tool::ConvertPoint => {
@@ -3698,14 +3707,6 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 }
                 Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => egui::CursorIcon::Text,
                 Tool::MagneticLasso => crate::magnetic_lasso_ui::cursor(app, &painter, p, xf.zoom),
-                Tool::Pen | Tool::CurvaturePen
-                    if {
-                        let [x, y] = xf.to_doc(p);
-                        crate::vector_ui::closes_path_at(app, tool, x, y)
-                    } =>
-                {
-                    crate::tool_cursor::close_path(&painter, p)
-                }
                 Tool::RedEye => {
                     let pupil = app.ui.tool_options.red_eye_pupil_size.clamp(1.0, 100.0);
                     let r_doc = photocraft_algo::redeye::search_radius(pupil);
