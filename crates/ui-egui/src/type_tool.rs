@@ -52,7 +52,8 @@ fn to_text(aff: &Affine, x: f64, y: f64) -> (f32, f32) {
     (p.x as f32, p.y as f32)
 }
 
-/// Topmost visible type layer whose laid-out text contains the document point.
+/// Topmost shown type layer (it and every group around it visible, #4320) whose laid-out text
+/// contains the document point.
 fn hit_layer(app: &mut PhotocraftApp, x: f64, y: f64) -> Option<LayerId> {
     let doc = app.session.active()?.doc.clone();
     let slop = 6.0 / app.point_zoom().max(0.01);
@@ -61,7 +62,7 @@ fn hit_layer(app: &mut PhotocraftApp, x: f64, y: f64) -> Option<LayerId> {
     let mut ids: Vec<LayerId> = doc
         .walk()
         .into_iter()
-        .filter(|(_, _, l)| (l.visible || editing == Some(l.id)) && matches!(l.content, LayerContent::Text(_)))
+        .filter(|(path, _, l)| matches!(l.content, LayerContent::Text(_)) && (editing == Some(l.id) || doc.shown_at(path)))
         .map(|(_, _, l)| l.id)
         .collect();
     ids.reverse(); // walk() is bottom-up; hit the topmost first
@@ -985,11 +986,11 @@ fn draw_mask_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXfor
 }
 
 /// Font families: bundled, system, and those the host serves (`photocraft_text::served`, fetched
-/// when picked). Cached until fonts are registered or the served catalog changes.
+/// when picked). Cached until the shared engine registers fonts or the served catalog changes.
 pub fn families() -> Arc<Vec<String>> {
     type Cached = Option<((u64, u64), Arc<Vec<String>>)>;
     static FAMILIES: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
-    let key = (photocraft_text::fonts::generation(), photocraft_text::served::generation());
+    let key = (photocraft_text::fonts::shared_generation(), photocraft_text::served::generation());
     let mut cached = FAMILIES.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((k, v)) = cached.as_ref()
         && *k == key
@@ -1027,11 +1028,11 @@ pub fn sync_font_names(ctx: &egui::Context, show_in_english: bool) {
     });
 }
 
-/// The fonts' localized family names, keyed by family. Cached until fonts are registered.
+/// The fonts' localized family names, keyed by family. Cached until the shared engine registers fonts.
 fn localized_families() -> Arc<HashMap<String, String>> {
     type Cached = Option<(u64, Arc<HashMap<String, String>>)>;
     static LOCALIZED: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
-    let key = photocraft_text::fonts::generation();
+    let key = photocraft_text::fonts::shared_generation();
     let mut cached = LOCALIZED.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((k, v)) = cached.as_ref()
         && *k == key
@@ -1733,8 +1734,14 @@ fn num_field(ui: &mut egui::Ui, label: &str, tip: &str, v: f32, range: std::ops:
         ui.spacing_mut().item_spacing.x = 4.0;
         let (r, resp) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
         ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, crate::theme::semibold(10.0), t.text_dim);
-        crate::widgets::scrub_label(ui, &resp.on_hover_text(tip));
-        if crate::widgets::value_field(ui, &mut v, range, unit, width).changed() {
+        crate::widgets::scrub_label(ui, &resp.on_hover_text(tl!(tip)));
+        let response = crate::widgets::value_field(ui, &mut v, range, unit, width);
+        response.widget_info(|| {
+            let mut info = egui::WidgetInfo::drag_value(ui.is_enabled(), f64::from(v));
+            info.label = Some(tl!(tip).to_owned());
+            info
+        });
+        if response.changed() {
             out = Some(v);
         }
     });
@@ -2219,6 +2226,86 @@ mod tests {
     fn layer_text(app: &PhotocraftApp) -> String {
         let ed = app.ui.text_edit.as_ref().unwrap();
         current_text(app, LayerId(ed.layer)).unwrap()
+    }
+
+    /// A committed type layer reading `s` at the same spot as the others (stacked variants, #4320).
+    fn stacked_variant(app: &mut PhotocraftApp, s: &str) -> LayerId {
+        app.ui.text_edit = None;
+        pointer_up(app, [50.0, 100.0], [50.0, 100.0]);
+        insert(app, s);
+        commit(app);
+        app.session.active().unwrap().active_layer.unwrap()
+    }
+
+    fn hide(app: &mut PhotocraftApp, id: LayerId) {
+        app.run("layer.setProps", json!({"layer": id.0, "visible": false})).unwrap();
+    }
+
+    /// Wraps `id` in a new group and returns the group.
+    fn group_of(app: &mut PhotocraftApp, id: LayerId) -> LayerId {
+        app.run("layer.select", json!({"layer": id.0, "mode": "replace"})).unwrap();
+        app.run("layer.groupLayers", json!({})).unwrap();
+        let doc = &app.session.active().unwrap().doc;
+        let path = doc.path_of(id).unwrap();
+        doc.layer_at(&path[..path.len() - 1]).unwrap().id
+    }
+
+    /// Three type variants at one spot, bottom to top: A, B, C.
+    fn variants() -> (PhotocraftApp, [LayerId; 3]) {
+        let mut app = app();
+        let ids = ["Variant A", "Variant B", "Variant C"].map(|s| stacked_variant(&mut app, s));
+        (app, ids)
+    }
+
+    const ON_TEXT: (f64, f64) = (60.0, 95.0);
+
+    /// #4320: variants hidden through their groups above the shown one are not picked.
+    #[test]
+    fn type_click_skips_text_in_hidden_groups_above_the_shown_variant() {
+        let (mut app, [a, b, c]) = variants();
+        for id in [b, c] {
+            let g = group_of(&mut app, id);
+            hide(&mut app, g);
+        }
+        assert_eq!(hit_layer(&mut app, ON_TEXT.0, ON_TEXT.1), Some(a));
+        assert!(pointer_down(&mut app, ON_TEXT.0, ON_TEXT.1, egui::Modifiers::NONE));
+        assert_eq!(app.ui.text_edit.as_ref().map(|e| e.layer), Some(a.0), "the click edits the shown variant");
+    }
+
+    #[test]
+    fn type_click_skips_text_in_a_nested_hidden_group() {
+        let (mut app, [a, b, c]) = variants();
+        hide(&mut app, b);
+        let inner = group_of(&mut app, c);
+        let outer = group_of(&mut app, inner);
+        hide(&mut app, outer);
+        assert!(app.session.active().unwrap().doc.layer(c).unwrap().visible, "only the outer group is hidden");
+        assert_eq!(hit_layer(&mut app, ON_TEXT.0, ON_TEXT.1), Some(a));
+    }
+
+    #[test]
+    fn type_click_skips_own_hidden_variants_above_and_below() {
+        let (mut app, [a, b, c]) = variants();
+        hide(&mut app, b);
+        hide(&mut app, c);
+        assert_eq!(hit_layer(&mut app, ON_TEXT.0, ON_TEXT.1), Some(a), "hidden variants above");
+        let (mut app, [a, b, c]) = variants();
+        hide(&mut app, a);
+        hide(&mut app, b);
+        assert_eq!(hit_layer(&mut app, ON_TEXT.0, ON_TEXT.1), Some(c), "hidden variants below");
+    }
+
+    /// The Move tool's double-click on type (#1132) shares the pick.
+    #[test]
+    fn move_double_click_edits_the_shown_variant_not_one_in_a_hidden_group() {
+        let (mut app, [a, b, c]) = variants();
+        for id in [b, c] {
+            let g = group_of(&mut app, id);
+            hide(&mut app, g);
+        }
+        app.ui.tool = crate::state::Tool::Move;
+        assert!(edit_at(&mut app, ON_TEXT.0, ON_TEXT.1));
+        assert_eq!(app.ui.text_edit.as_ref().map(|e| e.layer), Some(a.0));
     }
 
     /// Photoshop: a click on existing type edits it; a ⇧-click there starts a new type layer.
