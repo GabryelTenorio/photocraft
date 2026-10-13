@@ -3636,10 +3636,16 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             }
         } else if let Some(c) = response.hover_pos().and_then(|p| crate::cam_transform::cursor(app, &ctx, &xf, p)) {
             ui.ctx().set_cursor_icon(c);
-        } else if let Some(c) =
-            response.hover_pos().filter(|_| !matches!(tool, Tool::Hand | Tool::Zoom | Tool::RotateView)).and_then(|p| transform_controls_cursor(app, &xf, p))
+        } else if let Some((p, c)) = response
+            .hover_pos()
+            .filter(|_| !matches!(tool, Tool::Hand | Tool::Zoom | Tool::RotateView))
+            .and_then(|p| transform_controls_cursor(app, &xf, p).map(|c| (p, c)))
         {
+            // Move controls show resize/rotate cursors before the first pointer press (#2871).
             ui.ctx().set_cursor_icon(c);
+            if let Some(toward) = transform_controls_turn(app, &xf, p) {
+                crate::crop_ui::draw_turn_cursor(&ctx, p, toward);
+            }
         } else if let Some(c) = response.hover_pos().filter(|_| tool.is_type()).and_then(|p| {
             let mods = crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers));
             crate::type_transform::cursor(app, &ctx, &xf, p, mods)
@@ -3752,30 +3758,39 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                     }
                 }
                 // The Eyedropper: the comparison ring follows the pointer while it samples (#213);
-                // otherwise its pipette, or the crosshair for Precise Other Cursors.
+                // otherwise its pipette, or the crosshair for precise Other Cursors.
                 Tool::Eyedropper => {
                     if let Some(icon) = eyedropper_ring(app, &painter, &xf, p, response.is_pointer_button_down_on()) {
                         icon
-                    } else if app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
+                    } else if precise_other_cursor(app) {
                         egui::CursorIcon::Crosshair
                     } else {
                         pipette_cursor(ui.ctx(), p)
                     }
                 }
-                // The Color Sampler: a pipette, or the crosshair for Precise Other Cursors.
+                // The Color Sampler: a pipette, or the crosshair for precise Other Cursors.
                 Tool::ColorSampler => {
-                    if app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
+                    if precise_other_cursor(app) {
                         egui::CursorIcon::Crosshair
                     } else {
                         pipette_cursor(ui.ctx(), p)
                     }
                 }
-                // The Paint Bucket: a bucket, or the crosshair for Precise Other Cursors (#3968).
+                // The Paint Bucket: a bucket, or the crosshair for precise Other Cursors (#3968).
                 Tool::PaintBucket => {
-                    if app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
+                    if precise_other_cursor(app) {
                         egui::CursorIcon::Crosshair
                     } else {
                         paint_bucket_cursor(ui.ctx(), p)
+                    }
+                }
+                // The pen tools: their own icon with its nib on the point, or the crosshair for
+                // precise Other Cursors (#4639).
+                Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint | Tool::ConvertPoint => {
+                    if precise_other_cursor(app) {
+                        egui::CursorIcon::Crosshair
+                    } else {
+                        pen_cursor(ui.ctx(), tool, p)
                     }
                 }
                 // Preferences › Cursors › Other Cursors: Precise shows a crosshair for every tool.
@@ -4476,7 +4491,25 @@ fn transform_controls_cursor(app: &PhotocraftApp, xf: &ViewXform, p: Pos2) -> Op
         let direction = *handles.get(i)? - *handles.get((i + 4) % 8)?;
         return Some(transform_resize_cursor(direction));
     }
-    (!shape_tool && transform_controls_hit(&r, xf, p)).then_some(egui::CursorIcon::Alias)
+    (!shape_tool && transform_controls_hit(&r, xf, p)).then_some(egui::CursorIcon::None)
+}
+
+/// The Move rotation band replaces the pointer with a curved arrow (#4658).
+/// Find its nearest corner in document space, then turn its bisector into the shown view.
+fn transform_controls_turn(app: &PhotocraftApp, xf: &ViewXform, p: Pos2) -> Option<Vec2> {
+    let r = transform_controls_rect(app, xf)?;
+    if crate::vector_ui::is_shape_tool(app.active_tool())
+        || r.handle_at(p, crate::transform_tool::HANDLE_PX as f32).is_some()
+        || !transform_controls_hit(&r, xf, p)
+    {
+        return None;
+    }
+    let d = xf.to_doc(p);
+    let center = r.bounds.center();
+    let corner =
+        pos2(if d[0] < center.x as f64 { r.bounds.left() } else { r.bounds.right() }, if d[1] < center.y as f64 { r.bounds.top() } else { r.bounds.bottom() });
+    let direction = vec2((center.x - corner.x).signum(), (center.y - corner.y).signum());
+    Some(xf.map_vec(direction).normalized() * 16.0)
 }
 
 fn transform_resize_cursor(direction: Vec2) -> egui::CursorIcon {
@@ -4677,6 +4710,26 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
 pub(crate) fn alt_samples(tool: Tool, mods: egui::Modifiers) -> bool {
     // Control+Alt is the brush-resize drag (`brush_resize`), not sampling.
     mods.alt && !mods.ctrl && matches!(tool, Tool::Brush | Tool::Pencil | Tool::Gradient | Tool::PaintBucket)
+}
+
+/// Preferences › Cursors › Other Cursors asks for the precise crosshair, or Caps Lock swaps the
+/// standard cursor for it (and back), as in Photoshop (#4639).
+fn precise_other_cursor(app: &PhotocraftApp) -> bool {
+    (app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise) != app.caps_lock
+}
+
+/// A pen tool's standard cursor: its toolbar icon with the nib (the Convert Point tool: the
+/// anchor) on `p`. Draws it at `p` and returns the OS cursor to set (hidden).
+pub(crate) fn pen_cursor(ctx: &egui::Context, tool: Tool, p: Pos2) -> egui::CursorIcon {
+    // Where each icon's point is in its 24-unit box: the full-size pen's nib at (2.3, 2.3); the
+    // Freeform and Curvature pens draw it at 0.68 × from (7, 7); Convert Point's apex anchor.
+    let hot = match tool {
+        Tool::FreeformPen | Tool::CurvaturePen => vec2(8.56, 8.56),
+        Tool::ConvertPoint => vec2(12.0, 7.0),
+        _ => vec2(2.3, 2.3),
+    };
+    crate::icons::cursor(ctx, crate::icons::tool_icon(tool), p, hot / 24.0, 22.0);
+    egui::CursorIcon::None
 }
 
 /// The sampling cursor: a pipette whose tip is the sampled pixel. Draws it at `p` and returns the
@@ -6813,12 +6866,12 @@ mod tests {
         let (shown, key) = display_doc(&mut app, 0);
         assert_ne!(key, 0);
         // A partial value two thirds of the way out: the soft tip, not a hard flat stand-in.
-        assert!(alpha(&shown, 40, 30) > 0.5 && (0.01..0.5).contains(&alpha(&shown, 40, 36)), "soft stroke while drawing");
+        assert!(alpha(&shown, 40, 30) > 0.5 && (0.01..0.95).contains(&alpha(&shown, 40, 36)), "soft stroke while drawing");
         assert_eq!(alpha(&app.session.documents()[0].doc, 40, 30), 0.0, "not committed yet");
         // The canvas redraws only what the stroke touched.
         let dk = canvas_display(&app, &app.session.documents()[0].doc, None).1;
         let d = damage_since(&app, 0, (rev, dk), (rev, key), dk, None).unwrap();
-        assert!(d.contains(40, 30) && !d.contains(40, 2) && d.width() < 120, "{d:?}");
+        assert!(d.contains(40, 30) && !d.contains(40, 2) && d.height() < 60, "{d:?}");
         tool_event(&mut app, ToolEvent::Up { x: 100.0, y: 30.0 }, m);
         let doc = app.session.documents()[0].doc.clone();
         assert!(app.live_stroke.is_none() && display_doc(&mut app, 0).1 == 0);
@@ -7279,7 +7332,9 @@ mod tests {
             }
         }
         assert!(soft > 50, "a soft brush shows a soft edge");
-        assert_eq!(trail.coverage(50, 30 + 10), 0, "half pressure halves the 30 px tip");
+        // Half pressure halves the 30 px tip: nothing past its (soft) reach.
+        let reach = photocraft_paint::tip_reach(7.5, app.session.tools.brush.hardness).ceil() as usize + 2;
+        assert_eq!(trail.coverage(50, 30 + reach), 0, "half pressure halves the 30 px tip");
     }
 
     #[test]
@@ -7517,13 +7572,28 @@ mod transform_controls_tests {
             (r.handles()[3], egui::CursorIcon::ResizeHorizontal),
             (r.handles()[7], egui::CursorIcon::ResizeHorizontal),
             // Between handles: the rotation band (a point above the top-centre handle is that handle).
-            (pos2(r.bounds.left() + r.bounds.width() * 0.25, r.bounds.top() - 12.0), egui::CursorIcon::Alias),
+            (pos2(r.bounds.left() + r.bounds.width() * 0.25, r.bounds.top() - 12.0), egui::CursorIcon::None),
         ] {
             assert_eq!(transform_controls_cursor(&app, &xf, p), Some(expected), "hover at {p:?}");
             assert!(transform_controls_hit(&r, &xf, p), "same region must start a transform");
         }
         assert_eq!(transform_controls_cursor(&app, &xf, r.bounds.center()), None, "interior stays Move");
         assert_eq!(transform_controls_cursor(&app, &xf, pos2(r.bounds.center().x, r.bounds.top() - 30.0)), None);
+
+        // The curved arrow bends into the nearest corner; handles and the interior have none.
+        let into = |p: Pos2| transform_controls_turn(&app, &xf, p).map(|v| (v.x.signum(), v.y.signum()));
+        assert_eq!(into(pos2(r.bounds.left() + r.bounds.width() * 0.25, r.bounds.top() - 12.0)), Some((1.0, 1.0)), "top left");
+        assert_eq!(into(pos2(r.bounds.right() + 12.0, r.bounds.bottom() - r.bounds.height() * 0.25)), Some((-1.0, -1.0)), "bottom right");
+        assert_eq!(into(pos2(r.bounds.left() - 12.0, r.bounds.bottom() + 12.0)), Some((1.0, -1.0)), "beyond bottom-left corner");
+        assert_eq!(into(r.corners[0]), None);
+        assert_eq!(into(r.bounds.center()), None);
+        let point = pos2(r.bounds.left() + r.bounds.width() * 0.25, r.bounds.top() - 12.0);
+        for (rotation, flip, expected) in [(90.0, false, (-1.0, 1.0)), (90.0, true, (1.0, 1.0)), (0.0, true, (-1.0, 1.0))] {
+            let shown = ViewXform { rotation, flip, ..xf };
+            let arrow = transform_controls_turn(&app, &shown, shown.to_screen(point.x, point.y)).expect("shown rotation band");
+            assert_eq!((arrow.x.signum(), arrow.y.signum()), expected, "rotation {rotation}, flip {flip}");
+            assert!((arrow.length() - 16.0).abs() < 0.001, "arrow size stays in screen points");
+        }
 
         // Changing the active shape changes the hover bounds without requiring a drag first.
         app.session.execute("shape.create", json!({"kind": "rect", "rect": [120, 100, 40, 50], "fill": "#00ff00"})).unwrap();

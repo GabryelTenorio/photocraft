@@ -550,17 +550,25 @@ fn color_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, two_columns: bool) {
 
 /// The app's top bar: brand mark, menus, the document title and the workspace controls. With
 /// [`PhotocraftApp::custom_titlebar`] (Windows and Linux) it is also the window's title bar, as in
-/// Photoshop on Windows: the caption buttons take its right end (`titlebar`). With the system
+/// Photoshop on Windows: the caption buttons take its ends (`titlebar`). With the system
 /// title bar (Windows and Linux, `system_title_bar`) the OS draws its own icon and title, so the
 /// in-app bar shows menus and workspace controls only: no brand mark, no centred title.
 pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let custom = app.custom_titlebar;
     let system = system_title_bar(app);
-    let left = if cfg!(target_os = "macos") && app.integrated_titlebar { 78 } else { 10 };
-    let right = if custom { 0 } else { 10 };
+    // The caption buttons' room at each end (`titlebar`); a side with buttons has no margin.
+    let (caption_left, caption_right) = crate::titlebar::reserved(app, ui.ctx());
+    let left = if cfg!(target_os = "macos") && app.integrated_titlebar {
+        78
+    } else if caption_left > 0.0 {
+        0
+    } else {
+        10
+    };
+    let right = if caption_right > 0.0 { 0 } else { 10 };
     let bar = egui::Panel::top("title_bar")
-        .exact_size(if t.pro { 32.0 } else { 38.0 })
+        .exact_size(crate::titlebar::bar_height(app, ui.ctx(), if t.pro { 32.0 } else { 38.0 }))
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left, right, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             let full = ui.max_rect();
@@ -586,9 +594,10 @@ pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             let rtl = crate::direction::is_rtl();
             let mut free = (full.left(), full.right());
             crate::direction::horizontal_centered(ui, |ui| {
-                if rtl && custom {
-                    // The caption buttons keep the right end; the menus start beside them.
-                    ui.add_space(crate::titlebar::WIDTH + 4.0);
+                // The menus start beside the caption buttons at their end, if it has any.
+                let lead = if rtl { caption_right } else { caption_left };
+                if lead > 0.0 {
+                    ui.add_space(lead + 4.0);
                 }
                 if !system {
                     let side = if t.pro { 18.0 } else { 20.0 };
@@ -606,9 +615,10 @@ pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 // The menu bar takes the whole row, so the far-end group gets its own rect: from
                 // the menus to the bar's end, or to the caption buttons.
                 let group = if rtl {
-                    egui::Rect::from_min_max(egui::pos2(full.left(), full.top()), egui::pos2((menus_end - TITLE_GAP).max(full.left()), full.bottom()))
+                    let left_edge = if caption_left > 0.0 { full.left() + caption_left + 4.0 } else { full.left() };
+                    egui::Rect::from_min_max(egui::pos2(left_edge, full.top()), egui::pos2((menus_end - TITLE_GAP).max(left_edge), full.bottom()))
                 } else {
-                    let right_edge = if custom { full.right() - crate::titlebar::WIDTH - 4.0 } else { full.right() };
+                    let right_edge = if caption_right > 0.0 { full.right() - caption_right - 4.0 } else { full.right() };
                     egui::Rect::from_min_max(egui::pos2((menus_end + TITLE_GAP).min(right_edge), full.top()), egui::pos2(right_edge, full.bottom()))
                 };
                 let mut group_ui = ui.new_child(egui::UiBuilder::new().max_rect(group).layout(crate::direction::trailing()));
@@ -1588,7 +1598,9 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     let (w, h, mode, bits, layers) =
                         (st.doc.size.width, st.doc.size.height, crate::canvas::mode_label(&st.doc), st.doc.depth.bits(), st.doc.layer_count());
                     let mut pct = app.ui.views[i].zoom * 100.0;
-                    if widgets::compact_value_field(ui, &mut pct, crate::zoom_levels::percent_range(&app.ui.views[i]), "%", 78.0, control_h).changed() {
+                    if widgets::compact_wrapping_value_field(ui, &mut pct, crate::zoom_levels::percent_range(&app.ui.views[i]), "%", vec2(78.0, control_h))
+                        .changed()
+                    {
                         app.ui.views[i].zoom = crate::zoom_levels::clamp(pct / 100.0, app.ui.views[i].doc_size);
                         app.ui.views[i].fit_pending = false;
                     }
@@ -2504,7 +2516,7 @@ fn footer_drop(ui: &egui::Ui, button: &egui::Response, drag: Option<(u64, bool)>
 }
 
 /// While something is dragged over a footer `button`: highlights it, and is true on the release.
-fn dropped_on(ui: &egui::Ui, button: &egui::Response) -> bool {
+pub(crate) fn dropped_on(ui: &egui::Ui, button: &egui::Response) -> bool {
     let Some(p) = ui.ctx().input(|i| i.pointer.interact_pos()) else { return false };
     if !button.rect.contains(p) {
         return false;
@@ -2882,10 +2894,20 @@ fn layer_row(
     if let Some(done) = crate::layer_row_ui::rename_field(ui, l.id.0, edit_rect) {
         actions.push(done);
     }
-    // The visibility icon has its own color menu; elsewhere use the full layer menu.
+    // The visibility icon has its own color menu, and the layer-mask thumbnail its mask menu
+    // (#4575); elsewhere use the full layer menu.
+    let on_mask_id = ui.id().with(("mask-menu", l.id.0));
+    if resp.secondary_clicked() {
+        let on_mask = resp.interact_pointer_pos().and_then(|p| masks.hit(p)) == Some(crate::mask_thumbs_ui::MaskKind::Pixel);
+        ctx.data_mut(|d| d.insert_temp(on_mask_id, on_mask));
+    }
     if !eye_resp.secondary_clicked() && !eye_resp.context_menu_opened() {
         resp.context_menu(|ui| {
             crate::widgets::style_spectrum_popup_menu(ui);
+            if ui.ctx().data(|d| d.get_temp::<bool>(on_mask_id)).unwrap_or(false) {
+                crate::layer_menu_ui::show_mask(app, ui, l, actions);
+                return;
+            }
             // Right-clicking inside a multi-selection keeps it and acts on every selected layer.
             let on_set = row.multi && selected;
             if crate::layer_menu_ui::show(app, ui, l, on_set, actions)
@@ -3921,13 +3943,14 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
         if t.pro {
             ui.painter().line_segment([pos2(rect.left() + 30.0, rect.top()), pos2(rect.left() + 30.0, rect.bottom())], Stroke::new(1.0, t.separator));
         }
-        let eye = Rect::from_min_size(pos2(rect.left() + 6.0, rect.center().y - 9.0), vec2(18.0, 18.0));
+        // Nested under the layer's eye column so an effect does not read as its own layer (#4572).
+        let eye = Rect::from_min_size(pos2(rect.left() + 36.0, rect.center().y - 9.0), vec2(18.0, 18.0));
         // A hidden effect's eye box is left empty (still clickable), like a hidden layer's.
         if on {
             icons::paint(ui, eye, "eye", 12.0, t.icon);
         }
         // The whole eye column of the row takes the click, so it never opens the Layer Style dialog.
-        let eye_cell = Rect::from_min_max(rect.left_top(), pos2((rect.left() + 30.0).min(rect.right()), rect.bottom()));
+        let eye_cell = Rect::from_min_max(pos2(rect.left() + 30.0, rect.top()), pos2((rect.left() + 58.0).min(rect.right()), rect.bottom()));
         if ui.interact(eye_cell, ui.id().with(("fx-eye", l.id.0, i)), Sense::click()).clicked() {
             let mut params = json!({"layer": l.id.0, "visible": !on});
             if let (Some(index), Some(o)) = (i.checked_sub(1), params.as_object_mut()) {
@@ -3935,7 +3958,7 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
             }
             actions.push(("layer.setEffectsVisible".into(), params));
         }
-        let x = rect.left() + indent + if i == 0 { 0.0 } else { 16.0 };
+        let x = rect.left() + indent + if i == 0 { 8.0 } else { 24.0 };
         if i == 0 {
             icons::paint(ui, Rect::from_center_size(pos2(x - 12.0, rect.center().y), vec2(14.0, 14.0)), "sparkles", 11.0, t.text_dim);
         }

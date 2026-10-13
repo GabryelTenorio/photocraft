@@ -72,6 +72,7 @@ pub fn tile_infos(s: &Surface, parallel: bool) -> Vec<TileInfo> {
         by_ptr.entry(ptr(t)).or_insert(t);
     }
     let distinct: Vec<(usize, &Arc<Tile>)> = by_ptr.into_iter().collect();
+    // rayon is a native-only dependency; the web build hashes serially.
     #[cfg(not(target_arch = "wasm32"))]
     let hashed: Vec<(usize, u64)> = if parallel {
         distinct.par_iter().map(|(p, t)| (*p, content_hash(t))).collect()
