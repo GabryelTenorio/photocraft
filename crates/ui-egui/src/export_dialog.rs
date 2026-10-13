@@ -356,7 +356,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             let (w, h) = scaled_size(bw, bh, f64::from(sc) / 100.0);
             ui.label(egui::RichText::new(format!("{w} × {h} px")).color(t.text_dim).size(11.5));
             if fmt == "ico" && (w > 256.0 || h > 256.0) {
-                ui.label(egui::RichText::new(tl!("ICO is limited to 256 × 256 pixels")).color(t.error));
+                ui.label(egui::RichText::new(tl!("ICO is limited to 256 × 256 pixels")).color(t.warning));
             }
         });
         ui.add_space(12.0);
@@ -507,7 +507,7 @@ mod tests {
         f.insert("format".into(), json!("ico"));
         f.insert("scale".into(), json!(100));
         assert!(FORMATS.iter().any(|(ext, _)| *ext == "ico"));
-        assert!(export_document(&app.session.active().unwrap().doc, &f, None).unwrap_err().contains("256"));
+        assert!(export_document(&app.session.active().unwrap().doc, &f, None).err().is_some_and(|e| e.contains("256")));
         f.insert("scale".into(), json!(50));
         let resized = export_document(&app.session.active().unwrap().doc, &f, None).unwrap();
         assert_eq!((resized.size.width, resized.size.height), (150, 100));
