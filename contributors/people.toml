@@ -139,6 +139,8 @@ sync_github_name = true
 
 [people.dotCooCoo]
 real_name = "Robert Lee"
+
+[people.bazmarth]
 sync_github_name = true
 
 [people.deadmeu]

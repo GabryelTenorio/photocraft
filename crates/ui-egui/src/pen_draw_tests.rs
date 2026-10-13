@@ -151,3 +151,28 @@ fn dragging_on_the_first_anchor_closes_with_its_handles_in_one_step() {
     assert!(sp.closed && sp.knots.len() == 3);
     assert!(near([k.in_ctrl.x, k.in_ctrl.y], [0.0, 20.0]) && near([k.out_ctrl.x, k.out_ctrl.y], [40.0, 20.0]), "{k:?}");
 }
+
+/// #3751: through the canvas, ⇧ makes a click land on a 45° line from the previous anchor and
+/// keeps a dragged handle on a 45° direction.
+#[test]
+fn shift_constrains_anchors_and_handles_through_the_canvas() {
+    let mut h = harness();
+    click(&mut h, [20.0, 20.0]);
+    // ⇧-drag from ~6° off the horizontal through the first anchor, out to ~43°.
+    let (from, to) = ([100.0, 28.0], [140.0, 65.0]);
+    mods(&mut h, Modifiers::SHIFT);
+    let p = screen(&h, from);
+    h.event(egui::Event::PointerMoved(p));
+    h.run_steps(1);
+    button(&mut h, p, true, Modifiers::SHIFT);
+    move_to(&mut h, from, to);
+    let up = screen(&h, to);
+    button(&mut h, up, false, Modifiers::SHIFT);
+    mods(&mut h, Modifiers::NONE);
+    let pen = h.state().ui.pen.clone().unwrap();
+    assert_eq!(pen.knots.len(), 2);
+    let k = pen.knots[1];
+    assert!((k[0][1] - 20.0).abs() < 0.05, "anchor constrained to the horizontal: {k:?}");
+    let (dx, dy) = (k[2][0] - k[0][0], k[2][1] - k[0][1]);
+    assert!((dx - dy).abs() < 0.05 && dx > 0.0, "out handle on the 45° diagonal: {k:?}");
+}

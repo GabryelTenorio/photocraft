@@ -42,6 +42,15 @@ impl PenPath {
     }
 }
 
+/// `p` turned around `origin` to the nearest multiple of 45°, at the same distance: ⇧ with the
+/// Line tool and the Pen (#3751).
+fn snap_45(origin: [f64; 2], p: [f64; 2]) -> [f64; 2] {
+    let (dx, dy) = (p[0] - origin[0], p[1] - origin[1]);
+    let a = (dy.atan2(dx) / std::f64::consts::FRAC_PI_4).round() * std::f64::consts::FRAC_PI_4;
+    let len = dx.hypot(dy);
+    [origin[0] + len * a.cos(), origin[1] + len * a.sin()]
+}
+
 pub fn is_shape_tool(t: Tool) -> bool {
     matches!(t, Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape)
 }
@@ -71,13 +80,8 @@ fn stroke_param(app: &PhotocraftApp) -> Value {
 /// small): ⇧ constrains proportions, ⌥ draws from the centre. Custom shapes give their box as a `rect`.
 fn shape_geometry(o: &ToolOptions, tool: Tool, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) -> Option<Value> {
     Some(if tool == Tool::Line {
-        let (mut dx, mut dy) = (end[0] - start[0], end[1] - start[1]);
-        if mods.shift {
-            // Snap to 45°.
-            let a = (dy.atan2(dx) / std::f64::consts::FRAC_PI_4).round() * std::f64::consts::FRAC_PI_4;
-            let len = dx.hypot(dy);
-            (dx, dy) = (len * a.cos(), len * a.sin());
-        }
+        let end = if mods.shift { snap_45(start, end) } else { end };
+        let (dx, dy) = (end[0] - start[0], end[1] - start[1]);
         if dx.hypot(dy) < 1.0 {
             return None;
         }
@@ -190,6 +194,12 @@ fn pen_to_json(pen: &PenPath, closed: bool) -> Value {
 /// Pen press: close on the first anchor, reshape the last anchor's outgoing handle,
 /// or add a new anchor (dragging a new anchor pulls symmetrical handles).
 pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
+    pen_down_with(app, x, y, false);
+}
+
+/// `pen_down` with ⇧/Shift: the new anchor turns around the previous one to the nearest multiple
+/// of 45°, at the pointer's distance (#3751). The first and last anchors are hit at the pointer.
+pub fn pen_down_with(app: &mut PhotocraftApp, x: f64, y: f64, shift: bool) {
     let tol = 6.0 / app.point_zoom().max(0.01) as f64;
     let pen = app.ui.pen.get_or_insert_with(PenPath::default);
     if let Some(first) = pen.knots.first().map(|k| k[0])
@@ -217,18 +227,29 @@ pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
         pen.adjusting_last = true;
         return;
     }
-    pen.knots.push([[x, y]; 3]);
+    let at = match pen.knots.last() {
+        Some(prev) if shift => snap_45(prev[0], [x, y]),
+        _ => [x, y],
+    };
+    pen.knots.push([at; 3]);
     pen.dragging = true;
     pen.adjusting_last = false;
 }
 
 pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
+    pen_move_with(app, x, y, false);
+}
+
+/// `pen_move` with ⇧/Shift: the handle being pulled out points at the nearest multiple of 45°
+/// around its anchor, at the pointer's distance (#3751).
+pub fn pen_move_with(app: &mut PhotocraftApp, x: f64, y: f64, shift: bool) {
     if let Some(pen) = app.ui.pen.as_mut()
         && pen.dragging
     {
         let adjusting_last = pen.adjusting_last;
         if let Some(k) = pen.knots.last_mut() {
             let a = k[0];
+            let [x, y] = if shift { snap_45(a, [x, y]) } else { [x, y] };
             k[2] = [x, y];
             if !adjusting_last {
                 k[1] = [2.0 * a[0] - x, 2.0 * a[1] - y];
@@ -2068,6 +2089,73 @@ mod tests {
         assert!(!pen_undo_last_point(&mut app));
         assert_eq!(app.session.active().unwrap().history.past_len(), 0);
         assert!(app.session.active().unwrap().doc.work_path.is_none());
+    }
+
+    fn near(a: [f64; 2], b: [f64; 2]) -> bool {
+        (a[0] - b[0]).abs() < 1e-9 && (a[1] - b[1]).abs() < 1e-9
+    }
+
+    /// #3751: ⇧ turns a new anchor around the previous one to 45° steps, at the same distance.
+    #[test]
+    fn shift_constrains_new_anchors_to_45_degrees() {
+        let mut app = app();
+        // The first anchor has nothing to turn around: it lands at the pointer.
+        pen_down_with(&mut app, 20.0, 20.0, true);
+        pen_up(&mut app);
+        assert!(near(app.ui.pen.as_ref().unwrap().knots[0][0], [20.0, 20.0]));
+        // ~31° from the first anchor snaps to 45°, keeping the distance.
+        pen_down_with(&mut app, 70.0, 50.0, true);
+        pen_up(&mut app);
+        let d = 50.0_f64.hypot(30.0) / std::f64::consts::SQRT_2;
+        let k = app.ui.pen.as_ref().unwrap().knots[1];
+        assert!(near(k[0], [20.0 + d, 20.0 + d]), "{k:?}");
+        assert_eq!(k[1], k[0], "a click is a corner");
+        // A nearly horizontal click becomes horizontal.
+        let prev = k[0];
+        pen_down_with(&mut app, prev[0] + 60.0, prev[1] + 4.0, true);
+        pen_up(&mut app);
+        let k = app.ui.pen.as_ref().unwrap().knots[2];
+        assert!(near(k[0], [prev[0] + 60.0_f64.hypot(4.0), prev[1]]), "{k:?}");
+        // Without ⇧ the anchor lands at the pointer.
+        pen_down_with(&mut app, 150.0, 170.0, false);
+        pen_up(&mut app);
+        assert!(near(app.ui.pen.as_ref().unwrap().knots[3][0], [150.0, 170.0]));
+    }
+
+    /// #3751: ⇧ while dragging out handles snaps their direction to 45° steps around the anchor;
+    /// the incoming handle stays mirrored. ⇧ on the first anchor still closes the path.
+    #[test]
+    fn shift_constrains_dragged_handles_and_still_closes() {
+        let mut app = app();
+        pen_down_with(&mut app, 20.0, 20.0, true);
+        pen_up(&mut app);
+        pen_down_with(&mut app, 120.0, 20.0, true);
+        pen_move_with(&mut app, 150.0, 23.0, true);
+        let k = app.ui.pen.as_ref().unwrap().knots[1];
+        let len = 30.0_f64.hypot(3.0);
+        assert!(near(k[2], [120.0 + len, 20.0]), "out handle is horizontal: {k:?}");
+        assert!(near(k[1], [120.0 - len, 20.0]), "in handle mirrors it: {k:?}");
+        // Without ⇧ the handle follows the pointer.
+        pen_move_with(&mut app, 150.0, 23.0, false);
+        assert!(near(app.ui.pen.as_ref().unwrap().knots[1][2], [150.0, 23.0]));
+        pen_up(&mut app);
+        pen_down_with(&mut app, 120.0, 120.0, true);
+        pen_up(&mut app);
+        // ⇧-click on the first anchor closes the path rather than adding a constrained anchor.
+        pen_down_with(&mut app, 20.5, 20.5, true);
+        pen_up(&mut app);
+        assert!(app.ui.pen.is_none());
+        let wp = app.session.active().unwrap().doc.work_path.clone().unwrap();
+        assert!(wp.subpaths[0].closed && wp.subpaths[0].knots.len() == 3);
+    }
+
+    #[test]
+    fn snap_45_keeps_the_distance_and_handles_a_zero_offset() {
+        assert!(near(snap_45([0.0, 0.0], [0.0, 0.0]), [0.0, 0.0]));
+        assert!(near(snap_45([10.0, 10.0], [10.0, -30.0]), [10.0, -30.0]));
+        let p = snap_45([0.0, 0.0], [-10.0, 9.0]);
+        let d = 10.0_f64.hypot(9.0) / std::f64::consts::SQRT_2;
+        assert!(near(p, [-d, d]), "{p:?}");
     }
 
     /// #1419: Solid Color (and every new fill or adjustment layer) made while a path is selected
