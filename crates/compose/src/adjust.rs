@@ -98,18 +98,12 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
             map_rgb(buf, |px| px.map(&f))
         }
         Adjustment::BrightnessContrast { brightness, contrast, .. } => {
-            // Modern (CS3+) Brightness/Contrast, reverse-engineered from Photoshop ground truth
-            // (a 0..255 ramp pushed through the real app; see log/devlog.md). Unlike the legacy
-            // linear scale, both are smooth curves that pin pure black and white:
-            //   • Brightness: a line of slope s = 1.375^(b/50) from the origin that rolls off to
-            //     (1,1) via a `v^P` white-anchor term (P grows as |b| grows).
-            //   • Contrast: a symmetric cubic-Hermite S-curve pivoting at 0.5, with endpoint slope
-            //     1 - c/128 and centre slope 1 + c/128 (near-exact: ≤0.5/255 vs Photoshop).
-            // Applied brightness-then-contrast. Exact at the sliders' zero and extremes still drift
-            // on the brightness side (the real curve is a spline); contrast matches closely.
-            let b = *brightness;
-            let c = *contrast;
-            map_rgb(buf, |px| px.map(|v| modern_contrast(modern_brightness(v, b), c).clamp(0.0, 1.0)))
+            // Modern (CS3+) Brightness/Contrast, reverse-engineered from Photoshop ground truth.
+            // Unlike the legacy linear scale, both are smooth curves that pin pure black and white
+            // (see `modern_brightness` and `modern_contrast`), applied brightness then contrast
+            // through one lookup table.
+            let table = modern_lut(*brightness, *contrast);
+            map_rgb(buf, |px| px.map(|v| lut(&table, v)))
         }
         Adjustment::Exposure { exposure, offset, gamma } => {
             // In linear light: (lin·2^exposure + offset)^(1/gamma), then back
@@ -355,7 +349,11 @@ fn apply_lab(adj: &Adjustment, buf: &mut Buffer, depth: Option<SampleType>) {
         }
         Adjustment::BrightnessContrast { brightness, contrast, legacy } => {
             let legacy_curve = legacy_brightness_contrast(*brightness, *contrast);
-            let curve = |v: f32| if *legacy { legacy_curve(v) } else { modern_contrast(modern_brightness(v, *brightness), *contrast).clamp(0.0, 1.0) };
+            let modern = (!*legacy).then(|| modern_lut(*brightness, *contrast));
+            let curve = |v: f32| match &modern {
+                Some(table) => lut(table, v),
+                None => legacy_curve(v),
+            };
             // The tone curve on L only. Added as the difference of two round trips (like
             // `tone_in_space`) so a and b, and colours a round trip moves, stay put.
             map_rgb(buf, |c| {
@@ -823,20 +821,103 @@ fn hsv_hue(c: [f32; 3], mx: f32, mn: f32) -> f32 {
     h * 60.0
 }
 
-/// Photoshop posterize: `n` equal input bins over 0..=255, output levels
-/// `floor(k * 255 / (n - 1))` (exact on the corpus for 3, 7, 13 and 21 levels).
-/// Modern Brightness curve (one channel, `brightness` in [-150, 150]). A line of slope
-/// `s = 1.375^(b/50)` from the origin, rolled off to (1, 1) by a `v^P` white-anchor term. Pins pure
-/// black and white; `b = 0` is the identity. Fit to Photoshop ground truth (see modern B/C above).
+/// Modern Brightness curve (one channel, `brightness` in [-150, 150]); pins pure black and white,
+/// and `b = 0` is the identity. Raised, it is a line of slope `s = 1.375^(b/50)` from the origin
+/// to a knee at input 80/255, then a cubic Hermite to (1, 1) whose end slope is `s^-6.6`; lowered,
+/// it is the inverse of the curve raised by as much. Fit to Photoshop ground truth: its ±50
+/// samples (see `modern_brightness_matches_photoshop`) and the photoshop corpus's
+/// brightness-contrast.psd (+25 with contrast +30), every point within about a level. The knee
+/// moves down for strong values so the roll-off never overshoots white.
 pub fn modern_brightness(v: f32, brightness: f32) -> f32 {
-    if brightness == 0.0 {
+    if brightness == 0.0 || !brightness.is_finite() {
         return v;
     }
-    let s = 1.375f32.powf(brightness / 50.0);
-    // Exponent of the white-anchor term grows with |b|; shapes the roll-off toward (1,1).
-    let p = if brightness >= 0.0 { (4.5 - 0.013 * brightness).max(2.0) } else { 5.0 - 0.072 * brightness };
-    let v = v.clamp(0.0, 1.0);
-    (s * v + (1.0 - s) * v.powf(p)).clamp(0.0, 1.0)
+    Brightness::new(brightness).eval(v)
+}
+
+/// [`modern_brightness`] for one slider value, its curve's constants worked out once.
+struct Brightness {
+    raise: bool,
+    s: f32,
+    e: f32,
+    x0: f32,
+}
+
+impl Brightness {
+    fn new(brightness: f32) -> Self {
+        let s = 1.375f32.powf(brightness.abs() / 50.0);
+        let e = s.powf(-6.6);
+        // Knee at 80/255, moved down when needed so the Hermite's slopes stay within the monotone
+        // region (Fritsch–Carlson: α² + β² ≤ 9, with α = s/Δ and β = e/Δ over the segment's secant Δ).
+        let a = (9.0 - (e * e).min(8.0)).sqrt() * 0.98;
+        let x0 = if s >= a { 0.0 } else { (80.0 / 255.0f32).min((a - s) / (s * (a - 1.0))) };
+        Brightness { raise: brightness > 0.0, s, e, x0 }
+    }
+
+    fn eval(&self, v: f32) -> f32 {
+        let v = v.clamp(0.0, 1.0);
+        if self.raise {
+            return self.raised(v);
+        }
+        if v <= 0.0 || v >= 1.0 {
+            return v;
+        }
+        // The inverse of the raised curve (monotone on [0, 1]), by bisection.
+        let (mut lo, mut hi) = (0.0f32, 1.0f32);
+        for _ in 0..32 {
+            let mid = 0.5 * (lo + hi);
+            if self.raised(mid) < v {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        0.5 * (lo + hi)
+    }
+
+    /// The curve raised: the line, then a monotone cubic Hermite to (1, 1).
+    fn raised(&self, x: f32) -> f32 {
+        let Brightness { s, e, x0, .. } = *self;
+        let y0 = s * x0;
+        if x <= x0 {
+            return y0.min(s * x);
+        }
+        let h = 1.0 - x0;
+        let t = (x - x0) / h;
+        let (t2, t3) = (t * t, t * t * t);
+        let y = (2.0 * t3 - 3.0 * t2 + 1.0) * y0 + (t3 - 2.0 * t2 + t) * h * s + (-2.0 * t3 + 3.0 * t2) + (t3 - t2) * h * e;
+        y.clamp(0.0, 1.0)
+    }
+}
+
+/// Modern Brightness/Contrast as one channel's lookup table (4096 samples over 0..1):
+/// [`modern_brightness`] then [`modern_contrast`], as Photoshop applies them.
+pub fn modern_lut(brightness: f32, contrast: f32) -> Vec<f32> {
+    let step = |k: usize, n: usize| k as f32 / (n - 1) as f32;
+    let bright: Vec<f32> = if brightness == 0.0 || !brightness.is_finite() {
+        (0..LUT_SIZE).map(|k| step(k, LUT_SIZE)).collect()
+    } else if brightness > 0.0 {
+        let curve = Brightness::new(brightness);
+        (0..LUT_SIZE).map(|k| curve.raised(step(k, LUT_SIZE))).collect()
+    } else {
+        // Lowered: invert the raised curve, sampled four times finer, in one monotone pass.
+        let curve = Brightness::new(-brightness);
+        let fine = 4 * LUT_SIZE;
+        let ys: Vec<f32> = (0..fine).map(|j| curve.raised(step(j, fine))).collect();
+        let mut j = 0;
+        (0..LUT_SIZE)
+            .map(|k| {
+                let y = step(k, LUT_SIZE);
+                while j + 2 < fine && ys.get(j + 1).is_some_and(|&n| n < y) {
+                    j += 1;
+                }
+                let (y0, y1) = (ys.get(j).copied().unwrap_or(0.0), ys.get(j + 1).copied().unwrap_or(1.0));
+                let f = if y1 > y0 { ((y - y0) / (y1 - y0)).clamp(0.0, 1.0) } else { 0.0 };
+                (step(j, fine) + f / (fine - 1) as f32).clamp(0.0, 1.0)
+            })
+            .collect()
+    };
+    bright.into_iter().map(|b| modern_contrast(b, contrast).clamp(0.0, 1.0)).collect()
 }
 
 /// Modern Contrast curve (one channel, `contrast` in [-50, 100]). A symmetric cubic-Hermite S-curve
@@ -854,6 +935,8 @@ pub fn modern_contrast(v: f32, contrast: f32) -> f32 {
     if v <= 0.5 { half(v / 0.5) } else { 1.0 - half((1.0 - v) / 0.5) }
 }
 
+/// Photoshop posterize: `n` equal input bins over 0..=255, output levels
+/// `floor(k * 255 / (n - 1))` (exact on the corpus for 3, 7, 13 and 21 levels).
 pub fn posterize(v: f32, levels: u32) -> f32 {
     let n = levels.clamp(2, 255) as f32;
     let x = (v.clamp(0.0, 1.0) * 255.0).round();
