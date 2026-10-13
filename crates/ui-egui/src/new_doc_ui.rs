@@ -777,7 +777,7 @@ mod tests {
             assert_eq!(preset_unit(preset, &f), "mm");
             apply_preset(&mut f, preset, &Default::default());
             let params = command_params(&f);
-            assert_eq!((params["width"].as_u64(), params["height"].as_u64()), (Some(w.into()), Some(h.into())));
+            assert_eq!((params["width"].as_u64(), params["height"].as_u64()), (Some(u64::from(w)), Some(u64::from(h))));
             assert_eq!(params["resolution"], 300.0);
         }
     }
