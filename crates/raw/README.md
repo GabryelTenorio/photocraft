@@ -91,6 +91,11 @@ camera colour tables were copied.
    16 bits.
 5. Orientation.
 
+Development validates public sensor/crop/CFA metadata before allocation. The working-memory
+limit checks peak live development buffers instead of summing disjoint phases. AHD limits
+simultaneous scratch bands only when required; normal load balancing and pixels are preserved.
+The default 2 GiB limit is unchanged and excludes caller-owned sensor/document storage.
+
 Files without colour calibration (CR2, NEF, ARW, RW2, ORF, RAF…) have no camera matrix. Every one of
 them carries a JPEG the camera rendered from the same sensor data, so `fit_look` estimates the
 camera's rendering per file: both the sensor data (white-balanced as `develop` does) and the
@@ -109,6 +114,10 @@ then applies the user's Exposure, Temperature and Tint to that same rendering.
 The D5100's measured image area is 4928 × 3264 at (8, 8) in a 4992 × 3280
 sensor plane; it removes the border without changing levels, WB or calibration.
 Measured image areas preserve an explicit file crop.
+
+For a slightly tighter camera JPEG, fitting can align the reference proxy using a bounded
+90–100% centred search on training cells. It requires a strong correlation improvement and
+retains the held-out colour gates; the developed crop and camera calibration are unchanged.
 
 Without a usable fit (no preview, an unrelated, monochrome or differently shaped one, or a fit that
 does not clearly help) the documented neutral fallback stays: the white-balanced camera channels are
