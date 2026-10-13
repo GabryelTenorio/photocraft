@@ -346,7 +346,9 @@ fn tone_space(mode: ColorMode) -> photocraft_doc::adjust::ToneSpace {
 /// aligned. Returns one message per problem; empty means clean.
 ///
 /// - the file parses, with no unparsed bytes left in the layer and mask section;
-/// - the layer info body is padded to a multiple of 4;
+/// - the layer info is padded to a multiple of 4: inside its length in the layer and mask
+///   section, after the block (and not inside its length) in a global `Lr16`/`Lr32` block, as
+///   Photoshop writes them (#4654);
 /// - global (document-level) blocks are padded to a multiple of 4;
 /// - layer blocks have an even length with no pad byte outside it;
 /// - blocks with inner lengths (`PlLd`, `SoLd`, `SoLE`, `lnk2`/`lnk3`/`lnkD`, `lfx2`)
@@ -363,9 +365,24 @@ pub fn strict_block_errors(bytes: &[u8]) -> Vec<String> {
     }
     if let Some(li) = &file.layer_info {
         let body = li.unpadded_len(v).unwrap_or(1);
+        // Padding inside the length (an odd body read with no explicit padding had one pad byte).
         let pad = li.padding.as_ref().map_or(body % 2, |p| p.len() as u64);
-        if (body + pad) % 4 != 0 {
-            errs.push(format!("layer info: {body} bytes + {pad} padding is not a multiple of 4"));
+        match &file.layer_info_placement {
+            photocraft_psd::LayerInfoPlacement::GlobalBlock { key, padding, .. } => {
+                let key = String::from_utf8_lossy(key);
+                if pad != 0 {
+                    errs.push(format!("{key}: {pad} padding bytes inside the block's length"));
+                }
+                let after = padding.as_ref().map_or((4 - (body + pad) % 4) % 4, |p| p.len() as u64);
+                if (body + pad + after) % 4 != 0 {
+                    errs.push(format!("{key}: {body} bytes + {after} padding after it is not a multiple of 4"));
+                }
+            }
+            photocraft_psd::LayerInfoPlacement::Section => {
+                if (body + pad) % 4 != 0 {
+                    errs.push(format!("layer info: {body} bytes + {pad} padding is not a multiple of 4"));
+                }
+            }
         }
     }
     for b in &file.global_blocks {

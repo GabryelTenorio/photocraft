@@ -1671,9 +1671,15 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
     let records = std::mem::take(&mut ex.records);
     let mut layer_info = has_layers.then_some(LayerInfo { merged_alpha: has_alpha, layers: records, padding: None });
     if let Some(info) = &mut layer_info {
-        // Photoshop pads the layer info to 4 bytes (an even pad misaligns readers after a global
-        // `Lr16`/`Lr32` block, #200). A length that cannot be computed keeps the even default.
-        if info.pad_to(version, 4).is_err() {
+        if matches!(placement, LayerInfoPlacement::GlobalBlock { .. }) {
+            // In a global `Lr16`/`Lr32` block Photoshop writes the exact length and pads to 4
+            // bytes after the block, outside it (the writer does that). Padding inside the length
+            // fails readers that check it exactly, such as Unity's PSD importer (#4654).
+            info.padding = Some(Vec::new());
+        } else if info.pad_to(version, 4).is_err() {
+            // In the layer and mask section Photoshop pads the layer info itself to 4 bytes (an
+            // even pad misaligns readers that step over it, #200). A length that cannot be
+            // computed keeps the even default.
             info.padding = None;
         }
     }
@@ -1714,6 +1720,53 @@ mod tests {
 
     fn document(width: u32, height: u32) -> Document {
         Document::new("size estimate", photocraft_geom::Size::new(width, height), ColorMode::Rgb, SampleType::U8)
+    }
+
+    /// #4654: a 16- or 32-bit save writes its layers in a global `Lr16`/`Lr32` block whose length
+    /// is the exact layer data, padded to 4 bytes after the block as Photoshop does. Padding
+    /// inside the length failed readers that check it exactly (Unity's PSD importer: "Incorrect
+    /// length for InfoLayers").
+    #[test]
+    fn lr16_and_lr32_lengths_exclude_their_padding() {
+        let mut unaligned = 0;
+        for (depth, key) in [(SampleType::U16, *b"Lr16"), (SampleType::F32, *b"Lr32")] {
+            for (w, h) in [(64, 48), (5, 3), (17, 9), (33, 2)] {
+                let mut doc = Document::new("lr16", photocraft_geom::Size::new(w, h), ColorMode::Rgb, depth);
+                let mut px = Layer::raster("Paint", PixelFormat::new(ColorMode::Rgb, depth, true));
+                if let LayerContent::Raster(s) = &mut px.content {
+                    let rect = photocraft_geom::Rect::new(0, 0, w as i32, h as i32);
+                    s.write_region(rect, &[1.0, 0.25, 0.0, 1.0].repeat((w * h) as usize));
+                }
+                doc.layers.push(px);
+                let group = photocraft_doc::Group { children: Vec::new(), expanded: true, artboard: None };
+                doc.layers.push(Layer::new("Group 1", LayerContent::Group(group)));
+                for name in ["out.psd", "out.psb"] {
+                    let bytes = crate::export(&doc, name, &crate::ExportOptions::default()).unwrap().bytes;
+                    let psb = name.ends_with(".psb");
+                    let at = bytes.windows(8).position(|b| matches!(&b[..4], b"8BIM" | b"8B64") && b[4..] == key).expect("the layer block");
+                    let field = at + 8;
+                    let len = if psb {
+                        u64::from_be_bytes(bytes[field..field + 8].try_into().unwrap()) as usize
+                    } else {
+                        u32::from_be_bytes(bytes[field..field + 4].try_into().unwrap()) as usize
+                    };
+                    let body = field + if psb { 8 } else { 4 };
+                    let end = body + len;
+                    let pad = (4 - len % 4) % 4;
+                    unaligned += usize::from(pad != 0);
+                    assert!(bytes[end..end + pad].iter().all(|&b| b == 0), "{name} {depth:?} {w}x{h}: zero padding after the block");
+                    // After the padding: the next block, or the image data section's compression.
+                    let next = &bytes[end + pad..end + pad + 4];
+                    assert!(matches!(next, b"8BIM" | b"8B64") || next[..2] == [0, 0] || next[..2] == [0, 1], "{name} {depth:?} {w}x{h}: {next:?} follows");
+                    // Read back: the block's layer data fills its length exactly.
+                    let file = PsdFile::from_bytes(&bytes).unwrap();
+                    let padding = file.layer_info.as_ref().and_then(|i| i.padding.clone()).unwrap_or_default();
+                    assert!(padding.is_empty(), "{name} {depth:?} {w}x{h}: {} padding bytes inside the length", padding.len());
+                    assert_eq!(file.layers().len(), 3, "{name} {depth:?} {w}x{h}: the layer, the group and its end marker");
+                }
+            }
+        }
+        assert!(unaligned > 0, "some case has a length that isn't a multiple of 4 (the one that was wrong)");
     }
 
     #[test]
