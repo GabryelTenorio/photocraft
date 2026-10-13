@@ -518,6 +518,7 @@ fn build() -> Vec<CommandSpec> {
             }
         ),
         // Layer
+        cmd!("layer.removeBackgroundAI", "Remove Background (AI)…", ["Layer", "Matting"], None, r##"{"variant":"rmbg2|rmbg2Sharp"="rmbg2","device":"auto|cpu"="auto"}"##, has_pixel_or_channel, |s, p| crate::rmbg_cmds::remove_background_ai(s, p)),
         cmd!("layer.new.layer", "Layer…", ["Layer", "New"], Some("Cmd+Shift+N"), r##"{"name":str?}"##, has_doc, |s, p| {
             let id = s.edit("New Layer", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Layer"));
