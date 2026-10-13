@@ -500,23 +500,76 @@ pub(crate) fn label(key: &str) -> String {
 }
 
 pub(crate) fn source_label(key: &str) -> String {
-    // camelCase → "Camel Case"
+    // snake_case and camelCase → "Snake Case" / "Camel Case".
     let mut s = String::new();
-    for (i, ch) in key.chars().enumerate() {
-        if i == 0 {
-            s.extend(ch.to_uppercase());
-        } else if ch.is_uppercase() {
+    let mut capitalize = true;
+    for ch in key.chars() {
+        if ch == '_' || ch == '-' {
             s.push(' ');
-            s.push(ch);
+            capitalize = true;
+        } else if ch.is_uppercase() {
+            if !s.is_empty() && !s.ends_with(' ') {
+                s.push(' ');
+            }
+            s.extend(ch.to_uppercase());
+            capitalize = false;
         } else {
-            s.push(ch);
+            if capitalize {
+                s.extend(ch.to_uppercase());
+            } else {
+                s.extend(ch.to_lowercase());
+            }
+            capitalize = false;
         }
     }
     s
 }
 
+/// Whether manifest-declared equality conditions for `key` currently match the dialog values.
+/// Conditions are ANDed; manifests validate controllers and inherited visibility predicates.
+pub(crate) fn param_visible(f: &Map<String, Value>, key: &str) -> bool {
+    let Some(conditions) = f.get("__visibleWhen").and_then(Value::as_object).and_then(|all| all.get(key)).and_then(Value::as_object) else { return true };
+    conditions.iter().all(|(controller, expected)| f.get(controller) == Some(expected))
+}
+
+fn field_label(f: &Map<String, Value>, key: &str) -> String {
+    f.get("__labels").and_then(Value::as_object).and_then(|labels| labels.get(key)).and_then(Value::as_str).map(str::to_owned).unwrap_or_else(|| label(key))
+}
+
 fn choice_label(v: &str) -> String {
     label(v)
+}
+
+/// A suite's effect selector stays above its preset row and its scrollable controls.
+pub(crate) fn selector_body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+    let Some(key) = f.get("__presetSelector").and_then(Value::as_str).map(str::to_owned) else { return };
+    let Some(spec) = spec_of(f) else { return };
+    let Some(Param { kind: Kind::Choice { options, default }, .. }) = parse_spec(&spec).into_iter().find(|p| p.key == key) else { return };
+    choice_row(ui, f, &key, &options, default.as_deref());
+    ui.add_space(6.0);
+}
+
+fn choice_row(ui: &mut egui::Ui, f: &mut Map<String, Value>, key: &str, options: &[String], default: Option<&str>) {
+    let t = Tokens::get(ui.ctx());
+    let cmd = f.get("__command").and_then(Value::as_str).unwrap_or_default().to_string();
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(field_label(f, key)).color(t.text_dim));
+        let mut cur = f.get(key).and_then(Value::as_str).or(default).or_else(|| options.first().map(String::as_str)).unwrap_or_default().to_string();
+        let labels: Vec<String> = options.iter().map(|o| choice_label(o)).collect();
+        let mut opts: Vec<(String, &str)> = options.iter().cloned().zip(labels.iter().map(String::as_str)).collect();
+        let installed = if key == "profile" && PROFILE_DIALOGS.contains(&cmd.as_str()) {
+            photocraft_engine::installed_profiles::installed().into_iter().filter(|i| i.is_destination()).collect()
+        } else {
+            Vec::new()
+        };
+        opts.extend(installed.iter().map(|i| (i.path.clone(), i.description.as_str())));
+        let stem = std::path::Path::new(&cur).file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if key == "profile" && PROFILE_DIALOGS.contains(&cmd.as_str()) && !opts.iter().any(|(v, _)| *v == cur) {
+            opts.push((cur.clone(), stem.as_str()));
+        }
+        crate::widgets::dropdown(ui, &format!("flt-{cmd}-{key}"), &mut cur, &opts, 170.0);
+        f.insert(key.to_string(), json!(cur));
+    });
 }
 
 fn uses_logarithmic_slider(min: f32, max: f32) -> bool {
@@ -552,20 +605,35 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     if crate::select_mask_view::owns(f) {
         crate::select_mask_view::controls(ui, f);
     }
-    // Plug-in params with a `group`: ungrouped ones first, always visible, then a row of tabs and
-    // only the selected tab's params.
-    let (tabs, group_of) = tabs_of(f);
+    // Ungrouped parameters (including the effect selector) render before the tabbed controls.
+    // Tabs are filtered against the current visible parameters so changing an effect also changes
+    // its tabs and repairs a selection that belonged to the previous effect.
+    let (all_tabs, group_of) = tabs_of(f);
     let mut params = parse_spec(&spec);
     params.sort_by_key(|p| group_of.contains_key(&p.key));
+    let tabs: Vec<String> = all_tabs
+        .into_iter()
+        .filter(|tab| {
+            params.iter().any(|p| {
+                f.get("__presetSelector").and_then(Value::as_str) != Some(p.key.as_str()) && group_of.get(&p.key) == Some(tab) && param_visible(f, &p.key)
+            })
+        })
+        .collect();
     let mut selected = selected_tab(f, &tabs);
-    let mut tab_row = !tabs.is_empty();
+    f.insert(TAB.into(), json!(selected));
+    let mut tab_row = tabs.len() > 1;
     for p in params {
+        if f.get("__presetSelector").and_then(Value::as_str) == Some(p.key.as_str()) || !param_visible(f, &p.key) {
+            continue;
+        }
         if let Some(group) = group_of.get(&p.key) {
             if std::mem::take(&mut tab_row) {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     for name in &tabs {
-                        if crate::widgets::pill_tab(ui, name, *name == selected).clicked() {
+                        let response = crate::widgets::pill_tab(ui, name, *name == selected);
+                        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), *name == selected, name));
+                        if response.clicked() {
                             selected.clone_from(name);
                         }
                     }
@@ -582,7 +650,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 let mut v = f.get(&p.key).and_then(Value::as_f64).unwrap_or(default as f64) as f32;
                 if cmd == "image.mode.indexedColor" && p.key == "colors" {
                     let mut count = v.round().clamp(2.0, 256.0) as u32;
-                    crate::widgets::color_count_row(ui, &label(&p.key), &mut count);
+                    crate::widgets::color_count_row(ui, &field_label(f, &p.key), &mut count);
                     f.insert(p.key, json!(count));
                     continue;
                 }
@@ -602,7 +670,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                     // Keep one numeric field for direct entry and one log-scaled slider for
                     // wide ranges. slider_row would add a second, linear slider (#146).
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                        ui.label(egui::RichText::new(field_label(f, &p.key)).color(t.text_dim));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             crate::widgets::value_field(ui, &mut v, min..=max, unit, 74.0);
                         });
@@ -615,46 +683,24 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 } else {
                     // A double-click on the slider puts it back to the filter's default.
                     let gestures = crate::widgets::RowGestures { reset: Some(default), wheel_step: None };
-                    crate::widgets::slider_row_with(ui, &label(&p.key), &mut v, min..=max, unit, None, gestures);
+                    crate::widgets::slider_row_with(ui, &field_label(f, &p.key), &mut v, min..=max, unit, None, gestures);
                 }
                 // Small ranges (0–1 thresholds and centres) keep the two decimals their field shows.
                 let scale = if max - min <= 10.0 { 100.0 } else { 10.0 };
                 f.insert(p.key, json!((v * scale).round() / scale));
             }
             Kind::Choice { options, default } => {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
-                    let initial = default.as_deref().or_else(|| options.first().map(String::as_str)).unwrap_or("");
-                    let mut cur = f.get(&p.key).and_then(Value::as_str).unwrap_or(initial).to_string();
-                    let labels: Vec<String> = options.iter().map(|o| choice_label(o)).collect();
-                    let mut opts: Vec<(String, &str)> = options.iter().cloned().zip(labels.iter().map(String::as_str)).collect();
-                    // Like Photoshop, the profile menus also list every profile installed in
-                    // the system (printer and paper profiles), by description.
-                    let installed = if p.key == "profile" && PROFILE_DIALOGS.contains(&cmd.as_str()) {
-                        photocraft_engine::installed_profiles::installed().into_iter().filter(|i| i.is_destination()).collect()
-                    } else {
-                        Vec::new()
-                    };
-                    opts.extend(installed.iter().map(|i| (i.path.clone(), i.description.as_str())));
-                    // A profile given by path that isn't listed (typed by an agent, or spelled with
-                    // different case) still shows, by its file name, instead of a blank menu.
-                    let stem = std::path::Path::new(&cur).file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    if p.key == "profile" && PROFILE_DIALOGS.contains(&cmd.as_str()) && !opts.iter().any(|(v, _)| *v == cur) {
-                        opts.push((cur.clone(), stem.as_str()));
-                    }
-                    crate::widgets::dropdown(ui, &format!("flt-{cmd}-{}", p.key), &mut cur, &opts, 170.0);
-                    f.insert(p.key.clone(), json!(cur));
-                });
+                choice_row(ui, f, &p.key, &options, default.as_deref());
             }
             Kind::Bool(default) => {
                 let mut b = f.get(&p.key).and_then(Value::as_bool).unwrap_or(default);
-                crate::widgets::checkbox(ui, &mut b, &label(&p.key));
+                crate::widgets::checkbox(ui, &mut b, &field_label(f, &p.key));
                 f.insert(p.key, json!(b));
             }
             Kind::Text => {
                 let mut v = f.get(&p.key).and_then(Value::as_str).unwrap_or_default().to_string();
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                    ui.label(egui::RichText::new(field_label(f, &p.key)).color(t.text_dim));
                     ui.add(egui::TextEdit::singleline(&mut v).desired_width(200.0));
                 });
                 if v.is_empty() {
@@ -671,7 +717,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 let mut opts: Vec<(String, &str)> = vec![("-1".to_string(), tl!("None"))];
                 opts.extend(names.iter().enumerate().map(|(i, n)| (i.to_string(), n.as_str())));
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                    ui.label(egui::RichText::new(field_label(f, &p.key)).color(t.text_dim));
                     crate::widgets::dropdown(ui, &format!("flt-{cmd}-{}", p.key), &mut sel, &opts, 170.0);
                 });
                 match sel.parse::<i64>() {
@@ -684,7 +730,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 let mut vals: Vec<f32> =
                     f.get(&p.key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default();
                 vals.resize(n, 0.0);
-                ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                ui.label(egui::RichText::new(field_label(f, &p.key)).color(t.text_dim));
                 egui::Grid::new(format!("flt-grid-{cmd}-{}", p.key)).spacing([4.0, 4.0]).show(ui, |ui| {
                     for (i, v) in vals.iter_mut().enumerate() {
                         crate::widgets::value_field(ui, v, -999.0..=999.0, "", 44.0);
@@ -701,7 +747,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 let rgb = set.or(default).unwrap_or([0.0; 3]);
                 let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
                 let bytes = rgb.map(q);
-                let name = label(&p.key);
+                let name = field_label(f, &p.key);
                 if cmd == "plugin.run" {
                     // Plug-in colours: egui's popup picker edits the field continuously, so the live
                     // preview follows the colour as it changes (the modal Color Picker sets it on OK).
@@ -740,7 +786,7 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 // The same value the canvas handle drags (`plugin_points`), so the two stay in sync.
                 let [mut x, mut y] = crate::plugin_points::value(f, &p.key).unwrap_or(default);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                    ui.label(egui::RichText::new(field_label(f, &p.key)).color(t.text_dim));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         crate::widgets::value_field(ui, &mut y, 0.0..=100.0, "%", 64.0);
                         ui.label(egui::RichText::new("Y").color(t.text_dim));
@@ -753,14 +799,14 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
             }
             Kind::Angle(default) => {
                 let mut deg = f.get(&p.key).and_then(Value::as_f64).and_then(photocraft_plugins::wrap_angle).map_or(default, |a| a as f32);
-                angle_dial_row(ui, &label(&p.key), &mut deg);
+                angle_dial_row(ui, &field_label(f, &p.key), &mut deg);
                 let deg = photocraft_plugins::wrap_angle(f64::from(deg)).unwrap_or(0.0);
                 f.insert(p.key, json!((deg * 10.0).round() / 10.0));
             }
             Kind::Int { default } => {
                 let mut v = f.get(&p.key).and_then(Value::as_f64).unwrap_or(default as f64) as f32;
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
+                    ui.label(egui::RichText::new(field_label(f, &p.key)).color(t.text_dim));
                     crate::widgets::value_field(ui, &mut v, -30000.0..=30000.0, "", 80.0);
                 });
                 f.insert(p.key, json!(v.round() as i64));
@@ -2084,6 +2130,71 @@ mod tests {
         // A stale or unknown tab falls back to the first.
         fields.insert(TAB.into(), json!("Gone"));
         assert_eq!(selected_tab(fields, &tabs), "Glow");
+    }
+
+    #[test]
+    fn suite_controls_labels_and_tabs_follow_the_selected_effect_without_resetting_values() {
+        use egui_kittest::{Harness, kittest::Queryable};
+        let fields = json!({
+            "__command": "plugin.run", "__presetSelector": "effect",
+            "__spec": "{\"effect\":\"lightning|shadow|fire\",\"bolt_width\":0..100=5,\"glow_size\":0..100=10,\"inner_colour\":color=#ffffff,\"shadow_softness\":0..100=20,\"fire_style\":\"soft|hard\",\"fire_detail\":0..100=30}",
+            "__tabs": ["General", "Bolt", "Glow", "Colour", "Shadow"],
+            "__groupOf": {"effect": "General", "bolt_width": "Bolt", "glow_size": "Glow", "inner_colour": "Colour", "shadow_softness": "Shadow"},
+            "__labels": {"effect": "Effect", "bolt_width": "Bolt Width", "glow_size": "Glow Size", "inner_colour": "Inner Colour", "shadow_softness": "Shadow Softness", "fire_style": "Fire Style", "fire_detail": "Flame Detail"},
+            "__visibleWhen": {"bolt_width": {"effect": "lightning"}, "glow_size": {"effect": "lightning"}, "inner_colour": {"effect": "lightning"}, "shadow_softness": {"effect": "shadow"}, "fire_style": {"effect": "fire"}, "fire_detail": {"effect": "fire", "fire_style": "hard"}},
+            "effect": "lightning", "bolt_width": 7.0, "glow_size": 13.0, "inner_colour": "#ffaa00", "shadow_softness": 23.0, "fire_style": "soft", "fire_detail": 37.0
+        }).as_object().unwrap().clone();
+        let mut h = Harness::builder().with_size(egui::vec2(650.0, 600.0)).build_ui_state(
+            |ui, fields| {
+                if !ui.ctx().fonts(|fonts| fonts.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    return;
+                }
+                selector_body(ui, fields);
+                body(ui, fields);
+            },
+            fields,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+        h.run_steps(4);
+        assert!(h.query_by_label("Effect").is_some());
+        assert!(h.query_by_label("General").is_none(), "the hoisted selector cannot create an empty tab");
+        assert!(h.query_by_label("Bolt Width").is_some());
+        assert!(h.query_by_label("Shadow Softness").is_none());
+        h.get_by_label("Glow").click();
+        h.run_steps(2);
+        assert_eq!(h.state()[TAB], json!("Glow"), "a tab click survives later frames");
+        assert!(h.query_by_label("Glow Size").is_some());
+        let values = params_of(h.state());
+
+        h.state_mut().insert("effect".into(), json!("shadow"));
+        h.run_steps(2);
+        assert_eq!(h.state()[TAB], json!("Shadow"), "a stale Lightning tab repairs to the visible group");
+        assert!(h.query_by_label("Shadow Softness").is_some());
+        for label in ["Bolt", "Glow", "Colour", "Shadow", "Bolt Width", "Glow Size", "Inner Colour"] {
+            assert!(h.query_by_label(label).is_none(), "single-group effect has no tabs or Lightning controls: {label}");
+        }
+        h.state_mut().insert("effect".into(), json!("fire"));
+        h.run_steps(2);
+        assert_eq!(h.state()[TAB], json!(""));
+        assert!(h.query_by_label("Fire Style").is_some());
+        assert!(h.query_by_label("Flame Detail").is_none(), "AND predicates hide subordinate controls");
+        h.state_mut().insert("fire_style".into(), json!("hard"));
+        h.run_steps(2);
+        assert!(h.query_by_label("Flame Detail").is_some());
+        h.state_mut().insert("effect".into(), json!("lightning"));
+        h.run_steps(2);
+        for key in ["bolt_width", "glow_size", "inner_colour", "shadow_softness", "fire_detail"] {
+            assert_eq!(h.state()[key], values[key], "switching effects preserves {key}");
+        }
+    }
+
+    #[test]
+    fn plugin_labels_use_explicit_text_or_readable_parameter_names() {
+        assert_eq!(source_label("shadow_softness"), "Shadow Softness");
+        assert_eq!(source_label("glowRadius"), "Glow Radius");
+        let f = json!({"__labels": {"lt_width": "Bolt Width"}}).as_object().unwrap().clone();
+        assert_eq!(field_label(&f, "lt_width"), "Bolt Width");
+        assert_eq!(field_label(&f, "shadow_softness"), label("shadow_softness"));
     }
 
     #[test]

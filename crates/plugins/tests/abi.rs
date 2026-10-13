@@ -250,6 +250,49 @@ fn budgets_stop_runaway_plugins() {
 }
 
 #[test]
+fn geometry_work_has_the_same_budget_in_grayscale_and_rgba() {
+    // Geometry/noise costs depend on pixels, even when fewer colour samples are written.
+    let wasm = ok_module(
+        r#"(local $remaining i32)
+        (local.set $remaining (i32.mul (i32.mul (local.get $w) (local.get $h)) (i32.const 100)))
+        (loop $work
+            (local.set $remaining (i32.sub (local.get $remaining) (i32.const 1)))
+            (br_if $work (local.get $remaining)))
+        (i32.const 0)"#,
+    );
+    let limits = Limits { fuel_base: 50_000, fuel_per_sample: 300, ..Limits::default() };
+    let plugin = Plugin::load(&wasm, limits).unwrap();
+    for format in [PixelFormat::RGBA8, PixelFormat { alpha: false, ..PixelFormat::RGBA8 }, PixelFormat::GRAY8] {
+        let input = surface(format, 32, 24);
+        let result = plugin.apply(&input, Rect::new(0, 0, 32, 24), None, &json!({}));
+        assert!(result.is_ok(), "same per-pixel geometry in {format:?}: {result:?}");
+    }
+}
+
+#[test]
+fn default_budget_supports_dense_per_pixel_work_but_remains_finite() {
+    let wasm = ok_module(
+        r#"(local $remaining i32)
+        (local.set $remaining (i32.mul (i32.mul (local.get $w) (local.get $h)) (i32.const 5000)))
+        (loop $work
+            (local.set $remaining (i32.sub (local.get $remaining) (i32.const 1)))
+            (br_if $work (local.get $remaining)))
+        (i32.const 0)"#,
+    );
+    let rect = Rect::new(0, 0, 64, 64);
+    let rgba = surface(PixelFormat::RGBA8, 64, 64);
+    let old = Plugin::load(&wasm, Limits { fuel_per_sample: 4_000, ..Limits::default() }).unwrap();
+    assert_eq!(old.apply(&rgba, rect, None, &json!({})).unwrap_err(), Error::Limit("instruction budget".into()));
+    let plugin = Plugin::load(&wasm, Limits::default()).unwrap();
+    for input in [&rgba, &surface(PixelFormat::GRAY8, 64, 64)] {
+        assert!(plugin.apply(input, rect, None, &json!({})).is_ok());
+    }
+    // The same default allowance must still stop an unbounded plug-in.
+    let (error, _) = run_err(&ok_module("(loop $forever (br $forever)) (i32.const 0)"), Limits::default());
+    assert_eq!(error, Error::Limit("instruction budget".into()));
+}
+
+#[test]
 fn parallel_bands_preserve_the_originating_error() {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap();
     let mut s = Surface::new(PixelFormat::RGBA8);

@@ -129,6 +129,26 @@ impl Manifest {
 mod tests {
     use super::*;
 
+    #[test]
+    fn manifest_builtin_presets_are_validated_and_normalized() {
+        let m = Manifest::parse(
+            br#"{"id":"org.example.factory","name":"Factory","kind":"filter",
+            "presetSelector":"effect","params":{
+                "effect":{"type":"choice","options":["bolt","fire"]},
+                "amount":{"type":"number","min":0,"max":100,"default":50}},
+            "presets":{"Wide":{"effect":"bolt","amount":400,"__meta":"ignored"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(m.presets["Wide"]["amount"], json!(100.0));
+        assert!(!m.presets["Wide"].contains_key("__meta"));
+        for bad in [json!({"../bad":{"effect":"bolt","amount":1}}), json!({"Removed":{"effect":"gone","amount":1}}), json!({"Missing":{"amount":1}})] {
+            let mut raw: Value = serde_json::from_slice(br#"{"id":"org.example.factory","name":"Factory","kind":"filter","presetSelector":"effect","params":{"effect":{"type":"choice","options":["bolt","fire"]},"amount":{"type":"number","min":0,"max":100,"default":50}}}"#).unwrap();
+            raw["presets"] = bad;
+            assert!(Manifest::parse(&serde_json::to_vec(&raw).unwrap()).is_err());
+        }
+        assert!(manifest().presets.is_empty(), "older manifests remain supported");
+    }
+
     fn manifest() -> Manifest {
         Manifest::parse(
             br##"{"id":"org.example.t","name":"T","kind":"filter","params":{

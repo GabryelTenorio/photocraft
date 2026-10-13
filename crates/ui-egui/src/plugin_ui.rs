@@ -70,6 +70,18 @@ pub fn menu(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<
     if let Some(g) = &m.guide {
         fixed.insert("__guide".into(), json!([g.from, g.to]));
     }
+    let labels: Map<String, Value> = m.params.iter().filter_map(|(k, _)| m.label(k).map(|v| (k.clone(), json!(v)))).collect();
+    if !labels.is_empty() {
+        fixed.insert("__labels".into(), Value::Object(labels));
+    }
+    let visible_when: Map<String, Value> =
+        m.params.iter().filter_map(|(k, _)| m.visible_when(k).filter(|v| !v.is_empty()).map(|v| (k.clone(), Value::Object(v.clone())))).collect();
+    if !visible_when.is_empty() {
+        fixed.insert("__visibleWhen".into(), Value::Object(visible_when));
+    }
+    if let Some(selector) = &m.preset_selector {
+        fixed.insert("__presetSelector".into(), json!(selector));
+    }
     // Tabs for grouped params (`filter_dialog::body`); the selected one is kept per open dialog.
     let tabs = m.tabs();
     if !tabs.is_empty() {

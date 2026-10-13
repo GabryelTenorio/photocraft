@@ -38,6 +38,7 @@ pub fn handles(f: &Map<String, Value>) -> Option<Handles> {
     let spec = crate::filter_dialog::spec_of(f)?;
     let points: Vec<(String, [f32; 2])> = crate::filter_dialog::parse_spec(&spec)
         .into_iter()
+        .filter(|p| crate::filter_dialog::param_visible(f, &p.key))
         .filter_map(|p| match p.kind {
             Kind::Point(default) => {
                 let v = value(f, &p.key).unwrap_or(default);
@@ -165,6 +166,28 @@ mod tests {
         assert_eq!(handles(&fields(SPEC, Some(["end", "end"]))).unwrap().guide, None);
         // No point params: no handles.
         assert!(handles(&fields(r#"{"amount":0..100=50}"#, None)).is_none());
+    }
+
+    #[test]
+    fn conditional_handles_follow_effect_and_substyle_but_ignore_the_dialog_tab() {
+        let mut f = fields(r#"{"start":point=[12,12],"end":point=[88,62],"fire_at":point=[50,70]}"#, Some(["start", "end"]));
+        f.insert(
+            "__visibleWhen".into(),
+            json!({"start": {"effect": "lightning"}, "end": {"effect": "lightning"}, "fire_at": {"effect": "fire", "style": "single"}}),
+        );
+        f.insert("effect".into(), json!("lightning"));
+        f.insert("style".into(), json!("single"));
+        f.insert("__tab".into(), json!("Colour"));
+        assert_eq!(handles(&f).unwrap().points.len(), 2, "Lightning endpoints stay available on the Colour tab");
+        assert_eq!(handles(&f).unwrap().guide, Some((0, 1)));
+        f.insert("effect".into(), json!("fire"));
+        let h = handles(&f).unwrap();
+        assert_eq!(h.points, vec![("fire_at".to_string(), [50.0, 70.0])]);
+        assert_eq!(h.guide, None, "hidden endpoints cannot draw a guide");
+        f.insert("style".into(), json!("multiple"));
+        assert!(handles(&f).is_none(), "all predicates must match");
+        f.insert("effect".into(), json!("shadow"));
+        assert!(handles(&f).is_none(), "an effect without point controls has no canvas handles");
     }
 
     #[test]

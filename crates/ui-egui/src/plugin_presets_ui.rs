@@ -9,25 +9,31 @@
 //! Dialog fields: `__presets` (name → checked values, for the list), `__preset` (the chosen name,
 //! `""` for none), `__presetNaming` (the name being typed after "Save As…") and `__presetError`.
 
-use photocraft_plugins::Manifest;
 use photocraft_plugins::presets::{MAX_PRESETS, Presets, valid_name};
+use photocraft_plugins::{Manifest, ParamSpec};
 use serde_json::{Map, Value, json};
 
 use crate::PhotocraftApp;
 use crate::theme::Tokens;
 
 const PRESETS: &str = "__presets";
+const BUILTINS: &str = "__builtin_presets";
+const SOURCE: &str = "__preset_source";
 const CHOSEN: &str = "__preset";
 const NAMING: &str = "__presetNaming";
 const ERROR: &str = "__presetError";
 
-/// Adds the Presets row's fields to a new plug-in dialog for `m` (nothing without a presets store).
+/// Adds preset fields when a user store or manifest built-ins are available.
 pub fn open_fields(app: &PhotocraftApp, m: &Manifest, fields: &mut Map<String, Value>) {
-    let Some(load) = app.services.load_plugin_presets else { return };
-    if app.services.save_plugin_presets.is_none() {
+    let has_store = app.services.load_plugin_presets.is_some() && app.services.save_plugin_presets.is_some();
+    if !has_store && m.presets.is_empty() {
         return;
     }
-    fields.insert(PRESETS.into(), to_value(&m.valid_presets(&load(&m.id))));
+    let supported: Presets =
+        app.services.load_plugin_presets.map(|load| load(&m.id)).unwrap_or_default().into_iter().filter(|(_, values)| known_effect(m, values)).collect();
+    fields.insert(PRESETS.into(), to_value(&m.valid_presets(&supported)));
+    fields.insert(BUILTINS.into(), to_value(&m.presets));
+    fields.insert(SOURCE.into(), json!(""));
     fields.insert(CHOSEN.into(), json!(""));
 }
 
@@ -41,16 +47,94 @@ fn to_value(p: &Presets) -> Value {
 }
 
 fn listed(f: &Map<String, Value>) -> Presets {
-    f.get(PRESETS).and_then(Value::as_object).map(|o| o.iter().filter_map(|(k, v)| v.as_object().map(|m| (k.clone(), m.clone()))).collect()).unwrap_or_default()
+    listed_from(f, "user")
+}
+
+fn listed_from(f: &Map<String, Value>, source: &str) -> Presets {
+    f.get(if source == "builtin" { BUILTINS } else { PRESETS })
+        .and_then(Value::as_object)
+        .map(|o| o.iter().filter_map(|(k, v)| v.as_object().map(|m| (k.clone(), m.clone()))).collect())
+        .unwrap_or_default()
+}
+
+fn selector_default(m: &Manifest) -> Option<&str> {
+    let key = m.preset_selector.as_ref()?;
+    let (_, ParamSpec::Choice { options, default }) = m.params.iter().find(|(name, _)| name == key)? else { return None };
+    default.as_deref().or_else(|| options.first().map(String::as_str))
+}
+
+/// Presets for removed effects stay in storage, but must not become legacy default-effect presets.
+fn known_effect(m: &Manifest, values: &Map<String, Value>) -> bool {
+    let Some(key) = m.preset_selector.as_ref() else { return true };
+    let Some(value) = values.get(key) else { return true };
+    let Some((_, ParamSpec::Choice { options, .. })) = m.params.iter().find(|(name, _)| name == key) else { return false };
+    value.as_str().is_some_and(|name| options.iter().any(|option| option == name))
+}
+
+fn selector_value<'a>(m: &'a Manifest, f: &'a Map<String, Value>) -> Option<(&'a str, &'a str)> {
+    let key = m.preset_selector.as_deref()?;
+    let value = f.get(key).and_then(Value::as_str).or_else(|| selector_default(m))?;
+    Some((key, value))
+}
+
+/// Older presets without a selector belong to its default effect (Lightning in FreeCandy).
+fn matches_effect(m: &Manifest, f: &Map<String, Value>, values: &Map<String, Value>) -> bool {
+    if !known_effect(m, values) {
+        return false;
+    }
+    let Some((key, current)) = selector_value(m, f) else { return true };
+    values.get(key).and_then(Value::as_str).or_else(|| selector_default(m)) == Some(current)
+}
+
+fn for_effect(m: &Manifest, f: &Map<String, Value>) -> Presets {
+    listed(f).into_iter().filter(|(_, values)| matches_effect(m, f, values)).collect()
+}
+
+/// The scope ignores subordinate conditions: presets also retain hidden substyle controls.
+fn in_effect(m: &Manifest, f: &Map<String, Value>, key: &str) -> bool {
+    let Some((selector, current)) = selector_value(m, f) else { return true };
+    m.visible_when(key).and_then(|conditions| conditions.get(selector)).is_none_or(|expected| expected.as_str() == Some(current))
+}
+
+fn matches_values(m: &Manifest, f: &Map<String, Value>, values: &Map<String, Value>) -> bool {
+    if !matches_effect(m, f, values) {
+        return false;
+    }
+    let Ok(resolved) = m.resolve_params(&Value::Object(values.clone())) else { return false };
+    resolved.iter().filter(|(key, _)| in_effect(m, f, key)).all(|(key, value)| f.get(key).is_some_and(|current| same_control_value(current, value)))
+}
+
+/// Controls round-trip numbers through f32 while manifest defaults are parsed as f64.
+/// Compare at the control's precision so merely displaying a preset does not mark it Custom.
+fn same_control_value(current: &Value, expected: &Value) -> bool {
+    match (current, expected) {
+        (Value::Number(a), Value::Number(b)) => a.as_f64().map(|v| v as f32) == b.as_f64().map(|v| v as f32),
+        (Value::Array(a), Value::Array(b)) => a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same_control_value(a, b)),
+        _ => current == expected,
+    }
 }
 
 /// Puts the preset `name`'s values into the dialog; parameters it doesn't set go back to their
-/// defaults. The live preview follows, as for any change of the dialog's values.
+/// defaults within the selected effect. Other effects keep their values.
 pub fn apply(m: &Manifest, f: &mut Map<String, Value>, name: &str) -> bool {
-    let Some(values) = listed(f).remove(name) else { return false };
+    let source = if listed(f).contains_key(name) { "user" } else { "builtin" };
+    apply_from(m, f, source, name)
+}
+
+/// Applies a named preset from an explicit source (`builtin` or `user`).
+pub fn apply_from(m: &Manifest, f: &mut Map<String, Value>, source: &str, name: &str) -> bool {
+    if !matches!(source, "builtin" | "user") {
+        return false;
+    }
+    let Some(values) = listed_from(f, source).remove(name) else { return false };
+    if !matches_effect(m, f, &values) {
+        return false;
+    }
     let Ok(resolved) = m.resolve_params(&Value::Object(values)) else { return false };
-    f.extend(resolved);
+    let scoped: Map<String, Value> = resolved.into_iter().filter(|(key, _)| in_effect(m, f, key)).collect();
+    f.extend(scoped);
     f.insert(CHOSEN.into(), json!(name));
+    f.insert(SOURCE.into(), json!(source));
     true
 }
 
@@ -59,37 +143,59 @@ pub fn save_as(app: &mut PhotocraftApp, m: &Manifest, f: &mut Map<String, Value>
     if !valid_name(name) {
         return Err(format!("{name:?} can't be used as a preset name"));
     }
+    if listed(f).get(name).is_some_and(|existing| !matches_effect(m, f, existing)) {
+        return Err("That name is used by another effect. Choose a different name.".into());
+    }
     let current = crate::filter_dialog::params_of(f);
-    let values = current.as_object().and_then(|c| m.preset_values(c)).ok_or("this plug-in has no values to save")?;
-    let mut list = listed(f);
-    list.insert(name.to_string(), values.clone());
-    f.insert(PRESETS.into(), to_value(&list));
-    f.insert(CHOSEN.into(), json!(name));
+    let mut values = current.as_object().and_then(|c| m.preset_values(c)).ok_or("this plug-in has no values to save")?;
+    values.retain(|key, _| in_effect(m, f, key));
     store(app, &m.id, |all| {
+        if all.get(name).is_some_and(|existing| !matches_effect(m, f, existing)) {
+            return Err("That name is used by another effect. Choose a different name.".into());
+        }
         if all.len() >= MAX_PRESETS && !all.contains_key(name) {
             return Err(format!("a plug-in keeps at most {MAX_PRESETS} presets"));
         }
-        all.insert(name.to_string(), values);
+        all.insert(name.to_string(), values.clone());
         Ok(())
-    })
+    })?;
+    let mut list = listed(f);
+    list.insert(name.to_string(), values);
+    f.insert(PRESETS.into(), to_value(&list));
+    f.insert(CHOSEN.into(), json!(name));
+    f.insert(SOURCE.into(), json!("user"));
+    Ok(())
 }
 
 /// Deletes the preset `name`.
 pub fn delete(app: &mut PhotocraftApp, m: &Manifest, f: &mut Map<String, Value>, name: &str) -> Result<(), String> {
+    if f.get(SOURCE).and_then(Value::as_str) == Some("builtin") && f.get(CHOSEN).and_then(Value::as_str) == Some(name) {
+        return Err("Built-in presets cannot be deleted.".into());
+    }
+    if !for_effect(m, f).contains_key(name) {
+        return Err("That preset does not belong to the selected effect.".into());
+    }
+    store(app, &m.id, |all| {
+        if all.get(name).is_some_and(|existing| !matches_effect(m, f, existing)) {
+            return Err("That preset does not belong to the selected effect.".into());
+        }
+        all.remove(name);
+        Ok(())
+    })?;
     let mut list = listed(f);
     list.remove(name);
     f.insert(PRESETS.into(), to_value(&list));
     f.insert(CHOSEN.into(), json!(""));
-    store(app, &m.id, |all| {
-        all.remove(name);
-        Ok(())
-    })
+    f.insert(SOURCE.into(), json!(""));
+    Ok(())
 }
 
 /// Re-reads the stored presets (so presets this version of the plug-in can't use are kept, and
 /// changes from another window aren't lost), changes them and writes them back.
 fn store(app: &mut PhotocraftApp, id: &str, change: impl FnOnce(&mut Presets) -> Result<(), String>) -> Result<(), String> {
-    let (Some(load), Some(save)) = (app.services.load_plugin_presets, app.services.save_plugin_presets) else { return Ok(()) };
+    let (Some(load), Some(save)) = (app.services.load_plugin_presets, app.services.save_plugin_presets) else {
+        return Err("User preset storage is unavailable.".into());
+    };
     let mut all = load(id);
     change(&mut all)?;
     save(id, &all)
@@ -100,23 +206,40 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
     let Some(plugin) = f.get("id").and_then(Value::as_str).and_then(photocraft_plugins::registry::get) else { return };
     let m = plugin.manifest();
     let t = Tokens::get(ui.ctx());
-    let names: Vec<String> = listed(f).into_keys().collect();
+    let user_presets = for_effect(m, f);
+    let builtins: Presets = listed_from(f, "builtin").into_iter().filter(|(_, values)| matches_effect(m, f, values)).collect();
     let mut chosen = f.get(CHOSEN).and_then(Value::as_str).unwrap_or_default().to_string();
-    let mut opts: Vec<(String, &str)> = vec![(String::new(), tl!("Custom"))];
-    opts.extend(names.iter().map(|n| (n.clone(), n.as_str())));
+    let mut source = f.get(SOURCE).and_then(Value::as_str).unwrap_or("user").to_string();
+    let selected = if source == "builtin" { &builtins } else { &user_presets };
+    if !selected.get(&chosen).is_some_and(|values| matches_values(m, f, values)) {
+        chosen.clear();
+        source.clear();
+        f.insert(CHOSEN.into(), json!(""));
+        f.insert(SOURCE.into(), json!(""));
+    }
+    let can_save = app.services.load_plugin_presets.is_some() && app.services.save_plugin_presets.is_some();
     let (mut picked, mut save_as_clicked, mut delete_clicked) = (false, false, false);
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(tl!("Presets")).color(t.text_dim));
-        picked = crate::widgets::dropdown(ui, &format!("plugin-presets-{}", m.id), &mut chosen, &opts, 150.0);
-        save_as_clicked = crate::widgets::secondary_button(ui, tl!("Save As…"), 0.0).clicked();
-        delete_clicked = ui.add_enabled_ui(!chosen.is_empty(), |ui| crate::widgets::secondary_button(ui, tl!("Delete"), 0.0).clicked()).inner;
+        let mut selection = (source.clone(), chosen.clone());
+        let mut options = vec![(Some((String::new(), String::new())), tl!("Custom")), (None, "Built-in presets")];
+        options.extend(builtins.keys().map(|name| (Some(("builtin".to_string(), name.clone())), name.as_str())));
+        options.push((None, "Your presets"));
+        options.extend(user_presets.keys().map(|name| (Some(("user".to_string(), name.clone())), name.as_str())));
+        picked = crate::widgets::dropdown_sections(ui, &format!("plugin-presets-{}", m.id), &mut selection, &options, 150.0);
+        (source, chosen) = selection;
+        save_as_clicked = ui.add_enabled_ui(can_save, |ui| crate::widgets::secondary_button(ui, tl!("Save As…"), 0.0).clicked()).inner;
+        delete_clicked = ui
+            .add_enabled_ui(can_save && source == "user" && !chosen.is_empty(), |ui| crate::widgets::secondary_button(ui, tl!("Delete"), 0.0).clicked())
+            .inner;
     });
     let mut result = Ok(());
     if picked {
         if chosen.is_empty() {
             f.insert(CHOSEN.into(), json!(""));
+            f.insert(SOURCE.into(), json!(""));
         } else {
-            apply(m, f, &chosen);
+            apply_from(m, f, &source, &chosen);
         }
     }
     if save_as_clicked {
@@ -253,6 +376,121 @@ mod tests {
     }
 
     #[test]
+    fn effect_presets_keep_other_effects_and_hidden_substyles_and_protect_names() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let m = Manifest::parse(
+            br#"{"id":"org.example.suite","name":"Suite","kind":"filter","presetSelector":"effect","params":{
+            "effect":{"type":"choice","options":["lightning","fire","shadow"]},
+            "bolt_width":{"type":"number","min":0,"max":100,"default":5,"visibleWhen":{"effect":"lightning"}},
+            "glow":{"type":"number","min":0,"max":100,"default":10,"visibleWhen":{"effect":"lightning"}},
+            "fire_style":{"type":"choice","options":["soft","hard"],"visibleWhen":{"effect":"fire"}},
+            "fire_amount":{"type":"number","min":0,"max":100,"default":30,"visibleWhen":{"effect":"fire"}},
+            "fire_detail":{"type":"number","min":0,"max":100,"default":40,"visibleWhen":{"effect":"fire","fire_style":"hard"}},
+            "shadow_softness":{"type":"number","min":0,"max":100,"default":20,"visibleWhen":{"effect":"shadow"}}}}"#,
+        )
+        .unwrap();
+        let stored = [
+            ("Legacy Bolt".to_string(), json!({"bolt_width": 11.0})),
+            ("Removed Effect".to_string(), json!({"effect": "removed", "bolt_width": 55.0})),
+            ("Malformed Effect".to_string(), json!({"effect": null, "bolt_width": 66.0})),
+            ("Fire".to_string(), json!({"effect": "fire", "fire_style": "soft", "fire_amount": 32.0, "fire_detail": 47.0})),
+        ]
+        .into_iter()
+        .map(|(name, values)| (name, values.as_object().unwrap().clone()))
+        .collect();
+        *STORE.lock().unwrap() = Some(stored);
+        let mut app = app_with_store();
+        let mut f = m.resolve_params(&Value::Null).unwrap();
+        f.insert("bolt_width".into(), json!(17.0));
+        f.insert("glow".into(), json!(19.0));
+        f.insert("shadow_softness".into(), json!(29.0));
+        open_fields(&app, &m, &mut f);
+        assert_eq!(for_effect(&m, &f).keys().collect::<Vec<_>>(), ["Legacy Bolt"]);
+        assert!(!listed(&f).contains_key("Removed Effect"), "a removed selector cannot become a legacy Lightning preset");
+        assert!(!listed(&f).contains_key("Malformed Effect"));
+        assert!(save_as(&mut app, &m, &mut f, "Malformed Effect").is_err());
+        assert!(!apply(&m, &mut f, "Removed Effect"));
+        assert!(delete(&mut app, &m, &mut f, "Removed Effect").is_err());
+        assert!(save_as(&mut app, &m, &mut f, "Removed Effect").is_err());
+        assert_eq!(STORE.lock().unwrap().as_ref().unwrap()["Removed Effect"]["effect"], json!("removed"), "orphan preset stays untouched in storage");
+        assert!(!apply(&m, &mut f, "Fire"), "out-of-effect calls cannot switch effects");
+        assert!(apply(&m, &mut f, "Legacy Bolt"));
+        assert_eq!(f["glow"], json!(10.0), "missing current-effect values reset to their defaults");
+        assert_eq!(f["shadow_softness"], json!(29.0));
+        f.insert("effect".into(), json!("fire"));
+        assert_eq!(for_effect(&m, &f).keys().collect::<Vec<_>>(), ["Fire"]);
+        let before = f.clone();
+        assert!(!apply(&m, &mut f, "Legacy Bolt"));
+        assert!(delete(&mut app, &m, &mut f, "Legacy Bolt").is_err());
+        assert!(save_as(&mut app, &m, &mut f, "Legacy Bolt").unwrap_err().contains("another effect"));
+        assert_eq!(f, before, "rejected actions leave the dialog intact");
+        assert!(STORE.lock().unwrap().as_ref().unwrap().contains_key("Legacy Bolt"));
+        assert!(apply(&m, &mut f, "Fire"));
+        assert_eq!(f["bolt_width"], json!(11.0));
+        assert_eq!(f["shadow_softness"], json!(29.0));
+        assert_eq!(f["fire_detail"], json!(47.0), "hidden substyle values apply with the preset");
+        assert!(matches_values(&m, &f, &listed(&f)["Fire"]));
+        f.insert("shadow_softness".into(), json!(51.0));
+        assert!(matches_values(&m, &f, &listed(&f)["Fire"]), "another effect's values do not mark this preset Custom");
+        save_as(&mut app, &m, &mut f, "My Fire").unwrap();
+        let saved = STORE.lock().unwrap().as_ref().unwrap()["My Fire"].clone();
+        assert_eq!(Value::Object(saved), json!({"effect": "fire", "fire_style": "soft", "fire_amount": 32.0, "fire_detail": 47.0}));
+        f.insert("fire_amount".into(), json!(44.0));
+        assert!(!matches_values(&m, &f, &listed(&f)["My Fire"]), "editing current controls returns the row to Custom");
+        save_as(&mut app, &m, &mut f, "My Fire").unwrap();
+        assert_eq!(STORE.lock().unwrap().as_ref().unwrap()["My Fire"]["fire_amount"], json!(44.0), "same-effect names can be replaced");
+        delete(&mut app, &m, &mut f, "My Fire").unwrap();
+        assert!(!STORE.lock().unwrap().as_ref().unwrap().contains_key("My Fire"));
+    }
+
+    #[test]
+    fn builtin_presets_work_without_storage_and_user_copies_survive_reopen() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        *STORE.lock().unwrap() = None;
+        let m = Manifest::parse(
+            br#"{"id":"org.example.factory","name":"Factory","kind":"filter",
+            "presetSelector":"effect","params":{
+                "effect":{"type":"choice","options":["bolt","fire"]},
+                "width":{"type":"number","min":0,"max":100,"default":10,"visibleWhen":{"effect":"bolt"}},
+                "heat":{"type":"number","min":0,"max":100,"default":20,"visibleWhen":{"effect":"fire"}}},
+            "presets":{"Soft":{"effect":"bolt","width":12},"Flame":{"effect":"fire","heat":40}}}"#,
+        )
+        .unwrap();
+        let bare = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let mut f = m.resolve_params(&Value::Null).unwrap();
+        f.insert("heat".into(), json!(77.0));
+        open_fields(&bare, &m, &mut f);
+        assert!(owns(&f));
+        assert!(apply_from(&m, &mut f, "builtin", "Soft"));
+        assert_eq!(f["width"], json!(12.0));
+        assert_eq!(f["heat"], json!(77.0));
+        assert_eq!(f[SOURCE], json!("builtin"));
+        assert!(!apply_from(&m, &mut f, "builtin", "Flame"));
+        let mut app = app_with_store();
+        assert!(delete(&mut app, &m, &mut f, "Soft").is_err());
+        f.insert("width".into(), json!(31.0));
+        f.insert("__meta".into(), json!("private"));
+        save_as(&mut app, &m, &mut f, "Soft").unwrap();
+        assert_eq!(f[SOURCE], json!("user"));
+        assert_eq!(m.presets["Soft"]["width"], json!(12.0));
+        let stored = load(&m.id);
+        assert_eq!(stored.len(), 1);
+        assert!(!stored["Soft"].contains_key("__meta"));
+        let mut reopened = m.resolve_params(&Value::Null).unwrap();
+        open_fields(&app, &m, &mut reopened);
+        assert!(apply(&m, &mut reopened, "Soft"));
+        assert_eq!(reopened["width"], json!(31.0), "legacy entry point prefers user name collisions");
+        assert!(apply_from(&m, &mut reopened, "builtin", "Soft"));
+        assert_eq!(reopened["width"], json!(12.0));
+        assert!(delete(&mut app, &m, &mut reopened, "Soft").is_err());
+        assert!(apply_from(&m, &mut reopened, "user", "Soft"));
+        delete(&mut app, &m, &mut reopened, "Soft").unwrap();
+        assert!(listed(&reopened).is_empty());
+        assert!(apply_from(&m, &mut reopened, "builtin", "Soft"));
+        assert_eq!(m.presets["Soft"]["width"], json!(12.0));
+    }
+
+    #[test]
     fn plugin_preset_applies_params_on_every_tab() {
         let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let m = Manifest::parse(
@@ -279,5 +517,24 @@ mod tests {
         save_as(&mut app, &m, &mut f, "Mine").unwrap();
         let s = STORE.lock().unwrap().clone().unwrap();
         assert_eq!(Value::Object(s["Mine"].clone()), json!({"effect": "b", "amount": 20.0, "glow": 0.25, "inner": "#ff8800"}));
+    }
+
+    #[test]
+    fn rendering_decimal_preset_controls_does_not_mark_them_custom() {
+        let m = Manifest::parse(
+            br#"{"id":"org.example.decimals","name":"Decimals","kind":"filter","params":{
+                "amount":{"type":"number","min":0,"max":1,"default":0.1},
+                "point":{"type":"point","default":[10.1,90.9]}},
+                "presets":{"Decimal":{"amount":0.1,"point":[10.1,90.9]}}}"#,
+        )
+        .unwrap();
+        let mut fields = m.resolve_params(&Value::Null).unwrap();
+        fields.insert("__command".into(), json!("plugin.run"));
+        fields.insert("__spec".into(), json!(m.params_notation()));
+        let mut h = egui_kittest::Harness::builder().build_ui_state(crate::filter_dialog::body, fields);
+        h.run_steps(4);
+        assert!(matches_values(&m, h.state(), &m.presets["Decimal"]), "displaying unchanged decimal values preserves the selected preset");
+        h.state_mut().insert("amount".into(), json!(0.11));
+        assert!(!matches_values(&m, h.state(), &m.presets["Decimal"]), "a real edit still marks the preset Custom");
     }
 }

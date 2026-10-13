@@ -63,7 +63,8 @@ inside the settings folder (`PHOTOCRAFT_CONFIG_DIR`, the portable data folder, o
   unknown keys and values of the wrong type are dropped, numbers and points are clamped into
   range, unknown choices are dropped (the parameter keeps its default), and a preset with nothing
   usable left is skipped while the rest still load.
-- The web build has no presets store, so its plug-in dialogs show no Presets row.
+- A plug-in may ship immutable factory settings in a top-level `presets` object mapping display names to parameter objects. These appear under **Built-in presets**, including when user storage is unavailable (such as the web build). With `presetSelector`, each built-in must explicitly include a supported selector value. Names and counts use the user-preset limits; values use the same normalization, bounds and schema filtering. The 64 KiB manifest limit still applies.
+- Stored settings appear under **Your presets** for the selected effect. **Save As…** always writes user settings, even when starting from a built-in. Identical names in the two sources remain distinct; **Delete** is available only for user settings. Without a user store, Save As and Delete are disabled.
 
 ## The sandbox
 
@@ -76,7 +77,7 @@ build. Limits (`photocraft_plugins::Limits`, defaults):
 | Host imports | none: no WASI, file system, network, clock or randomness | module rejected at install |
 | Module size | 32 MiB | rejected |
 | Linear memory | 512 MiB per instance | `memory.grow` returns -1; oversized initial memory fails |
-| Instructions (fuel) | 50 M per call + 4,000 per sample for `pc_filter` | `Limit("instruction budget")` |
+| Instructions (fuel) | 50 M per call + 8,000 per sample for `pc_filter`, with at least four samples of work allowed per pixel | `Limit("instruction budget")` |
 | Wall clock | 60 s per run (native; checked every 20 M instructions) | `Limit("time budget")` |
 | Call depth | 1,024 frames | trap |
 | Module shape | wasmi's strict limits (≤ 10,000 functions, 1 memory, …) | rejected |
@@ -134,16 +135,51 @@ exports. All integers are `i32` unless noted; pointers are offsets into the modu
   Unicode format characters (bidi overrides and marks, zero-width spaces, soft hyphens) are rejected,
   except the zero-width joiner and non-joiner, and at least one character must be visible.
   `kind`: `"filter"` (the only kind in v1).
-- `params`: in dialog order. Names are `[A-Za-z0-9_]`, not starting with `_`, not `id`/`layer`.
+- `params`: up to 256 controls, in dialog order. Names are `[A-Za-z0-9_]`, not starting with `_`, not `id`/`layer`.
   Types: `number`, `int`, `bool`, `choice`, `point`, `color` and `angle` (below).
   The host validates the user's values before calling: missing values take the default, numbers are
   clamped to `min..max` (ints rounded), a wrong type or an unknown choice is an error.
 - `group` (optional, any parameter type): the dialog tab the parameter sits on, 1–32 printable
   characters (the same rules as `name`). The dialog shows parameters without a `group` first,
-  always visible, then one tab per group in the order each first appears; only the selected tab's
+  then one tab per group in the order each first appears; only the selected tab's
   parameters are shown (the first tab at first). Groups change only the layout: presets and the
   values the plug-in receives are the same.
   `"start": {"type": "point", "default": [12, 12], "group": "Bolt"}`
+- `label` (optional, any parameter type): a dialog label of 1–64 printable Unicode characters,
+  using the same visible-character and format-character rules as `name`. Leading and trailing
+  spaces are trimmed; control characters are rejected even at the edges. Without a label,
+  the dialog uses the parameter name. Labels do not change the keys the plug-in receives.
+- `visibleWhen` (optional, any parameter type): an object of 1–8 equality predicates. Every
+  predicate must match the current parameter values for the control to appear. Keys must name
+  another `choice` or `bool` parameter; values must be one of the choice's option strings or a
+  JSON boolean, respectively. A conditional controller is allowed only when the dependent
+  repeats **all** the controller's visibility predicates with the same values. Self references
+  and cycles are rejected. Hidden values are still validated, saved in presets, and sent to
+  the plug-in. This metadata can be combined with `group`.
+- `presetSelector` (optional, top level): names an unconditional `choice` parameter used by
+  the dialog to scope presets to the selected effect. The selector's stable option values
+  identify the preset scope; its parameter name remains an ordinary plug-in input.
+
+For example, a suite can show a style selector for Swirl and a strength control only for
+Swirl's Distort style. The strength control repeats the style selector's `effect` predicate:
+
+```json
+"presetSelector": "effect",
+"params": {
+  "effect": {"type": "choice", "options": ["swirl", "glow"], "label": "Effect"},
+  "swirl_style": {
+    "type": "choice", "options": ["distort", "rays"], "label": "Style",
+    "visibleWhen": {"effect": "swirl"}
+  },
+  "strength": {
+    "type": "number", "min": 0, "max": 100, "default": 50, "label": "Strength",
+    "visibleWhen": {"effect": "swirl", "swirl_style": "distort"}
+  }
+}
+```
+
+Manifests that omit these optional fields keep the existing dialog and preset behavior.
+
 - `overlap` (0–256): pixels of context the filter needs around each output pixel (a blur radius).
   The host pads each band by `overlap` on every side, repeating the edge pixels of the canvas (or of
   off-canvas layer content), and keeps only the inner rectangle of the result.

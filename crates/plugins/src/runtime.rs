@@ -26,7 +26,8 @@ pub struct Limits {
     /// Target size of one band of `f32` pixels handed to the plug-in.
     pub band_bytes: usize,
     /// Instructions (fuel) any call may use, plus [`Limits::fuel_per_sample`] per sample for
-    /// `pc_filter`.
+    /// `pc_filter`, with a minimum of four sample allowances per pixel. Geometry and noise work
+    /// cost the same in grayscale as RGBA; additional channels still receive their allowance.
     pub fuel_base: u64,
     pub fuel_per_sample: u64,
     /// Deepest call nesting.
@@ -43,7 +44,7 @@ impl Default for Limits {
             max_memory_bytes: 512 << 20,
             band_bytes: 4 << 20,
             fuel_base: 50_000_000,
-            fuel_per_sample: 4_000,
+            fuel_per_sample: 8_000,
             max_recursion_depth: 1024,
             wall_time_ms: 60_000,
         }
@@ -243,7 +244,9 @@ impl Plugin {
             let pdst = mem.get_mut(pptr..pend).ok_or_else(outside)?;
             pdst.copy_from_slice(params);
         }
-        let fuel = self.limits.fuel_base.saturating_add((data.len() as u64).saturating_mul(self.limits.fuel_per_sample));
+        let pixel_samples = u64::from(w).saturating_mul(u64::from(h)).saturating_mul(4);
+        let work_samples = (data.len() as u64).max(pixel_samples);
+        let fuel = self.limits.fuel_base.saturating_add(work_samples.saturating_mul(self.limits.fuel_per_sample));
         let args = (ptr as i32, bytes as i32, w as i32, h as i32, channels as i32, format as i32, pptr as i32, params.len() as i32);
         let rc = self.call(&mut live, &filter, args, fuel, deadline)?;
         if rc != 0 {
@@ -279,6 +282,10 @@ fn placeholder_manifest() -> Manifest {
         overlap: 0,
         area: crate::Area::Content,
         guide: None,
+        preset_selector: None,
+        presets: Default::default(),
         groups: Vec::new(),
+        labels: Vec::new(),
+        visibility: Vec::new(),
     }
 }
