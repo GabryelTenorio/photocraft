@@ -1,7 +1,7 @@
 *~
 plan/
-/target
 target/
+target-*/
 /dist
 /corpus
 /log
@@ -11,3 +11,5 @@ target/
 /craft-fonts
 *.log
 __pycache__/
+.metadata_never_index
+.noindex
