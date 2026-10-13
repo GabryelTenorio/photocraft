@@ -154,4 +154,14 @@ mod tests {
         let (u, v) = rot.map(1.0, 3.0);
         assert!((u - -3.0).abs() < 1e-9 && (v - 1.0).abs() < 1e-9, "{u},{v}");
     }
+
+    #[test]
+    fn sampling_at_hostile_phases_does_not_overflow() {
+        let patterns = [checker()];
+        let prepared = PreparedPatterns::new(&patterns, PREPARED_PATTERN_BYTES);
+        let t = prepared.get(&patterns[0].id, "").unwrap();
+        for u in [1.0e30, -1.0e30, f64::INFINITY, f64::NAN] {
+            let _ = t.sample(u, u);
+        }
+    }
 }
