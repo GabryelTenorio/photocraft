@@ -158,10 +158,11 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
             map_rgb(buf, |c| {
                 let (dh, ds, dl) = match &table {
                     Some(t) => {
-                        // Range edits follow the pixel's original hue, faded out towards grey (greys have no hue).
+                        // Range edits follow the pixel's original hue, in full however dull the colour
+                        // (Photoshop's merged images, #4089). Greys stay grey: no hue to shift, no
+                        // saturation to scale, and range Lightness moves towards a channel they share.
                         let h0 = rgb_to_hsl(c).0;
-                        let chroma = ((c[0].max(c[1]).max(c[2]) - c[0].min(c[1]).min(c[2])) * 4.0).min(1.0);
-                        (lut(&t[0], h0) * chroma, lut(&t[1], h0) * chroma, lut(&t[2], h0) * chroma)
+                        (lut(&t[0], h0), lut(&t[1], h0), lut(&t[2], h0))
                     }
                     None => (0.0, 0.0, 0.0),
                 };
@@ -493,6 +494,10 @@ pub fn bayer4(x: i32, y: i32) -> f32 {
 
 /// Samples a 3D LUT (`n`³ RGB triplets, red fastest) at `c`, trilinear or tetrahedral.
 pub fn lut3d_sample(lut: &[f32], n: usize, c: [f32; 3], tetrahedral: bool) -> [f32; 3] {
+    // A degenerate or short table can't be sampled: leave the colour alone.
+    if n < 2 || n.checked_pow(3).and_then(|c| c.checked_mul(3)).is_none_or(|len| lut.len() < len) {
+        return c;
+    }
     let m = (n - 1) as f32;
     let pos = c.map(|v| v.clamp(0.0, 1.0) * m);
     let i0 = pos.map(|p| (p.floor() as usize).min(n - 2));
@@ -1377,6 +1382,37 @@ mod tone_tests {
         }
     }
 
+    /// Photoshop's own render (merged image of psd-tools `adjustments/huesaturation_lightness_rgb.psd`,
+    /// layer "Hue/Saturation 1"): a dull magenta gets the whole range edit, as a vivid one does (#4089).
+    #[test]
+    fn hue_ranges_apply_in_full_to_dull_colours() {
+        let range = |lightness: f32, bounds: [f32; 4]| HueRange { hue: 0.0, saturation: 0.0, lightness, bounds };
+        let ranges = [
+            range(-11.0, [-57.0, 4.0, 82.0, 175.0]),
+            range(100.0, [12.0, 45.0, 75.0, 105.0]),
+            HueRange::neutral(2),
+            HueRange::neutral(3),
+            HueRange::neutral(4),
+            range(100.0, [-117.0, -50.0, 39.0, 104.0]),
+        ];
+        let a = Adjustment::HueSaturation { hue: 0.0, saturation: 0.0, lightness: 17.0, colorize: false, ranges };
+        let measured = [([126u8, 97, 120], [148u8, 148, 148]), ([131, 103, 125], [152, 152, 152]), ([95, 69, 90], [122, 122, 122])];
+        for (input, want) in measured {
+            let c = input.map(|v| v as f32 / 255.0);
+            let mut b = Buffer { rect: Rect::new(0, 0, 1, 1), px: vec![[c[0], c[1], c[2], 1.0]] };
+            apply(&a, &mut b);
+            for (i, w) in want.iter().enumerate() {
+                let got = b.px[0][i] * 255.0;
+                assert!((got - *w as f32).abs() <= 2.0, "{input:?} channel {i}: {got} vs {w}");
+            }
+        }
+        // Greys have no hue, so the ranges leave them alone: only the master Lightness moves them.
+        let mut b = Buffer { rect: Rect::new(0, 0, 1, 1), px: vec![[0.4, 0.4, 0.4, 1.0]] };
+        apply(&a, &mut b);
+        let p = b.px[0];
+        assert!((p[0] - p[1]).abs() < 1e-6 && (p[1] - p[2]).abs() < 1e-6 && (p[0] - (0.4 + 0.6 * 0.17)).abs() < 1e-4, "{p:?}");
+    }
+
     #[test]
     fn black_white_weights() {
         let d = [40.0, 60.0, 40.0, 60.0, 20.0, 80.0];
@@ -1528,3 +1564,19 @@ mod tone_tests {
 /// Legacy Brightness/Contrast scales contrast around 128 of 255 (contrast 80 keeps 128 at 128,
 /// measured on Photoshop 27.11; a 0.5 pivot moved it to 130).
 pub const LEGACY_PIVOT: f32 = 128.0 / 255.0;
+
+#[cfg(test)]
+mod lut3d_guard_tests {
+    use super::lut3d_sample;
+
+    #[test]
+    fn degenerate_or_short_tables_leave_the_colour_alone() {
+        let c = [0.2, 0.4, 0.6];
+        for tetra in [false, true] {
+            assert_eq!(lut3d_sample(&[], 0, c, tetra), c);
+            assert_eq!(lut3d_sample(&[0.0; 3], 1, c, tetra), c);
+            assert_eq!(lut3d_sample(&[0.0; 3], 2, c, tetra), c);
+            assert_eq!(lut3d_sample(&[0.0; 24], usize::MAX, c, tetra), c);
+        }
+    }
+}
