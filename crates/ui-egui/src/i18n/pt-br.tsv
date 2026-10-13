@@ -71,6 +71,8 @@
 	Save	Salvar
 	Save As…	Salvar como…
 	Save a Copy…	Salvar uma cópia…
+	{name} can't keep everything in this document	{name} não consegue manter tudo o que há neste documento
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Escolha um formato que mantenha tudo, como Photoshop (PSD), ou salve uma cópia.
 	Revert	Reverter
 	Export	Exportar
 	Quick Export as PNG	Exportação rápida como PNG
@@ -132,6 +134,8 @@
 	Search…	Pesquisar…
 	Check Spelling…	Verificar ortografia…
 	Find and Replace Text…	Localizar e substituir texto…
+	Add to Dictionary	Adicionar ao dicionário
+	No Spelling Suggestions	Sem sugestões de ortografia
 	Fill…	Preencher…
 	Stroke…	Traçado…
 	Content-Aware Fill…	Preenchimento sensível ao conteúdo…
@@ -829,6 +833,12 @@
 	Baseline shift	Deslocamento da linha de base
 	Basic	Básico
 	Before (Y)	Antes (Y)
+	Save Settings…	Salvar configurações…
+	Load Settings…	Carregar configurações…
+	Save these settings as a Camera Raw .xmp file	Salvar estas configurações como arquivo .xmp do Camera Raw
+	Load settings from a Camera Raw .xmp file	Carregar configurações de um arquivo .xmp do Camera Raw
+	Loaded Camera Raw settings from {file}	Configurações do Camera Raw carregadas de {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Configurações do Camera Raw carregadas de {file} ({n} sem suporte)
 	Begin recording	Iniciar gravação
 	Bend:	Curvatura:
 	Bicubic	Bicúbica
@@ -3848,6 +3858,9 @@ layerLabel	No Color	Sem cor
 	Remove after each stroke	Remover após cada traço
 	Apply the removal ({key})	Aplicar a remoção ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traços a remover: {n} (Enter aplica, Esc cancela)
+	Clear Brush Controls	Limpar controles de pincel
+	Reset All Locked Settings	Redefinir todas as configurações bloqueadas
+	Copy Texture to Other Tools	Copiar textura para outras ferramentas
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Carregar ações…
@@ -3869,5 +3882,4 @@ layerLabel	No Color	Sem cor
 	Action playback stopped	Reprodução da ação interrompida
 	Step {step} is waiting for its dialog	A etapa {step} está aguardando sua caixa de diálogo
 @plural	{n} action|{n} actions	{n} ação|{n} ações
-	{name} can't keep everything in this document	{name} não consegue manter tudo o que há neste documento
-	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Escolha um formato que mantenha tudo, como Photoshop (PSD), ou salve uma cópia.
+	Auto Add/Delete	Adicionar/excluir automaticamente

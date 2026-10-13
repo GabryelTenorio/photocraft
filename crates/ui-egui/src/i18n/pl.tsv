@@ -70,6 +70,8 @@
 	Save	Zapisz
 	Save As…	Zapisz jako…
 	Save a Copy…	Zapisz kopię…
+	{name} can't keep everything in this document	{name} nie może zachować wszystkiego z tego dokumentu
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Wybierz format, który zachowa wszystko, na przykład Photoshop (PSD), lub zapisz kopię.
 	Revert	Przywróć ostatnio zapisany
 	Export	Eksportuj
 	Quick Export as PNG	Szybki eksport jako PNG
@@ -131,6 +133,8 @@
 	Search…	Szukaj…
 	Check Spelling…	Sprawdź pisownię…
 	Find and Replace Text…	Znajdź i zamień tekst…
+	Add to Dictionary	Dodaj do słownika
+	No Spelling Suggestions	Brak sugestii pisowni
 	Fill…	Wypełnij…
 	Stroke…	Obrys…
 	Content-Aware Fill…	Wypełnienie z uwzględnieniem zawartości…
@@ -845,6 +849,12 @@
 	Baseline shift	Przesunięcie linii bazowej
 	Basic	Podstawowe
 	Before (Y)	Przed (Y)
+	Save Settings…	Zapisz ustawienia…
+	Load Settings…	Wczytaj ustawienia…
+	Save these settings as a Camera Raw .xmp file	Zapisz te ustawienia jako plik .xmp Camera Raw
+	Load settings from a Camera Raw .xmp file	Wczytaj ustawienia z pliku .xmp Camera Raw
+	Loaded Camera Raw settings from {file}	Wczytano ustawienia Camera Raw z pliku {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Wczytano ustawienia Camera Raw z pliku {file} (nieobsługiwane: {n})
 	Begin recording	Rozpocznij nagrywanie
 	Bend:	Zgięcie:
 	Bicubic	Dwusześcienna
@@ -3655,6 +3665,9 @@ curves	Smooth	Wygładź
 	Remove after each stroke	Usuwaj po każdym pociągnięciu
 	Apply the removal ({key})	Zastosuj usuwanie ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Pociągnięcia do usunięcia: {n} (Enter stosuje, Esc anuluje)
+	Clear Brush Controls	Wyczyść elementy sterujące pędzlem
+	Reset All Locked Settings	Resetuj wszystkie zablokowane ustawienia
+	Copy Texture to Other Tools	Kopiuj teksturę do innych narzędzi
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Wczytaj operacje…
@@ -3676,5 +3689,4 @@ curves	Smooth	Wygładź
 	Action playback stopped	Odtwarzanie operacji zatrzymane
 	Step {step} is waiting for its dialog	Krok {step} czeka na swoje okno dialogowe
 @plural	{n} action|{n} actions	{n} operacja|{n} operacje|{n} operacji
-	{name} can't keep everything in this document	{name} nie może zachować wszystkiego z tego dokumentu
-	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Wybierz format, który zachowa wszystko, na przykład Photoshop (PSD), lub zapisz kopię.
+	Auto Add/Delete	Automatyczne dodawanie/usuwanie
