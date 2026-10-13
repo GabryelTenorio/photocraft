@@ -1145,6 +1145,9 @@
 	Ignore All	Ignoruj wszystko
 	Image Size	Rozmiar obrazu
 	Import Brushes…	Importuj pędzle…
+	Gradient Preset Options	Opcje ustawień predefiniowanych gradientu
+	Import .GRD	Importuj .GRD
+	Choose a gradient file (.grd).	Wybierz plik gradientów (.grd).
 	Import brushes (.abr)	Importuj pędzle (.abr)
 	Import Presets	Importuj ustawienia wstępne
 	Imported	Zaimportowano
@@ -3647,9 +3650,14 @@ curves	Smooth	Wygładź
 	Light Red	Jasnoczerwony
 	Medium Blue	Średnioniebieski
 	Light Gray	Jasnoszary
+	Object Finder	Wyszukiwanie obiektów
+	No object found there — drag a rectangle around it	Nie znaleziono tam obiektu — przeciągnij wokół niego prostokąt
 	Remove after each stroke	Usuwaj po każdym pociągnięciu
 	Apply the removal ({key})	Zastosuj usuwanie ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Pociągnięcia do usunięcia: {n} (Enter stosuje, Esc anuluje)
+	Clear Brush Controls	Wyczyść elementy sterujące pędzlem
+	Reset All Locked Settings	Resetuj wszystkie zablokowane ustawienia
+	Copy Texture to Other Tools	Kopiuj teksturę do innych narzędzi
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Wczytaj operacje…
