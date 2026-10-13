@@ -1185,6 +1185,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-print"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=d991bf6792f8ade99c51358bf3c1d902c8cd96b5#d991bf6792f8ade99c51358bf3c1d902c8cd96b5"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "craft-ui"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675#5c874d51eeb3de70e735c8ce87a59a7dedd47675"
@@ -4448,6 +4456,7 @@ dependencies = [
  "photocraft-raster",
  "photocraft-tablet",
  "photocraft-ui-egui",
+ "resvg",
  "rfd",
  "ron",
  "serde_json",
@@ -4455,6 +4464,7 @@ dependencies = [
  "winit",
  "winresource",
  "winsafe",
+ "wl-clipboard-rs",
  "x11rb",
  "xcap",
  "zbus 5.19.0",
@@ -4587,6 +4597,7 @@ name = "photocraft-engine"
 version = "0.8.2"
 dependencies = [
  "blake3",
+ "craft-print",
  "exr",
  "flate2",
  "photocraft-affinity",
