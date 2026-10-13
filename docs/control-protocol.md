@@ -316,7 +316,7 @@ How each MCP tool maps onto control methods in bridge mode:
 | `jobs_list` / `jobs_cancel {job?}` | `jobs.list` / `jobs.cancel {job?}` |
 | `command_list {filter?, enabled_only?}` | `engine.commands` (filtered by the MCP server; rows keep `disabledReason` and `needsDocument`) |
 | `doc_new {…}` | `engine.execute {command: "file.new", params}` |
-| `doc_inspect` | `engine.execute {command: "document.inspect"}` |
+| `doc_inspect` | `engine.execute {command: "document.inspect"}` (flat reply; an empty app session is an error — the headless empty-session `{"document": null, session}` envelope never appears in bridge mode) |
 | `doc_open {path}` | `app.open {path}` (activates the document when the path is already open) |
 | `doc_place {path, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
 | `doc_export_layers {dir, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
@@ -384,7 +384,7 @@ no MCP framing, no app start-up per command. Configure its file access with the 
 | `doc.exportDataSets` | `{dir, format? (png), dataSets? (all), naming? ("{name}\|{index}\|{document}"), index?}` → `{files, count}`: the capability-scoped `file.export.dataSetsAsFiles`. The batch is planned first and colliding names are refused before any file is written, as in the command |
 | `doc.importDataSets` | `{path, delimiter? (,), index?}` → `{imported}`: the capability-scoped `file.import.variableDataSets`; the CSV is read beneath the read root |
 | `doc.save` | `{path?, format?, quality?, index?, tiffLayers?, tgaBits?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF; `tgaBits` 24 or 32 sets a TGA's bits per pixel, as `app.save` does). Without `path` only a PSD, PSB or `.pcraft` document is written back to its own file, in its own format; anything else is an error and the file is left unchanged. A successful layered save (PSD, PSB or `.pcraft`) records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
-| `doc.inspect` | `{index?}`: same JSON as `document.inspect` |
+| `doc.inspect` | `{index?}`: same JSON as `document.inspect` (flat; no document open is an error, not the MCP `doc_inspect` empty-session `{"document": null, session}` envelope) |
 | `doc.render` | `{index?, maxSide? (1024; 0 = full, any edge must be ≤ 2048 — see Transport limits), path?}`: PNG to `path`, else `{mime, base64}` |
 | `doc.select` / `doc.close` | `{index}` / `{index?}` |
 | `batch` | `{steps: [{command, params?, wait?} \| {method, params?}], stopOnError? (true)}` → `{completed, failed, results}` (a step with `wait: false` starts a long command as a background job, like `engine.execute`) |

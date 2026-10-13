@@ -770,7 +770,10 @@ impl PhotocraftMcp {
         self.save_impl(p).await
     }
 
-    #[tool(description = "Document state as JSON: layer tree (top to bottom), history, selection, active layer.")]
+    #[tool(description = "Document state as JSON: layer tree (top to bottom), history, selection, active layer. \
+        With a document open the reply is the flat document.inspect JSON with no `document` key; headless \
+        with no `index` and no documents open it is `{\"document\": null, \"session\": …}`; in bridge mode \
+        an empty session is an error.")]
     async fn doc_inspect(&self, Parameters(p): Parameters<DocIndex>) -> Result<CallToolResult, McpError> {
         if let Some(r) = self
             .headless_op(move |h| {

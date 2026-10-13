@@ -22,7 +22,11 @@ described in [development.md](development.md). UI tools require a running deskto
 - `command_batch`: ordered `steps`, optional `stop_on_error` (default true); stops at the first
   error unless false. Not an atomic transaction: earlier successful steps stay applied, with
   no rollback. Existing per-step results and reply budgets are preserved.
-- `doc_inspect`: layer tree, history and selection; an empty session returns `document:null`.
+- `doc_inspect`: layer tree, history and selection. With a document open the reply is the flat
+  `document.inspect` JSON — top-level `layers`, `history`, `activeLayer`, … — with no `document`
+  key, identical to `command_run` with `{"id":"document.inspect"}`. With no `index` and no
+  documents open, a headless session returns `{"document": null, "session": …}` instead; in
+  bridge mode that same empty state is an error, never the envelope.
   Every layer (including groups and nested children) reports raster-only `hasMask`,
   `hasVectorMask` for vector mask presence, and `vectorMaskEnabled` (`true`/`false` when
   present, `null` when absent). A disabled vector mask still has `hasVectorMask:true`.

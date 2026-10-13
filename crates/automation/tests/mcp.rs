@@ -1236,6 +1236,9 @@ async fn convention_resources_are_live_json() {
     assert!(read("photocraft://document").await["document"].is_null());
     json_of(&call(&client, "doc_new", json!({"width":8,"height":6})).await);
     assert_eq!(read("photocraft://document").await["width"], 8);
+    let inspected = json_of(&call(&client, "doc_inspect", json!({})).await);
+    assert!(inspected.get("document").is_none(), "{inspected}");
+    assert_eq!(inspected, json_of(&call(&client, "command_run", json!({"id": "document.inspect"})).await));
     // Edit › Purge › All is enabled while the process-wide effect, mask and stack caches hold
     // anything, and the other tests in this binary fill and purge those caches concurrently, so
     // its `enabled` flag and paired `disabledReason` can flip between the two reads. Validate
