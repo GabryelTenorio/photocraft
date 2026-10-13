@@ -401,6 +401,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             ok(json!({"command": id, "dialog": app.ui.dialogs.last().map(|d| d.id)}))
         }
         "engine.execute" | "ui.menu.invoke" => {
+            let allowed: &[&str] = if req.method == "engine.execute" { &["command", "params", "wait"] } else { &["id", "params", "wait"] };
+            if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| !allowed.contains(&k.as_str())).cloned()) {
+                return err(format!("unknown parameter `{key}` for {} (parameters: {})", req.method, allowed.join(", ")));
+            }
             let Some(id) = s("command").or(s("id")) else { return err("missing `command`") };
             let params = p.get("params").cloned().unwrap_or(json!({}));
             // A control-channel menu click must respect the same modal gate as the native menu.
@@ -1774,6 +1778,23 @@ mod tests {
         let r = call(&mut app, &ctx, "ui.menu.invoke", json!({"id": "filter.blur.gaussianBlur"}));
         assert!(r.to_string().contains("dialog"), "ui.menu.invoke should open the dialog: {r}");
         assert_eq!(app.session.active().unwrap().revision, rev, "opening a dialog must not edit the document");
+    }
+
+    #[test]
+    fn engine_execute_rejects_unknown_envelope_keys_without_running() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width": 32, "height": 32})).unwrap();
+        app.run("edit.fill", json!({"color": "#808080"})).unwrap();
+        let revision = app.session.active().unwrap().revision;
+        let r = call(&mut app, &ctx, "engine.execute", json!({"command": "filter.blur.gaussianBlur", "layer": 37, "params": {"radius": 5}}));
+        assert_eq!(r["ok"], false, "{r}");
+        assert!(r["error"].as_str().unwrap_or("").contains("layer"), "{r}");
+        // `ui.menu.invoke` names its target `id`; `command` belongs to `engine.execute`.
+        let r = call(&mut app, &ctx, "ui.menu.invoke", json!({"command": "filter.blur.blurMore"}));
+        assert_eq!(r["ok"], false, "{r}");
+        assert!(r["error"].as_str().unwrap_or("").contains("command"), "{r}");
+        assert_eq!(app.session.active().unwrap().revision, revision, "a rejected envelope must not run anything");
     }
 
     #[test]
