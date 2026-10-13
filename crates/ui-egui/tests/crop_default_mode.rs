@@ -88,6 +88,7 @@ fn setup() -> Option<Harness> {
     h.run_steps(4);
     {
         let app = h.state_mut();
+        app.run("prefs.set", json!({"path": "interface.language", "value": "en"})).expect("English test locale");
         app.run("file.new", json!({"width": 300, "height": 200, "background": "white"})).expect("new");
         app.run("select.rect", json!({"x": 100, "y": 50, "width": 60, "height": 60})).expect("select");
         app.run("edit.fill", json!({"color": "#ff0000"})).expect("fill");

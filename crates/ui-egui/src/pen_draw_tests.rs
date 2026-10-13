@@ -142,6 +142,7 @@ fn dragging_on_the_first_anchor_closes_with_its_handles_in_one_step() {
     // A plain click on a smooth first anchor closes without touching its handles. This path is
     // drawn over the anchors of the one just finished, which Auto Add/Delete would delete (#4144).
     h.state_mut().ui.tool_options.pen_auto_add_delete = false;
+    h.state_mut().ui.selected_path = None;
     drag(&mut h, &[[20.0, 20.0], [40.0, 20.0]], None);
     click(&mut h, [120.0, 20.0]);
     click(&mut h, [120.0, 100.0]);

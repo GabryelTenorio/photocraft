@@ -12,11 +12,13 @@ use photocraft_geom::Rect;
 use photocraft_ui_egui::PhotocraftApp;
 use photocraft_ui_egui::control::{ControlRequest, handle};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 type Harness = egui_kittest::Harness<'static, PhotocraftApp>;
 
 const W: i32 = 3000;
 const H: i32 = 2000;
+static MAX_TEXTURE_SIDE: AtomicU32 = AtomicU32::new(0);
 
 fn harness() -> Option<Harness> {
     let built = std::panic::catch_unwind(|| {
@@ -24,18 +26,32 @@ fn harness() -> Option<Harness> {
             PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
             let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
             if let Some(rs) = cc.wgpu_render_state.as_ref() {
+                MAX_TEXTURE_SIDE.store(rs.device.limits().max_texture_dimension_2d, Ordering::Relaxed);
                 app.set_wgpu(rs.clone());
             }
             app
         })
     });
     match built {
-        Ok(h) => Some(h),
+        Ok(mut h) => {
+            let max = MAX_TEXTURE_SIDE.load(Ordering::Relaxed);
+            h.input_mut().max_texture_side = Some(max as usize);
+            Some(h)
+        }
         Err(_) => {
             eprintln!("skipping: no GPU adapter");
             None
         }
     }
+}
+
+fn supports_document_texture() -> bool {
+    let max = MAX_TEXTURE_SIDE.load(Ordering::Relaxed);
+    if max < W as u32 || max < H as u32 {
+        eprintln!("skipping: adapter texture limit {max} is below {W}x{H} test document");
+        return false;
+    }
+    true
 }
 
 fn control(h: &mut Harness, method: &str, params: Value) {
@@ -113,6 +129,9 @@ fn mean(r: &[i32]) -> f32 {
 fn adjustment_layer_drag_previews_at_full_resolution_when_low_res_is_off() {
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
+    if !supports_document_texture() {
+        return;
+    }
     setup(&mut h, 1.0);
     if !on_gpu(&mut h) {
         return;
@@ -138,6 +157,9 @@ fn adjustment_layer_drag_previews_at_full_resolution_when_low_res_is_off() {
 fn filter_dialog_previews_at_full_resolution_when_low_res_is_off() {
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
+    if !supports_document_texture() {
+        return;
+    }
     setup(&mut h, 1.0);
     if !on_gpu(&mut h) {
         return;
@@ -155,6 +177,9 @@ fn filter_dialog_previews_at_full_resolution_when_low_res_is_off() {
 fn adjustment_dialog_zoomed_out_skips_the_reduced_copy_when_low_res_is_off() {
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
+    if !supports_document_texture() {
+        return;
+    }
     setup(&mut h, 0.5);
     if !on_gpu(&mut h) {
         return;

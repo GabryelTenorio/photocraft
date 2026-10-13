@@ -314,7 +314,8 @@ pub struct UiSetParams {
     /// brushPickerName, brushPickerStroke, brushPickerTip (the picker card's parts, at least one
     /// on), brushPickerScale (the picker footer's card-scale slider, 0.15 to 2, 1 the standard),
     /// brushSize, gradientBlendMode
-    /// (a blend mode name, for the Gradient tool), gradientClassic (bool), eyedropperSampleSize
+    /// (a blend mode name, for the Gradient tool), gradientClassic (bool), penAutoAddDelete
+    /// (bool, default true: standard Pen inserts anchors on segments and deletes existing anchors), eyedropperSampleSize
     /// ("point" or 1, 3, 5, 11, 31, 51, 101), eyedropperSample (current, currentAndBelow, all,
     /// allNoAdjustments, currentAndBelowNoAdjustments), eyedropperRing (bool), cropOverlay (thirds,
     /// grid, diagonal, triangle, goldenRatio, goldenSpiral), cropOverlayShow (auto, always, never),

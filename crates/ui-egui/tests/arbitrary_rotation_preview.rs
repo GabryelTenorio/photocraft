@@ -99,6 +99,10 @@ fn size_changing_rotation_preview_is_visible_and_preserves_the_panned_center() {
         setup(&mut h, width, height, zoom, center);
         assert_eq!(photocraft_ui_egui::proxy::factor(&h.state().session.active().unwrap().doc), factor);
         let id = open(&mut h);
+        // Keep the modal outside the canvas image. A centred modal obscures one rotated corner,
+        // biasing the visible-pixel bounds used below even when preview stays centred.
+        h.ctx.data_mut(|m| m.insert_temp(egui::Id::new(("dialog", id)), egui::vec2(920.0, 150.0)));
+        h.run_steps(4);
         let source = blue(&mut h, &format!("{width}x{height}-{degrees}-zero")).0;
         assert!(source > 5_000, "the unrotated blue image must be visible outside the dialog");
         angle(&mut h, id, degrees);
