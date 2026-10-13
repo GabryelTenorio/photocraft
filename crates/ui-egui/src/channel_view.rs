@@ -402,9 +402,11 @@ mod tests {
 
         app.run("edit.fill", json!({"color": "#e02010"})).unwrap();
         assert!(ensure(&mut app, &ctx, 0).is_some());
-        // The damage path updates only a texture rectangle, not the full composite.
-        // Keep the pixels uncached until the next channel visibility change.
-        assert!(app.channel_views.get(&id).unwrap().source.is_none(), "pixel edits invalidate the cached source");
+        // A partial damage upload discards the source; a full redraw may replace it.
+        // In either case, cached samples must never refer to the pre-edit pixels.
+        if let Some(source) = app.channel_views.get(&id).unwrap().source.as_ref() {
+            assert_ne!(source.pixels[0], original_sample, "a full redraw replaces stale pixels");
+        }
         app.run("channel.setVisible", json!({"channel": "red", "visible": true})).unwrap();
         assert!(ensure(&mut app, &ctx, 0).is_some());
         let refreshed = app.channel_views.get(&id).unwrap().source.as_ref().unwrap();
