@@ -12,11 +12,21 @@ const IMPORT: &str = "actions.import";
 const MAX_ACTIONS: usize = 10_000;
 const MAX_STEPS: usize = 10_000;
 const MAX_NAME_BYTES: usize = 4096;
+const MAX_ERROR_BYTES: usize = 512;
 /// File-size limit shared by the engine and interactive picker.
 pub const MAX_FILE_BYTES: usize = photocraft_psd::atn::MAX_BYTES;
 
 fn bad(msg: impl Into<String>) -> EngineError {
-    EngineError::BadParams { cmd: IMPORT.into(), msg: msg.into() }
+    let mut msg = msg.into();
+    if msg.len() > MAX_ERROR_BYTES {
+        let mut end = MAX_ERROR_BYTES - '…'.len_utf8();
+        while !msg.is_char_boundary(end) {
+            end -= 1;
+        }
+        msg.truncate(end);
+        msg.push('…');
+    }
+    EngineError::BadParams { cmd: IMPORT.into(), msg }
 }
 
 fn always(_: &Session) -> std::result::Result<(), String> {
@@ -103,7 +113,7 @@ fn translate(step: &photocraft_psd::atn::AtnItem) -> Result<(String, Value)> {
             descriptor_keys(d, &["Lvls"])?;
             ("image.adjustments.posterize", json!({"levels": number(d, "Lvls", None, 2.0, 255.0, false)?}))
         }
-        "thresholdClassEvent" | "Thrs" => {
+        "threshold" | "thresholdClassEvent" | "Thrs" => {
             descriptor_keys(d, &["Lvl "])?;
             ("image.adjustments.threshold", json!({"level": number(d, "Lvl ", None, 1.0, 255.0, false)?}))
         }
@@ -143,6 +153,11 @@ fn validate(actions: &[Action], existing: &[Action]) -> Result<()> {
                 || matches!(id.as_str(), crate::atn_cmds::PHOTOSHOP_STEP | crate::atn_cmds::STOP_MESSAGE | "actions.conditional");
             if !replayable || !(params.is_object() || params.is_null()) {
                 return Err(bad(format!("unsupported action command or params `{id}`")));
+            }
+            if id == "actions.conditional"
+                && !params.get("if").and_then(Value::as_str).is_some_and(|condition| crate::actions_edit_cmds::CONDITIONS.contains(&condition))
+            {
+                return Err(bad("conditional action needs a supported `if` condition"));
             }
         }
     }
@@ -236,7 +251,10 @@ fn import(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let (mut actions, warnings) = match format {
         "json" => {
-            let file: ActionsFile = serde_json::from_slice(&bytes).map_err(|e| bad(format!("invalid PhotoCraft action file: {e}")))?;
+            // Serde's data errors can quote an entire hostile string. Report location and
+            // category without copying file contents into the status bar.
+            let file: ActionsFile = serde_json::from_slice(&bytes)
+                .map_err(|e| bad(format!("invalid PhotoCraft action file: {:?} at line {}, column {}", e.classify(), e.line(), e.column())))?;
             if file.version != 1 {
                 return Err(bad(format!("unsupported PhotoCraft action version {}", file.version)));
             }
@@ -456,6 +474,70 @@ mod tests {
     }
 
     #[test]
+    fn malformed_json_and_long_action_names_have_bounded_errors() {
+        let mut s = Session::new();
+        let name = "🦀".repeat(1000);
+        s.actions.list.push(Action::new(name.clone(), vec![]));
+        let before = s.actions.clone();
+        let malformed = serde_json::to_vec(&json!({"version":"x".repeat(100_000),"actions":[]})).unwrap();
+        let error = s.execute(IMPORT, json!({"format":"json","data":crate::paint::tile::b64_encode(&malformed)})).unwrap_err();
+        assert!(error.to_string().contains("Data at line"));
+        assert!(error.to_string().len() < 1024);
+        assert!(!error.to_string().contains(&"x".repeat(100)));
+        assert_eq!(s.actions, before);
+
+        let duplicate = ActionsFile { version: 1, actions: vec![Action::new(name, vec![])] };
+        let error = s.execute(IMPORT, params(&duplicate)).unwrap_err();
+        assert!(matches!(error, EngineError::BadParams { ref msg, .. } if msg.len() <= MAX_ERROR_BYTES && msg.ends_with('…')));
+        assert_eq!(s.actions, before);
+
+        s.actions.list[0].disabled.insert(0);
+        assert!(
+            matches!(s.execute("actions.export", json!({})), Err(EngineError::BadParams { cmd, msg }) if cmd == "actions.export" && msg.len() <= MAX_ERROR_BYTES)
+        );
+    }
+
+    #[test]
+    fn invalid_conditional_conditions_fail_before_changing_the_library() {
+        let mut s = Session::new();
+        s.actions.list.push(Action::new("Kept", vec![]));
+        let before = s.actions.clone();
+        for condition in [json!({}), json!({"if":null}), json!({"if":true}), json!({"if":"unknown"})] {
+            let file = ActionsFile { version: 1, actions: vec![Action::new("Broken", vec![("actions.conditional".into(), condition.clone())])] };
+            let error = s.execute(IMPORT, params(&file)).unwrap_err().to_string();
+            assert!(error.contains("supported `if` condition"), "{error}");
+            assert_eq!(s.actions, before);
+
+            let mut invalid = Session::new();
+            invalid.actions.list = file.actions;
+            assert!(matches!(invalid.execute("actions.export", json!({})), Err(EngineError::BadParams { cmd, .. }) if cmd == "actions.export"));
+        }
+        let valid = ActionsFile { version: 1, actions: vec![Action::new("Conditional", vec![("actions.conditional".into(), json!({"if":"always"}))])] };
+        s.execute(IMPORT, params(&valid)).unwrap();
+        assert_eq!(s.execute("actions.play", json!({"action":"Conditional"})).unwrap()["ran"], 1);
+        assert!(s.execute("actions.export", json!({})).is_ok());
+    }
+
+    #[test]
+    fn threshold_event_aliases_import_and_replay() {
+        for event in ["threshold", "thresholdClassEvent", "Thrs"] {
+            let descriptor = Descriptor::new("Thrs").with("Lvl ", DValue::Integer(100));
+            let mut file = photocraft_psd::atn::parse(&atn(&[(event, true, Some(descriptor))])).unwrap();
+            if event == "Thrs" {
+                file.actions[0].items[0].event = photocraft_psd::atn::AtnEvent::Code(*b"Thrs");
+            }
+            let bytes = photocraft_psd::atn::write(&file).unwrap();
+            let mut s = Session::new();
+            s.execute("file.new", json!({"width":2,"height":2,"background":"black"})).unwrap();
+            s.execute(IMPORT, json!({"format":"atn","data":crate::paint::tile::b64_encode(&bytes)})).unwrap();
+            assert_eq!(s.actions.list[0].steps[0], ("image.adjustments.threshold".into(), json!({"level":100.0})));
+            let played = s.execute("actions.play", json!({"action":"Imported"})).unwrap();
+            assert_eq!(played["ran"], 1, "{played}");
+            assert!(played.get("failed").is_none(), "{played}");
+        }
+    }
+
+    #[test]
     fn maps_photoshop_units_and_rejects_unknown_fields_and_dialogs() {
         let mut step = photocraft_psd::atn::AtnItem {
             enabled: true,
@@ -492,10 +574,8 @@ mod tests {
     fn exposure_event_aliases_import_and_replay_at_all_depths() {
         let expected = json!({"exposure":1.0,"offset":0.1,"gamma":1.2});
         for event in ["exposure", "Exps"] {
-            let descriptor = Descriptor::new("Exps")
-                .with("Exps", DValue::Double(1.0))
-                .with("Ofst", DValue::Double(0.1))
-                .with("gammaCorrection", DValue::Double(1.2));
+            let descriptor =
+                Descriptor::new("Exps").with("Exps", DValue::Double(1.0)).with("Ofst", DValue::Double(0.1)).with("gammaCorrection", DValue::Double(1.2));
             let mut file = photocraft_psd::atn::parse(&atn(&[(event, true, Some(descriptor))])).unwrap();
             if event == "Exps" {
                 file.actions[0].items[0].event = photocraft_psd::atn::AtnEvent::Code(*b"Exps");

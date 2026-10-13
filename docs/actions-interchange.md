@@ -22,6 +22,9 @@ total steps in the combined library; appending checks the serialized library aga
 Names are limited to 1,024 UTF-16 units in `.atn` and 4,096 UTF-8 bytes in `.pcactions`;
 event/command identifiers to 256 bytes and Photoshop step labels to 4,096 bytes. Unknown
 parameter keys are abbreviated in errors so hostile labels cannot create enormous UI messages.
+Import/export error details are capped at 512 UTF-8 bytes. Malformed JSON reports its error
+category and line/column without echoing file contents. Conditional steps must name a supported
+`if` condition; missing, mistyped or unknown conditions reject the file before changing the library.
 
 ## Compatibility with the Actions panel
 
