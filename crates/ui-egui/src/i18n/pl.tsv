@@ -131,6 +131,8 @@
 	Search…	Szukaj…
 	Check Spelling…	Sprawdź pisownię…
 	Find and Replace Text…	Znajdź i zamień tekst…
+	Add to Dictionary	Dodaj do słownika
+	No Spelling Suggestions	Brak sugestii pisowni
 	Fill…	Wypełnij…
 	Stroke…	Obrys…
 	Content-Aware Fill…	Wypełnienie z uwzględnieniem zawartości…
@@ -725,6 +727,10 @@
 	Breeze Dark Theme	Ciemny motyw Breeze
 	Breeze light	Breeze jasny
 	Breeze Light Theme	Jasny motyw Breeze
+	Soft dark	Łagodny ciemny
+	Soft light	Łagodny jasny
+	Soft Dark Theme	Łagodny ciemny motyw
+	Soft Light Theme	Łagodny jasny motyw
 	Next Theme	Następny motyw
 	Actions	Akcje
 	Brush Settings	Ustawienia pędzla
@@ -3685,3 +3691,4 @@ curves	Smooth	Wygładź
 	Action playback stopped	Odtwarzanie operacji zatrzymane
 	Step {step} is waiting for its dialog	Krok {step} czeka na swoje okno dialogowe
 @plural	{n} action|{n} actions	{n} operacja|{n} operacje|{n} operacji
+	Auto Add/Delete	Automatyczne dodawanie/usuwanie
