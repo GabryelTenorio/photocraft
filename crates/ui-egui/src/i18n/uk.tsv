@@ -248,6 +248,8 @@
 	Check Spelling	Перевірити правопис
 	Language Options	Мовні параметри
 	Find and Replace Text…	Знайти та замінити текст…
+	Add to Dictionary	Додати до словника
+	No Spelling Suggestions	Немає варіантів написання
 	Paste Lorem Ipsum	Вставити Lorem Ipsum
 	Glyphs Panel	Панель гліфів
 	Type Styles	Текстові стилі
@@ -1163,6 +1165,8 @@
 	Offset	Зсув
 	Reset Transform	Скинути трансформацію
 	Rotate	Повернути
+	Set horizontal skew	Задати горизонтальний скіс
+	Set vertical skew	Задати вертикальний скіс
 	Flip Horizontal	Віддзеркалити горизонтально
 	Flip Vertical	Віддзеркалити вертикально
 	Frame Sync	Синхронізація кадрів
@@ -1410,6 +1414,10 @@
 	Breeze Dark Theme	Темна тема Breeze
 	Breeze light	Breeze світла
 	Breeze Light Theme	Світла тема Breeze
+	Soft dark	М'яка темна
+	Soft light	М'яка світла
+	Soft Dark Theme	М'яка темна тема
+	Soft Light Theme	М'яка світла тема
 	Adwaita Light Theme	Світла тема Adwaita
 	Adwaita Dark Theme	Темна тема Adwaita
 	Adwaita	Adwaita
@@ -1819,6 +1827,14 @@
 	Border…	Межа…
 	Bottom Edges	Нижні краї
 	Browse…	Огляд…
+	Source Files	Вихідні файли
+	Use:	Використовувати:
+	Files	Файли
+	Folder	Папка
+	Add Open Files	Додати відкриті файли
+	Sort By Name	Сортувати за назвою
+	Attempt to Automatically Align Source Images	Спробувати автоматично вирівняти вихідні зображення
+	Create Smart Object after Loading Layers	Створити смартоб'єкт після завантаження шарів
 	Canvas Guides	Напрямні полотна
 	Character Styles Panel	Панель стилів символів
 	Clear Canvas Guides	Очистити напрямні полотна
@@ -3786,3 +3802,4 @@ curves	Smooth	Згладити
 	Action playback stopped	Відтворення операції зупинено
 	Step {step} is waiting for its dialog	Крок {step} очікує на свій діалог
 @plural	{n} action|{n} actions	{n} операція|{n} операції|{n} операцій
+	Auto Add/Delete	Автододавання/видалення
