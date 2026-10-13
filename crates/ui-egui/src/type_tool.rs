@@ -985,11 +985,11 @@ fn draw_mask_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXfor
 }
 
 /// Font families: bundled, system, and those the host serves (`photocraft_text::served`, fetched
-/// when picked). Cached until fonts are registered or the served catalog changes.
+/// when picked). Cached until the shared engine registers fonts or the served catalog changes.
 pub fn families() -> Arc<Vec<String>> {
     type Cached = Option<((u64, u64), Arc<Vec<String>>)>;
     static FAMILIES: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
-    let key = (photocraft_text::fonts::generation(), photocraft_text::served::generation());
+    let key = (photocraft_text::fonts::shared_generation(), photocraft_text::served::generation());
     let mut cached = FAMILIES.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((k, v)) = cached.as_ref()
         && *k == key
@@ -1027,11 +1027,11 @@ pub fn sync_font_names(ctx: &egui::Context, show_in_english: bool) {
     });
 }
 
-/// The fonts' localized family names, keyed by family. Cached until fonts are registered.
+/// The fonts' localized family names, keyed by family. Cached until the shared engine registers fonts.
 fn localized_families() -> Arc<HashMap<String, String>> {
     type Cached = Option<(u64, Arc<HashMap<String, String>>)>;
     static LOCALIZED: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
-    let key = photocraft_text::fonts::generation();
+    let key = photocraft_text::fonts::shared_generation();
     let mut cached = LOCALIZED.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((k, v)) = cached.as_ref()
         && *k == key
@@ -1733,8 +1733,14 @@ fn num_field(ui: &mut egui::Ui, label: &str, tip: &str, v: f32, range: std::ops:
         ui.spacing_mut().item_spacing.x = 4.0;
         let (r, resp) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
         ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, crate::theme::semibold(10.0), t.text_dim);
-        crate::widgets::scrub_label(ui, &resp.on_hover_text(tip));
-        if crate::widgets::value_field(ui, &mut v, range, unit, width).changed() {
+        crate::widgets::scrub_label(ui, &resp.on_hover_text(tl!(tip)));
+        let response = crate::widgets::value_field(ui, &mut v, range, unit, width);
+        response.widget_info(|| {
+            let mut info = egui::WidgetInfo::drag_value(ui.is_enabled(), f64::from(v));
+            info.label = Some(tl!(tip).to_owned());
+            info
+        });
+        if response.changed() {
             out = Some(v);
         }
     });
