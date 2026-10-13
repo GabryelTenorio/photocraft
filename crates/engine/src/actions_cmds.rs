@@ -53,7 +53,7 @@ impl Action {
     }
 
     /// Apply `f` to every per-step index set (`disabled`, `dialogs`) after steps moved.
-    fn remap_steps(&mut self, f: impl Fn(usize) -> Option<usize>) {
+    pub(crate) fn remap_steps(&mut self, f: impl Fn(usize) -> Option<usize>) {
         self.disabled = self.disabled.iter().filter_map(|&i| f(i)).collect();
         self.dialogs = self.dialogs.iter().filter_map(|&i| f(i)).collect();
     }
@@ -115,10 +115,11 @@ pub fn replayable(id: &str) -> bool {
             && (shell_view_command(id) || shell_save_command(id) || crate::commands::find(id).is_some_and(|c| c.journal)))
 }
 
-/// File › Save and Save As, recorded by the desktop shell once the save has a path (#2032).
-/// The shell replays them; batch and droplets write to their destination folder instead.
+/// File › Save, Save As and Save a Copy, recorded by the desktop shell once the save has a path
+/// (#2032, #4373). The shell replays them; batch and droplets write to their destination folder
+/// instead.
 pub fn shell_save_command(id: &str) -> bool {
-    matches!(id, "file.save" | "file.saveAs")
+    matches!(id, "file.save" | "file.saveAs" | "file.saveACopy")
 }
 
 /// View-only menu commands recorded by the desktop shell. Headless playback reports
@@ -275,7 +276,7 @@ pub fn pending_steps(s: &Session, action: usize) -> impl Iterator<Item = &(Strin
     s.journal.iter().skip(from).filter(|(id, _)| replayable(id))
 }
 
-fn flush_recording(s: &mut Session) -> Result<()> {
+pub(crate) fn flush_recording(s: &mut Session) -> Result<()> {
     let Some((_, idx)) = s.actions.recording else { return Ok(()) };
     if idx >= s.actions.list.len() {
         return Err(bad("actions.stop", "the action being recorded no longer exists"));
@@ -353,7 +354,7 @@ pub fn finish_playback(s: &mut Session, recording: Option<(usize, usize)>, actio
 /// Nested playback returns a structured failure even though the command itself succeeded.
 /// Promote it to the caller's failed step so no later parent steps run after a child fails.
 pub fn nested_failure(id: &str, value: &Value) -> Option<String> {
-    (id == "actions.play").then(|| value.get("failed")).flatten().map(|failure| {
+    (id == "actions.play" || id == "actions.conditional").then(|| value.get("failed")).flatten().map(|failure| {
         format!(
             "action `{}` step {} failed: {}",
             value.get("action").and_then(Value::as_str).unwrap_or(""),
@@ -374,7 +375,7 @@ fn play(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
-fn not_playing(s: &Session, cmd: &str) -> Result<()> {
+pub(crate) fn not_playing(s: &Session, cmd: &str) -> Result<()> {
     if s.actions.playing > 0 { Err(bad(cmd, "cannot edit actions during playback")) } else { Ok(()) }
 }
 
