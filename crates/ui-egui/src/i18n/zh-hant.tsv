@@ -138,6 +138,8 @@
 	Search…	搜尋…
 	Check Spelling…	拼字檢查…
 	Find and Replace Text…	尋找並取代文字…
+	Add to Dictionary	加入字典
+	No Spelling Suggestions	沒有拼字建議
 	Fill…	填滿…
 	Stroke…	筆畫…
 	Content-Aware Fill…	內容感知填滿…
@@ -535,6 +537,9 @@
 	Blur	模糊
 	Blur Gallery	模糊收藏館
 	Field Blur…	區域模糊…
+# Field Blur pins (#3373)
+	No pin selected	未選取圖釘
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	按一下影像即可新增圖釘；拖移圖釘可移動它，拖移其圓環可變更模糊程度。按 Delete 鍵刪除所選圖釘。
 	Iris Blur…	光圈模糊…
 	Tilt-Shift…	傾斜偏移…
 	Path Blur…	路徑模糊…
@@ -851,6 +856,12 @@
 	Baseline shift	基線位移
 	Basic	基本
 	Before (Y)	之前 (Y)
+	Save Settings…	儲存設定…
+	Load Settings…	載入設定…
+	Save these settings as a Camera Raw .xmp file	將這些設定儲存為 Camera Raw .xmp 檔案
+	Load settings from a Camera Raw .xmp file	從 Camera Raw .xmp 檔案載入設定
+	Loaded Camera Raw settings from {file}	已從 {file} 載入 Camera Raw 設定
+	Loaded Camera Raw settings from {file} ({n} not supported)	已從 {file} 載入 Camera Raw 設定（{n} 項不支援）
 	Begin recording	開始記錄
 	Bend:	彎曲：
 	Bicubic	雙三次
@@ -2648,6 +2659,9 @@ curves	Smooth	平滑
 	Remove after each stroke	每次描邊後移除
 	Apply the removal ({key})	套用移除 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	待移除的描邊：{n}（Enter 套用，Esc 取消）
+	Clear Brush Controls	清除筆刷控制項
+	Reset All Locked Settings	重設所有鎖定的設定
+	Copy Texture to Other Tools	複製紋理至其他工具
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	載入動作…
@@ -2669,6 +2683,4 @@ curves	Smooth	平滑
 	Action playback stopped	動作播放已停止
 	Step {step} is waiting for its dialog	步驟 {step} 正在等待其對話框
 @plural	{n} action|{n} actions	{n} 個動作
-# Field Blur pins (#3373)
-	No pin selected	未選取圖釘
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	按一下影像即可新增圖釘；拖移圖釘可移動它，拖移其圓環可變更模糊程度。按 Delete 鍵刪除所選圖釘。
+	Auto Add/Delete	自動增加/刪除

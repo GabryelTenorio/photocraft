@@ -131,6 +131,8 @@
 	Search…	Cerca…
 	Check Spelling…	Controlla ortografia…
 	Find and Replace Text…	Trova e sostituisci testo…
+	Add to Dictionary	Aggiungi al dizionario
+	No Spelling Suggestions	Nessun suggerimento ortografico
 	Fill…	Riempi…
 	Stroke…	Traccia…
 	Content-Aware Fill…	Riempimento in base al contenuto…
@@ -527,6 +529,9 @@
 	Blur	Sfocatura
 	Blur Gallery	Galleria sfocatura
 	Field Blur…	Sfocatura campo…
+# Field Blur pins (#3373)
+	No pin selected	Nessuna puntina selezionata
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Fai clic sull’immagine per aggiungere una puntina; trascina una puntina per spostarla o il suo anello per cambiare la sfocatura. Canc rimuove la puntina selezionata.
 	Iris Blur…	Sfocatura diaframma…
 	Tilt-Shift…	Miniatura…
 	Path Blur…	Sfocatura tracciato…
@@ -844,6 +849,12 @@
 	Baseline shift	Scostamento linea base
 	Basic	Base
 	Before (Y)	Prima (Y)
+	Save Settings…	Salva impostazioni…
+	Load Settings…	Carica impostazioni…
+	Save these settings as a Camera Raw .xmp file	Salva queste impostazioni come file .xmp di Camera Raw
+	Load settings from a Camera Raw .xmp file	Carica le impostazioni da un file .xmp di Camera Raw
+	Loaded Camera Raw settings from {file}	Impostazioni Camera Raw caricate da {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Impostazioni Camera Raw caricate da {file} ({n} non supportate)
 	Begin recording	Inizia registrazione
 	Bend:	Curvatura:
 	Bicubic	Bicubica
@@ -4022,6 +4033,9 @@ navigator	Zoom	Zoom
 	Remove after each stroke	Rimuovi dopo ogni tratto
 	Apply the removal ({key})	Applica la rimozione ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Tratti da rimuovere: {n} (Invio applica, Esc annulla)
+	Clear Brush Controls	Cancella controlli pennello
+	Reset All Locked Settings	Ripristina tutte le impostazioni bloccate
+	Copy Texture to Other Tools	Copia texture su altri strumenti
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Carica azioni…
@@ -4043,6 +4057,4 @@ navigator	Zoom	Zoom
 	Action playback stopped	Esecuzione dell’azione interrotta
 	Step {step} is waiting for its dialog	Il passaggio {step} attende la sua finestra di dialogo
 @plural	{n} action|{n} actions	{n} azione|{n} azioni
-# Field Blur pins (#3373)
-	No pin selected	Nessuna puntina selezionata
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Fai clic sull’immagine per aggiungere una puntina; trascina una puntina per spostarla o il suo anello per cambiare la sfocatura. Canc rimuove la puntina selezionata.
+	Auto Add/Delete	Aggiungi/elimina automaticamente
