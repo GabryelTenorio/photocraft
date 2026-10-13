@@ -1428,13 +1428,8 @@ fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
 }
 
 /// Writes `doc` to `path` as a copy (Save a Copy, and its replayed action step): the document's
-/// path and saved state are untouched. `tga_bits` is the Targa answer, when there is one.
-pub(crate) fn write_copy(
-    app: &mut PhotocraftApp,
-    doc: &photocraft_doc::Document,
-    path: &str,
-    choices: crate::SaveChoices,
-) -> Result<Value, String> {
+/// path and saved state are untouched. `choices` are the Targa and JPEG answers, when there are any.
+pub(crate) fn write_copy(app: &mut PhotocraftApp, doc: &photocraft_doc::Document, path: &str, choices: crate::SaveChoices) -> Result<Value, String> {
     let settings = choices.apply(app.save_settings());
     let export = app.services.export.as_ref().ok_or("no exporter configured")?;
     let (bytes, warnings) = export(doc, path, &settings)?;

@@ -63,6 +63,41 @@ fn save_as_to_a_jpeg_asks_for_jpeg_options() {
     assert_eq!(h.state().session.active().unwrap().path.as_deref(), Some("p.jpg"));
 }
 
+/// Re-saving an opened JPEG starts at the file's own quality (`file_encoding`, as File › Save
+/// keeps it since #4032), not the Export preference's; left there, OK writes that quality exactly
+/// rather than its nearest step on the 0–12 scale (95 would come back as 92). Save a Copy does the
+/// same; a quality changed in the prompt is written on the scale.
+#[test]
+fn resaving_an_opened_jpeg_starts_at_its_own_quality() {
+    let (mut h, writes) = jpeg_app("copy.jpg");
+    std::sync::Arc::make_mut(&mut h.state_mut().session.active_mut().unwrap().doc).file_encoding.jpeg_quality = Some(95);
+    h.state_mut().save_as(Some("p.jpg".into())).unwrap();
+    h.run_steps(2);
+    assert_eq!(h.state().jpeg_options.as_ref().map(|p| p.quality), Some(11), "95 is 11 on Photoshop's scale");
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    let ctx = h.ctx.clone();
+    crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
+    h.run_steps(3);
+    assert_eq!(h.state().jpeg_options.as_ref().map(|p| (p.quality, p.copy)), Some((11, true)));
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    h.state_mut().save_as(Some("q.jpg".into())).unwrap();
+    h.run_steps(2);
+    h.state_mut().jpeg_options.as_mut().unwrap().quality = 12;
+    h.run_steps(2);
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    assert_eq!(
+        writes.borrow().as_slice(),
+        &[
+            ("p.jpg".to_string(), asked(Some(95), JpegFormat::Baseline)),
+            ("copy.jpg".to_string(), asked(Some(95), JpegFormat::Baseline)),
+            ("q.jpg".to_string(), asked(pct(12), JpegFormat::Baseline)),
+        ]
+    );
+}
+
 /// The quality and format chosen in the prompt are the ones written; Cancel writes nothing.
 #[test]
 fn jpeg_options_writes_the_choice_or_cancels() {
@@ -130,10 +165,10 @@ fn save_a_copy_to_a_jpeg_asks_and_keeps_the_document_unsaved() {
     assert_eq!(st.path, None);
 }
 
-/// An action being recorded keeps a JPEG Save As with its answer (#2032) and plays it back
-/// without asking; the dialog's Save a Copy isn't recorded.
+/// An action being recorded keeps a JPEG Save As or Save a Copy with its answer (#2032, #4373)
+/// and plays them back without asking.
 #[test]
-fn recorded_jpeg_save_as_keeps_its_options_and_replays_without_asking() {
+fn recorded_jpeg_saves_keep_their_options_and_replay_without_asking() {
     let (mut h, writes) = jpeg_app("copy.jpg");
     let ctx = h.ctx.clone();
     h.state_mut().run("actions.record", json!({})).unwrap();
@@ -145,16 +180,27 @@ fn recorded_jpeg_save_as_keeps_its_options_and_replays_without_asking() {
     h.run_steps(3);
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    h.state_mut().jpeg_options.as_mut().unwrap().quality = 6;
+    h.run_steps(2);
     h.key_press(Key::Enter);
     h.run_steps(3);
     h.state_mut().run("actions.stop", json!({})).unwrap();
     let steps = &h.state().session.actions.list[0].steps;
-    assert_eq!(steps, &[("file.saveAs".into(), json!({"path": "p.jpg", "quality": 10, "jpegFormat": "optimized"}))]);
+    assert_eq!(
+        steps,
+        &[
+            ("file.saveAs".into(), json!({"path": "p.jpg", "quality": 10, "jpegFormat": "optimized"})),
+            ("file.saveACopy".into(), json!({"path": "copy.jpg", "quality": 6, "jpegFormat": "baseline"})),
+        ]
+    );
+    let expected = [("p.jpg".to_string(), asked(pct(10), JpegFormat::Optimized)), ("copy.jpg".to_string(), asked(pct(6), JpegFormat::Baseline))];
+    assert_eq!(writes.borrow().as_slice(), &expected);
     writes.borrow_mut().clear();
     let played = h.state_mut().run("actions.play", json!({"action": 0})).unwrap();
     assert!(played.get("failed").is_none(), "{played}");
     assert!(h.state().jpeg_options.is_none(), "playback doesn't ask");
-    assert_eq!(writes.borrow().as_slice(), &[("p.jpg".to_string(), asked(pct(10), JpegFormat::Optimized))]);
+    assert_eq!(writes.borrow().as_slice(), &expected);
+    assert_eq!(h.state().session.active().unwrap().path.as_deref(), Some("p.jpg"), "the replayed copy leaves the document's file");
 }
 
 /// Closing an unsaved document whose save goes to a JPEG waits behind JPEG Options, then closes.

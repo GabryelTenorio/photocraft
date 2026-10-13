@@ -2,7 +2,8 @@
 //! JPEG, as Photoshop's JPEG Options does. Quality is Photoshop's 0–12 scale (Low 0–4, Medium 5–7,
 //! High 8–9, Maximum 10–12), mapped to the encoder's 1–100 by
 //! `photocraft_engine::file_cmds::jpeg_quality`; Format Options are Baseline ("Standard"),
-//! Baseline Optimized and Progressive. Matte and the size preview aren't offered yet.
+//! Baseline Optimized and Progressive. Matte and the size preview aren't offered yet. Re-saving an
+//! opened JPEG starts at the file's own quality, as File › Save keeps it (#4032).
 //!
 //! The save is parked in [`Prompt`] while the modal is up (egui is immediate-mode) and written
 //! once answered. Cancel drops the save. Scripts skip the prompt by passing `quality` or
@@ -85,6 +86,9 @@ pub struct Prompt {
     /// Quality, 0–12.
     pub quality: u8,
     pub format: JpegFormat,
+    /// The opened JPEG's own encoder quality (1–100, `Document::file_encoding`) the prompt starts
+    /// from; `None` starts from the Export preferences.
+    pub own_quality: Option<u8>,
     /// Save a Copy: the document keeps its path and unsaved changes.
     pub copy: bool,
     /// The step the answered save is recorded as, so an action being recorded keeps it:
@@ -102,15 +106,17 @@ pub fn wants_prompt(app: &PhotocraftApp, path: &str) -> bool {
     is_jpeg_path(path) && app.session.active().is_some()
 }
 
-/// Parks the save behind the prompt, starting at the Export preferences' JPEG quality (the one
-/// Quick Export uses). A prompt already waiting is never replaced.
+/// Parks the save behind the prompt, starting at the opened JPEG's own quality, or else at the
+/// Export preferences' JPEG quality (the one Quick Export uses). A prompt already waiting is never
+/// replaced.
 pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: &'static str) -> Result<(), String> {
     if app.save_options_open() {
         return Err(crate::SAVE_OPTIONS_OPEN.into());
     }
     let doc = app.active_doc_id()?;
-    let quality = quality_from_percent(app.session.prefs().export.jpeg_quality);
-    app.jpeg_options = Some(Prompt { doc, path, quality, format: JpegFormat::Baseline, copy, record });
+    let own_quality = app.session.active().and_then(|st| st.doc.file_encoding.jpeg_quality).map(|q| q.clamp(1, 100));
+    let quality = quality_from_percent(own_quality.map_or(app.session.prefs().export.jpeg_quality, u32::from));
+    app.jpeg_options = Some(Prompt { doc, path, quality, format: JpegFormat::Baseline, own_quality, copy, record });
     Ok(())
 }
 
@@ -168,7 +174,12 @@ pub fn confirm(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let choice = JpegChoice { quality: Some(p.quality), format: p.format };
     let mut step = serde_json::json!({"path": p.path});
     choice.record(&mut step);
-    let settings = choice.apply(app.save_settings());
+    let mut settings = choice.apply(app.save_settings());
+    // Left where it started, an opened JPEG keeps its own quality exactly rather than the nearest
+    // step on the 0–12 scale (95 would be written as 92).
+    if let Some(q) = p.own_quality.filter(|&q| quality_from_percent(u32::from(q)) == p.quality) {
+        settings.jpeg_quality = Some(q);
+    }
     app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, (p.record, step));
 }
 

@@ -136,7 +136,7 @@ id = "FILE-215-19"
 target = "Save As JPEG opens a JPEG Options dialog (quality 0-12, format options)"
 status = "done"
 issue = 215
-note = "jpeg_options_ui.rs: Save As and Save a Copy to a JPEG ask for Quality 0-12 (Low/Medium/High/Maximum) and Baseline / Baseline Optimized / Progressive before writing; scripts pass quality/jpegFormat (file.saveAs, file.saveACopy, app.save, CLI --jpeg-format) and recorded actions replay the answer (discard_ui/tests/jpeg_tests.rs, codecs roundtrip jpeg_format_options_round_trip). No Matte or size preview yet"
+note = "jpeg_options_ui.rs: Save As and Save a Copy to a JPEG ask for Quality 0-12 (Low/Medium/High/Maximum) and Baseline / Baseline Optimized / Progressive before writing, starting at an opened JPEG's own quality (file_encoding) or else the Export preference; scripts pass quality/jpegFormat (file.saveAs, file.saveACopy, app.save, CLI --jpeg-format) and recorded actions replay the answer (discard_ui/tests/jpeg_tests.rs, codecs roundtrip jpeg_format_options_round_trip). No Matte or size preview yet"
 
 [[item]]
 id = "FILE-215-20"
