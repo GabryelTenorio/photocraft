@@ -3607,6 +3607,14 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 }
                 Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => egui::CursorIcon::Text,
                 Tool::MagneticLasso => crate::magnetic_lasso_ui::cursor(app, &painter, p, xf.zoom),
+                Tool::Pen | Tool::CurvaturePen
+                    if {
+                        let [x, y] = xf.to_doc(p);
+                        crate::vector_ui::closes_path_at(app, tool, x, y)
+                    } =>
+                {
+                    crate::tool_cursor::close_path(&painter, p)
+                }
                 Tool::RedEye => {
                     let pupil = app.ui.tool_options.red_eye_pupil_size.clamp(1.0, 100.0);
                     let r_doc = photocraft_algo::redeye::search_radius(pupil);
