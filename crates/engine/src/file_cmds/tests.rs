@@ -759,10 +759,12 @@ fn load_files_into_stack_and_image_processor_and_batch() {
     // A recorded Quick Export writes to the current document path, but Batch owns
     // the destination. Replaying it would fail for scratch documents with no save path.
     let quick_out = join(&dir, "batch-with-quick-export");
-    let r = s.execute(
-        "file.automate.batch",
-        json!({"steps": [["image.adjustments.invert", {}], ["file.export.quickExport", {}]], "input": input, "output": quick_out, "format": "png"}),
-    ).unwrap();
+    let r = s
+        .execute(
+            "file.automate.batch",
+            json!({"steps": [["image.adjustments.invert", {}], ["file.export.quickExport", {}]], "input": input, "output": quick_out, "format": "png"}),
+        )
+        .unwrap();
     assert_eq!(r["files"].as_array().unwrap().len(), 2, "{r}");
     assert!(r["errors"].as_array().unwrap().is_empty(), "{r}");
     assert!(std::path::Path::new(&join(&quick_out, "a.png")).is_file());
