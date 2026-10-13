@@ -4,6 +4,8 @@
 
 use std::collections::HashMap;
 
+mod x11_colors;
+
 use crate::SampleType;
 use crate::error::CodecError;
 use crate::format::Format;
@@ -72,12 +74,12 @@ fn c_strings(bytes: &[u8]) -> Result<Vec<Vec<u8>>, CodecError> {
 fn xpm2_lines(bytes: &[u8]) -> Result<Vec<Vec<u8>>, CodecError> {
     let mut input = bytes.split(|&b| b == b'\n');
     let header = input.next().ok_or_else(|| bad("missing XPM2 marker"))?;
-    if header.strip_suffix(&[b'\r']).unwrap_or(header) != b"! XPM2" {
+    if header.strip_suffix(b"\r").unwrap_or(header) != b"! XPM2" {
         return Err(bad("not an XPM2 image"));
     }
     let mut lines = Vec::new();
     for raw in input {
-        let line = raw.strip_suffix(&[b'\r']).unwrap_or(raw);
+        let line = raw.strip_suffix(b"\r").unwrap_or(raw);
         // The header may be preceded by comments and blank lines. After the
         // header, a leading '!' is allowed as a palette key or pixel value.
         if lines.is_empty() && (line.is_empty() || line.starts_with(b"!")) {
@@ -96,44 +98,18 @@ fn channel(hex: &str) -> Option<u8> {
 
 fn named(name: &str) -> Option<[u8; 3]> {
     let s = name.to_ascii_lowercase().replace([' ', '-', '_'], "");
-    if let Some(percent) = s.strip_prefix("gray").or_else(|| s.strip_prefix("grey"))
-        && let Ok(pct) = percent.parse::<u32>()
-        && pct <= 100
-    {
-        let v = ((pct * 255 + 50) / 100) as u8;
-        return Some([v, v, v]);
+    // XPM imports X11 names, whose RGB values differ from CSS for names
+    // such as gray, maroon and purple. Keep these exact rather than guessing.
+    if let Ok(index) = x11_colors::X11_COLORS.binary_search_by_key(&s.as_str(), |(name, _)| *name) {
+        return Some(x11_colors::X11_COLORS[index].1);
     }
+    // Retain useful web color aliases not present in the X11 database.
     Some(match s.as_str() {
-        "black" => [0, 0, 0],
-        "white" => [255, 255, 255],
-        "red" => [255, 0, 0],
-        "green" => [0, 255, 0],
-        "blue" => [0, 0, 255],
-        "yellow" => [255, 255, 0],
-        "cyan" | "aqua" => [0, 255, 255],
-        "magenta" | "fuchsia" => [255, 0, 255],
-        "gray" | "grey" => [128, 128, 128],
         "silver" => [192, 192, 192],
-        "maroon" => [128, 0, 0],
         "olive" => [128, 128, 0],
-        "purple" => [128, 0, 128],
         "teal" => [0, 128, 128],
-        "navy" => [0, 0, 128],
-        "lime" => [0, 255, 0],
-        "orange" => [255, 165, 0],
-        "pink" => [255, 192, 203],
-        "brown" => [165, 42, 42],
-        "lightgray" | "lightgrey" => [211, 211, 211],
-        "darkgray" | "darkgrey" => [169, 169, 169],
-        "darkblue" => [0, 0, 139],
-        "lightblue" => [173, 216, 230],
-        "darkred" => [139, 0, 0],
-        "darkgreen" => [0, 100, 0],
-        "gold" => [255, 215, 0],
-        "ivory" => [255, 255, 240],
-        "beige" => [245, 245, 220],
-        "snow" => [255, 250, 250],
-        "ghostwhite" => [248, 248, 255],
+        "fuchsia" => [255, 0, 255],
+        "navyblue" => [0, 0, 128],
         _ => return None,
     })
 }
@@ -144,7 +120,8 @@ fn color(name: &str) -> Option<[u8; 4]> {
     }
     let rgb = if let Some(hex) = name.strip_prefix('#') {
         // UTF-8 byte lengths can match a supported hex width while slicing would panic.
-        if !hex.is_ascii() {
+        // `from_str_radix` would also take a leading `+`: accept hex digits only.
+        if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return None;
         }
         let digits = match hex.len() {

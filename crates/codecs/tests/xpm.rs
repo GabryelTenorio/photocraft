@@ -40,7 +40,8 @@ fn rejects_truncation_unsupported_colours_and_unknown_keys() {
     for bytes in [
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c None\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c NotAColor\", \"a\" };"[..],
-        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #aé\", \"a\" };"[..],
+        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #a\xC3\xA9\", \"a\" };"[..],
+        &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c #+f0000\", \"a\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c black\", \"z\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 1 1\", \"a c black\", \"aa\" };"[..],
         &b"/* XPM */\nstatic char *i[] = { \"1 1 2 1\", \"a c black\", \"a c white\", \"a\" };"[..],
@@ -64,6 +65,23 @@ static char *i[] = {
 };"#;
     let image = decode(xpm).unwrap();
     assert_eq!(image.data(), &[211, 211, 211, 255, 0, 0, 139, 255, 173, 216, 230, 255, 0, 255, 0, 255]);
+}
+
+#[test]
+fn named_x11_colors_use_x11_not_css_values() {
+    let bytes = br#"/* XPM */
+static char *icon[] = {
+"6 1 6 1",
+"a c gray",
+"b c maroon",
+"c c purple",
+"d c LightGoldenrodYellow",
+"e c DarkSlateGray4",
+"f c Ghost White",
+"abcdef"
+};"#;
+    let image = decode(bytes).unwrap();
+    assert_eq!(image.data(), &[190, 190, 190, 255, 176, 48, 96, 255, 160, 32, 240, 255, 250, 250, 210, 255, 82, 139, 139, 255, 248, 248, 255, 255,]);
 }
 
 #[test]
