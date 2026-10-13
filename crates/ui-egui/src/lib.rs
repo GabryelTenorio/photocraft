@@ -171,14 +171,23 @@ pub mod scrollbars;
 mod scrub_wrap;
 pub mod select_mask_view;
 pub mod served_fonts;
+mod shape_canvas;
 pub mod shape_dialog;
 pub(crate) mod shape_fill_ui;
+mod shape_modes;
+mod shape_options;
+mod shape_paint_ui;
 pub mod shape_stroke_ui;
 pub mod shortcut_dispatch;
 pub mod shortcuts;
 mod single_line_drag;
 mod sizing;
 pub mod slice_ui;
+#[cfg(not(target_arch = "wasm32"))]
+mod smart_svg_ui;
+#[cfg(target_arch = "wasm32")]
+#[path = "smart_svg_ui/browser.rs"]
+mod smart_svg_ui;
 pub mod smart_ui;
 pub mod snap_ui;
 pub(crate) mod solid_fill_ui;
@@ -215,6 +224,7 @@ pub mod type_panels_ui;
 pub mod type_tool;
 mod type_transform;
 mod variables_ui;
+mod vector_paste_ui;
 pub mod vector_ui;
 pub mod view_cmds;
 pub mod vp_ui;
@@ -338,6 +348,36 @@ pub type EncodePngFn = Box<dyn Fn(u32, u32, &[u8]) -> Result<Vec<u8>, String>>;
 pub type ClipboardSetFn = Box<dyn FnMut(u32, u32, &[u8]) -> Result<(), String>>;
 /// Read an RGBA8 image from the OS clipboard.
 pub type ClipboardGetFn = Box<dyn FnMut() -> Option<(u32, u32, Vec<u8>)>>;
+/// Upper bound checked before allocating native vector clipboard data.
+pub use photocraft_engine::vector_paste_cmds::MAX_VECTOR_CLIPBOARD_BYTES;
+/// Clipboard representation selected while one native clipboard lock is held.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VectorClipboardSource {
+    RegisteredSvg,
+    SvgText,
+}
+/// Immutable vector bytes captured only in response to an explicit paste.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VectorClipboard {
+    pub svg: Vec<u8>,
+    pub source: VectorClipboardSource,
+    pub sequence: Option<u32>,
+}
+pub type ClipboardGetVectorFn = Box<dyn FnMut() -> Result<Option<VectorClipboard>, String>>;
+/// An editor selected by the user, never an executable supplied by document metadata.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExternalSvgEditor {
+    VectorCraft,
+    Illustrator,
+    Program(String),
+}
+
+/// A native editing session supplies stable saved source snapshots without blocking the UI.
+pub trait ExternalSvgSession {
+    fn poll(&mut self) -> Option<Result<Vec<u8>, String>>;
+}
+
+pub type OpenExternalSvgFn = Box<dyn FnMut(ExternalSvgEditor, std::sync::Arc<Vec<u8>>) -> Result<Box<dyn ExternalSvgSession>, String>>;
 /// Shared queue of (file name, bytes) delivered asynchronously.
 pub type Inbox = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
 /// Read the saved preferences text (`None` when there is none yet).
@@ -392,6 +432,8 @@ pub type CaptionStyleFn = Box<dyn Fn(&egui::Context) -> CaptionStyle>;
 /// I/O dependencies.
 #[derive(Default)]
 pub struct Services {
+    /// Explicit interactive SVG smart-object editing; unavailable in browser and automation.
+    pub open_external_svg: Option<OpenExternalSvgFn>,
     /// User-initiated desktop/browser pixel sampling.
     pub screen_pick: Option<screen_picker::Service>,
     /// Decode a file's bytes into a document (PSD, PNG, JPEG, …).
@@ -430,6 +472,8 @@ pub struct Services {
     /// OS clipboard images: copies go out, screenshots and images from other apps come in.
     pub clipboard_set_image: Option<ClipboardSetFn>,
     pub clipboard_get_image: Option<ClipboardGetFn>,
+    /// SVG clipboard data. Never polled during rendering or command enablement.
+    pub clipboard_get_vector: Option<ClipboardGetVectorFn>,
     /// Preferences persistence: the platform config directory on native, browser storage on
     /// the web (see `prefs_ui`).
     pub load_prefs: Option<LoadTextFn>,
@@ -647,6 +691,8 @@ pub struct PhotocraftApp {
     pub(crate) transform_preview: Option<transform_tool::TransformPreview>,
     /// Move-tool ⇧/⌥ drag state (move_mods).
     pub(crate) move_mods: move_mods::MoveDrag,
+    /// Live rectangle corner-radius gesture (shape_canvas).
+    pub(crate) shape_canvas: shape_canvas::State,
     /// Cached document for a modal text Style Options color preview.
     pub(crate) text_style_preview: Option<type_panels_ui::color_picker::Preview>,
     /// Live Layer Style dialog preview: (key over revision + style fields, preview or validation error).
@@ -682,6 +728,9 @@ pub struct PhotocraftApp {
     /// The OS clipboard was already read for the paste in flight (Edit › Paste positions it first),
     /// so `run` doesn't read it a second time.
     pub(crate) clip_read_for_paste: bool,
+    /// Captured vector source awaiting a Paste As choice; never persisted.
+    pub(crate) vector_paste: Option<vector_paste_ui::PendingPaste>,
+    pub(crate) smart_svg: smart_svg_ui::State,
     /// Pointer position over the canvas (document px), for the Info panel and status bar.
     pub(crate) hover_doc: Option<[f64; 2]>,
     /// Layer hovered in the Layers panel, outlined on the canvas.
@@ -837,8 +886,11 @@ impl PhotocraftApp {
             os_clip_sig: None,
             clip_external: false,
             clip_read_for_paste: false,
+            vector_paste: None,
+            smart_svg: Default::default(),
             transform_preview: None,
             move_mods: Default::default(),
+            shape_canvas: Default::default(),
             style_preview: None,
             text_style_preview: None,
             solid_fill_preview: None,
@@ -979,6 +1031,12 @@ impl PhotocraftApp {
         if let Some(result) = panel_docking::command(self, id, &params) {
             return result;
         }
+        if !clip_read && let Some(result) = vector_paste_ui::intercept(self, id, &params) {
+            return result;
+        }
+        if let Some(result) = smart_svg_ui::intercept(self, id, &params) {
+            return result;
+        }
         if let Some(r) = transform_tool::intercept(self, id) {
             return r;
         }
@@ -1075,6 +1133,13 @@ impl PhotocraftApp {
         self.perf.command_ms = gpu_canvas::now_ms() - t0;
         match &r {
             Ok(_) => {
+                if id == "channel.target" {
+                    // An explicit Channels selection replaces the Layers thumbnail target.
+                    // Other commands keep thumbnail-only mask selection on Composite.
+                    let target = self.session.active().map(|st| st.channel_view.target);
+                    self.ui.mask_target = target == Some(photocraft_engine::channel_cmds::ChannelTarget::LayerMask);
+                    self.ui.vector_mask_target = target == Some(photocraft_engine::channel_cmds::ChannelTarget::VectorMask);
+                }
                 self.sync_views();
                 let removed = self.session.take_samplers_removed();
                 if removed > 0 {
@@ -1287,6 +1352,12 @@ impl PhotocraftApp {
     /// [`Self::save_as`], writing a Targa with `tga_bits` per pixel when given (no Targa Options
     /// prompt): `file.save` and `file.saveAs` with `tgaBits`.
     pub fn save_as_with(&mut self, path: Option<String>, tga_bits: Option<photocraft_io::TgaBits>) -> Result<Value, String> {
+        if self.smart_svg.modal_open() {
+            return Err("Answer Edit SVG Contents before starting a save".into());
+        }
+        if self.vector_paste.is_some() {
+            return Err("Answer Paste As before starting a save".into());
+        }
         if self.save_options_open() {
             return Err("Answer TIFF or Targa Options before starting another save".into());
         }
@@ -1331,6 +1402,12 @@ impl PhotocraftApp {
 
     /// [`Self::save_as_with`] once the path is known.
     fn save_to(&mut self, path: String, tga_bits: Option<photocraft_io::TgaBits>) -> Result<Value, String> {
+        if self.smart_svg.modal_open() {
+            return Err("Answer Edit SVG Contents before starting a save".into());
+        }
+        if self.vector_paste.is_some() {
+            return Err("Answer Paste As before starting a save".into());
+        }
         // An RGB Targa asks for its bits per pixel, unless the caller chose them; the save
         // continues from the prompt (still a copy when it would be one without the prompt),
         // which records the step once answered.
@@ -1778,6 +1855,7 @@ impl eframe::App for PhotocraftApp {
         let dpi = self.session.active().map_or(72.0, |d| f64::from(d.doc.resolution_dpi.max(1.0)));
         crate::widgets::set_field_resolution(&ctx, dpi, ppi);
         // View › Screen Mode › Full Screen Mode: only the image, on black (F or Esc returns).
+        shape_paint_ui::prune(self, &ctx);
         screen_picker::show(&ctx);
         if screen_picker::busy(&ctx) && screen_picker::showing(&ctx) {
             egui::Modal::new(egui::Id::new("screen-color-wait")).show(&ctx, |ui| {
@@ -1833,6 +1911,9 @@ impl eframe::App for PhotocraftApp {
         discard_ui::show(self, &ctx);
         tiff_options_ui::show(self, &ctx);
         targa_options_ui::show(self, &ctx);
+        vector_paste_ui::show(self, &ctx);
+        smart_svg_ui::poll(self, &ctx);
+        smart_svg_ui::show(self, &ctx);
         distort_ui::show(self, &ctx);
         camera_raw_ui::show(self, &ctx);
         wide_angle_ui::show(self, &ctx);

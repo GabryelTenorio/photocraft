@@ -115,8 +115,10 @@ fn picking_tool_colours_enables_paint_and_reaches_the_next_shape() {
     }
     assert!(h.state().ui.tool_options.shape_fill);
     assert_eq!(h.state().ui.tool_options.stroke_width, 3.0);
-    assert_eq!(h.state().session.tools.foreground, [0.91, 0.17, 0.32, 1.0]);
-    assert_eq!(h.state().session.tools.background, [0.12, 0.68, 0.93, 1.0]);
+    assert_eq!(h.state().ui.tool_options.shape_fill_color, Some([0.91, 0.17, 0.32, 1.0]));
+    assert_eq!(h.state().ui.tool_options.shape_stroke_color, Some([0.12, 0.68, 0.93, 1.0]));
+    assert_eq!(h.state().session.tools.foreground, [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(h.state().session.tools.background, [1.0, 1.0, 1.0, 1.0]);
     finish_shape(h.state_mut(), Tool::Rectangle, [20.0, 20.0], [100.0, 80.0], Modifiers::NONE);
     assert_eq!(shape(h.state()).fill, Some(solid_paint([0.91, 0.17, 0.32, 1.0])));
     assert_eq!(shape(h.state()).stroke.as_ref().unwrap().paint, solid_paint([0.12, 0.68, 0.93, 1.0]));
@@ -130,14 +132,14 @@ fn no_colour_and_solid_choices_are_explicit_live_tool_defaults() {
     h.get_by_label("No Color").click();
     h.run_steps(2);
     assert!(!h.state().ui.tool_options.shape_fill);
-    h.get_by_label("Solid").click();
+    h.get_by_label("Solid Color").click();
     h.run_steps(2);
     assert!(h.state().ui.tool_options.shape_fill);
     h.key_press(Key::Escape);
     h.run_steps(2);
     h.get_by_label("Stroke color").click();
     h.run_steps(3);
-    h.get_by_label("Solid").click();
+    h.get_by_label("Solid Color").click();
     h.run_steps(2);
     assert_eq!(h.state().ui.tool_options.stroke_width, 3.0, "choosing unchanged white enables a stroke");
     h.get_by_label("No Color").click();
@@ -196,6 +198,12 @@ fn transparent_and_absent_paints_remain_distinct_and_open_pen_keeps_foreground()
     assert_eq!(shape(&app).cache.as_ref().unwrap().pixel(40, 40), vec![0.0; 4]);
     set_tool_paint(&mut app, false, PaintChange::None).unwrap();
     set_tool_paint(&mut app, true, PaintChange::None).unwrap();
+    // Current-layer controls seed the next shape while a shape remains selected.
+    // Deselect it to exercise the independent No Color tool defaults instead.
+    let selected_preview = shape_preview(&app, Tool::Triangle, [20.0, 20.0], [80.0, 70.0], Modifiers::NONE).unwrap();
+    assert_eq!(selected_preview.fill, preview.fill);
+    assert_eq!(selected_preview.stroke, preview.stroke);
+    app.session.active_mut().unwrap().active_layer = None;
     finish_shape(&mut app, Tool::Triangle, [20.0, 20.0], [80.0, 70.0], Modifiers::NONE);
     assert!(shape(&app).fill.is_none() && shape(&app).stroke.is_none());
     let foreground = [0.836521, 0.125468, 0.745632, 0.438271];
@@ -236,9 +244,7 @@ fn selected_shape_style_is_available_when_absent_and_dismissal_does_not_enable_i
 }
 
 fn popup_rect(h: &Harness<'_, PhotocraftApp>) -> Rect {
-    h.ctx
-        .memory(|m| m.areas().visible_layer_ids().into_iter().filter(|l| l.order == egui::Order::Foreground).find_map(|l| m.area_rect(l.id)))
-        .expect("colour picker is open")
+    h.get_by_label("Shape color selector").rect()
 }
 
 #[test]
@@ -261,7 +267,9 @@ fn selected_shape_colour_drags_apply_live_coalesce_per_gesture_and_keep_tool_def
         h.event(Event::PointerMoved(start + vec2(offset, 6.0)));
         h.step();
     }
-    pointer(&mut h, start + vec2(30.0, 6.0), false);
+    // A final move and release in one frame must remain in the held gesture's Undo group.
+    h.event(Event::PointerMoved(start + vec2(40.0, 10.0)));
+    pointer(&mut h, start + vec2(40.0, 10.0), false);
     h.run_steps(2);
     let first = shape(h.state()).clone();
     assert_ne!(first.fill, original.fill);
@@ -284,4 +292,33 @@ fn selected_shape_colour_drags_apply_live_coalesce_per_gesture_and_keep_tool_def
     assert_eq!(shape(h.state()).fill, original.fill);
     h.state_mut().run("edit.redo", json!({})).unwrap();
     assert_eq!(shape(h.state()).fill, first.fill);
+}
+
+#[test]
+fn selected_shape_colour_batched_clicks_each_get_their_own_undo_step() {
+    let mut app = app("rgb", 32);
+    app.run("shape.create", json!({"rect": [20,20,80,60], "fill": "#3270c0"})).unwrap();
+    let original = shape(&app).fill.clone();
+    let history = app.session.active().unwrap().history.past_len();
+    let mut h = harness(app, true);
+    h.get_by_label("Set shape fill type").click();
+    h.run_steps(4);
+    let rect = popup_rect(&h);
+    let mut fills = Vec::new();
+    for (step, point) in [rect.min + vec2(55.0, rect.height() * 0.5), rect.min + vec2(120.0, rect.height() * 0.5 + 15.0)].into_iter().enumerate() {
+        h.input_mut().events.extend([
+            Event::PointerMoved(point),
+            Event::PointerButton { pos: point, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE },
+            Event::PointerButton { pos: point, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE },
+        ]);
+        h.run_steps(3);
+        fills.push(shape(h.state()).fill.clone());
+        assert_eq!(h.state().session.active().unwrap().history.past_len(), history + step + 1);
+    }
+    assert_ne!(fills[0], original);
+    assert_ne!(fills[1], fills[0]);
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+    assert_eq!(shape(h.state()).fill, fills[0]);
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+    assert_eq!(shape(h.state()).fill, original);
 }

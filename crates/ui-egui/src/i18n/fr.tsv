@@ -2974,6 +2974,32 @@ fontWeight	Italic	Italique
 	Quick Selection found nothing there	La Sélection rapide n'a rien trouvé à cet endroit
 	Object Selection found nothing there — try a tighter rectangle	La Sélection d'objet n'a rien trouvé à cet endroit — essayez un rectangle plus serré
 	No subject found — try a rectangle around the object	Aucun sujet trouvé — essayez un rectangle autour de l'objet
+	Align to Canvas	Aligner sur la zone de travail
+	Arrowheads	Pointes de flèche
+	Bring Shape Forward	Avancer la forme
+	Bring Shape to Front	Mettre la forme au premier plan
+	Constrain Proportions	Conserver les proportions
+	Distribute Horizontally	Répartir horizontalement
+	Distribute Vertically	Répartir verticalement
+	End	Fin
+	Path Alignment	Alignement des tracés
+	Path Arrangement	Ordre des tracés
+	Path Operations	Opérations sur les tracés
+	Path Options	Options de tracé
+	Send Shape Backward	Reculer la forme
+	Send Shape to Back	Mettre la forme en arrière-plan
+	Show Path	Afficher le tracé
+	Start	Début
+	Align Edges	Aligner les contours
+	Unconstrained	Sans contrainte
+	Proportional	Proportionnel
+	Smooth Indents	Lisser les indentations
+	Concavity:	Concavité :
+	Solid Color	Couleur unie
+	Color Picker	Sélecteur de couleurs
+	Recent Colors	Couleurs récentes
+	No recent colors	Aucune couleur récente
+	Color opacity	Opacité de la couleur
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Cliquez sur le premier point ou appuyez sur {key} pour fermer · {del} supprime un point · Échap annule
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Cliquez, puis suivez un contour · cliquez pour fixer un point · {alt}-clic pour un segment droit · double-cliquez pour fermer
 	Follows only edges this close to the pointer ([ and ] change it)	Ne suit que les contours aussi proches du pointeur ([ et ] le modifient)
@@ -3074,6 +3100,23 @@ curves	Smooth	Lisser
 	Paint over hair or fur on the image; Alt paints the other mode	Peignez sur les cheveux ou la fourrure dans l'image ; Alt peint dans l'autre mode
 	Clear Brush Strokes	Effacer les traits de pinceau
 	Show rulers	Afficher les règles
+
+# Plural status messages and counts
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	{n} échantillon exporté vers {file}|{n} échantillons exportés vers {file}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{n} pinceau importé depuis {group}|{n} pinceaux importés depuis {group}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{n} échantillon importé depuis {file}|{n} échantillons importés depuis {file}
+@plural	Played {n} step|Played {n} steps	{n} étape exécutée|{n} étapes exécutées
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	{n} objet intelligent lié modifié sur le disque mis à jour|{n} objets intelligents liés modifiés sur le disque mis à jour
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Enregistré pour le Web : {n} fichier|Enregistré pour le Web : {n} fichiers
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	{n} calque enregistré dans cette composition a été supprimé. Mettez à jour la composition ou effacez l’avertissement.|{n} calques enregistrés dans cette composition ont été supprimés. Mettez à jour la composition ou effacez l’avertissement.
+@plural	{n} plane|{n} planes	{n} plan|{n} plans
+@plural	{n} preset|{n} presets	{n} préréglage|{n} préréglages
+@plural	{n} sample point removed|{n} sample points removed	{n} point d’échantillonnage supprimé|{n} points d’échantillonnage supprimés
+@plural	{n} slice|{n} slices	{n} tranche|{n} tranches
+@plural	{n} step|{n} steps	{n} étape|{n} étapes
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} avertissement supplémentaire de préréglage de pinceau)|{warning} (+{n} avertissements supplémentaires de préréglage de pinceau)
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} avec {n} avertissement|{what} avec {n} avertissements
+	Shape color selector	Sélecteur de couleur de forme
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Cliquez pour placer · Alt-clic ou glisser hors du canevas pour supprimer

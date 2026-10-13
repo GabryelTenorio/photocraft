@@ -1232,27 +1232,38 @@ async fn convention_resources_are_live_json() {
         serde_json::from_str::<Value>(v["contents"][0]["text"].as_str().unwrap()).unwrap()
     };
     assert!(read("photocraft://document").await["document"].is_null());
+    let before = read("photocraft://commands").await;
+    assert_eq!(before.as_array().unwrap().iter().find(|command| command["id"] == "file.close").unwrap()["enabled"], false);
     json_of(&call(&client, "doc_new", json!({"width":8,"height":6})).await);
     assert_eq!(read("photocraft://document").await["width"], 8);
-    // Edit › Purge › All is enabled while the process-wide effect, mask and stack caches hold
-    // anything, and the other tests in this binary fill and purge those caches concurrently, so
-    // its `enabled` flag and paired `disabledReason` can flip between the two reads. Validate
-    // each availability pair; every stable field and every other command must match exactly.
-    let stable = |mut v: Value| {
-        for c in v.as_array_mut().into_iter().flatten() {
-            if c["id"] == "edit.purge.all" {
-                let reason = if c["enabled"].as_bool().unwrap() { Value::Null } else { json!("nothing to purge") };
-                assert_eq!(c["disabledReason"], reason, "purge availability stays internally consistent");
-                let command = c.as_object_mut().unwrap();
-                command.remove("enabled");
-                command.remove("disabledReason");
+    let resource_commands = read("photocraft://commands").await;
+    assert_eq!(resource_commands.as_array().unwrap().iter().find(|command| command["id"] == "file.close").unwrap()["enabled"], true);
+    let tool_commands = json_of(&call(&client, "command_list", json!({})).await);
+    let normalize = |mut commands: Value| {
+        assert!(commands.as_array().is_some_and(|array| array.len() > 100), "{commands}");
+        let mut purge_entries = 0;
+        for command in commands.as_array_mut().unwrap() {
+            assert!(command["enabled"].is_boolean(), "{command}");
+            if command["id"] == "edit.purge.all" {
+                // Purge All also observes process-wide caches populated by parallel tests.
+                // Its enabled bit and corresponding reason can change between read-only requests.
+                let enabled = command["enabled"].as_bool().unwrap();
+                let reason = command.get("disabledReason").expect("commands include their disabled reason");
+                if enabled {
+                    assert!(reason.is_null(), "{command}");
+                } else {
+                    assert_eq!(reason, &json!("nothing to purge"), "purge availability stays internally consistent: {command}");
+                }
+                let fields = command.as_object_mut().unwrap();
+                fields.remove("enabled");
+                fields.remove("disabledReason");
+                purge_entries += 1;
             }
         }
-        v
+        assert_eq!(purge_entries, 1, "both snapshots must contain the Purge All command");
+        commands
     };
-    let commands = stable(read("photocraft://commands").await);
-    assert!(commands.as_array().is_some_and(|a| a.len() > 100), "{commands}");
-    assert_eq!(commands, stable(json_of(&call(&client, "command_list", json!({})).await)));
+    assert_eq!(normalize(resource_commands), normalize(tool_commands));
     assert!(client.read_resource(rmcp::model::ReadResourceRequestParams::new("photocraft://missing")).await.is_err());
     let preview = call(&client, "render_preview", json!({"max_side":4})).await;
     assert!(preview.content.iter().any(|c| c.as_image().is_some()));

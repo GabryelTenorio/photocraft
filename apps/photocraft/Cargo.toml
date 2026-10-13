@@ -35,6 +35,7 @@ serde_json = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tempfile = "=3.27.0"
 rfd = { workspace = true }
 arboard = { version = "3.6", features = ["wayland-data-control"] }
 open = "5"
@@ -88,6 +89,8 @@ winit = { version = "=0.30.13", default-features = false, features = ["x11"] }
 # Safe Windows screen-capture bindings; Linux uses the pure-Rust X11 client/portal.
 xcap = "=0.9.8"
 winsafe = { version = "=0.0.29", default-features = false, features = ["user"] }
+# Bounded reads of registered SVG/Unicode clipboard formats, behind safe Win32 wrappers.
+clipboard-win = "=5.4.1"
 
 # tests/mac_menu_appkit.rs: reads AppKit's menu bar back and sends it real key events.
 [target.'cfg(target_os = "macos")'.dev-dependencies]

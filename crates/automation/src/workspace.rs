@@ -269,6 +269,8 @@ pub fn authorize_engine_command(id: &str, params: &Value) -> Result<(), Automati
             | "layer.smartObjects.editContents"
             | "layer.smartObjects.convertToLayers"
             | "layer.smartObjects.saveContents"
+            | "layer.smartObjects.exportSvg"
+            | "layer.smartObjects.updateSvg"
     );
     if (id.starts_with("layer.smartObjects.") && !in_memory_smart_command)
         || matches!(
@@ -318,9 +320,13 @@ fn params_contain_ambient_path(id: &str, params: &Value) -> bool {
     let keys: &[&str] = match id {
         "image.adjustments.colorLookup" | "layer.newAdjustmentLayer.colorLookup" | "layer.setAdjustment" => &["file"],
         "filter.distort.displace" => &["mapPath"],
-        "layer.quickExportAsPng" | "layer.exportAs" | "image.applyDataSet" | "layer.smartObjects.editContents" | "layer.smartObjects.convertToLayers" => {
-            &["path"]
-        }
+        "layer.quickExportAsPng"
+        | "layer.exportAs"
+        | "image.applyDataSet"
+        | "layer.smartObjects.editContents"
+        | "layer.smartObjects.convertToLayers"
+        | "layer.smartObjects.exportSvg"
+        | "layer.smartObjects.updateSvg" => &["path"],
         "image.mode.rgb" | "image.mode.grayscale" | "image.mode.cmyk" | "image.mode.lab" => &["profile"],
         "edit.assignProfile" | "edit.convertToProfile" | "edit.profileInfo" | "view.proofSetup" | "view.gamutWarning" => &["profile"],
         "edit.colorSettings" => &["workingRgb", "workingCmyk", "workingGray"],
@@ -729,6 +735,58 @@ mod tests {
     }
 
     #[test]
+    fn installed_profile_enumeration_is_denied_even_with_workspace_roots() {
+        let (inside, _, workspace) = roots("installed-profile-policy");
+        for mut headless in [crate::Headless::new(), crate::Headless::with_workspace(workspace)] {
+            headless.command_run("file.new", serde_json::json!({"width": 4, "height": 4})).unwrap();
+            let before = headless.session.active().unwrap().doc.clone();
+            let revision = headless.session.active().unwrap().revision;
+            let history = headless.session.active().unwrap().history.past_len();
+            for params in [serde_json::json!({}), serde_json::json!({"class": "display", "colorSpace": "rgb"})] {
+                // Filters are applied only after the engine's ambient directory scan.
+                let error = authorize_engine_command("edit.installedProfiles", &params).unwrap_err();
+                assert!(error.to_string().contains("ambient filesystem paths"), "{error}");
+                assert!(authorize_desktop_engine_command("edit.installedProfiles", &params).is_err());
+                let error = headless.command_run("edit.installedProfiles", params).unwrap_err();
+                assert!(error.to_string().contains("ambient filesystem paths"), "{error}");
+            }
+            let after = headless.session.active().unwrap();
+            assert_eq!(after.doc, before);
+            assert_eq!(after.revision, revision);
+            assert_eq!(after.history.past_len(), history);
+        }
+        std::fs::remove_dir_all(inside.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn installed_profile_enumeration_cannot_bypass_policy_through_actions() {
+        for authorize in [authorize_engine_step, authorize_desktop_engine_step] {
+            let mut session = photocraft_engine::Session::new();
+            session.execute("file.new", serde_json::json!({"width": 4, "height": 4})).unwrap();
+            session.authorize = Some(authorize);
+            session.actions.list.push(photocraft_engine::actions_cmds::Action::new(
+                "Profiles",
+                vec![("edit.installedProfiles".into(), serde_json::json!({})), ("layer.new.layer".into(), serde_json::json!({}))],
+            ));
+            let before = session.active().unwrap().doc.clone();
+            let revision = session.active().unwrap().revision;
+            let history = session.active().unwrap().history.past_len();
+            // Also exercise the hook through direct Session dispatch, without Headless's gate.
+            let error = session.execute("edit.installedProfiles", serde_json::json!({})).unwrap_err();
+            assert!(error.to_string().contains("ambient filesystem paths"), "{error}");
+            let result = session.execute("actions.play", serde_json::json!({"action": "Profiles"})).unwrap();
+            assert_eq!(result["ran"], 0);
+            assert_eq!(result["failed"]["step"], 0);
+            assert_eq!(result["failed"]["id"], "edit.installedProfiles");
+            assert!(result["failed"]["error"].as_str().unwrap().contains("ambient filesystem paths"), "{result}");
+            let after = session.active().unwrap();
+            assert_eq!(after.doc, before);
+            assert_eq!(after.revision, revision);
+            assert_eq!(after.history.past_len(), history);
+        }
+    }
+
+    #[test]
     fn apply_data_set_is_judged_by_the_values_it_applies() {
         let mut headless = crate::Headless::new();
         headless.command_run("file.new", serde_json::json!({"width": 8, "height": 8})).unwrap();
@@ -831,6 +889,161 @@ mod tests {
         assert!(unclassified.is_empty(), "filesystem path parameters in the command registry need an automation policy: {unclassified:?}");
     }
 
+    #[test]
+    fn inline_vector_paste_needs_no_filesystem_authority() {
+        let params = serde_json::json!({
+            "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"><rect width=\"2\" height=\"2\"/></svg>",
+            "mode": "path",
+        });
+        assert!(authorize_engine_command("edit.pasteVector", &params).is_ok());
+        assert!(authorize_desktop_engine_command("edit.pasteVector", &params).is_ok());
+        let mut headless = crate::Headless::new();
+        headless.command_run("file.new", serde_json::json!({"width": 8, "height": 8})).unwrap();
+        let layers = headless.session.active().unwrap().doc.layer_count();
+        let result = headless.command_run("edit.pasteVector", params).unwrap();
+        assert_eq!(result["mode"], "path");
+        assert_eq!(headless.session.active().unwrap().doc.paths.len(), 1);
+        assert_eq!(headless.session.active().unwrap().doc.layer_count(), layers);
+        // The vector-path registry exception does not authorise any host-file command.
+        assert!(headless.command_run("file.placeEmbedded", serde_json::json!({"path": "/outside/source.svg"})).is_err());
+    }
+
+    #[test]
+    fn shape_parity_commands_use_document_geometry_without_filesystem_authority() {
+        let mut headless = crate::Headless::new();
+        headless.command_run("file.new", serde_json::json!({"width": 16, "height": 16})).unwrap();
+        let created = headless.command_run("shape.create", serde_json::json!({"kind": "rect", "rect": [2, 2, 4, 4]})).unwrap();
+        let geometry = headless.command_run("shape.info", serde_json::json!({"layer": created["layer"]})).unwrap()["path"].clone();
+        // A saved document path may have a filename-looking name. Resolution stays inside
+        // the document; it never opens a host file with that name.
+        let name = "/outside/photocraft-probe.svg";
+        headless.command_run("path.set", serde_json::json!({"name": name, "path": geometry})).unwrap();
+        for (id, params) in [
+            ("path.align", serde_json::json!({"name": name, "action": "left", "to": "canvas"})),
+            ("path.arrange", serde_json::json!({"name": name, "action": "front"})),
+            ("path.merge", serde_json::json!({"name": name})),
+        ] {
+            let spec = photocraft_engine::command_specs().iter().find(|spec| spec.id == id).unwrap();
+            assert!(!documents_filesystem_path_params(id, spec.params), "{id}");
+            assert!(authorize_engine_command(id, &params).is_ok(), "{id}");
+            assert!(authorize_desktop_engine_command(id, &params).is_ok(), "{id}");
+            assert!(headless.command_run(id, params).is_ok(), "{id}");
+            assert!(headless.session.active().unwrap().doc.paths.iter().any(|path| path.name == name));
+        }
+        // Pixel shape drawing accepts inline vector data, not a file path. Select a new
+        // raster layer so the command has an ordinary document-owned pixel destination.
+        headless.command_run("layer.new.layer", serde_json::json!({"name": "Pixel target"})).unwrap();
+        let params = serde_json::json!({"kind": "path", "path": geometry, "color": "#ff0000"});
+        let spec = photocraft_engine::command_specs().iter().find(|spec| spec.id == "shape.drawPixels").unwrap();
+        assert!(!documents_filesystem_path_params(spec.id, spec.params));
+        assert!(authorize_engine_command(spec.id, &params).is_ok());
+        assert!(authorize_desktop_engine_command(spec.id, &params).is_ok());
+        assert!(headless.command_run(spec.id, params).is_ok());
+        assert!(headless.command_run(spec.id, serde_json::json!({"kind": "path", "path": name})).is_err());
+        assert!(headless.command_run("file.placeEmbedded", serde_json::json!({"path": name})).is_err());
+        assert!(headless.command_run("layer.smartObjects.replaceContents", serde_json::json!({"path": name})).is_err());
+    }
+
+    #[test]
+    fn svg_smart_handoff_is_memory_only_and_linked_sources_stay_denied() {
+        let mut headless = crate::Headless::new();
+        headless.command_run("file.new", serde_json::json!({"width": 16, "height": 16})).unwrap();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>"#;
+        let inserted = headless.command_run("edit.pasteVector", serde_json::json!({"svg": svg, "mode": "smartObject"})).unwrap();
+        let layer = inserted["layers"][0].clone();
+        let handoff = headless.command_run("layer.smartObjects.exportSvg", serde_json::json!({"layer": layer})).unwrap();
+        assert_eq!(handoff["svg"], svg);
+        let params = serde_json::json!({
+            "document": handoff["document"], "layer": layer,
+            "contentsId": handoff["contentsId"], "fingerprint": handoff["fingerprint"],
+            "svg": svg.replace("red", "blue"),
+        });
+        assert!(authorize_desktop_engine_command("layer.smartObjects.updateSvg", &params).is_ok());
+        assert_eq!(headless.command_run("layer.smartObjects.updateSvg", params.clone()).unwrap()["updated"], true);
+        for id in ["layer.smartObjects.exportSvg", "layer.smartObjects.updateSvg"] {
+            let mut ambient = params.clone();
+            ambient["path"] = serde_json::json!("/outside/source.svg");
+            assert!(authorize_engine_command(id, &ambient).is_err(), "{id}");
+            assert!(authorize_desktop_engine_command(id, &ambient).is_err(), "{id}");
+            assert!(headless.command_run(id, ambient).is_err(), "{id}");
+        }
+        let doc = Arc::make_mut(&mut headless.session.active_mut().unwrap().doc);
+        let id = photocraft_doc::LayerId(layer.as_u64().unwrap());
+        let photocraft_doc::LayerContent::Smart(sm) = &mut doc.layer_mut(id).unwrap().content else { panic!("SVG smart object") };
+        sm.source = photocraft_doc::SmartSource::Linked { path: "/outside/source.svg".into() };
+        let before = headless.session.active().unwrap().doc.clone();
+        assert!(headless.command_run("layer.smartObjects.exportSvg", serde_json::json!({"layer": layer})).is_err());
+        assert!(headless.command_run("layer.smartObjects.updateSvg", params).is_err());
+        assert_eq!(headless.session.active().unwrap().doc, before);
+        assert!(headless.command_run("layer.smartObjects.exportContents", serde_json::json!({"layer": layer, "path": "/outside/export.svg"})).is_err());
+    }
+
+    #[test]
+    fn svg_update_cannot_replay_desktop_lut_file_in_any_shared_instance() {
+        let (_, outside, _) = roots("svg-stored-filter");
+        let lut = outside.join("private.cube");
+        let cube = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
+        std::fs::write(&lut, cube).unwrap();
+        for shared_only in [false, true] {
+            let mut headless = crate::Headless::new();
+            headless.command_run("file.new", serde_json::json!({"width": 16, "height": 16})).unwrap();
+            let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>"#;
+            let pasted = headless.command_run("edit.pasteVector", serde_json::json!({"svg": svg,"mode":"smartObject"})).unwrap();
+            let target = photocraft_doc::LayerId(pasted["layers"][0].as_u64().unwrap());
+            let filtered = if shared_only {
+                let doc = Arc::make_mut(&mut headless.session.active_mut().unwrap().doc);
+                let duplicate = doc.layer(target).unwrap().duplicate();
+                let id = duplicate.id;
+                doc.layers.push(duplicate);
+                id
+            } else {
+                target
+            };
+            headless.session.select_layer(filtered).unwrap();
+            // Record a natural desktop Color Lookup operation with its original file params,
+            // then restore the untrusted automation hook as for an imported document.
+            let authorization = headless.session.authorize.take();
+            headless.session.execute("image.adjustments.colorLookup", serde_json::json!({"file":lut.to_string_lossy()})).unwrap();
+            headless.session.authorize = authorization;
+            let photocraft_doc::LayerContent::Smart(sm) = &headless.session.active().unwrap().doc.layer(filtered).unwrap().content else {
+                panic!("smart object")
+            };
+            assert_eq!(sm.smart_filters.last().unwrap().params["file"], lut.to_string_lossy().as_ref());
+            let handoff = headless.command_run("layer.smartObjects.exportSvg", serde_json::json!({"layer":target.0})).unwrap();
+            let params = serde_json::json!({"document":handoff["document"],"layer":target.0,"contentsId":handoff["contentsId"],"fingerprint":handoff["fingerprint"],"svg":svg.replace("red","blue")});
+            let before = headless.session.active().unwrap().doc.clone();
+            let revision = headless.session.active().unwrap().revision;
+            let error = headless.command_run("layer.smartObjects.updateSvg", params.clone()).unwrap_err();
+            assert!(error.to_string().contains("ambient filesystem paths"), "{error}");
+            assert_eq!(headless.session.active().unwrap().doc, before);
+            assert_eq!(headless.session.active().unwrap().revision, revision);
+            // A hidden stored filter is not executed, so its unused filename grants no access.
+            let doc = Arc::make_mut(&mut headless.session.active_mut().unwrap().doc);
+            let photocraft_doc::LayerContent::Smart(sm) = &mut doc.layer_mut(filtered).unwrap().content else { panic!("smart object") };
+            sm.smart_filters.last_mut().unwrap().visible = false;
+            assert_eq!(headless.command_run("layer.smartObjects.updateSvg", params).unwrap()["updated"], true);
+        }
+    }
+
+    #[test]
+    fn svg_update_keeps_inline_and_builtin_smart_filters_working() {
+        let cube = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
+        for filter_params in [serde_json::json!({"lut":"warm"}), serde_json::json!({"data":cube,"fileName":"look.cube"})] {
+            let mut headless = crate::Headless::new();
+            headless.command_run("file.new", serde_json::json!({"width":16,"height":16})).unwrap();
+            let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>"#;
+            let pasted = headless.command_run("edit.pasteVector", serde_json::json!({"svg":svg,"mode":"smartObject"})).unwrap();
+            let id = photocraft_doc::LayerId(pasted["layers"][0].as_u64().unwrap());
+            headless.command_run("image.adjustments.colorLookup", filter_params).unwrap();
+            let handoff = headless.command_run("layer.smartObjects.exportSvg", serde_json::json!({"layer":id.0})).unwrap();
+            let result = headless.command_run("layer.smartObjects.updateSvg",serde_json::json!({"document":handoff["document"],"layer":id.0,"contentsId":handoff["contentsId"],"fingerprint":handoff["fingerprint"],"svg":svg.replace("red","blue")})).unwrap();
+            assert_eq!(result["updated"], true);
+            let photocraft_doc::LayerContent::Smart(sm) = &headless.session.active().unwrap().doc.layer(id).unwrap().content else { panic!("smart object") };
+            assert_eq!(sm.smart_filters.len(), 1);
+            assert!(!sm.cache.as_ref().unwrap().content_bounds().is_empty());
+        }
+    }
+
     fn documents_filesystem_path_params(id: &str, params: &str) -> bool {
         if matches!(id, "prefs.get" | "prefs.reset") {
             return false;
@@ -841,6 +1054,7 @@ mod tests {
             "filter.blurGallery.pathBlur"
                 | "filter.render.flame"
                 | "shape.create"
+                | "shape.drawPixels"
                 | "shape.edit"
                 | "shape.info"
                 | "shape.presets.list"
@@ -848,6 +1062,9 @@ mod tests {
                 | "path.list"
                 | "path.info"
                 | "path.set"
+                | "path.merge"
+                | "path.align"
+                | "path.arrange"
                 | "path.transform"
                 | "path.moveAnchors"
                 | "path.moveHandle"
@@ -866,6 +1083,7 @@ mod tests {
                 | "layer.vectorMask.info"
                 | "paint.symmetryFromPath"
                 | "edit.defineCustomShape"
+                | "edit.pasteVector"
                 | "layer.combineShapes.unite"
                 | "layer.combineShapes.subtractFrontShape"
                 | "layer.combineShapes.intersectShapeAreas"

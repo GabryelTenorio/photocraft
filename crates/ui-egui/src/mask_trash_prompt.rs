@@ -36,6 +36,9 @@ pub fn drop_action(layer: u64, kind: MaskKind) -> (String, Value) {
 
 /// Opens the prompt for a [`drop_action`]; `None` for every other command.
 pub fn intercept(app: &mut PhotocraftApp, command: &str, params: &Value) -> Option<Result<Value, String>> {
+    if app.automation_input {
+        return None;
+    }
     let vector = match command {
         LAYER_MASK_DELETE => false,
         VECTOR_MASK_DELETE => true,

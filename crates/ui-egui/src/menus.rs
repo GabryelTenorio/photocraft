@@ -7,10 +7,10 @@ use crate::state::DialogKind;
 
 /// Shared gate for native menu clicks and control-channel `ui.menu.invoke`.
 /// Dialogs and unsaved-changes prompts block edits, but allow the four view-navigation
-/// commands also usable through shortcuts. Camera Raw blocks menu commands entirely, and a pending
-/// crop blocks the commands Photoshop greys during one (`crop_ui::blocks`).
+/// commands also usable through shortcuts. Camera Raw, Paste As and the SVG editor choice block
+/// menu commands entirely. A pending crop blocks the commands Photoshop greys during one (`crop_ui::blocks`).
 pub(crate) fn modal_allows(app: &PhotocraftApp, id: &str) -> bool {
-    if app.camera_raw.is_some() || crate::crop_ui::blocks(app, id) {
+    if app.camera_raw.is_some() || app.vector_paste.is_some() || app.smart_svg.modal_open() || crate::crop_ui::blocks(app, id) {
         return false;
     }
     (app.ui.dialogs.is_empty() && app.discard.is_none()) || crate::shortcuts::NAV_COMMANDS.contains(&id)
@@ -163,6 +163,12 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: Va
 
 /// [`invoke`] without the unsaved-changes prompt, for once the user has already answered it.
 pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: Value) -> Result<Value, String> {
+    if let Some(result) = crate::vector_paste_ui::intercept(app, id, &params) {
+        return result;
+    }
+    if let Some(result) = crate::smart_svg_ui::intercept(app, id, &params) {
+        return result;
+    }
     if let Some(tool) = crate::tool_shortcuts::tool(id) {
         app.ui.tool = tool;
         return Ok(json!({"tool": tool}));
@@ -767,7 +773,11 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         // An image copied in another app can only be seen by reading the OS clipboard, which happens
         // on an explicit paste: with a clipboard service these stay enabled. Paste and New from
         // Clipboard need no document (with none open, Paste makes one); Paste in Place does.
-        "edit.paste" | "file.newFromClipboard" => app.session.is_enabled(id) || app.services.clipboard_get_image.is_some(),
+        "edit.paste" | "file.newFromClipboard" => {
+            app.session.is_enabled(id)
+                || app.services.clipboard_get_image.is_some()
+                || (id == "edit.paste" && app.services.clipboard_get_vector.is_some() && app.session.is_enabled("edit.pasteVector"))
+        }
         "edit.pasteSpecial.pasteInPlace" => app.session.is_enabled(id) || (app.services.clipboard_get_image.is_some() && app.session.active().is_some()),
         "select.selectAndMask" => app.session.is_enabled("select.refineEdge"),
         "type.editText" => app

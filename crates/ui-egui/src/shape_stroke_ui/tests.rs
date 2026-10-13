@@ -1,6 +1,6 @@
 use super::*;
 use egui::accesskit::Role;
-use egui::{Key, Modifiers, PointerButton, Pos2, Rect, Vec2, pos2};
+use egui::{Key, Modifiers, PointerButton, Pos2, Rect, Vec2, pos2, vec2};
 use egui_kittest::{
     Harness,
     kittest::{NodeT, Queryable},
@@ -552,6 +552,35 @@ fn scene_open(h: &mut Harness<'_, CanvasScene>) {
     assert!(h.state().app.ui.stroke_editor.is_some());
 }
 
+#[test]
+fn selected_shape_without_stroke_keeps_nondefault_style_popup_open() {
+    for properties in [false, true] {
+        let mut h = canvas_harness(properties);
+        let app = &mut h.state_mut().app;
+        if !properties {
+            app.run("shape.create", json!({"rect": [20, 20, 80, 60]})).unwrap();
+        }
+        app.run("shape.edit", json!({"stroke": null})).unwrap();
+        app.ui.tool_options.shape_stroke.preset("Dotted");
+        let original = app.session.active().unwrap().doc.clone();
+        let history = app.session.active().unwrap().history.past_len();
+        h.run_steps(3);
+        scene_open(&mut h);
+        h.run_steps(4);
+        assert_eq!(h.state().app.ui.stroke_editor.as_ref().unwrap().original, h.state().app.ui.tool_options.shape_stroke);
+        assert_eq!(h.state().app.session.active().unwrap().doc, original);
+        assert_eq!(h.state().app.session.active().unwrap().history.past_len(), history);
+        h.get_by_role_and_label(Role::RadioButton, "Dashed").click();
+        h.run_steps(4);
+        assert!(h.state().app.ui.stroke_editor.is_some());
+        let st = h.state().app.session.active().unwrap();
+        let photocraft_doc::LayerContent::Shape(shape) = &st.doc.layer(st.active_layer.unwrap()).unwrap().content else { panic!("not a shape") };
+        assert_eq!(shape.stroke.as_ref().unwrap().dashes, [4.0, 2.0]);
+        assert!(shape.stroke.as_ref().unwrap().width > 0.0);
+        assert_eq!(st.history.past_len(), history + 1);
+    }
+}
+
 fn canvas_press(h: &mut Harness<'_, CanvasScene>, pos: Pos2, pressed: bool) {
     h.event(egui::Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
     h.run_steps(1);
@@ -602,6 +631,60 @@ fn canvas_dismissal_gestures_neither_draw_shapes_nor_open_creation_dialogs() {
         h.run_steps(3);
         assert_eq!(h.state().app.session.active().unwrap().history.past_len(), history + 1);
         assert!(h.state().app.drag.is_none());
+    }
+}
+
+#[test]
+fn paint_popup_canvas_dismissal_neither_draws_shapes_nor_opens_creation_dialogs() {
+    for properties in [false, true] {
+        for (toolbar, panel) in [("Fill color", "Set shape fill type"), ("Stroke color", "Set shape stroke type")] {
+            let label = if properties { panel } else { toolbar };
+            let mut h = canvas_harness(properties);
+            let original = h.state().app.session.active().unwrap().doc.clone();
+            let history = h.state().app.session.active().unwrap().history.past_len();
+            let start = pos2(820.0, 550.0);
+            let end = pos2(880.0, 610.0);
+            h.get_by_role_and_label(Role::Button, label).click();
+            h.run_steps(3);
+            assert!(egui::Popup::is_any_open(&h.ctx));
+            // The popup handles the batched release before the real canvas sees the click.
+            h.input_mut().events.extend([
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE },
+                egui::Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE },
+            ]);
+            h.run_steps(3);
+            assert!(!egui::Popup::is_any_open(&h.ctx));
+            assert!(h.state().app.ui.dialogs.is_empty(), "paint dismissal opened Create Rectangle: {properties}/{label}");
+            assert_eq!(h.state().app.session.active().unwrap().doc, original);
+            assert_eq!(h.state().app.session.active().unwrap().history.past_len(), history);
+            h.get_by_role_and_label(Role::Button, label).click();
+            h.run_steps(3);
+            h.hover_at(start);
+            h.run_steps(1);
+            canvas_press(&mut h, start, true);
+            assert!(!egui::Popup::is_any_open(&h.ctx));
+            for pos in [start + vec2(12.0, 12.0), end] {
+                h.hover_at(pos);
+                h.run_steps(2);
+                assert!(h.state().app.drag.is_none(), "paint dismissal started a shape preview: {properties}/{label}");
+            }
+            canvas_press(&mut h, end, false);
+            h.run_steps(3);
+            assert!(h.state().app.ui.dialogs.is_empty());
+            assert_eq!(h.state().app.session.active().unwrap().doc, original);
+            assert_eq!(h.state().app.session.active().unwrap().history.past_len(), history);
+            // A later deliberate gesture still draws normally after the dismissal is released.
+            h.hover_at(start);
+            h.run_steps(1);
+            canvas_press(&mut h, start, true);
+            h.hover_at(end);
+            h.run_steps(2);
+            canvas_press(&mut h, end, false);
+            h.run_steps(3);
+            assert_eq!(h.state().app.session.active().unwrap().history.past_len(), history + 1);
+            assert!(h.state().app.drag.is_none());
+        }
     }
 }
 

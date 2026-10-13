@@ -2961,6 +2961,32 @@ fontWeight	Italic	Miring
 	Quick Selection found nothing there	Seleksi Cepat tidak menemukan apa pun di sana
 	Object Selection found nothing there — try a tighter rectangle	Seleksi Objek tidak menemukan apa pun di sana — coba persegi panjang yang lebih rapat
 	No subject found — try a rectangle around the object	Subjek tidak ditemukan — coba persegi panjang di sekitar objek
+	Align to Canvas	Ratakan ke Kanvas
+	Arrowheads	Kepala Panah
+	Bring Shape Forward	Majukan Bentuk
+	Bring Shape to Front	Bawa Bentuk ke Depan
+	Constrain Proportions	Pertahankan Proporsi
+	Distribute Horizontally	Distribusikan Horizontal
+	Distribute Vertically	Distribusikan Vertikal
+	End	Akhir
+	Path Alignment	Perataan Jalur
+	Path Arrangement	Urutan Jalur
+	Path Operations	Operasi Jalur
+	Path Options	Opsi Jalur
+	Send Shape Backward	Mundurkan Bentuk
+	Send Shape to Back	Kirim Bentuk ke Belakang
+	Show Path	Tampilkan Jalur
+	Start	Awal
+	Align Edges	Sejajarkan Tepi
+	Unconstrained	Tanpa Batasan
+	Proportional	Proporsional
+	Smooth Indents	Haluskan Lekukan
+	Concavity:	Kecekungan:
+	Solid Color	Warna solid
+	Color Picker	Pemilih warna
+	Recent Colors	Warna yang baru digunakan
+	No recent colors	Belum ada warna yang digunakan
+	Color opacity	Opasitas warna
 	Click the first point or press {key} to close · {del} removes a point · Esc cancels	Klik titik pertama atau tekan {key} untuk menutup · {del} menghapus titik · Esc membatalkan
 	Click, then move along an edge · click to fasten a point · {alt}-click for a straight segment · double-click to close	Klik, lalu gerakkan di sepanjang tepi · klik untuk menancapkan titik · {alt}-klik untuk segmen lurus · klik dua kali untuk menutup
 	Follows only edges this close to the pointer ([ and ] change it)	Hanya mengikuti tepi sedekat ini dengan penunjuk ([ dan ] mengubahnya)
@@ -3061,6 +3087,23 @@ curves	Smooth	Haluskan
 	Paint over hair or fur on the image; Alt paints the other mode	Lukis di atas rambut atau bulu pada gambar; Alt melukis dalam mode lainnya
 	Clear Brush Strokes	Hapus Goresan Kuas
 	Show rulers	Tampilkan Penggaris
+
+# Plural status messages and counts
+@plural	Exported {n} swatch to {file}|Exported {n} swatches to {file}	{n} swatch diekspor ke {file}
+@plural	Imported {n} brush from {group}|Imported {n} brushes from {group}	{n} kuas diimpor dari {group}
+@plural	Imported {n} swatch from {file}|Imported {n} swatches from {file}	{n} swatch diimpor dari {file}
+@plural	Played {n} step|Played {n} steps	{n} langkah dijalankan
+@plural	Updated {n} linked smart object changed on disk|Updated {n} linked smart objects changed on disk	{n} Smart Object tertaut yang berubah di disk diperbarui
+@plural	Saved for Web: {n} file|Saved for Web: {n} files	Disimpan untuk Web: {n} berkas
+@plural	{n} layer recorded by this comp was deleted. Update the comp, or clear the warning.|{n} layers recorded by this comp were deleted. Update the comp, or clear the warning.	{n} layer yang direkam dalam Layer Comp ini telah dihapus. Perbarui Layer Comp atau hapus peringatan.
+@plural	{n} plane|{n} planes	{n} bidang
+@plural	{n} preset|{n} presets	{n} preset
+@plural	{n} sample point removed|{n} sample points removed	{n} titik sampel dihapus
+@plural	{n} slice|{n} slices	{n} slice
+@plural	{n} step|{n} steps	{n} langkah
+@plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} peringatan preset kuas lainnya)
+@plural	{what} with {n} warning|{what} with {n} warnings	{what} dengan {n} peringatan
+	Shape color selector	Pemilih warna bentuk
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Klik untuk menempatkan · Alt-klik atau seret ke luar kanvas untuk menghapus

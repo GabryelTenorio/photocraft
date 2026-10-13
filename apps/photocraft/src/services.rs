@@ -472,6 +472,8 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
                 cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: std::borrow::Cow::Borrowed(px) }).map_err(|e| e.to_string())
             })
         }),
+        clipboard_get_vector: Some(Box::new(crate::vector_clipboard::read)),
+        open_external_svg: if cfg!(windows) { Some(Box::new(crate::external_svg::open)) } else { None },
         clipboard_get_image: Some({
             let clip = clip.clone();
             Box::new(move || {

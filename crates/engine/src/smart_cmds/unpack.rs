@@ -89,6 +89,12 @@ fn place(s: &Session, doc: &Document, sm: &SmartObject, layers: &mut [Layer]) ->
     }
     let h = placement(sm);
     let affine = sm.perspective.is_none().then_some(sm.transform);
+    if let SmartSource::Embedded { bytes, .. } = &sm.source
+        && photocraft_io::svg::is_svg(bytes)
+        && let Some(transform) = affine
+    {
+        crate::vector_paste_cmds::check_destination_shapes(layers, transform, doc.size).map_err(other)?;
+    }
     for l in layers {
         released(l, |l| crate::transform_cmds::transform_layer(None, photocraft_doc::Locks::default(), l, &h, affine, Interp::Bicubic))?;
         crate::transform_cmds::refresh_text(doc, l);

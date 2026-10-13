@@ -2837,6 +2837,35 @@ fontWeight	Italic	Курсив
 	Missing delete command	Отсутствует команда удаления
 	Invalid delete command	Недопустимая команда удаления
 	Layer deleted, but confirmation preference could not be saved: {error}	Слой удалён, но не удалось сохранить настройку подтверждения: {error}
+	Align to Canvas	Выровнять по холсту
+	Arrowheads	Наконечники стрелок
+	Bring Shape Forward	Переместить фигуру вперёд
+	Bring Shape to Front	Переместить фигуру на передний план
+	Constrain Proportions	Сохранить пропорции
+	Distribute Horizontally	Распределить по горизонтали
+	Distribute Vertically	Распределить по вертикали
+	End	Конец
+	Path Alignment	Выравнивание контуров
+	Path Arrangement	Порядок контуров
+	Path Operations	Операции с контурами
+	Path Options	Параметры контура
+	Send Shape Backward	Переместить фигуру назад
+	Send Shape to Back	Переместить фигуру на задний план
+	Show Path	Показать контур
+	Start	Начало
+	Align Edges	Выровнять края
+	Unconstrained	Без ограничений
+	Fixed Size	Фиксированный размер
+	Proportional	Пропорционально
+	Smooth Indents	Сгладить впадины
+	Concavity:	Вогнутость:
+	Link with Layer	Связать со слоем
+	Solid Color	Сплошной цвет
+	Color Picker	Выбор цвета
+	Recent Colors	Недавно использованные цвета
+	No recent colors	Нет недавно использованных цветов
+	Color opacity	Непрозрачность цвета
+	Show Transform Controls	Показать элементы управления трансформацией
 	Add a layer style	Добавить стиль слоя
 	Add a mask  (from the selection; {key} inverts)	Добавить маску  (из выделения; {key} инвертирует)
 	Add an adjustment	Добавить коррекцию
@@ -2875,7 +2904,6 @@ fontWeight	Italic	Курсив
 	Filter for smart objects	Фильтр смарт-объектов
 	Filter for type layers	Фильтр текстовых слоёв
 	Fixed Ratio	Заданные пропорции
-	Fixed Size	Заданный размер
 	Follows only edges this close to the pointer ([ and ] change it)	Следует только за краями на таком расстоянии от указателя ([ и ] меняют его)
 	Hide Properties	Скрыть свойства
 	Higher values follow only edges that contrast sharply with their surroundings	Чем выше значение, тем только более контрастные края учитываются
@@ -2900,7 +2928,6 @@ fontWeight	Italic	Курсив
 	Reflected Gradient	Зеркальный градиент
 	Reset to defaults	Сбросить к значениям по умолчанию
 	Set additional smoothing options	Дополнительные параметры сглаживания
-	Show Transform Controls	Показать управляющие элементы трансформации
 	Subtract from selection  ({key})	Вычесть из выделения  ({key})
 	Swaps height and width	Меняет местами высоту и ширину
 	Tolerance	Допуск
@@ -2955,7 +2982,6 @@ cameraData	Lens	Объектив
 	Click: smooth point · Double-click: corner · Drag a point: move · Click first point: close · {key} finish	Клик: гладкая точка · двойной клик: угол · перетаскивание точки: переместить · клик по первой точке: замкнуть · {key} завершить
 	Scale:	Масштаб:
 	Snap to Origin	Привязать к началу координат
-	Link with Layer	Связать со слоем
 	Rasterize Layer Style	Растрировать стиль слоя
 	Search settings…	Поиск настроек…
 	No matching settings	Нет подходящих настроек
@@ -3003,6 +3029,9 @@ curves	Smooth	Сгладить
 	Select the crop presets to delete	Выберите наборы параметров кадрирования для удаления
 	Enter a name for the crop preset	Введите имя набора параметров кадрирования
 	There is no crop size or ratio to save	Нет размера или соотношения сторон кадрирования для сохранения
+
+# Plural status messages and counts
+	Shape color selector	Выбор цвета фигуры
 
 # Color Sampler (added with the i18n coverage repair)
 	Click to place · Alt-click or drag off-canvas to remove	Щёлкните, чтобы разместить · Alt-щелчок или перетаскивание за пределы холста для удаления

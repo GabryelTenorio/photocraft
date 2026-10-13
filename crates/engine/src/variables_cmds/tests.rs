@@ -389,6 +389,86 @@ fn export_data_sets_rejects_collisions_before_writing() {
     }
 }
 
+fn refuse_pixel_replacement(id: &str, params: &Value) -> Result<()> {
+    assert_eq!(id, "image.applyDataSet");
+    assert_eq!(params, &json!({"path":"forbidden-replacement.png"}));
+    Err(EngineError::Other("pixel replacement read refused".into()))
+}
+
+#[test]
+fn export_data_sets_authorizes_all_selected_pixels_before_any_write() {
+    for earlier_row in [false, true] {
+        let mut s = visibility_export_session(&["allowed", "forbidden"]);
+        s.execute(
+            "image.variables.dataSets",
+            json!({"dataSets":[
+                {"name":"allowed", "values":[{"variable":"show", "kind":"visibility", "value":true}]},
+                {"name":"forbidden", "values":[{"variable":"replacement", "kind":"pixels", "value":"forbidden-replacement.png"}]}
+            ]}),
+        )
+        .unwrap();
+        let layer = doc(&s).layers[0].id;
+        s.execute(
+            "image.variables.define",
+            json!({"defs":[
+                {"name":"show", "layer":layer.0, "type":"visibility"},
+                {"name":"replacement", "layer":layer.0, "type":"pixelReplacement"}
+            ]}),
+        )
+        .unwrap();
+        s.authorize = Some(refuse_pixel_replacement);
+        let before = s.active().unwrap().doc.clone();
+        let revision = s.active().unwrap().revision;
+        let history = s.active().unwrap().history.entries();
+        let past = s.active().unwrap().history.past_len();
+        let mut writes = 0;
+        let params = if earlier_row { json!({}) } else { json!({"dataSets":["forbidden"]}) };
+        let error = export_data_sets_with(&s, &params, |_, _| {
+            writes += 1;
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(error.to_string(), "pixel replacement read refused");
+        assert_eq!(writes, 0, "preflight must precede even an earlier nonpixel row");
+        let after = s.active().unwrap();
+        assert!(Arc::ptr_eq(&before, &after.doc));
+        assert_eq!(after.revision, revision);
+        assert_eq!(after.history.entries(), history);
+        assert_eq!(after.history.past_len(), past);
+    }
+}
+
+#[test]
+fn export_data_sets_does_not_authorize_unselected_pixel_rows() {
+    let mut s = visibility_export_session(&["allowed"]);
+    let layer = doc(&s).layers[0].id;
+    s.execute(
+        "image.variables.define",
+        json!({"defs":[
+            {"name":"show", "layer":layer.0, "type":"visibility"},
+            {"name":"replacement", "layer":layer.0, "type":"pixelReplacement"}
+        ]}),
+    )
+    .unwrap();
+    s.execute(
+        "image.variables.dataSets",
+        json!({"append":true,"dataSets":[
+            {"name":"forbidden","values":[{"variable":"replacement","kind":"pixels","value":"forbidden-replacement.png"}]}
+        ]}),
+    )
+    .unwrap();
+    s.authorize = Some(refuse_pixel_replacement);
+    let mut writes = Vec::new();
+    let names = export_data_sets_with(&s, &json!({"dataSets":["allowed"]}), |name, bytes| {
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        writes.push(name.to_owned());
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(names, vec!["allowed.png"]);
+    assert_eq!(writes, names);
+}
+
 #[test]
 fn export_data_sets_unique_paths_preserve_variations_and_document() {
     for (label, names, naming, selected, expected) in [

@@ -196,9 +196,18 @@ impl Focus {
 
 /// What decides which keys [`crate::shortcuts::handle`] gives the shortcuts: an open menu, a
 /// dialog, the unsaved-changes prompt, a warp or the Filter Gallery, inline type.
-fn key_owner(app: &PhotocraftApp, ctx: &egui::Context) -> (bool, usize, bool, bool, bool) {
+fn key_owner(app: &PhotocraftApp, ctx: &egui::Context) -> (bool, usize, bool, bool, bool, bool, bool, bool) {
     let distort = app.distort.active() || app.distort.gallery.is_some();
-    (crate::menu_nav::is_open(ctx), app.ui.dialogs.len(), app.discard.is_some(), distort, app.ui.text_edit.is_some())
+    (
+        crate::menu_nav::is_open(ctx),
+        app.ui.dialogs.len(),
+        app.discard.is_some(),
+        distort,
+        app.ui.text_edit.is_some(),
+        app.vector_paste.is_some(),
+        app.save_options_open(),
+        app.smart_svg.modal_open(),
+    )
 }
 
 /// Keys whose shortcuts follow the key's position, as in Photoshop: ⇧⌘. is ⇧⌘> on a US layout,
@@ -354,3 +363,50 @@ pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod vector_paste_tests {
+    use super::*;
+    use crate::{Services, VectorClipboard, VectorClipboardSource};
+
+    #[test]
+    fn vector_paste_prompt_owns_later_shortcuts_in_same_frame() {
+        let services = Services {
+            clipboard_get_vector: Some(Box::new(|| {
+                Ok(Some(VectorClipboard {
+                    svg: br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8"/></svg>"#.to_vec(),
+                    source: VectorClipboardSource::RegisteredSvg,
+                    sequence: None,
+                }))
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        app.session.execute("file.new", json!({"width": 32, "height": 32})).unwrap();
+        app.sync_views();
+        let before = app.session.active().unwrap().doc.clone();
+        let revision = app.session.active().unwrap().revision;
+        let journal = app.session.journal.len();
+        let modifiers = egui::Modifiers { ctrl: true, command: true, ..Default::default() };
+        let input = egui::RawInput {
+            events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
+                .chain([Key::V, Key::J].into_iter().map(|key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }))
+                .collect(),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(input, |ui| {
+            let ctx = ui.ctx();
+            assert!(dispatch_pressed(&mut app, ctx, Focus::None, false));
+            assert!(ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::J, pressed: true, .. }))));
+        });
+        output.textures_delta.clear();
+        assert!(app.vector_paste.is_some());
+        let st = app.session.active().unwrap();
+        assert_eq!(st.doc, before);
+        assert_eq!(st.revision, revision);
+        assert!(!st.history.can_undo());
+        assert_eq!(app.session.journal.len(), journal);
+        assert_eq!(take_log(&ctx), vec![("edit.paste".into(), Outcome::Ran)]);
+    }
+}

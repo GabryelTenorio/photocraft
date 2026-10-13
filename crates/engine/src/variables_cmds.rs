@@ -241,10 +241,8 @@ fn replace_pixels(doc: &mut Document, layer: LayerId, path: &str, method: PixelM
     Ok(())
 }
 
-fn apply_data_set(s: &mut Session, p: &Value) -> Result<Value> {
-    let (set, idx) = resolve_set(s, p, "image.applyDataSet")?;
-    let vars = s.active().ok_or(EngineError::NoDocument)?.doc.variables.clone();
-    // Pixel Replacement reads image files, so an untrusted session's gate judges each path.
+/// Pixel Replacement reads image files, so an untrusted session's gate judges each path.
+fn authorize_data_set(s: &Session, set: &DataSet) -> Result<()> {
     if let Some(auth) = s.authorize {
         for dv in &set.values {
             if let VarValue::Pixels(path) = &dv.value {
@@ -252,6 +250,13 @@ fn apply_data_set(s: &mut Session, p: &Value) -> Result<Value> {
             }
         }
     }
+    Ok(())
+}
+
+fn apply_data_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let (set, idx) = resolve_set(s, p, "image.applyDataSet")?;
+    let vars = s.active().ok_or(EngineError::NoDocument)?.doc.variables.clone();
+    authorize_data_set(s, &set)?;
     s.edit(&format!("Apply Data Set \"{}\"", set.name), |doc, _| apply_to_doc(doc, &vars, &set))?;
     set_vars(s, |v| v.active = Some(idx))?;
     Ok(json!({"applied": set.name, "index": idx}))
@@ -423,6 +428,11 @@ pub fn export_data_sets_with(s: &Session, p: &Value, mut write: impl FnMut(&str,
             ));
         }
         names.push(name);
+    }
+    // Authorize the whole selected batch before rendering or writing its first variation.
+    // A later Pixel Replacement must not leave earlier exports behind if its read is refused.
+    for set in &sets {
+        authorize_data_set(s, set)?;
     }
     let mut written = Vec::new();
     for (set, name) in sets.iter().zip(&names) {

@@ -53,12 +53,30 @@ fn capslock_harness() -> Harness<'static, PhotocraftApp> {
 struct CursorFp {
     icon: CursorIcon,
     image: Option<[u16; 2]>,
-    shapes: Vec<egui::epaint::ClippedShape>,
+    shapes: Vec<String>,
 }
 
 fn fp(h: &Harness<'_, PhotocraftApp>) -> CursorFp {
     let out = h.output();
-    CursorFp { icon: out.platform_output.cursor_icon, image: out.platform_output.cursor_image.as_ref().map(|i| i.size), shapes: out.shapes.clone() }
+    let shapes = out.shapes.iter().map(|shape| stable_shape(&format!("{shape:?}"))).collect();
+    CursorFp { icon: out.platform_output.cursor_icon, image: out.platform_output.cursor_image.as_ref().map(|i| i.size), shapes }
+}
+
+fn stable_shape(debug: &str) -> String {
+    let mut stable = String::with_capacity(debug.len());
+    let mut remaining = debug;
+    while let Some(start) = remaining.find("Managed(") {
+        stable.push_str(&remaining[..start]);
+        let after = &remaining[start + "Managed(".len()..];
+        let Some(end) = after.find(')') else {
+            stable.push_str(&remaining[start..]);
+            return stable;
+        };
+        stable.push_str("Managed(_)");
+        remaining = &after[end + 1..];
+    }
+    stable.push_str(remaining);
+    stable
 }
 
 fn painting(h: &mut Harness<'_, PhotocraftApp>, value: &str) {

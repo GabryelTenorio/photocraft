@@ -184,12 +184,11 @@ fn plural_keys(sources: &[(PathBuf, String)]) -> BTreeSet<Key> {
         while let Some(at) = rest.find("trn(") {
             rest = rest.get(at + 4..).unwrap_or("");
             let Some(end) = call_end(rest) else { break };
-            let args = rest.get(..end).unwrap_or("");
-            // `trn(lang, n, one, other)`: the forms are the last two literals, so a string in the
-            // count expression (`r["files"].len()`) is not mistaken for one.
-            let forms = quoted_strings(args);
-            if let [.., one, other] = forms.as_slice() {
-                keys.insert(Key { context: "@plural".into(), source: format!("{one}|{other}") });
+            let args = split_arguments(rest.get(..end).unwrap_or(""));
+            let singular = args.get(2).and_then(|arg| quoted_strings(arg).into_iter().next());
+            let plural = args.get(3).and_then(|arg| quoted_strings(arg).into_iter().next());
+            if let (Some(singular), Some(plural)) = (singular, plural) {
+                keys.insert(Key { context: "@plural".into(), source: format!("{singular}|{plural}") });
             }
             rest = rest.get(end + 1..).unwrap_or("");
         }
@@ -550,6 +549,25 @@ mod tests {
         let keys = plural_keys(&sources);
         assert!(keys.contains(&Key { context: "@plural".into(), source: "{n} file|{n} files".into() }), "{keys:?}");
         assert_eq!(keys.len(), 1, "{keys:?}");
+    }
+
+    #[test]
+    fn plural_keys_ignore_strings_nested_in_count_arguments() {
+        let sources = vec![(
+            PathBuf::from("ui.rs"),
+            r#"
+                trn(lang, r["files"].as_u64().unwrap_or(0), "{n} file", "{n} files");
+                trn(lang, count("selected, rows", &[r["rows"], r["items"]]), "{n} row", "{n} rows");
+            "#
+            .into(),
+        )];
+        assert_eq!(
+            plural_keys(&sources),
+            BTreeSet::from([
+                Key { context: "@plural".into(), source: "{n} file|{n} files".into() },
+                Key { context: "@plural".into(), source: "{n} row|{n} rows".into() },
+            ])
+        );
     }
 
     #[test]

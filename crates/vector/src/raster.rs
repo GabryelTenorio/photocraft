@@ -15,10 +15,6 @@
 use photocraft_doc::{FillRule, PathOp};
 use photocraft_geom::Rect;
 
-/// Coverage below this is f32 round-off in the cell prefix sum, not area: it is well under half
-/// a 16-bit step (7.6e-6), so 8- and 16-bit output is unchanged by dropping it.
-const RESIDUE: f32 = 1e-6;
-
 #[derive(Clone, Copy, Debug)]
 struct Edge {
     x0: f64,
@@ -172,6 +168,17 @@ impl Rasterizer {
     /// Renders `rect` into `out` (`rect.width() * rect.height()` values), sequentially.
     pub fn render_into(&self, rect: Rect, out: &mut [f32]) {
         let w = rect.width() as usize;
+        // Signed f32 cell areas can leave a positive cancellation residue past the last
+        // edge. Outside the polygons' geometric envelope coverage is exactly zero; clip
+        // those columns without discarding legitimate tiny coverage inside it (#2537).
+        // Inverted paths cover the exterior, so their output must remain unrestricted.
+        let columns = if self.inverted {
+            None
+        } else {
+            self.bounds.map(|(x0, _, x1, _)| {
+                ((x0.floor() - f64::from(rect.x0)).clamp(0.0, w as f64) as usize, (x1.ceil() - f64::from(rect.x0)).clamp(0.0, w as f64) as usize)
+            })
+        };
         let mut st = RowState::new(self.comps.len(), w);
         // Edges are sorted by y0; `next` is the first edge not yet activated.
         let top = f64::from(rect.y0);
@@ -188,6 +195,7 @@ impl Rasterizer {
             }
             let acc = &mut st.acc;
             acc.iter_mut().for_each(|v| *v = 0.0);
+            st.occupied.fill(0);
             if st.active.is_empty() {
                 if self.inverted {
                     out[row * w..(row + 1) * w].iter_mut().for_each(|v| *v = 1.0);
@@ -218,12 +226,27 @@ impl Rasterizer {
             st.cuts = cuts;
             let row_out = &mut out[row * w..(row + 1) * w];
             let mut sum = 0.0f32;
-            for (o, a) in row_out.iter_mut().zip(st.acc.iter()) {
+            let mut occupied = 0i64;
+            for ((o, a), support) in row_out.iter_mut().zip(st.acc.iter()).zip(st.occupied.iter()) {
                 sum += *a;
-                // Opposite boundaries don't cancel exactly in f32, leaving ~1e-7 just past a
-                // shape's right edge; that residue would count as content (#2537). Snap it (and
-                // a NaN) to 0.
-                *o = if sum >= RESIDUE { sum.min(1.0) } else { 0.0 };
+                occupied = occupied.saturating_add(*support);
+                // Real subpixel areas can be smaller than f32 cancellation residue. Geometry
+                // proves empty columns have exactly zero area, even inside the outer envelope.
+                // Reset the prefix there too, so residue cannot bias the next inside interval.
+                if occupied <= 0 {
+                    sum = 0.0;
+                    *o = 0.0;
+                } else {
+                    *o = if sum.is_finite() { sum.clamp(0.0, 1.0) } else { 0.0 };
+                }
+            }
+            if let Some((left, right)) = columns {
+                if let Some(outside) = row_out.get_mut(..left) {
+                    outside.fill(0.0);
+                }
+                if let Some(outside) = row_out.get_mut(right..) {
+                    outside.fill(0.0);
+                }
             }
         }
     }
@@ -245,6 +268,7 @@ impl Rasterizer {
         if st.band.is_empty() {
             if self.inverted {
                 add_full(&mut st.acc, b - a);
+                mark_occupied(&mut st.occupied, x0, f64::NEG_INFINITY, f64::INFINITY);
             }
             return;
         }
@@ -270,9 +294,7 @@ impl Rasterizer {
         st.wind.iter_mut().for_each(|w| *w = 0);
         let mut union_count = 0i32;
         let mut inside = self.inverted;
-        if inside {
-            add_full(&mut st.acc, b - a);
-        }
+        let mut left: Option<BandEdge> = None;
         let n = st.band.len();
         for k in 0..n {
             let be = st.band[k];
@@ -288,9 +310,38 @@ impl Rasterizer {
             }
             let now = self.inside(&st.wind, union_count);
             if now != inside {
-                let w = if now { 1.0 } else { -1.0 };
-                draw(&mut st.acc, x0, be.xa, a, be.xb, b, w);
+                if inside {
+                    // Between transitions the two linear boundaries form an actual inside
+                    // trapezoid. Its x projection marks exactly the columns that can receive
+                    // area from this band, including arbitrarily small positive slivers.
+                    if left.is_none_or(|left| left.xa < be.xa || left.xb < be.xb) {
+                        let start = left.map_or(f64::NEG_INFINITY, |left| left.xa.min(left.xb));
+                        if mark_occupied(&mut st.occupied, x0, start, be.xa.max(be.xb)) {
+                            // Skip complete off-rectangle intervals before adding their two
+                            // opposite boundaries. Otherwise their cancellation can erase a
+                            // genuine tiny component in a clipped tile's cell zero.
+                            if let Some(left) = left {
+                                draw(&mut st.acc, x0, left.xa, a, left.xb, b, 1.0);
+                            } else {
+                                add_full(&mut st.acc, b - a);
+                            }
+                            draw(&mut st.acc, x0, be.xa, a, be.xb, b, -1.0);
+                        }
+                    }
+                } else {
+                    left = Some(be);
+                }
                 inside = now;
+            }
+        }
+        if inside {
+            let start = left.map_or(f64::NEG_INFINITY, |left| left.xa.min(left.xb));
+            if mark_occupied(&mut st.occupied, x0, start, f64::INFINITY) {
+                if let Some(left) = left {
+                    draw(&mut st.acc, x0, left.xa, a, left.xb, b, 1.0);
+                } else {
+                    add_full(&mut st.acc, b - a);
+                }
             }
         }
     }
@@ -311,11 +362,43 @@ struct RowState {
     wind: Vec<i32>,
     /// Cell accumulator: `width + 1` cells (the extra one absorbs spill-over).
     acc: Vec<f32>,
+    /// Difference array of geometric inside-interval projections, independent of signed
+    /// f32 area cancellation. Reused per row; marking each interval costs O(1).
+    occupied: Vec<i64>,
 }
 
 impl RowState {
     fn new(comps: usize, width: usize) -> Self {
-        RowState { active: Vec::new(), cuts: Vec::new(), band: Vec::new(), wind: vec![0; comps.max(1)], acc: vec![0.0; width + 1] }
+        RowState {
+            active: Vec::new(),
+            cuts: Vec::new(),
+            band: Vec::new(),
+            wind: vec![0; comps.max(1)],
+            acc: vec![0.0; width + 1],
+            occupied: vec![0; width + 1],
+        }
+    }
+}
+
+/// Mark pixels with a positive-area intersection with an inside interval's x projection.
+/// A difference array avoids iterating over the interval's columns for every sub-band.
+fn mark_occupied(occupied: &mut [i64], x0: i32, left: f64, right: f64) -> bool {
+    if left.is_nan() || right.is_nan() || left >= right {
+        return false;
+    }
+    let width = occupied.len().saturating_sub(1) as f64;
+    let start = (left - f64::from(x0)).floor().clamp(0.0, width) as usize;
+    let end = (right - f64::from(x0)).ceil().clamp(0.0, width) as usize;
+    if start < end {
+        if let Some(start) = occupied.get_mut(start) {
+            *start = start.saturating_add(1);
+        }
+        if let Some(end) = occupied.get_mut(end) {
+            *end = end.saturating_sub(1);
+        }
+        true
+    } else {
+        false
     }
 }
 
@@ -402,6 +485,86 @@ mod tests {
         assert!((c[3 * 10 + 2] - 0.75 * 0.5).abs() < 1e-5);
         assert!((c[5 * 10 + 4] - 1.0).abs() < 1e-6);
         assert_eq!(c[0], 0.0);
+    }
+
+    #[test]
+    fn curved_coverage_is_zero_outside_its_envelope() {
+        for x in [0.0, 10.5] {
+            let path = crate::shapes::ellipse(x, 10.0, 100.0, 100.0);
+            let r = crate::fill_rasterizer(&path, crate::DEFAULT_TOLERANCE);
+            let width = 120;
+            let coverage = r.render(Rect::new(0, 0, width, 120));
+            for y in 0..120 {
+                for col in (x + 100.0).ceil() as i32..width {
+                    assert_eq!(coverage[(y * width + col) as usize], 0.0, "{x}: {col},{y}");
+                }
+            }
+            let inverse = Rasterizer { inverted: true, ..r };
+            assert_eq!(inverse.render(Rect::new(115, 20, 116, 21)), [1.0]);
+        }
+    }
+
+    #[test]
+    fn envelope_clipping_preserves_tiny_real_coverage() {
+        let side = 1e-4;
+        let expected = side * side;
+        for (x, rect) in [(1.0, Rect::new(0, 0, 3, 1)), (10.25, Rect::new(9, 0, 13, 1)), (-1.25, Rect::new(-3, 0, 1, 1))] {
+            let mut r = Rasterizer::new(false);
+            r.add_component(&[square(x, 0.0, side)], PathOp::Combine, FillRule::NonZero);
+            let coverage = r.render(rect);
+            let column = (x.floor() as i32 - rect.x0) as usize;
+            assert!(coverage[column] > 0.0 && coverage[column] < 1e-6);
+            assert!((f64::from(coverage[column]) - expected).abs() < expected * 1e-3, "{x}: {coverage:?}");
+            for (index, value) in coverage.iter().enumerate() {
+                if index != column {
+                    assert_eq!(*value, 0.0, "{x}: column {index}");
+                }
+            }
+            assert_eq!(r.render(Rect::new(x.floor() as i32, 0, x.floor() as i32 + 1, 1)), [coverage[column]]);
+        }
+    }
+
+    #[test]
+    fn separated_components_leave_exactly_zero_coverage_in_the_gap() {
+        let mut r = Rasterizer::new(false);
+        r.add_component(&[vec![(1.6, 0.0), (3.1, 0.0), (3.1, 1.0), (1.6, 1.0)]], PathOp::Combine, FillRule::NonZero);
+        r.add_component(&[vec![(15.0, 0.0), (16.0, 0.0), (16.0, 1.0), (15.0, 1.0)]], PathOp::Combine, FillRule::NonZero);
+        let coverage = r.render(Rect::new(0, 0, 20, 1));
+        for column in 4..15 {
+            assert_eq!(coverage[column], 0.0, "gap column {column}: {coverage:?}");
+        }
+        assert!((coverage[1] - 0.4).abs() < 1e-6);
+        assert!((coverage[3] - 0.1).abs() < 1e-6);
+        assert_eq!(coverage[15], 1.0);
+        assert_eq!(r.render(Rect::new(4, 0, 15, 1)), vec![0.0; 11]);
+    }
+
+    #[test]
+    fn subtracted_rectangle_leaves_exactly_zero_coverage_in_the_hole() {
+        let mut r = Rasterizer::new(false);
+        r.add_component(&[vec![(1.6, 0.0), (16.0, 0.0), (16.0, 1.0), (1.6, 1.0)]], PathOp::Combine, FillRule::NonZero);
+        r.add_component(&[vec![(3.1, 0.0), (15.0, 0.0), (15.0, 1.0), (3.1, 1.0)]], PathOp::Subtract, FillRule::NonZero);
+        let coverage = r.render(Rect::new(0, 0, 20, 1));
+        for column in 4..15 {
+            assert_eq!(coverage[column], 0.0, "hole column {column}: {coverage:?}");
+        }
+        assert!((coverage[1] - 0.4).abs() < 1e-6);
+        assert!((coverage[3] - 0.1).abs() < 1e-6);
+        assert_eq!(coverage[15], 1.0);
+        assert_eq!(r.render(Rect::new(4, 0, 15, 1)), vec![0.0; 11]);
+    }
+
+    #[test]
+    fn empty_gap_residue_does_not_bias_the_next_tiny_real_component() {
+        let mut r = Rasterizer::new(false);
+        r.add_component(&[vec![(1.6, 0.0), (3.1, 0.0), (3.1, 1.0), (1.6, 1.0)]], PathOp::Combine, FillRule::NonZero);
+        r.add_component(&[square(10.0, 0.0, 1e-4)], PathOp::Combine, FillRule::NonZero);
+        let coverage = r.render(Rect::new(0, 0, 20, 1));
+        for column in 4..10 {
+            assert_eq!(coverage[column], 0.0, "{coverage:?}");
+        }
+        assert!((f64::from(coverage[10]) - 1e-8).abs() < 1e-11, "{coverage:?}");
+        assert_eq!(r.render(Rect::new(10, 0, 11, 1)), [coverage[10]]);
     }
 
     #[test]
