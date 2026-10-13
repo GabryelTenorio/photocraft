@@ -34,6 +34,7 @@ async fn scalar_arguments_advertise_a_single_json_type() {
         ("doc_import_data_sets", "index", "integer"),
         ("doc_save", "quality", "integer"),
         ("doc_save", "tgaBits", "integer"),
+        ("doc_save", "dpxBits", "integer"),
         ("doc_save", "index", "integer"),
         ("doc_inspect", "index", "integer"),
         ("doc_render_preview", "index", "integer"),
