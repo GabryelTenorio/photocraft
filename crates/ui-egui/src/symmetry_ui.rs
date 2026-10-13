@@ -191,6 +191,59 @@ fn rotation_handle(p: PresetSymmetry, size: [f64; 2]) -> [f64; 2] {
     let r = (size[0].min(size[1]) * 0.35).max(1.0);
     [p.center[0] + r * d[0], p.center[1] + r * d[1]]
 }
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Handle {
+    Center,
+    Rotation,
+}
+fn hit(p: PresetSymmetry, size: [f64; 2], at: [f64; 2], zoom: f32) -> Option<Handle> {
+    let tol = 8.0 / f64::from(zoom.max(0.001));
+    let distance = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).hypot(a[1] - b[1]);
+    if distance(at, p.center) <= tol {
+        Some(Handle::Center)
+    } else if distance(at, rotation_handle(p, size)) <= tol {
+        Some(Handle::Rotation)
+    } else {
+        None
+    }
+}
+/// While the symmetry is transformed the brush tip is not the cursor (#4495): the centre moves,
+/// the handle turns, and a press anywhere else does nothing, so it gets the plain arrow.
+pub(crate) fn cursor(app: &PhotocraftApp, ctx: &egui::Context, xf: &ViewXform, p: egui::Pos2) -> Option<egui::CursorIcon> {
+    let t = app.ui.symmetry_transform.as_ref().filter(|t| valid(app, t))?;
+    let size = app.session.active().map(|s| [f64::from(s.doc.size.width), f64::from(s.doc.size.height)])?;
+    let handle = match t.gesture {
+        Some(Gesture::Move { .. }) => Some(Handle::Center),
+        Some(Gesture::Rotate { .. }) => Some(Handle::Rotation),
+        None => hit(t.preview, size, xf.to_doc(p), xf.zoom),
+    };
+    Some(match handle {
+        Some(Handle::Center) => egui::CursorIcon::Move,
+        Some(Handle::Rotation) => {
+            crate::type_transform::rotation_cursor(ctx, p);
+            egui::CursorIcon::None
+        }
+        None => egui::CursorIcon::Default,
+    })
+}
+/// Photoshop's commit and cancel buttons while the symmetry is transformed: Enter and Esc were the
+/// only way out, which a pen or touch screen can't reach (#4495).
+pub fn actions(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if app.ui.symmetry_transform.is_none() {
+        return;
+    }
+    let tip = crate::i18n::fmt(tl!("Commit transform ({key})"), &[("key", &crate::shortcuts::pretty("Enter"))]);
+    let commit_btn = icons::button(ui, "check", 26.0, false, &tip);
+    commit_btn.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Commit transform"));
+    if commit_btn.clicked() {
+        commit(app);
+    }
+    let cancel = icons::button(ui, "ban", 26.0, false, tl!("Cancel transform (Esc)"));
+    cancel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Cancel transform"));
+    if cancel.clicked() {
+        app.ui.symmetry_transform = None;
+    }
+}
 /// True throughout transform editing, including clicks outside a handle: never paint by accident.
 pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) -> bool {
     if app.ui.symmetry_transform.as_ref().is_some_and(|t| !valid(app, t)) {
@@ -206,17 +259,15 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
     let Some(t) = &mut app.ui.symmetry_transform else {
         return false;
     };
-    let tol = 8.0 / f64::from(xf.zoom.max(0.001));
-    let distance = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).hypot(a[1] - b[1]);
     match ev {
         ToolEvent::Down { x, y, .. } => {
             let p = [x, y];
-            t.gesture = if distance(p, t.preview.center) <= tol {
-                Some(Gesture::Move { start: p, center: t.preview.center })
-            } else if distance(p, rotation_handle(t.preview, size)) <= tol {
-                Some(Gesture::Rotate { angle: (y - t.preview.center[1]).atan2(x - t.preview.center[0]), rotation: t.preview.rotation })
-            } else {
-                None
+            t.gesture = match hit(t.preview, size, p, xf.zoom) {
+                Some(Handle::Center) => Some(Gesture::Move { start: p, center: t.preview.center }),
+                Some(Handle::Rotation) => {
+                    Some(Gesture::Rotate { angle: (y - t.preview.center[1]).atan2(x - t.preview.center[0]), rotation: t.preview.rotation })
+                }
+                None => None,
             };
         }
         ToolEvent::Move { x, y, .. } => {
