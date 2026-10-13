@@ -2480,7 +2480,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     });
     for (id, p) in actions {
         if id == "ui.maskTarget" {
-            if app.session.active().is_some_and(|st| st.channel_transform.is_some()) {
+            if photocraft_engine::channel_transform::locked(&app.session) {
                 continue;
             }
             app.ui.mask_target = p.as_bool().unwrap_or(false);
@@ -2489,7 +2489,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             continue;
         }
         if id == "ui.vectorMaskTarget" {
-            if app.session.active().is_some_and(|st| st.channel_transform.is_some()) {
+            if photocraft_engine::channel_transform::locked(&app.session) {
                 continue;
             }
             app.ui.vector_mask_target = p.as_bool().unwrap_or(false);
