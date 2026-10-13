@@ -140,30 +140,3 @@ fn invalid_custom_paper_is_rejected_without_printing_or_changing_the_document() 
     assert!(h.state().session.file_menu.last_print.is_none());
     assert!(!output.exists());
 }
-
-#[test]
-fn capture_custom_paper_dialog() {
-    let Some(directory) = std::env::var_os("PHOTOCRAFT_PAPER_CAPTURES").map(std::path::PathBuf::from) else { return };
-    std::fs::create_dir_all(&directory).unwrap();
-    let (app, _) = app();
-    let mut h = Harness::builder().with_size(vec2(1000.0, 900.0)).wgpu().build_ui_state(show, app);
-    PhotocraftApp::setup_context(&h.ctx, Default::default());
-    h.run_steps(5);
-    h.render().unwrap().save(directory.join("preset.png")).unwrap();
-    click(&mut h, "letter");
-    h.render().unwrap().save(directory.join("paper-menu.png")).unwrap();
-    if shown(&h, "Custom") {
-        click(&mut h, "Custom");
-        enter_length(&mut h, "Paper Width", "18.415");
-        enter_length(&mut h, "Paper Height", "23.495");
-        h.render().unwrap().save(directory.join("custom-cm.png")).unwrap();
-        click(&mut h, "Centimeters");
-        click(&mut h, "Inches");
-        click(&mut h, "Portrait");
-        click(&mut h, "Landscape");
-        h.render().unwrap().save(directory.join("custom-landscape-in.png")).unwrap();
-        let _language = photocraft_ui_egui::i18n::language_scope(photocraft_ui_egui::i18n::Lang::from_code("fr").unwrap());
-        h.run_steps(3);
-        h.render().unwrap().save(directory.join("custom-fr.png")).unwrap();
-    }
-}
