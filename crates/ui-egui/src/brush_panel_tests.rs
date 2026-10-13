@@ -247,10 +247,7 @@ fn section_locks_are_always_visible_and_toggle_on_click() {
     for (name, _) in SECTIONS.iter().skip(1) {
         let row = h.get_by_label(name).rect();
         let lock_center = egui::pos2(row.right() - 11.0, row.center().y);
-        assert!(
-            icons.iter().any(|r| r.contains(lock_center)),
-            "expected lock icon at {lock_center:?} for {name}"
-        );
+        assert!(icons.iter().any(|r| r.contains(lock_center)), "expected lock icon at {lock_center:?} for {name}");
     }
 
     // Clicking the lock toggles it on and off without changing the selected section.
@@ -277,7 +274,6 @@ fn section_locks_are_always_visible_and_toggle_on_click() {
     assert!(!h.state().session.tools.brush.locks.scattering);
     assert_eq!(h.state().ui.brush_section, 0);
 }
-
 
 /// A harness that shows the options bar with `tool` in the Studio (non-pro) theme.
 fn options_bar_harness(tool: crate::state::Tool) -> Harness<'static, PhotocraftApp> {
