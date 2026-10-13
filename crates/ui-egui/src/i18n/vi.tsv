@@ -73,6 +73,8 @@
 	Fill…	Tô…
 	Filter	Bộ lọc
 	Find and Replace Text…	Tìm và thay chữ…
+	Add to Dictionary	Thêm vào từ điển
+	No Spelling Suggestions	Không có gợi ý chính tả
 	Fit Image…	Vừa khung ảnh…
 	Flatten All Layer Effects	Làm phẳng mọi hiệu ứng lớp
 	Flatten All Masks	Làm phẳng mọi mặt nạ
@@ -1272,6 +1274,12 @@
 	Aqua	Xanh ngọc
 	Balance	Cân bằng
 	Before (Y)	Trước (Y)
+	Save Settings…	Lưu cài đặt…
+	Load Settings…	Tải cài đặt…
+	Save these settings as a Camera Raw .xmp file	Lưu các cài đặt này thành tệp .xmp Camera Raw
+	Load settings from a Camera Raw .xmp file	Tải cài đặt từ tệp .xmp Camera Raw
+	Loaded Camera Raw settings from {file}	Đã tải cài đặt Camera Raw từ {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Đã tải cài đặt Camera Raw từ {file} ({n} không được hỗ trợ)
 	Blacks	Điểm đen
 	Blending	Pha trộn
 	Blue	Xanh dương
@@ -2025,6 +2033,7 @@ layers	Fill:	Độ tô:
 	Option-click to define a source point to clone from	Option+nhấp để chỉ định điểm nguồn nhân bản
 	Out of gamut for printing: click for the nearest printable colour	Ngoài gamut in: nhấp để lấy màu in được gần nhất
 	Pick screen color	Lấy màu màn hình
+	Pick Color From Image	Lấy màu từ hình ảnh
 	Point Sample	Mẫu điểm
 	Pupil Size	Kích thước đồng tử
 	Quick Selection found nothing there	Chọn nhanh không tìm thấy gì
@@ -3566,3 +3575,4 @@ curves	Smooth	Làm mượt
 	Gradient Preset Options	Tùy chọn thiết lập sẵn chuyển sắc
 	Import .GRD	Nhập .GRD
 	Choose a gradient file (.grd).	Chọn tệp chuyển sắc (.grd).
+	Auto Add/Delete	Tự động thêm/xóa
