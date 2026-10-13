@@ -515,6 +515,10 @@ pub(crate) fn label(key: &str) -> String {
 }
 
 pub(crate) fn source_label(key: &str) -> String {
+    // A name that already reads as text ("iPhone 14 Pro Max", "Web 1920") is not camelCase.
+    if key.contains(' ') {
+        return key.to_string();
+    }
     // camelCase → "Camel Case"
     let mut s = String::new();
     for (i, ch) in key.chars().enumerate() {
@@ -880,6 +884,15 @@ pub struct FilterPreviewKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Preset names such as "iPhone 14 Pro Max" (the artboard dialog's choices) are text, not
+    /// camelCase keys: they used to read "I Phone 14  Pro  Max".
+    #[test]
+    fn display_names_are_not_split_like_camel_case_keys() {
+        assert_eq!(source_label("iPhone 14 Pro Max"), "iPhone 14 Pro Max");
+        assert_eq!(source_label("Web 1920"), "Web 1920");
+        assert_eq!(source_label("centerX"), "Center X");
+    }
 
     #[test]
     fn only_direction_angles_get_the_dial() {
