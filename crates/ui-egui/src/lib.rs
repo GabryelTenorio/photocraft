@@ -26,6 +26,8 @@ pub mod artboard_tool;
 pub mod artboard_ui;
 mod blend_keys;
 pub(crate) mod blend_preview;
+pub mod blur_paths;
+pub mod blur_pins;
 mod brand;
 pub(crate) mod brush_cursor;
 pub mod brush_panel;
@@ -2482,6 +2484,9 @@ mod new_layer_button_tests;
 
 #[cfg(test)]
 mod smart_filter_rows_tests;
+
+#[cfg(test)]
+mod blur_pins_tests;
 
 #[cfg(test)]
 mod move_outline_tests;
