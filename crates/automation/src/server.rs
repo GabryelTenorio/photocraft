@@ -35,6 +35,11 @@ pub struct PhotocraftMcp {
 
 // ---------------------------------------------------------------------------
 // Parameters
+
+// Optional scalars advertise their plain single JSON type (`with`), not schemars' union
+// `["integer","null"]`: some clients only coerce scalar arguments on plain-typed properties
+// and reject their string form against a union. Omitting the argument selects the default;
+// an explicit `null` still deserializes to the default.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -42,6 +47,7 @@ pub struct PhotocraftMcp {
 pub struct DocIndex {
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
 }
 
@@ -59,12 +65,15 @@ pub struct PlaceParams {
     pub path: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Scale as a percentage; defaults to fitting a file larger than the canvas.
     #[serde(default)]
+    #[schemars(with = "f64")]
     pub scale: Option<f64>,
-    /// Place at a centred size instead of a scaled one.
+    /// Place at a centred size instead of a scaled one (default off).
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub fit: Option<bool>,
     /// Centre of the placed layer, in document pixels.
     #[serde(default)]
@@ -78,6 +87,7 @@ pub struct ExportLayersParams {
     pub dir: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Export format (default png).
     #[serde(default)]
@@ -87,9 +97,11 @@ pub struct ExportLayersParams {
     pub prefix: Option<String>,
     /// Export only the layers that are visible (default true).
     #[serde(default, rename = "visible_only")]
+    #[schemars(with = "bool")]
     pub visible_only: Option<bool>,
-    /// Encoder quality, 0..12, for the formats that take one.
+    /// Encoder quality, 0..12, for the formats that take one (default: the format's own).
     #[serde(default)]
+    #[schemars(with = "f64")]
     pub quality: Option<f64>,
 }
 
@@ -100,6 +112,7 @@ pub struct ExportDataSetsParams {
     pub dir: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Export format (default png).
     #[serde(default)]
@@ -119,6 +132,7 @@ pub struct ImportDataSetsParams {
     pub path: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Field delimiter (default `,`).
     #[serde(default)]
@@ -128,15 +142,20 @@ pub struct ImportDataSetsParams {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewParams {
+    /// Width in pixels (default 1920).
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub width: Option<u32>,
+    /// Height in pixels (default 1080).
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub height: Option<u32>,
     /// rgb | gray | cmyk | lab
     #[serde(default)]
     pub mode: Option<String>,
-    /// 8 | 16 | 32
+    /// 8 | 16 | 32 (default 8)
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub depth: Option<u32>,
     /// white | black | transparent | #rrggbb
     #[serde(default)]
@@ -159,6 +178,7 @@ pub struct SaveParams {
     pub format: Option<String>,
     /// JPEG or WebP quality 1..100. A WebP saved with a quality is lossy; without one it is lossless.
     #[serde(default)]
+    #[schemars(with = "u8")]
     pub quality: Option<u8>,
     /// TIFF: keep the layers (Photoshop layer data). Off by default: a flat TIFF.
     #[serde(default, rename = "tiffLayers")]
@@ -166,8 +186,11 @@ pub struct SaveParams {
     /// TGA: 24 or 32 bits per pixel. 32 writes the alpha channel (or else the transparency) as the
     /// alpha, 24 none. Unset: 32 with an alpha channel or transparency, else 24.
     #[serde(default, rename = "tgaBits")]
+    #[schemars(with = "u8")]
     pub tga_bits: Option<u8>,
+    /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
 }
 
@@ -177,10 +200,12 @@ pub struct PreviewParams {
     /// Headless mode only: document index (default: the active document).
     /// Bridge previews capture the app window and reject `index`.
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Longest side of a headless preview (default 1024, maximum 2048).
     /// Zero requests full size within that ceiling. Bridge mode returns the window screenshot.
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub max_side: Option<u32>,
 }
 
@@ -190,6 +215,7 @@ pub struct ScreenshotParams {
     /// Downscale the window screenshot to this longest side (maximum 2048).
     /// Omit or pass zero to keep the original size.
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub max_side: Option<u32>,
 }
 
@@ -205,8 +231,9 @@ pub struct ListParams {
     /// Only commands whose id or label contains this text (case-insensitive).
     #[serde(default)]
     pub filter: Option<String>,
-    /// Only commands that can run right now.
+    /// Only commands that can run right now (default false).
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub enabled_only: Option<bool>,
 }
 
@@ -222,6 +249,7 @@ pub struct RunParams {
     /// true). With false it runs as a background job and the result is `{"job": id}`: poll it
     /// with `jobs_list`, stop it with `jobs_cancel`.
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub wait: Option<bool>,
 }
 
@@ -230,6 +258,7 @@ pub struct RunParams {
 pub struct JobCancelParams {
     /// The job id from `command_run` / `jobs_list` (omit to cancel every running job).
     #[serde(default)]
+    #[schemars(with = "u64")]
     pub job: Option<u64>,
 }
 
@@ -243,6 +272,7 @@ pub struct BatchParams {
     pub steps: Vec<RunParams>,
     /// Stop at the first failing step (default true).
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub stop_on_error: Option<bool>,
 }
 
@@ -257,13 +287,17 @@ struct PointerEvent {
     /// Document y in pixels.
     y: f64,
     /// Pen pressure 0..1 (default 1).
+    #[schemars(with = "f64")]
     pressure: Option<f64>,
     /// A simulated pen's tilt, as a stylus reports it.
     #[serde(rename = "tiltX")]
+    #[schemars(with = "f64")]
     tilt_x: Option<f64>,
     #[serde(rename = "tiltY")]
+    #[schemars(with = "f64")]
     tilt_y: Option<f64>,
     /// A simulated pen's barrel rotation.
+    #[schemars(with = "f64")]
     rotation: Option<f64>,
 }
 
