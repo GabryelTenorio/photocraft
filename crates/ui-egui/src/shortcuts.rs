@@ -335,8 +335,14 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // Liquify is a full-window custom dialog with focusable sliders. egui can therefore claim
     // keyboard input before the distortion-mode handler below runs. Give Liquify's local
     // shortcuts first refusal (Undo, brush size, tool keys), but never steal keys from text edits.
-    if app.distort.liquify.is_some() && !ctx.text_edit_focused() {
-        crate::liquify_ui::keys(app, ctx);
+    if app.distort.liquify.is_some() {
+        // Undo and redo still apply while a numeric field (Size, Pressure, …) has focus.
+        // Other Liquify keys must not steal characters from that field (#4027).
+        if ctx.text_edit_focused() {
+            crate::liquify_ui::history_keys(app, ctx);
+        } else {
+            crate::liquify_ui::keys(app, ctx);
+        }
     }
     use crate::shortcut_dispatch::{Focus, dispatch_pressed};
     let focus = Focus::of(ctx);
@@ -456,6 +462,17 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
             return;
         }
     }
+    // Space+F (⇧Space+F backwards) cycles the pasteboard colour, as in Photoshop: F while the
+    // Hand key is held, before F's own Cycle Screen Mode.
+    if !matches!(focus, Focus::Text) && app.ui.text_edit.is_none() && crate::hold_keys::reposition_held(app, ctx) {
+        let back = ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F));
+        if back || ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F)) {
+            if let Err(e) = crate::canvas_tool_menu::cycle_canvas_color(app, back) {
+                app.ui.status = e;
+            }
+            return;
+        }
+    }
     // Inline type editing eats text and navigation keys; ⌘-shortcuts still reach the menus.
     let editing = crate::type_tool::handle_keys(app, ctx);
     // Registry, UI and menu-catalogue shortcuts (see [`crate::shortcut_dispatch::bindings`]).
@@ -481,6 +498,17 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // brush keys [ ] ⇧[ ⇧] (`tools.decreaseBrushSize`…) are commands, dispatched above with any
     // Keyboard Shortcuts override.
     let pressed = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::NONE, k));
+    // Remove tool with strokes waiting (Remove after each stroke off): ↩ applies them, Esc drops them.
+    if !app.remove_pending.is_empty() {
+        if pressed(Key::Enter) {
+            crate::retouch_ui::remove_pending_commit(app);
+            return;
+        }
+        if pressed(Key::Escape) {
+            crate::retouch_ui::remove_pending_cancel(app);
+            return;
+        }
+    }
     // Enter / Escape commit or cancel in-progress tool state (polygonal lasso, crop).
     if crate::lasso_ui::active(app) {
         let mods = ctx.input(|i| i.modifiers);
@@ -509,15 +537,13 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
             return;
         }
     }
-    // Esc with no active operation deselects (#2674), like ⌘D. The key is only taken when a
-    // selection exists, and never from a state that handles Esc later in the frame: menus,
-    // dialogs and inline type returned above, transform, pen, lasso and crop consumed it, and
-    // these own theirs: full screen (Esc returns), the palette, the canvas and layer menus, the
-    // brush picker, Rotate View, Adaptive Wide Angle, the Filter Gallery, the TIFF prompt, any
-    // open egui popup and the toolbar tool flyout. A canvas drag in progress (a marquee being
-    // drawn) keeps the selection too.
-    let esc_taken = app.ui.view.hides_chrome()
-        || app.drag.is_some()
+    // Esc with no active operation leaves a full screen mode, else deselects (#2674), like ⌘D.
+    // The key is never taken from a state that handles Esc itself: menus, dialogs, text fields
+    // and inline type returned above, transform, pen, lasso and crop consumed it, and these own
+    // theirs later in the frame: the palette, the canvas and layer menus, the brush picker,
+    // Rotate View, Adaptive Wide Angle, the Filter Gallery, the TIFF prompt, any open egui popup
+    // and the toolbar tool flyout. A canvas drag in progress (a marquee being drawn) keeps it too.
+    let esc_taken = app.drag.is_some()
         || app.ui.palette_open
         || app.ui.canvas_tool_menu.is_some()
         || app.ui.layer_menu.is_some()
@@ -528,6 +554,15 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
         || app.distort.gallery.is_some()
         || ctx.any_popup_open()
         || ctx.data(|d| d.get_temp::<(egui::Id, egui::Rect)>(egui::Id::new("tool-flyout")).is_some());
+    // Both full screen modes (with and without the menu bar) return to Standard, as in Photoshop
+    // (#4116), through the menu command so the window and the Screen Mode check follow.
+    if !esc_taken && app.ui.view.screen_mode != "standard" && pressed(Key::Escape) {
+        if let Err(e) = crate::menus::invoke(app, ctx, "view.screenMode.standard", json!({})) {
+            app.ui.status = e;
+            app.ui.status_error = true;
+        }
+        return;
+    }
     if !esc_taken && app.session.active().is_some_and(|st| st.doc.selection.is_some()) && pressed(Key::Escape) {
         if let Err(e) = app.run("select.deselect", json!({})) {
             app.ui.status = e;
