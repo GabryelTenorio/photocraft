@@ -1956,3 +1956,101 @@ fn a_live_retouch_stroke_ignores_tilt_and_times() {
     let read = |l: &LiveRetouch| l.doc.layer(id).unwrap().surface().unwrap().read_region(b);
     assert_eq!(read(&plain), read(&pen));
 }
+
+#[test]
+fn periodic_clone_low_flow_revisits_accumulate_across_tile_aliases() {
+    // Independent oracle: paint the same continuous stroke over two physical copies of a
+    // tile, then combine the two coverage values using the brush's flow accumulation rule.
+    let setup = |width| {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width":width,"height":24,"depth":32})).unwrap();
+        for x in (8..width).step_by(32) {
+            s.execute("paint.pencil", json!({"points":[[x,12]],"size":16,"color":"#ff0000"})).unwrap();
+        }
+        s
+    };
+    let params = |wrap| json!({"points":[[22,12],[54,12]],"offset":[-18,0],"size":2,"hardness":100,"flow":20,"opacity":100,"wrap":wrap});
+    let green = |s: &Session, x| {
+        let st = s.active().unwrap();
+        st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().rgba(x, 12)[1]
+    };
+    let mut physical = setup(64);
+    physical.execute("paint.cloneStamp", params(false)).unwrap();
+    let (a, b) = (green(&physical, 22), green(&physical, 54));
+    assert!(a > 0.0 && a < 1.0 && b > 0.0 && b < 1.0, "oracle needs two partial visits: {a}, {b}");
+    let expected = a * b;
+    let mut periodic = setup(32);
+    periodic.execute("paint.cloneStamp", params(true)).unwrap();
+    let actual = green(&periodic, 22);
+    assert!((actual - expected).abs() < 0.0001, "repeated visits should build flow: actual green={actual}, expected={expected}, physical copies={a},{b}");
+}
+
+#[test]
+fn periodic_clone_live_offer_commits_and_undoes_the_same_pixels_as_replay() {
+    for depth in [8, 16, 32] {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width":32,"height":24,"depth":depth})).unwrap();
+        s.execute("paint.pencil", json!({"points":[[8,8]],"size":12,"color":"#d03060"})).unwrap();
+        let before = s.active().unwrap().doc.clone();
+        let id = s.active().unwrap().active_layer.unwrap();
+        let params = json!({"points":[[30,22],[34,26],[38,28],[30,22]],"source":[8,8],"size":16,"hardness":70,"opacity":45,"flow":60,"wrap":true});
+        let live = LiveRetouch::begin(&s, "paint.cloneStamp", &params).unwrap();
+        let shown = live.doc.layer(id).unwrap().surface().unwrap().read_region(before.bounds());
+        s.offer_live_retouch(live).unwrap();
+        let result = s.execute("paint.cloneStamp", params.clone()).unwrap();
+        assert_eq!(result["fromLive"], true);
+        let read = |s: &Session| s.active().unwrap().doc.layer(id).unwrap().surface().unwrap().read_region(before.bounds());
+        assert_eq!(read(&s), shown, "offered preview at depth {depth}");
+        let mut replay = Session::new();
+        replay.add_document((*before).clone(), None);
+        replay.execute("paint.cloneStamp", params).unwrap();
+        assert_eq!(read(&s), read(&replay), "command replay at depth {depth}");
+        assert!(s.undo());
+        assert_eq!(s.active().unwrap().doc, before, "one undo at depth {depth}");
+    }
+}
+#[test]
+fn periodic_clone_interior_matches_ordinary_brush_masks_and_transparency() {
+    let cases = [
+        json!({"wetEdges":true}),
+        json!({"dualBrush":{"enabled":true,"size":7,"hardness":0.5,"spacing":0.2}}),
+        json!({"texture":{"enabled":true,"eachTip":false,"depth":0.6}}),
+        json!({"pressureOpacity":true,"pressureSize":false}),
+        json!({"wetEdges":true,"dualBrush":{"enabled":true,"size":7},"pressureOpacity":true}),
+    ];
+    for depth in DEPTHS {
+        for brush in &cases {
+            let setup = || {
+                let mut s = session(96, 64, depth, "rgb");
+                paint_layer(&mut s, |x, y| {
+                    let mut px = texture(x, y);
+                    px[3] = if x < 40 { 0.4 } else { 0.75 };
+                    px
+                });
+                s.execute("tools.setBrush", json!({"brush":brush})).unwrap();
+                s.execute("select.rect", json!({"x":48,"y":16,"width":36,"height":36,"feather":2})).unwrap();
+                s
+            };
+            let mut ordinary = setup();
+            let mut periodic = setup();
+            let mut p = json!({"points":[[55,30,0.4],[65,34,0.8],[72,30,0.3]],"source":[20,20],"size":12,"hardness":65,"flow":35,"opacity":60});
+            ordinary.execute("paint.cloneStamp", p.clone()).unwrap();
+            p["wrap"] = json!(true);
+            periodic.execute("paint.cloneStamp", p).unwrap();
+            let read = |s: &Session| {
+                let st = s.active().unwrap();
+                st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().read_region(st.doc.bounds())
+            };
+            let (a, b) = (read(&ordinary), read(&periodic));
+            let tolerance = if depth == 8 {
+                1.1 / 255.0
+            } else if depth == 16 {
+                1.1 / 65535.0
+            } else {
+                0.00001
+            };
+            let error = a.iter().zip(&b).map(|(a, b)| (a - b).abs()).fold(0.0_f32, f32::max);
+            assert!(error <= tolerance, "depth={depth}, brush={brush}, max native-channel error={error}");
+        }
+    }
+}

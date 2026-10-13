@@ -321,34 +321,26 @@ fn clone_stamp(s: &mut Session, p: &Value) -> Result<Value> {
     let from_live = live.is_some();
     let map = clone_mapping(s, p, &stroke, CMD)?;
     let off = map.offset();
-    let dmg = run_stroke(s, "Clone Stamp", id, p, |pre, surf, sel, lock| {
-        if let Some(l) = live {
-            *surf = l.surface;
-            return Ok(l.bounds);
-        }
-        if flag(p, "wrap", false) {
-            let mut renderer = photocraft_paint::StrokeRenderer::new(&stroke.brush, None, 1.0);
-            renderer.push(&stroke.points);
-            renderer.finish();
-            let before = surf.clone();
-            let bounds = renderer.bounds();
-            return periodic::Composite {
-                target: surf,
-                before: &before,
-                tile: pre.bounds(),
-                bounds,
-                opacity: stroke.brush.opacity,
-                selection: sel,
-                lock,
-                mode,
+    let dmg =
+        run_stroke(s, "Clone Stamp", id, p, |pre, surf, sel, lock| {
+            if let Some(l) = live {
+                *surf = l.surface;
+                return Ok(l.bounds);
             }
-            .draw(bounds, |x, y| renderer.coverage_at(x, y), |r| clone_sample(pre, id, &before, which, r, &map, true, CMD));
-        }
-        let (bounds, cov) = stroke_coverage(&stroke);
-        // Samples come from the pre-stroke state, so pixels painted earlier in the stroke are never re-cloned.
-        let paint = clone_sample(pre, id, surf, which, bounds, &map, flag(p, "wrap", false), CMD)?;
-        Ok(apply_coverage(surf, bounds, &cov, stroke.brush.opacity, sel, lock, &paint, mode))
-    })?;
+            if flag(p, "wrap", false) {
+                let mut renderer = photocraft_paint::StrokeRenderer::new(&stroke.brush, None, 1.0);
+                renderer.push(&stroke.points);
+                renderer.finish();
+                let before = surf.clone();
+                let bounds = renderer.bounds();
+                return periodic::Composite { target: surf, before: &before, tile: pre.bounds(), opacity: stroke.brush.opacity, selection: sel, lock, mode }
+                    .draw(bounds, &stroke.brush, &stroke.points, |r| clone_sample(pre, id, &before, which, r, &map, true, CMD));
+            }
+            let (bounds, cov) = stroke_coverage(&stroke);
+            // Samples come from the pre-stroke state, so pixels painted earlier in the stroke are never re-cloned.
+            let paint = clone_sample(pre, id, surf, which, bounds, &map, flag(p, "wrap", false), CMD)?;
+            Ok(apply_coverage(surf, bounds, &cov, stroke.brush.opacity, sel, lock, &paint, mode))
+        })?;
     let mut r = clone_result(dmg, off, aligned, p, &stroke);
     if from_live {
         r["fromLive"] = json!(true);
@@ -526,7 +518,6 @@ impl LiveRetouch {
         let mut tail = self.renderer.tail_preview();
         self.tail = tail.as_mut().map_or(Rect::EMPTY, |t| t.take_dirty_rect());
         dirty = dirty.union(&self.tail);
-        let bounds = tail.as_ref().map_or(self.renderer.bounds(), |t| self.renderer.bounds().union(&t.bounds()));
         let LivePaint::Clone { which, map, cmd } = &self.paint else {
             return Err(bad(&self.cmd, "periodic painting requires a clone source"));
         };
@@ -535,17 +526,12 @@ impl LiveRetouch {
             target: surf,
             before: &self.pre_surf,
             tile: self.pre.bounds(),
-            bounds,
             opacity: self.opacity,
             selection: self.sel.as_ref(),
             lock: self.lock,
             mode: self.mode,
         }
-        .draw(
-            dirty,
-            |x, y| self.renderer.coverage_with_tail_at(tail.as_ref(), x, y),
-            |r| clone_sample(&self.pre, self.id, &self.pre_surf, *which, r, map, true, cmd),
-        )
+        .draw(dirty, &self.brush, &self.points, |r| clone_sample(&self.pre, self.id, &self.pre_surf, *which, r, map, true, cmd))
     }
 
     /// Redraw `r` from the pre-stroke pixels with the clone source through coverage `cov`.
