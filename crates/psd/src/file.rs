@@ -112,13 +112,30 @@ impl PsdFile {
             if s.remaining() >= 4 {
                 let n = s.u32()?;
                 global_layer_mask = Some(GlobalLayerMask { data: s.bytes_u64(u64::from(n))?.to_vec() });
-                let mut candidate_seen = layer_info.is_some();
+                let target_key = match header.depth {
+                    16 => Some(b"Lr16"),
+                    32 => Some(b"Lr32"),
+                    _ => None,
+                };
+                let mut candidate_seen = match target_key {
+                    Some(_) => false,
+                    None => layer_info.as_ref().is_some_and(|i| !i.layers.is_empty()),
+                };
                 let (blocks, trailing) = read_blocks_with(&mut s, header.version, 4, |index, signature, key, data, padding| {
-                    if candidate_seen || !matches!(&key, b"Lr16" | b"Lr32" | b"Layr") {
+                    let is_candidate = match target_key {
+                        Some(k) => &key == k,
+                        None => matches!(&key, b"Layr" | b"Lr16" | b"Lr32"),
+                    };
+                    if candidate_seen || !is_candidate {
                         return false;
                     }
                     candidate_seen = true;
-                    let Ok(info) = LayerInfo::read_body(data, header.version) else { return false };
+                    let Ok(info) = LayerInfo::read_body(data, header.version) else {
+                        if target_key.is_some() {
+                            layer_info = None;
+                        }
+                        return false;
+                    };
                     layer_info = Some(info);
                     layer_info_placement = LayerInfoPlacement::GlobalBlock { index, signature, key, padding: padding.clone() };
                     true
@@ -386,6 +403,44 @@ mod write_tests {
                 assert!(parsed.layer_info.is_none());
                 assert_eq!(parsed.global_blocks.len(), 5);
                 assert_eq!(parsed.to_bytes().unwrap(), bytes);
+            }
+        }
+    }
+
+    #[test]
+    fn global_layers_prioritized_over_compatibility_section() {
+        for version in [Version::Psd, Version::Psb] {
+            for depth in [16, 32] {
+                let file = testgen::layered(version, ColorMode::Rgb, depth, Compression::Raw);
+                let bytes = file.to_bytes().unwrap();
+                // A 16/32-bit file saved by Photoshop can have an empty (or 8-bit compatibility)
+                // layer info section before the global Lr16/Lr32 block (#4928).
+                // Splice 4 bytes of empty section layer info (count = 0) into the layer mask section.
+                let psb = version.is_psb();
+                let cmd_len = u32::from_be_bytes(bytes[26..30].try_into().unwrap()) as usize;
+                let res_pos = 30 + cmd_len;
+                let res_len = u32::from_be_bytes(bytes[res_pos..res_pos + 4].try_into().unwrap()) as usize;
+                let lm_pos = res_pos + 4 + res_len;
+                let lm_len_size = if psb { 8 } else { 4 };
+                let li_pos = lm_pos + lm_len_size;
+
+                let mut modified = bytes.clone();
+                if psb {
+                    let old_lm_len = u64::from_be_bytes(modified[lm_pos..lm_pos + 8].try_into().unwrap());
+                    modified[lm_pos..lm_pos + 8].copy_from_slice(&(old_lm_len + 4).to_be_bytes());
+                    modified[li_pos..li_pos + 8].copy_from_slice(&4u64.to_be_bytes());
+                    modified.splice(li_pos + 8..li_pos + 8, [0u8, 0, 0, 0]);
+                } else {
+                    let old_lm_len = u32::from_be_bytes(modified[lm_pos..lm_pos + 4].try_into().unwrap());
+                    modified[lm_pos..lm_pos + 4].copy_from_slice(&(old_lm_len + 4).to_be_bytes());
+                    modified[li_pos..li_pos + 4].copy_from_slice(&4u32.to_be_bytes());
+                    modified.splice(li_pos + 4..li_pos + 4, [0u8, 0, 0, 0]);
+                }
+
+                let parsed = PsdFile::from_bytes(&modified).unwrap();
+                assert_eq!(parsed.layers().len(), file.layers().len());
+                let key = if depth == 16 { *b"Lr16" } else { *b"Lr32" };
+                assert!(matches!(parsed.layer_info_placement, LayerInfoPlacement::GlobalBlock { key: k, .. } if k == key));
             }
         }
     }
