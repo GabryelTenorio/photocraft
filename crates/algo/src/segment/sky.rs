@@ -143,8 +143,9 @@ pub fn sky_mask_low(img: &RgbImage, threshold: f32) -> Option<Vec<bool>> {
 fn is_backdrop(img: &RgbImage, mask: &[bool], rows: usize) -> bool {
     let (w, h) = (img.w, img.h);
     let bottom = (h - rows.min(h)) * w..h * w;
-    let covered = mask[bottom.clone()].iter().filter(|m| **m).count();
-    if covered * 10 < bottom.len() * 6 {
+    let Some(bottom_rows) = mask.get(bottom) else { return false };
+    let covered = bottom_rows.iter().filter(|m| **m).count();
+    if covered * 10 < bottom_rows.len() * 6 {
         return false;
     }
     let (mut sat, mut n) = (0.0f32, 0usize);
