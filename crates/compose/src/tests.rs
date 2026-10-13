@@ -40,6 +40,147 @@ fn normal_layer_over_background() {
     assert!(close4(px(&d, 5, 1), [1.0; 4]));
 }
 
+// The pre-optimisation Normal formula, independent of the production helper. Its operation
+// order matters: an algebraically equivalent premultiplied mix can round differently.
+fn original_normal_rgb(backdrop: [f32; 4], source: [f32; 4], opacity: f32) -> [f32; 4] {
+    let ab = backdrop[3];
+    let as_ = source[3] * opacity;
+    if as_ <= 0.0 {
+        return backdrop;
+    }
+    let ao = as_ + ab * (1.0 - as_);
+    if ao <= 0.0 {
+        return [0.0; 4];
+    }
+    let kb = ab * (1.0 - as_);
+    let inv = 1.0 / ao;
+    [(kb * backdrop[0] + as_ * source[0]) * inv, (kb * backdrop[1] + as_ * source[1]) * inv, (kb * backdrop[2] + as_ * source[2]) * inv, ao]
+}
+
+#[test]
+fn normal_rgb_kernel_preserves_scalar_bits() {
+    let subnormal = f32::from_bits(1);
+    let backdrops = [[0.0, -0.0, 2.0, 0.0], [0.2, 0.4, 0.6, 0.5], [2.0, -0.25, 4.0, 1.0], [-1.0, 0.01, 1.0, -0.5], [1.0, -0.0, f32::MIN_POSITIVE, subnormal]];
+    let sources = [
+        [0.9, 0.1, 0.3, 1.0],
+        [0.25, 2.0, -1.0, 0.5],
+        [subnormal, 1e-20, 1.0, subnormal],
+        [0.5, 0.2, 0.7, -0.0],
+        [0.5, 0.2, 0.7, -0.5],
+        [f32::NAN, 0.2, 0.7, 0.0],
+    ];
+    for b in backdrops {
+        for s in sources {
+            for opacity in [-1.0, -0.0, 0.0, 0.5, 1.0, 2.0] {
+                let want = original_normal_rgb(b, s, opacity);
+                let got = psblend::composite_normal_rgb(b, s, opacity);
+                assert_eq!(got.map(f32::to_bits), want.map(f32::to_bits), "{b:?} / {s:?} / {opacity}");
+            }
+        }
+    }
+}
+
+fn normal_rgb_test_buffers(fmt: PixelFormat) -> (Buffer, Buffer) {
+    let rect = Rect::new(-3, -2, 5, 0);
+    let mut bottom = Surface::new(fmt);
+    let mut top = Surface::new(fmt);
+    for y in rect.y0..rect.y1 {
+        for x in rect.x0..rect.x1 {
+            let i = ((y - rect.y0) * rect.width() as i32 + x - rect.x0) as usize;
+            let t = i as f32 / 16.0;
+            let b = [2.0 * t, 0.4, -0.25 + t, [0.0, 0.25, 0.75, 1.0][i % 4]];
+            let s = [0.9 - t, 0.1 + t, 0.3, [0.0, -0.0, 0.5, 1.0][i % 4]];
+            bottom.write_pixel(x, y, &photocraft_raster::from_rgba(&fmt, b));
+            top.write_pixel(x, y, &photocraft_raster::from_rgba(&fmt, s));
+        }
+    }
+    (surface_to_buffer(&bottom, rect), surface_to_buffer(&top, rect))
+}
+
+// Keep the old buffer dispatch as an oracle for the specialised loop and all of its fallbacks.
+fn original_blend_into_g(backdrop: &mut Buffer, src: &Buffer, mode: BlendMode, opacity: f32, gamma: f32) {
+    let rect = backdrop.rect;
+    let w = rect.width() as i32;
+    for (i, b) in backdrop.px.iter_mut().enumerate() {
+        let mut s = src.px[i];
+        if s[3] <= 0.0 {
+            continue;
+        }
+        let mut mode = mode;
+        if mode == BlendMode::Dissolve {
+            let x = rect.x0 + (i as i32 % w);
+            let y = rect.y0 + (i as i32 / w);
+            s[3] = if dissolve_noise(x, y) < s[3] * opacity { 1.0 } else { 0.0 };
+            mode = BlendMode::Normal;
+            *b = blend::composite(mode, *b, s, 1.0);
+            continue;
+        }
+        *b = blend::composite_gamma(mode, *b, s, opacity, gamma);
+    }
+}
+
+fn assert_buffer_bits(got: &Buffer, want: &Buffer) {
+    assert_eq!(got.rect, want.rect);
+    assert_eq!(got.px.len(), want.px.len());
+    for (i, (got, want)) in got.px.iter().zip(&want.px).enumerate() {
+        assert_eq!(got.map(f32::to_bits), want.map(f32::to_bits), "pixel {i}: {got:?} vs {want:?}");
+    }
+}
+
+#[test]
+fn normal_rgb_buffer_dispatch_and_fallbacks_preserve_bits() {
+    for fmt in [PixelFormat::RGBA8, PixelFormat::RGBA16, PixelFormat::RGBA32F] {
+        let (bottom, top) = normal_rgb_test_buffers(fmt);
+        for lab in [false, true] {
+            psblend::with_lab_mix(lab, || {
+                psblend::with_hdr(fmt.sample == SampleType::F32, || {
+                    for mode in BlendMode::LAYER_MODES {
+                        for gamma in [1.0, psblend::TEXT_GAMMA] {
+                            for opacity in [0.0, 0.5, 1.0] {
+                                let mut got = bottom.clone();
+                                let mut want = bottom.clone();
+                                original_blend_into_g(&mut want, &top, mode, opacity, gamma);
+                                blend_into_g(&mut got, &top, mode, opacity, gamma);
+                                assert_buffer_bits(&got, &want);
+                            }
+                        }
+                    }
+                });
+            });
+        }
+    }
+}
+
+#[test]
+fn normal_rgb_buffer_preserves_alpha_skip_and_nested_scopes() {
+    let rect = Rect::new(-1, -1, 2, 0);
+    let bottom = Buffer::filled(rect, [-0.0, 0.4, 2.0, 0.75]);
+    let top = Buffer { rect, px: vec![[f32::NAN, 0.3, 0.1, -0.5], [0.2, 0.3, 0.1, -0.0], [0.2, 0.3, 0.1, f32::NAN]] };
+    psblend::with_lab_mix(true, || {
+        psblend::with_hdr(true, || {
+            psblend::with_lab_mix(false, || {
+                psblend::with_hdr(false, || {
+                    let mut got = bottom.clone();
+                    let mut want = bottom.clone();
+                    original_blend_into_g(&mut want, &top, BlendMode::Normal, -1.0, 1.0);
+                    blend_into_g(&mut got, &top, BlendMode::Normal, -1.0, 1.0);
+                    assert_buffer_bits(&got, &want);
+                    assert_eq!(got.px[0].map(f32::to_bits), bottom.px[0].map(f32::to_bits));
+                    assert_eq!(got.px[1].map(f32::to_bits), bottom.px[1].map(f32::to_bits));
+                });
+                assert!(psblend::HDR.with(|h| h.get()));
+            });
+            assert!(psblend::LAB_MIX.with(|l| l.get()));
+            assert!(psblend::HDR.with(|h| h.get()));
+            let mut got = bottom.clone();
+            let mut want = bottom.clone();
+            original_blend_into_g(&mut want, &top, BlendMode::Normal, 0.5, 1.0);
+            blend_into_g(&mut got, &top, BlendMode::Normal, 0.5, 1.0);
+            assert_buffer_bits(&got, &want);
+        });
+    });
+}
+
 #[test]
 fn opacity_and_fill_multiply() {
     let mut d = doc_white(4, 4);
@@ -461,6 +602,34 @@ fn cmyk_document_renders_via_rgb() {
     // (as in any real CMYK profile), not pure black.
     let p = px(&d, 0, 0);
     assert!(p[0] < 0.3 && (p[0] - p[1]).abs() < 0.05 && (p[1] - p[2]).abs() < 0.05 && p[3] == 1.0, "{p:?}");
+}
+
+/// Transparent pixels convert to colour in CMYK (K = 100%) and Lab (a/b = 0.5). A flattened
+/// surface must still treat them as empty, or its content spans the whole canvas.
+#[test]
+fn flatten_to_surface_leaves_transparent_pixels_empty_in_every_mode() {
+    let modes = [
+        (ColorMode::Rgb, [SampleType::U8, SampleType::U16, SampleType::F32].as_slice()),
+        (ColorMode::Grayscale, &[SampleType::U8, SampleType::U16, SampleType::F32]),
+        (ColorMode::Cmyk, &[SampleType::U8, SampleType::U16]),
+        (ColorMode::Lab, &[SampleType::U8, SampleType::U16]),
+    ];
+    for (mode, samples) in modes {
+        for &sample in samples {
+            let mut d = Document::new("t", Size::new(300, 200), mode, sample);
+            let fmt = PixelFormat::new(mode, sample, true);
+            let mut l = Layer::raster("dot", fmt);
+            let opaque: Vec<f32> = photocraft_raster::from_rgba(&fmt, [0.9, 0.4, 0.1, 1.0]);
+            l.surface_mut().unwrap().fill_rect(Rect::new(120, 80, 140, 90), &opaque);
+            d.layers.push(l);
+            let s = flatten_to_surface(&d, fmt, None);
+            assert_eq!(s.content_bounds(), Rect::new(120, 80, 140, 90), "{mode:?} {sample:?}");
+            // Over a background everything is content, as before.
+            let fmt_opaque = PixelFormat::new(mode, sample, false);
+            let s = flatten_to_surface(&d, fmt_opaque, Some([1.0, 1.0, 1.0]));
+            assert_eq!(s.rgba(5, 5)[3], 1.0, "{mode:?} {sample:?}: background stays opaque");
+        }
+    }
 }
 
 #[test]
@@ -2317,4 +2486,55 @@ fn lab_documents_gradient_map_follows_lightness() {
     let mut grey_buf = Buffer::filled(Rect::new(0, 0, 1, 1), [grey[0], grey[1], grey[2], 1.0]);
     adjust::apply_in(&adj, &mut grey_buf, adjust::Transfer::Srgb, None, ColorMode::Rgb);
     assert!((buf.px[0][0] - grey_buf.px[0][0]).abs() > 0.05, "{:?} {:?}", buf.px[0], grey_buf.px[0]);
+}
+
+#[test]
+fn render_refuses_rects_beyond_the_pixel_cap() {
+    let doc = Document::new("c", Size::new(4, 4), ColorMode::Rgb, SampleType::U8);
+    // 2^32 - 1 px wide: the width wraps negative as an i32, which once took the single-tile path.
+    for tile in [crate::RENDER_TILE, 1 << 20] {
+        let b = crate::render_tiled(&doc, Rect::new(i32::MIN, 0, i32::MAX, 1), tile);
+        assert!(b.px.is_empty() && b.rect.is_empty());
+    }
+}
+
+// The effect-map cache key covers Transparency Shapes Layer and Blend If: both change the shape
+// the maps are built from (a layer's own, or a styled group's children composite) without
+// touching pixels, masks or effects, and stale maps kept stroking a hole the layer no longer
+// had. Each case renders with the cache warm, edits, renders again and compares with a cold
+// render. (A purge by a concurrent test only makes the warm render cold, never a false failure.)
+#[test]
+fn effect_cache_follows_transparency_shapes_layer() {
+    let mut d = doc_white(32, 32);
+    let mut l = solid_layer("holed", Rect::new(0, 0, 32, 32), [0.9, 0.2, 0.2, 1.0]);
+    l.surface_mut().unwrap().fill_rect(Rect::new(12, 12, 20, 20), &[0.0, 0.0, 0.0, 0.0]);
+    l.effects.items = vec![stroke(2.0, StrokePosition::Outside)];
+    assert!(l.advanced.transparency_shapes);
+    d.layers.push(l);
+    let on = render(&d, d.bounds());
+    d.layers[1].advanced.transparency_shapes = false;
+    let warm = render(&d, d.bounds());
+    purge_effect_cache();
+    let cold = render(&d, d.bounds());
+    assert!(on.px != cold.px, "the stroke should stop rimming the hole");
+    assert!(warm.px == cold.px, "stale effect maps after turning Transparency Shapes Layer off");
+}
+
+#[test]
+fn effect_cache_follows_a_group_childs_blend_if() {
+    let mut d = doc_white(32, 32);
+    let mut child = solid_layer("bw", Rect::new(4, 4, 16, 28), [0.0, 0.0, 0.0, 1.0]);
+    child.surface_mut().unwrap().fill_rect(Rect::new(16, 4, 28, 28), &[1.0, 1.0, 1.0, 1.0]);
+    let mut g = Layer::group("g", vec![child]);
+    g.effects.items = vec![Effect::DropShadow(Shadow { size: 2.0, spread: 0.0, ..shadow(3.0, 90.0) })];
+    d.layers.push(g);
+    let before = render(&d, d.bounds());
+    let LayerContent::Group(grp) = &mut d.layers[1].content else { panic!("not a group") };
+    // Gray › This Layer: black point at 128 hides the black half.
+    grp.children[0].blend_if.set(0, [range([128, 128], [255, 255]), FULL]);
+    let warm = render(&d, d.bounds());
+    purge_effect_cache();
+    let cold = render(&d, d.bounds());
+    assert!(before.px != cold.px, "Blend If should change the group's shadow");
+    assert!(warm.px == cold.px, "stale group effect maps after a child's Blend If changed");
 }
