@@ -256,7 +256,7 @@ pub fn apply_in(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth: O
         } else {
             map_rgb(buf, |c| {
                 let mut ink = rgb_to_cmyk(c);
-                stored_channels(adj, mode, depth, &mut ink, rgb_to_gray(c));
+                stored_channels(adj, mode, depth, &mut ink);
                 cmyk_to_rgb(ink)
             });
         }
@@ -314,10 +314,10 @@ pub fn stored_channel_adjustment(adj: &Adjustment) -> bool {
 
 /// Invert, Posterize or Threshold on one pixel's own channels in a Lab or CMYK document of
 /// `depth` (`None`: unknown, treated as 8-bit): `ch` holds L, a, b normalised as [`lab_norm`]
-/// gives them, or the C, M, Y, K inks (0: none); `gray` is the pixel's luma, which CMYK Threshold
-/// compares. Lab Invert turns 8-bit bytes `v` into `255 - v` (a becomes -1 - a) and mirrors a and
-/// b around neutral at 16 bits (photoshop corpus lab16 invert.psd: neutral stays neutral).
-pub fn stored_channels(adj: &Adjustment, mode: ColorMode, depth: Option<SampleType>, ch: &mut [f32], gray: f32) {
+/// gives them, or the C, M, Y, K inks (0: none). Lab Invert turns 8-bit bytes `v` into `255 - v`
+/// (a becomes -1 - a) and mirrors a and b around neutral at 16 bits (photoshop corpus lab16
+/// invert.psd: neutral stays neutral). CMYK Threshold compares [`ink_luma`].
+pub fn stored_channels(adj: &Adjustment, mode: ColorMode, depth: Option<SampleType>, ch: &mut [f32]) {
     let lab = mode == ColorMode::Lab;
     match adj {
         Adjustment::Invert => {
@@ -334,12 +334,22 @@ pub fn stored_channels(adj: &Adjustment, mode: ColorMode, depth: Option<SampleTy
                 let white = ch.first().is_some_and(|l| (l.clamp(0.0, 1.0) * 255.0).round() >= t);
                 [if white { 1.0 } else { 0.0 }, 128.0 / 255.0, 128.0 / 255.0, 0.0]
             } else {
-                [0.0, 0.0, 0.0, if (gray * 255.0).round() < t { 1.0 } else { 0.0 }]
+                let ink = |i: usize| ch.get(i).copied().unwrap_or(0.0);
+                let black = (ink_luma([ink(0), ink(1), ink(2), ink(3)]) * 255.0).round() < t;
+                [0.0, 0.0, 0.0, if black { 1.0 } else { 0.0 }]
             };
             ch.iter_mut().zip(out).for_each(|(v, o)| *v = o);
         }
         _ => {}
     }
+}
+
+/// The luma Photoshop's CMYK Threshold compares: Rec. 601 weights on the inks' plain complement,
+/// `(1 - c)(1 - k)` and so on, whatever the document's profile (photoshop corpus cmyk8 and cmyk16
+/// threshold-128.psd: every pixel on the right side of level 128).
+pub fn ink_luma(ink: [f32; 4]) -> f32 {
+    let paper = 1.0 - ink[3].clamp(0.0, 1.0);
+    rgb_to_gray([0, 1, 2].map(|i| (1.0 - ink[i].clamp(0.0, 1.0)) * paper))
 }
 
 /// Encoded sRGB → Lab normalised the way Photoshop's channels hold it: L/100, (a+128)/255,
@@ -361,7 +371,7 @@ fn apply_lab(adj: &Adjustment, buf: &mut Buffer, depth: Option<SampleType>) {
         // L → 100 - L and a, b mirrored about neutral; each channel posterized (see `stored_channels`).
         Adjustment::Invert | Adjustment::Posterize { .. } => map_rgb(buf, |c| {
             let mut n = lab_norm(c);
-            stored_channels(adj, ColorMode::Lab, depth, &mut n, 0.0);
+            stored_channels(adj, ColorMode::Lab, depth, &mut n);
             lab_denorm(n)
         }),
         Adjustment::Threshold { level } => {
@@ -1683,6 +1693,21 @@ mod tone_tests {
         let t = Adjustment::Threshold { level: 0.5 };
         assert!(near(in_cmyk(&t, [0.2; 3]), cmyk_to_rgb([0.0, 0.0, 0.0, 1.0]), 2e-3));
         assert!(near(in_cmyk(&t, [0.8; 3]), cmyk_to_rgb([0.0; 4]), 2e-3));
+    }
+
+    #[test]
+    fn cmyk_threshold_compares_the_inks_plain_luma() {
+        assert_eq!(ink_luma([0.0; 4]), 1.0);
+        assert_eq!(ink_luma([0.0, 0.0, 0.0, 1.0]), 0.0);
+        // Two greys either side of level 128 in photoshop corpus cmyk8 threshold-128.psd: black,
+        // then white (8-bit inks).
+        let at = |i: [f32; 4]| {
+            let mut ch = i.map(|v| v / 255.0);
+            stored_channels(&Adjustment::Threshold { level: 128.0 / 255.0 }, ColorMode::Cmyk, Some(SampleType::U8), &mut ch);
+            ch
+        };
+        assert_eq!(at([144.0, 122.0, 121.0, 35.0]), [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(at([131.0, 110.0, 110.0, 19.0]), [0.0; 4]);
     }
 
     #[test]
