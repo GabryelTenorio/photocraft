@@ -78,6 +78,8 @@
 	Save	Sačuvaj
 	Save As…	Sačuvaj kao…
 	Save a Copy…	Sačuvaj kopiju…
+	{name} can't keep everything in this document	{name} ne može da sačuva sve iz ovog dokumenta
+	Choose a format that keeps it, such as Photoshop (PSD), or save a copy.	Izaberite format koji sve čuva, na primer Photoshop (PSD), ili sačuvajte kopiju.
 	Revert	Vrati sačuvano
 	Export	Izvoz
 	Quick Export as PNG	Brzi izvoz u PNG
@@ -795,6 +797,9 @@
 	Adaptive Wide Angle isn't open	Prilagodljivi široki ugao nije otvoren
 	Add	Dodaj
 	Add Layer Mask	Dodaj masku sloja
+	Add Mask to Selection	Dodaj masku selekciji
+	Subtract Mask from Selection	Oduzmi masku od selekcije
+	Intersect Mask with Selection	Presek maske i selekcije
 	Add Stop	Dodaj tačku
 	Add a layer style	Dodaj stil sloja
 	Add a mask  (from the selection; {key} inverts)	Dodaj masku  (iz selekcije; {key} invertuje)
