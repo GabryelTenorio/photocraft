@@ -346,6 +346,9 @@
 	Disable Layer Mask	Onemogući masku sloja
 	Enable Vector Mask	Omogući vektorsku masku
 	Link Layer Mask	Poveži masku sloja
+	Add Mask to Selection	Dodaj masku u selekciju
+	Subtract Mask from Selection	Oduzmi masku od selekcije
+	Intersect Mask with Selection	Presek maske sa selekcijom
 	Unlink Layer Mask	Razveži masku sloja
 	Link Vector Mask	Poveži vektorsku masku
 	Add Vector Mask	Dodaj vektorsku masku
