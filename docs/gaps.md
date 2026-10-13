@@ -128,11 +128,15 @@ what an agent can't finish alone.
 
 ### G15. AI and generative features
 - **Missing:** Generative Fill and Expand, Generative Upscale, Neural Filters, Sky Replacement,
-  Super Zoom, ML Select Subject/Sky. There is no ML runtime (AUTO-219-7). Classical substitutes
-  exist (GrabCut/max-flow selection, Remove tool by non-local patch completion).
+  Super Zoom and ML Select Sky. The off-by-default `local-ml` backend supplies optional
+  BiRefNet subject matting/removal and SAM box selection (AUTO-219-7 remains partial).
+  Its 20-target COCO pilot is exploratory, not representative alpha-matting quality;
+  web inference and accelerated providers remain open. Classical substitutes exist
+  (GrabCut/max-flow selection, Remove tool by non-local patch completion).
 - **Evidence:** Photoshop's `Required/UXP` ships the Neural Filters gallery and its `.kys` has
   a Neural Filters taskspace; users ask for local models (#2313, #1996, #2682).
-- **Estimate:** 300–600 h. **Human:** owner decision #41 (model licences, local vs remote).
+- **Estimate:** 300–600 h. **Human:** owner decision #41 (generative provider interface).
+- **2026-10-10 evidence:** [optional models](local-models.md), [pilot and limitations](local-models-validation.md); no new accuracy measurement from the rebase.
 
 ### G16. Plug-in compatibility
 - **Missing:** hosting Photoshop .8BF filters (#2647), UXP panels, CEP. PhotoCraft has its own
@@ -271,5 +275,6 @@ what an agent can't finish alone.
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |
 | 2026-10-11 | minor | G8: Character panel OpenType buttons landed (TYPE-218-5, #3752); Numerals and Stylistic Sets submenus still missing |
 | 2026-10-10 | minor | G2: recorded Tilt-Shift computation/filtered-proxy measurements and limits; gap and estimate remain open |
+| 2026-10-10 | minor | G15 records optional local selection models and the exploratory pilot; generative provider work remains open |
 | 2026-10-10 | minor | Checked against the alpha gate (no alpha blockers); #2374 marked closed |
 | 2026-10-10 | major | First version, from the full re-measure against Photoshop 2026 27.11.0 and the open issues |
