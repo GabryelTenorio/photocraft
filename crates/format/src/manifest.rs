@@ -297,6 +297,9 @@ pub enum ContentM {
         #[serde(default)]
         contents_id: Option<u64>,
         source: SmartSourceM,
+        /// Source pixel size `[width, height]` before the placement; older bundles did not record it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_size: Option<[u32; 2]>,
         transform: Affine,
         smart_filters: Vec<SmartFilter>,
         cache: Option<SurfaceM>,

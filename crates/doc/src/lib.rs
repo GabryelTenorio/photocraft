@@ -479,6 +479,9 @@ pub struct SmartObject {
     pub contents_id: SmartContentsId,
     /// Embedded source file bytes (PSD, PNG, …) or linked path.
     pub source: SmartSource,
+    /// Source pixel size `[width, height]` before `transform`/`warp`/`perspective`. The frame Free
+    /// Transform opens on and the destination of the placement; `None` on older files.
+    pub source_size: Option<[u32; 2]>,
     pub transform: Affine,
     pub smart_filters: Vec<SmartFilter>,
     /// Rendered appearance.
@@ -510,6 +513,7 @@ impl SmartObject {
         Self {
             contents_id: SmartContentsId::fresh(),
             source,
+            source_size: None,
             transform,
             smart_filters: Vec::new(),
             cache,
