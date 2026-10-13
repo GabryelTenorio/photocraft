@@ -1,51 +1,15 @@
 //! Spin the MCP server in-process (tokio duplex), call tools as a client.
 
+mod common;
+
 use std::io::Write;
 
 use base64::Engine as _;
+use common::{CONTROL_TOKEN, call, connect, json_of, text};
 use photocraft_automation::{AuthorizedWorkspace, PhotocraftMcp};
-use rmcp::model::{CallToolRequestParams, CallToolResult, ClientConfig};
-use rmcp::service::RunningService;
-use rmcp::{ClientHandler, RoleClient, ServiceExt};
+use rmcp::model::{CallToolRequestParams, CallToolResult};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-const CONTROL_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-#[derive(Clone, Default)]
-struct Client;
-impl ClientHandler for Client {
-    fn get_info(&self) -> ClientConfig {
-        ClientConfig::default()
-    }
-}
-
-async fn connect(server: PhotocraftMcp) -> RunningService<RoleClient, Client> {
-    let (s, c) = tokio::io::duplex(1 << 20);
-    tokio::spawn(async move {
-        if let Ok(running) = server.serve(s).await {
-            let _ = running.waiting().await;
-        }
-    });
-    Client.serve(c).await.expect("client init")
-}
-
-async fn call(client: &RunningService<RoleClient, Client>, name: &str, args: Value) -> CallToolResult {
-    let mut p = CallToolRequestParams::new(name.to_owned());
-    if let Value::Object(m) = args {
-        p = p.with_arguments(m);
-    }
-    client.call_tool(p).await.expect("call_tool transport")
-}
-
-fn text(r: &CallToolResult) -> String {
-    r.content.iter().filter_map(|c| c.as_text()).map(|t| t.text.clone()).collect::<Vec<_>>().join("\n")
-}
-
-fn json_of(r: &CallToolResult) -> Value {
-    assert_ne!(r.is_error, Some(true), "tool error: {}", text(r));
-    serde_json::from_str(&text(r)).unwrap_or_else(|e| panic!("not JSON ({e}): {}", text(r)))
-}
 
 fn tmp(name: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("pc-mcp-{}-{name}", std::process::id()));
@@ -145,15 +109,17 @@ async fn headless_edit_render_save_roundtrip() {
     assert!(photocraft_codecs::decode(&std::fs::read(&png_path).unwrap()).is_ok());
     assert!(std::fs::metadata(&jpg_path).unwrap().len() > 100);
 
-    // Re-open the native file: identical layer tree.
+    // Re-open the saved file from disk: close the saved document first, because opening a path
+    // that is already an open document's file activates it instead of loading a copy.
+    json_of(&call(&client, "doc_close", json!({})).await);
     let o = json_of(&call(&client, "doc_open", json!({"path": "agent.pcraft"})).await);
-    assert_eq!(o["index"], 1);
-    let doc2 = json_of(&call(&client, "doc_inspect", json!({"index": 1})).await);
+    assert!(o["deduped"].is_null(), "a reopen after close loads the file: {o}");
+    assert_eq!(o["index"], 0);
+    let doc2 = json_of(&call(&client, "doc_inspect", json!({"index": 0})).await);
     assert_eq!(doc2["layers"].as_array().unwrap().len(), 2);
     let sess = json_of(&call(&client, "session_list", json!({})).await);
-    assert_eq!(sess["documents"].as_array().unwrap().len(), 2);
-    json_of(&call(&client, "doc_close", json!({"index": 1})).await);
-    json_of(&call(&client, "doc_select", json!({"index": 0})).await);
+    assert_eq!(sess["documents"].as_array().unwrap().len(), 1);
+    json_of(&call(&client, "doc_close", json!({"index": 0})).await);
     client.cancel().await.unwrap();
     cleanup(&dir);
 }
@@ -1234,6 +1200,9 @@ async fn convention_resources_are_live_json() {
     assert!(read("photocraft://document").await["document"].is_null());
     json_of(&call(&client, "doc_new", json!({"width":8,"height":6})).await);
     assert_eq!(read("photocraft://document").await["width"], 8);
+    let inspected = json_of(&call(&client, "doc_inspect", json!({})).await);
+    assert!(inspected.get("document").is_none(), "{inspected}");
+    assert_eq!(inspected, json_of(&call(&client, "command_run", json!({"id": "document.inspect"})).await));
     // Edit › Purge › All is enabled while the process-wide effect, mask and stack caches hold
     // anything, and the other tests in this binary fill and purge those caches concurrently, so
     // its `enabled` flag and paired `disabledReason` can flip between the two reads. Validate

@@ -2,8 +2,8 @@
 //! status 0 believes the control server is running when it is not.
 //!
 //! These tests run the real binary as a subprocess and assert the exit code,
-//! covering both failure paths in `main.rs`: control authentication and the
-//! automation workspace.
+//! covering every failure path in `main.rs`: the `--control` port value, control
+//! authentication, the automation workspace, and the control port bind.
 
 /// A syntactically valid 64-hex-char token, so the workspace test reaches the
 /// workspace check instead of failing on token validation first.
@@ -70,4 +70,24 @@ fn missing_automation_write_root_exits_with_status_2() {
     let (status, stderr) = run_photocraft(&["--control", "0", "--control-token", VALID_TOKEN, "--automation-write-root", "/nonexistent/photocraft-test-path"]);
     assert_eq!(status.code(), Some(2), "missing write root must exit 2, stderr: {stderr}");
     assert!(stderr.contains("cannot configure automation workspace"), "stderr: {stderr}");
+}
+
+#[test]
+fn unparsable_control_port_exits_with_status_2() {
+    // A `--control` value that is not a port is a usage error naming the value (issue #701).
+    let (status, stderr) = run_photocraft(&["--control", "nope", "--control-token", VALID_TOKEN]);
+    assert_eq!(status.code(), Some(2), "unparsable --control must exit 2, stderr: {stderr}");
+    assert!(stderr.contains("nope"), "the error names the bad value, stderr: {stderr}");
+}
+
+#[test]
+fn control_port_bind_conflict_exits_with_status_1() {
+    // An occupied port fails the launch before any window opens; the error names the port.
+    let holder = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = holder.local_addr().unwrap().port().to_string();
+    let (status, stderr) = run_photocraft(&["--control", &port, "--control-token", VALID_TOKEN]);
+    // The valid token takes the launch past authentication, so the bind failure is the one
+    // reported; the stderr text, not the exit code, discriminates it from a display failure.
+    assert_eq!(status.code(), Some(1), "a taken port must exit 1, stderr: {stderr}");
+    assert!(stderr.contains(&format!("cannot listen on 127.0.0.1:{port}")), "stderr names the port: {stderr}");
 }

@@ -89,8 +89,19 @@ pub fn auto_select_target(doc: &Document, x: i32, y: i32, group: bool) -> Option
 }
 
 fn pick(s: &mut Session, p: &Value) -> Result<Value> {
-    let x = p.get("x").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: "missing `x`".into() })?.floor() as i32;
-    let y = p.get("y").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: "missing `y`".into() })?.floor() as i32;
+    let miss = |k: &str| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("missing `{k}`") };
+    let x = match p.get("x") {
+        None | Some(Value::Null) => return Err(miss("x")),
+        Some(v) => {
+            v.as_f64().ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`x` must be a number, not {v}") })?.floor() as i32
+        }
+    };
+    let y = match p.get("y") {
+        None | Some(Value::Null) => return Err(miss("y")),
+        Some(v) => {
+            v.as_f64().ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`y` must be a number, not {v}") })?.floor() as i32
+        }
+    };
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     // The right-click list includes type layers between glyphs, like Auto-Select.
     if p.get("list").and_then(Value::as_bool).unwrap_or(false) {

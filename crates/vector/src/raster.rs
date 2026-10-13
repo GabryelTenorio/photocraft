@@ -10,7 +10,8 @@
 //! cell buffer whose prefix sum is the exact covered area of every pixel. This is the classic
 //! scanline/area-coverage technique (see e.g. FreeType's gray rasterizer or libart), written
 //! from first principles here; it needs no sub-sampling and handles overlapping components
-//! exactly.
+//! exactly. A per-row split budget bounds the sub-band tree: past it, the row's remaining
+//! bands render with the unsplit sweep.
 
 use photocraft_doc::{FillRule, PathOp};
 use photocraft_geom::Rect;
@@ -18,6 +19,10 @@ use photocraft_geom::Rect;
 /// Coverage below this is f32 round-off in the cell prefix sum, not area: it is well under half
 /// a 16-bit step (7.6e-6), so 8- and 16-bit output is unchanged by dropping it.
 const RESIDUE: f32 = 1e-6;
+
+/// Crossing splits allowed per pixel row; past it the row's remaining bands render with the
+/// unsplit sweep.
+const SPLIT_BUDGET: u32 = 1024;
 
 #[derive(Clone, Copy, Debug)]
 struct Edge {
@@ -212,6 +217,7 @@ impl Rasterizer {
             st.cuts.sort_by(f64::total_cmp);
             st.cuts.dedup();
             let cuts = std::mem::take(&mut st.cuts);
+            st.splits_left = SPLIT_BUDGET;
             for c in cuts.windows(2) {
                 self.band(c[0], c[1], rect.x0, &mut st, 0);
             }
@@ -251,7 +257,7 @@ impl Rasterizer {
         st.band.sort_by(|p, q| p.xm.total_cmp(&q.xm));
         // An inversion of the order at the band's top or bottom means two edges cross inside
         // it: split there so the order is constant in every piece.
-        if depth < 24 {
+        if depth < 24 && st.splits_left > 0 {
             for k in 1..st.band.len() {
                 let (p, q) = (st.band[k - 1], st.band[k]);
                 let top = p.xa - q.xa;
@@ -261,6 +267,7 @@ impl Rasterizer {
                     let t = if (top - bot).abs() > 1e-15 { top / (top - bot) } else { 0.5 };
                     let y = a + (b - a) * t.clamp(0.0, 1.0);
                     let y = if y <= a + 1e-9 || y >= b - 1e-9 { mid } else { y };
+                    st.splits_left -= 1;
                     self.band(a, y, x0, st, depth + 1);
                     self.band(y, b, x0, st, depth + 1);
                     return;
@@ -311,11 +318,13 @@ struct RowState {
     wind: Vec<i32>,
     /// Cell accumulator: `width + 1` cells (the extra one absorbs spill-over).
     acc: Vec<f32>,
+    /// Crossing splits left for the current row.
+    splits_left: u32,
 }
 
 impl RowState {
     fn new(comps: usize, width: usize) -> Self {
-        RowState { active: Vec::new(), cuts: Vec::new(), band: Vec::new(), wind: vec![0; comps.max(1)], acc: vec![0.0; width + 1] }
+        RowState { active: Vec::new(), cuts: Vec::new(), band: Vec::new(), wind: vec![0; comps.max(1)], acc: vec![0.0; width + 1], splits_left: SPLIT_BUDGET }
     }
 }
 
@@ -457,5 +466,42 @@ mod tests {
         r.add_component(&[square(1.0, 2.0, 3.0)], PathOp::Combine, FillRule::NonZero);
 
         assert_eq!(r.pixel_bounds(), Some(Rect::new(1, 2, 5, 6)));
+    }
+
+    /// A deterministic pseudo-random arrangement of thin needles spanning row `[100, 101)`:
+    /// generic anchors and slopes put ~n² crossings inside the row.
+    fn crossing_braid(n: usize) -> Rasterizer {
+        let mut seed = 0x2545_f491_4f6c_1091u64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut r = Rasterizer::new(false);
+        let mut polys = Vec::with_capacity(n);
+        for _ in 0..n {
+            let ax = (rnd() % 2001) as f64 / 1000.0 - 1.0;
+            let ay = 100.05 + (rnd() % 900) as f64 / 1000.0;
+            let slope = 0.2 + (rnd() % 9601) as f64 / 1000.0;
+            let top_x = ax - slope * (ay - 90.0);
+            let bot_x = ax + slope * (120.0 - ay);
+            polys.push(vec![(top_x, 90.0), (bot_x, 120.0), (top_x + 2e-4, 90.0)]);
+        }
+        r.add_component(&polys, PathOp::Combine, FillRule::NonZero);
+        r
+    }
+
+    #[test]
+    fn massively_crossing_row_completes_under_split_budget() {
+        let r = crossing_braid(1200);
+        let rect = Rect::new(-12, 100, 12, 101);
+        let t = std::time::Instant::now();
+        let c = r.render(rect);
+        let elapsed = t.elapsed();
+        assert!(elapsed < std::time::Duration::from_secs(10), "row render took {elapsed:?}");
+        assert_eq!(c.len(), 24);
+        assert!(c.iter().all(|v| *v >= 0.0 && *v <= 1.0), "coverage out of range");
+        assert!(c.iter().any(|v| *v > 0.0), "braid renders nothing");
     }
 }

@@ -71,7 +71,10 @@ pub fn effects_from_json(p: &Value) -> std::result::Result<Vec<GalleryEffect>, S
         if item.get("visible").and_then(Value::as_bool) == Some(false) {
             continue;
         }
-        let key = item.get("filter").and_then(Value::as_str).ok_or_else(|| format!("effect {k}: missing `filter`"))?;
+        let key = match item.get("filter") {
+            Some(v) if !v.is_null() => v.as_str().ok_or_else(|| format!("effect {k}: `filter` must be a string, not {v}"))?,
+            _ => return Err(format!("effect {k}: missing `filter`")),
+        };
         let f = GalleryFilter::from_key(key).ok_or_else(|| format!("effect {k}: unknown gallery filter `{key}`"))?;
         let params = item.get("params").filter(|v| v.is_object()).unwrap_or(item);
         out.push(effect_from_json(f, params, p));

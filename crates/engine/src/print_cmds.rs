@@ -226,7 +226,10 @@ fn print_image(doc: &Document, p: &Value, cmd: &str) -> Result<(PrintImage, Valu
     }
     match handling {
         "photocraftManages" | "photoshopManages" => {
-            let profile = p.get("printerProfile").and_then(Value::as_str).ok_or_else(|| bad(cmd, "\"photocraftManages\" needs a \"printerProfile\""))?;
+            let profile = match p.get("printerProfile") {
+                None | Some(Value::Null) => return Err(bad(cmd, "\"photocraftManages\" needs a \"printerProfile\"")),
+                Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("\"printerProfile\" must be a string, not {v}")))?,
+            };
             let intent = p.get("intent").and_then(Value::as_str).unwrap_or("relative");
             let bpc = p.get("bpc").and_then(Value::as_bool).unwrap_or(true);
             t.execute("edit.convertToProfile", json!({"profile": profile, "intent": intent, "bpc": bpc}))?;

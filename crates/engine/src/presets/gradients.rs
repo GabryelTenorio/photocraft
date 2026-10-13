@@ -142,7 +142,10 @@ impl GradientPreset {
 
     /// Parse `{"stops":[[t,"#hex"|"foreground"|"background"],…],"transparency":[[t,0..100],…]}`.
     pub fn from_params(name: &str, p: &Value, cmd: &str) -> Result<Self> {
-        let arr = p.get("stops").and_then(Value::as_array).ok_or_else(|| bad(cmd, "missing `stops`"))?;
+        let arr = match p.get("stops") {
+            None | Some(Value::Null) => return Err(bad(cmd, "missing `stops`")),
+            Some(v) => v.as_array().ok_or_else(|| bad(cmd, format!("`stops` must be an array, not {v}")))?,
+        };
         let mut stops = Vec::new();
         for (i, s) in arr.iter().enumerate() {
             let (t, c) = match s {
@@ -484,7 +487,10 @@ fn stop_color_param(v: &Value, cmd: &str) -> Result<StopColor> {
 /// them. Pure, so the editor previews a drag with exactly what the command commits.
 pub fn apply_preset_stop(g: &GradientPreset, p: &Value, fg: [f32; 4], bg: [f32; 4], cmd: &str) -> Result<GradientPreset> {
     let mut out = g.clone();
-    let action = p.get("action").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing `action` (add|move|delete|color|opacity)"))?;
+    let action = match p.get("action") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `action` (add|move|delete|color|opacity)")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`action` must be a string (add|move|delete|color|opacity), not {v}")))?,
+    };
     if action == "midpoint" {
         return Err(bad(cmd, "preset gradients keep midpoints at the centre (edit a Gradient Fill layer to move them)"));
     }
@@ -494,7 +500,10 @@ pub fn apply_preset_stop(g: &GradientPreset, p: &Value, fg: [f32; 4], bg: [f32; 
         o => return Err(bad(cmd, format!("unknown kind `{o}` (color|opacity)"))),
     };
     let index = || -> Result<usize> {
-        p.get("index").and_then(Value::as_u64).and_then(|v| usize::try_from(v).ok()).ok_or_else(|| bad(cmd, "missing `index` (a stop number from 0)"))
+        match p.get("index") {
+            None | Some(Value::Null) => Err(bad(cmd, "missing `index` (a stop number from 0)")),
+            Some(v) => v.as_u64().and_then(|x| usize::try_from(x).ok()).ok_or_else(|| bad(cmd, format!("`index` must be a stop number from 0, not {v}"))),
+        }
     };
     let location = || {
         p.get("location")

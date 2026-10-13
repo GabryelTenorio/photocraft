@@ -821,6 +821,18 @@ fn shape_info_bounds_of_curved_shapes_are_exact() {
 }
 
 #[test]
+fn negative_origin_rect_is_stored_verbatim_and_bounds_are_canvas_clipped() {
+    // An ellipse centred at the bottom-left canvas corner: the live rect keeps its off-canvas
+    // origin verbatim, and bounds report only the painted pixels, clipped to the canvas.
+    for depth in [8, 16, 32] {
+        let mut s = session(1080, 1440, depth);
+        let r = s.execute("shape.create", json!({"kind": "ellipse", "rect": [-180.0, 1260.0, 360.0, 360.0], "fill": "#ff0000"})).unwrap();
+        assert_eq!(r["live"]["rect"], json!([-180.0, 1260.0, 360.0, 360.0]), "{depth}-bit: live rect is stored verbatim");
+        assert_eq!(r["bounds"], json!([0, 1260, 180, 180]), "{depth}-bit: painted quarter-ellipse clipped to the canvas");
+    }
+}
+
+#[test]
 fn shape_create_negative_size_rect_covers_the_ellipse_box() {
     // Issue #4203: a rectangle with a negative width spanned x 50..70 while the ellipse and
     // polygon with the same `rect` spanned 30..50.

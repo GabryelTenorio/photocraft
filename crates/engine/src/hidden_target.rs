@@ -51,7 +51,15 @@ pub fn refusal(s: &Session, id: &str, params: &Value) -> Option<&'static str> {
         return None;
     }
     let st = s.active()?;
-    let layer = params.get("layer").and_then(Value::as_u64).map(LayerId).or(st.active_layer)?;
+    let layer = match params.get("layer") {
+        // A wrong-typed `layer` is run's error to report, not a hidden-layer refusal of the
+        // active layer.
+        Some(v) if !v.is_null() => {
+            let id = v.as_u64()?;
+            LayerId(id)
+        }
+        _ => st.active_layer?,
+    };
     (st.doc.layer(layer).is_some() && !shown(&st.doc, layer)).then_some(HIDDEN)
 }
 

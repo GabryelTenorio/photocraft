@@ -27,7 +27,7 @@ fn placed_svg_is_sharp_at_its_placement_scale_and_opens_as_shapes() {
     let mut s = Session::new();
     s.execute("file.new", json!({"width": 400, "height": 400, "background": "white"})).unwrap();
     let r = photocraft_engine::file_cmds::place_bytes(&mut s, "logo.svg", SVG.as_bytes().to_vec(), None, &json!({"scale": 1000})).unwrap();
-    assert_eq!(r["bounds"], json!([100.0, 150.0, 300.0, 250.0]), "{r}");
+    assert_eq!(r["bounds"], json!([100.0, 150.0, 200.0, 100.0]), "{r}");
     let doc = s.active().unwrap().doc.clone();
     let layer = doc.layers.last().unwrap();
     let LayerContent::Smart(sm) = &layer.content else { panic!("{}", layer.content.kind_name()) };

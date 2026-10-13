@@ -39,7 +39,11 @@ fn layered_documents_save_reopen_and_save_in_place_as_openraster() {
     assert!(!h.session.active().unwrap().is_dirty(), "an OpenRaster save is a layered save");
     assert_eq!(h.session.active().unwrap().path.as_deref(), Some(path_str));
 
+    // Close the saved document first: opening a path that is already an open document's file
+    // activates it instead of loading a copy.
+    h.handle("doc.close", json!({})).unwrap();
     let opened = h.handle("doc.open", json!({"path": path_str})).unwrap();
+    assert!(opened["deduped"].is_null(), "a reopen after close loads the file: {opened}");
     let doc = &h.session.active().unwrap().doc;
     assert_eq!(doc.layers.len(), 2, "{opened}");
     let ink = doc.layers.last().unwrap();

@@ -233,8 +233,10 @@ mod tests {
         let (mut s, _) = disc(8);
         let before = s.active().unwrap().revision;
         assert!(s.execute(CMD, json!({"layer": 999_999})).is_err());
-        // A `layer` string names a layer; one that isn't there is an error, not the active layer.
-        assert!(s.execute(CMD, json!({"layer": "x"})).is_err());
+        // A `layer` string names a layer; one that isn't there is an error naming it, not the
+        // active layer.
+        let e = s.execute(CMD, json!({"layer": "x"})).unwrap_err();
+        assert!(e.to_string().contains("\"x\""), "{e}");
         assert_eq!(s.active().unwrap().revision, before);
         // Wrong types for the options fall back to the defaults (layer-only sampling, refined).
         assert!(s.execute(CMD, json!({"sampleAllLayers": 3, "refine": "no"})).is_ok());

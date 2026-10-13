@@ -84,6 +84,31 @@ pub fn intercept(app: &mut PhotocraftApp, id: &str, params: &Value) -> bool {
     true
 }
 
+/// The documents a parked prompt still has to ask about, as the control channel reports them;
+/// ones closed elsewhere while the prompt was up drop out of the list.
+fn pending_documents(app: &PhotocraftApp, docs: &[DocId]) -> Vec<Value> {
+    docs.iter()
+        .filter_map(|id| index_of(app, *id).and_then(|i| app.session.documents().get(i).map(|d| (i, &d.doc.name))))
+        .map(|(i, name)| json!({ "index": i, "name": name }))
+        .collect()
+}
+
+/// The parked prompt as `ui.inspect` reports it: the waiting command and the documents it still
+/// has to ask about, or `null` when no prompt is up.
+pub fn pending(app: &PhotocraftApp) -> Value {
+    match &app.discard {
+        Some(p) => json!({ "command": p.id, "documents": pending_documents(app, &p.docs) }),
+        None => Value::Null,
+    }
+}
+
+/// What a command parked on the unsaved-changes prompt replies with: what is pending, the
+/// documents it waits on, and the dialog the user answers it in.
+pub fn pending_reply(app: &PhotocraftApp) -> Value {
+    let documents = app.discard.as_ref().map(|p| pending_documents(app, &p.docs)).unwrap_or_default();
+    json!({ "pending": "unsavedChanges", "documents": documents, "dialog": "discard-prompt" })
+}
+
 /// Puts up `prompt`. One over several documents shows the document it asks about first; each
 /// later one is shown as it comes up (see [`advance`]).
 fn ask(app: &mut PhotocraftApp, prompt: Prompt) {
@@ -136,7 +161,7 @@ pub fn guard_window_close(app: &mut PhotocraftApp, ctx: &egui::Context) {
 }
 
 /// Moves on to the next document, or runs the parked action once none are left.
-fn advance(app: &mut PhotocraftApp, ctx: &egui::Context) {
+pub(crate) fn advance(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(p) = app.discard.as_mut() else { return };
     let answered = (!p.docs.is_empty()).then(|| p.docs.remove(0));
     let (next, one_by_one) = (p.docs.first().copied(), !matches!(reach(&p.id), Some(Reach::Target)));

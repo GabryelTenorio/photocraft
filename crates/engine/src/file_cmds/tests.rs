@@ -316,7 +316,7 @@ fn resize_image_during_place_preference_controls_the_fit() {
     let r = s.execute("file.placeEmbedded", json!({"path": big})).unwrap();
     assert!((r["scale"].as_f64().unwrap() - 100.0).abs() < 1e-9, "natural size: {r}");
     let b = r["bounds"].as_array().unwrap();
-    assert!(b[2].as_f64().unwrap() > 100.0, "wider than the canvas: {b:?}");
+    assert!((b[2].as_f64().unwrap() - 200.0).abs() < 1e-9 && (b[3].as_f64().unwrap() - 100.0).abs() < 1e-9, "natural size: {b:?}");
     // An explicit "fit": true overrides the preference.
     let r = s.execute("file.placeEmbedded", json!({"path": big, "fit": true})).unwrap();
     assert!((r["scale"].as_f64().unwrap() - 50.0).abs() < 1e-9, "fitted on request: {r}");
@@ -349,7 +349,7 @@ fn rotated_jpegs_open_and_place_upright() {
     // Placed as a smart object: upright too, and it renders upright from its embedded bytes.
     let mut s = session(100, 100, 8);
     let r = s.execute("file.placeEmbedded", json!({"path": path})).unwrap();
-    assert_eq!(r["bounds"], json!([40.0, 30.0, 60.0, 70.0]));
+    assert_eq!(r["bounds"], json!([40.0, 30.0, 20.0, 40.0]));
     assert!(composite(&s, 50, 35)[0] > 0.8 && composite(&s, 50, 65)[2] > 0.8);
 }
 
@@ -894,10 +894,11 @@ fn guide_layouts() {
     assert!(doc(&s).guides.vertical.is_empty());
     assert!(!s.is_enabled("view.newGuidesFromShape"));
     s.execute("shape.create", json!({"kind": "rect", "rect": [10, 10, 40, 20]})).unwrap();
-    s.execute("view.newGuidesFromShape", json!({})).unwrap();
+    let r = s.execute("view.newGuidesFromShape", json!({})).unwrap();
     let g = &doc(&s).guides;
     assert_eq!(g.vertical, vec![10.0, 30.0, 50.0]);
     assert_eq!(g.horizontal, vec![10.0, 20.0, 30.0]);
+    assert_eq!(r["bounds"], json!([10.0, 10.0, 40.0, 20.0]));
 }
 
 #[test]

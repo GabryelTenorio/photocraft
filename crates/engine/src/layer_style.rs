@@ -857,7 +857,25 @@ const MAX_EFFECTS: usize = 256;
 fn replace_effects(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "layer.layerStyle.replace";
     let id = crate::commands::layer_param(s, p)?;
-    let entries = p.get("effects").and_then(Value::as_array).ok_or_else(|| bad(CMD, "need `effects`: [{kind, params, fx?}]"))?;
+    let entries = match p.get("effects") {
+        None | Some(Value::Null) => {
+            let mut msg = String::from("need a top-level `effects` array: {\"effects\": [{kind, params, fx?}]}");
+            if p.get("style").is_some() || p.get("layerStyle").is_some() {
+                msg.push_str("; an `effects` list under a `style` key is not read; put `effects` at the top level, beside `layer`");
+            }
+            return Err(bad(CMD, msg));
+        }
+        Some(v) => match v.as_array() {
+            Some(entries) => entries,
+            None => {
+                let mut msg = format!("`effects` must be an array, not {v}");
+                if p.get("style").is_some() || p.get("layerStyle").is_some() {
+                    msg.push_str("; an `effects` list under a `style` key is not read; put `effects` at the top level, beside `layer`");
+                }
+                return Err(bad(CMD, msg));
+            }
+        },
+    };
     if entries.len() > MAX_EFFECTS {
         return Err(bad(CMD, format!("at most {MAX_EFFECTS} effects")));
     }
@@ -949,7 +967,10 @@ fn default_for(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn req_str_kind<'a>(p: &'a Value, cmd: &str) -> Result<&'a str> {
-    let kind = p.get("kind").and_then(Value::as_str).ok_or_else(|| bad(cmd, "need `kind`"))?;
+    let kind = match p.get("kind") {
+        None | Some(Value::Null) => return Err(bad(cmd, "need `kind`")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`kind` must be a string, not {v}")))?,
+    };
     if effect_from_params(kind, &Value::Null).is_none() {
         return Err(bad(cmd, format!("unknown effect {kind}")));
     }
@@ -1303,10 +1324,19 @@ mod tests {
         ] {
             assert!(s.execute("layer.layerStyle.replace", p).is_err());
         }
+        // A `style`-wrapped list is refused, with the error naming where `effects` belongs.
+        for p in [json!({"style": {"effects": []}}), json!({"layerStyle": {"effects": []}})] {
+            let err = s.execute("layer.layerStyle.replace", p).unwrap_err().to_string();
+            assert!(err.contains("top-level"), "{err}");
+            assert!(err.contains("`style`"), "{err}");
+        }
         // A long list is refused, not run.
         let many: Vec<_> = (0..257).map(|_| json!({"kind": "stroke"})).collect();
         assert!(s.execute("layer.layerStyle.replace", json!({"effects": many})).is_err());
         assert!(effects(&s).is_empty(), "nothing was applied");
+        // The top-level envelope the error names is the one that applies.
+        s.execute("layer.layerStyle.replace", json!({"effects": [{"kind": "stroke", "params": {"size": 3}}]})).unwrap();
+        assert_eq!(effects(&s).len(), 1);
     }
 
     #[test]

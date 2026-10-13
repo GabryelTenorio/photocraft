@@ -318,6 +318,79 @@ fn blur_reduces_local_variance_and_sharpen_increases_it() {
     }
 }
 
+/// One Blur blob stamp of `size` px centred on the step edge of a 256×256 layer (black left of
+/// x = 128, white right), with `extra` params merged in. Returns the half-width of the band around
+/// the edge whose columns changed by more than 1/255, the stamp's max |Δ|, and |Δ| on the centre
+/// row 30 px right of the edge.
+fn blur_stamp(depth: u64, size: f32, extra: Value) -> (f32, f32, f32) {
+    let mut s = session(256, 256, depth, "rgb");
+    paint_layer(&mut s, |x, _| if x < 128 { [0.0, 0.0, 0.0, 1.0] } else { [1.0, 1.0, 1.0, 1.0] });
+    let layer = s.active().unwrap().active_layer.unwrap();
+    let mut p = json!({"points": [[128, 128]], "size": size, "hardness": 0, "opacity": 100, "strength": 100, "spacing": 10, "layer": layer.0});
+    for (k, v) in extra.as_object().into_iter().flatten() {
+        p[k] = v.clone();
+    }
+    s.execute("paint.blur", p).unwrap();
+    let b = s.active().unwrap().doc.bounds();
+    let px = read_all(active_layer(&s).surface().unwrap(), b);
+    let w = b.width() as usize;
+    let delta = |x: i32, y: i32| (px[(y as usize * w + x as usize) * 4] - if x < 128 { 0.0 } else { 1.0 }).abs();
+    let col = |x: i32| (64..192).map(|y| delta(x, y)).fold(0.0f32, f32::max);
+    let mut band = 0;
+    while band < 127 && (col(128 + band) > 1.0 / 255.0 || col(127 - band) > 1.0 / 255.0) {
+        band += 1;
+    }
+    let max_delta = (0..256).map(col).fold(0.0f32, f32::max);
+    (band as f32, max_delta, delta(158, 128))
+}
+
+#[test]
+fn blur_stamp_softens_at_the_brushs_scale() {
+    // The per-stamp σ follows the brush tip (a size-300 stamp widens a step edge across a band
+    // that is a fraction of the size), where the old fixed σ-4 kernel reached about 12 px.
+    for depth in DEPTHS {
+        let (band, max_delta, at_30) = blur_stamp(depth, 300.0, json!({}));
+        assert!(band >= 40.0, "depth {depth}: affected band {band:.1} px (want ≥ 40)");
+        assert!(at_30 > 1.0 / 255.0, "depth {depth}: |Δ| 30 px from the edge {at_30:.5} (max {max_delta:.3})");
+    }
+}
+
+#[test]
+fn blur_width_grows_with_brush_size() {
+    for depth in [8u64, 32] {
+        let (b40, _, _) = blur_stamp(depth, 40.0, json!({}));
+        let (b400, _, _) = blur_stamp(depth, 400.0, json!({}));
+        assert!(b400 > 5.0 * b40, "depth {depth}: a 400 px stamp reaches {b400:.1} px, a 40 px one {b40:.1}");
+    }
+}
+
+#[test]
+fn blur_sigma_param_overrides_the_radius_and_validates() {
+    for depth in [8u64, 32] {
+        let (narrow, _, _) = blur_stamp(depth, 300.0, json!({"sigma": 4}));
+        let (wide, _, _) = blur_stamp(depth, 300.0, json!({"sigma": 30}));
+        let (derived, _, _) = blur_stamp(depth, 300.0, json!({}));
+        assert!(wide > 2.5 * narrow, "depth {depth}: σ30 reaches {wide:.1} px, σ4 {narrow:.1}");
+        assert!((wide - derived).abs() <= 2.0, "depth {depth}: σ30 {wide:.1} vs the size-derived default {derived:.1}");
+    }
+    // Out-of-range or non-numeric σ is refused before anything changes; the cap itself is fine.
+    let mut s = session(64, 48, 8, "rgb");
+    paint_layer(&mut s, texture);
+    let before = rgba(&s, 20, 24);
+    for bad in [json!({"sigma": 0.0}), json!({"sigma": -3.0}), json!({"sigma": 64.5}), json!({"sigma": 1e9}), json!({"sigma": "big"}), json!({"sigma": [30]})] {
+        let mut p = json!({"points": [[20, 24]], "size": 60, "strength": 50});
+        for (k, v) in bad.as_object().into_iter().flatten() {
+            p[k] = v.clone();
+        }
+        assert!(s.execute("paint.blur", p).is_err(), "depth 8: {bad} must be refused");
+    }
+    assert_eq!(rgba(&s, 20, 24), before, "a refused σ changed the layer");
+    s.execute("paint.blur", json!({"points": [[20, 24]], "size": 60, "sigma": 64.0})).unwrap();
+    s.execute("paint.blur", json!({"points": [[20, 24]], "size": 60, "sigma": null})).unwrap();
+    // Sharpen is a fixed-σ unsharp mask: no σ of its own, the param is ignored like any unknown.
+    s.execute("paint.sharpen", json!({"points": [[40, 24]], "size": 60, "sigma": 64.0})).unwrap();
+}
+
 #[test]
 fn smudge_moves_colour_along_the_stroke() {
     for depth in DEPTHS {

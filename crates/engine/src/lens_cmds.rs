@@ -17,7 +17,7 @@ use photocraft_geom::Rect;
 use photocraft_raster::{Surface, from_rgba_into};
 use serde_json::{Value, json};
 
-use crate::commands::CommandSpec;
+use crate::commands::{CommandSpec, opt_u64};
 use crate::photo_cmds::Stopwatch;
 use crate::{EngineError, Result, Session};
 
@@ -245,8 +245,8 @@ pub fn apply_to_surface(id: &str, params: &Value, surf: &Surface, canvas: Rect) 
 
 // ---------- commands ----------
 
-fn target(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+fn target(s: &Session, cmd: &str, p: &Value) -> Result<LayerId> {
+    match opt_u64(cmd, p, "layer")? {
         Some(v) => Ok(LayerId(v)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -278,7 +278,7 @@ fn raw_enabled(s: &Session) -> std::result::Result<(), String> {
 /// Runs `f` on the target layer (pixel layer edited in place inside the selection; smart object
 /// gets a smart filter with `stored` params).
 fn run_filter(s: &mut Session, cmd: &str, label: &str, stored: Value, float_bg: bool, f: &dyn Fn(&Surface, Rect) -> Surface) -> Result<LayerId> {
-    let id = target(s, &stored)?;
+    let id = target(s, cmd, &stored)?;
     let mut stored = stored;
     if let Value::Object(m) = &mut stored {
         m.remove("layer");
@@ -398,7 +398,7 @@ fn camera_raw_cmd(s: &mut Session, p: &Value) -> Result<Value> {
     // 65536×65536 canvas is 2^32 pixels, which overflowed the u32 size arithmetic (#962).
     if !cr.is_identity() {
         let d = s.active().ok_or(EngineError::NoDocument)?;
-        let id = target(s, p)?;
+        let id = target(s, RAW, p)?;
         let area = d.doc.layer(id).and_then(Layer::surface).map_or(d.doc.bounds(), |sf| d.doc.bounds().union(&sf.content_bounds()));
         if raw_pixels(area).is_none() {
             return Err(bad(

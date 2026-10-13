@@ -289,11 +289,13 @@ fn load_frames(path: &str, fmt: photocraft_color::PixelFormat) -> Result<Footage
 }
 
 fn new_from_file(s: &mut Session, p: &Value) -> Result<Value> {
-    let path = p
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.newVideoLayerFromFile".into(), msg: "need `path`".into() })?
-        .to_string();
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "layer.videoLayers.newVideoLayerFromFile".into(), msg: "need `path`".into() }),
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.newVideoLayerFromFile".into(), msg: format!("`path` must be a string, not {v}") })?
+            .to_string(),
+    };
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let Footage { frames, fps: footage_fps } = load_frames(&path, fmt)?;
     // An explicit `fps` wins, then the rate the footage implies, then 30.
@@ -321,11 +323,13 @@ fn new_from_file(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn replace_footage(s: &mut Session, p: &Value) -> Result<Value> {
-    let path = p
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.replaceFootage".into(), msg: "need `path`".into() })?
-        .to_string();
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "layer.videoLayers.replaceFootage".into(), msg: "need `path`".into() }),
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.replaceFootage".into(), msg: format!("`path` must be a string, not {v}") })?
+            .to_string(),
+    };
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let frames = load_frames(&path, fmt)?.frames;
     edit_video(s, "Replace Footage", move |v, _| {
@@ -371,11 +375,13 @@ fn reload_frame(s: &mut Session, _p: &Value) -> Result<Value> {
 
 /// Import › Video Frames to Layers: load frames from a file/sequence and add each as its own layer.
 fn frames_to_layers(s: &mut Session, p: &Value) -> Result<Value> {
-    let path = p
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::BadParams { cmd: "file.import.videoFramesToLayers".into(), msg: "need `path`".into() })?
-        .to_string();
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "file.import.videoFramesToLayers".into(), msg: "need `path`".into() }),
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| EngineError::BadParams { cmd: "file.import.videoFramesToLayers".into(), msg: format!("`path` must be a string, not {v}") })?
+            .to_string(),
+    };
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let frames = load_frames(&path, fmt)?.frames;
     let n = frames.len();
@@ -397,7 +403,12 @@ fn frames_to_layers(s: &mut Session, p: &Value) -> Result<Value> {
 /// Export › Render Video: composite the whole document at each timeline frame and write an image
 /// sequence (`{dir}/{stem}_NNNN.{format}`). Clean-room; no proprietary codec.
 fn render_video(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = p.get("dir").and_then(Value::as_str).ok_or_else(|| EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: "need `dir`".into() })?;
+    let dir = match p.get("dir") {
+        None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: "need `dir`".into() }),
+        Some(v) => {
+            v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: format!("`dir` must be a string, not {v}") })?
+        }
+    };
     std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("mkdir `{dir}`: {e}")))?;
     render_video_with(s, p, |name, bytes| crate::file_cmds::write_file(&format!("{dir}/{name}"), bytes), |_, _| true)
 }

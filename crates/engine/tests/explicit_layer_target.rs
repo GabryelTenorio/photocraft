@@ -1,6 +1,6 @@
 //! A command that documents `"layer":id` checks its precondition on that layer, not on whichever
 //! layer happens to be active (#466 for smart filters, generalised): a script, action or agent can
-//! Replace Contents or Rasterize a smart object while another layer is selected.
+//! Replace Contents or Rasterize a smart object, or edit a gradient fill, while another layer is selected.
 
 use photocraft_doc::{LayerContent, LayerId};
 use photocraft_engine::{EngineError, Session};
@@ -71,4 +71,24 @@ fn a_named_layer_of_the_wrong_kind_or_that_does_not_exist_is_refused() {
     assert!(s.execute("layer.smartObjects.rasterize", json!({"layer": "nope"})).is_err());
     assert_eq!(s.active().unwrap().doc, before);
     assert_eq!(active(&s), pixels);
+}
+
+#[test]
+fn gradient_fill_set_edits_a_named_layer_while_another_is_active() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 16})).unwrap();
+    // A: pixel layer, active.
+    let a = s.execute("layer.new.layer", json!({"name": "A"})).unwrap()["layer"].as_u64().unwrap();
+    // B: a gradient fill layer (create leaves it active — re-select A).
+    let b = s.execute("gradient.fill.create", json!({"from": [0, 8], "to": [64, 8]})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.select", json!({"layer": a})).unwrap();
+    assert_eq!(active(&s), a);
+    // Without "layer" the active pixel layer decides, as the menus show.
+    assert!(!s.is_enabled("gradient.fill.set"));
+    let r = s.execute("gradient.fill.set", json!({"layer": b, "stops": [[0, "#ff0000"], [1, "#0000ff"]]})).unwrap();
+    assert_eq!(r["layer"], json!(b), "the named gradient fill was edited");
+    let g = s.execute("gradient.fill.get", json!({"layer": b})).unwrap();
+    assert_eq!(g["stops"][0][1], json!("#ff0000"));
+    assert_eq!(g["stops"][1][1], json!("#0000ff"));
+    assert_eq!(active(&s), a, "the active layer stays");
 }

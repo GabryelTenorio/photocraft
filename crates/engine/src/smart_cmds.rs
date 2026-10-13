@@ -756,7 +756,7 @@ pub fn layers_to_smart(doc: &Document, name: &str, layers: Vec<Layer>) -> Result
 }
 
 fn convert(s: &mut Session, p: &Value) -> Result<Value> {
-    let ids = match p.get("layer").and_then(Value::as_u64) {
+    let ids = match crate::commands::opt_u64("layer.smartObjects.convertToSmartObject", p, "layer")? {
         Some(id) => vec![LayerId(id)],
         None => crate::layer_multi_cmds::selected(s),
     };
@@ -809,7 +809,10 @@ fn via_copy(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn path_param<'a>(cmd: &str, p: &'a Value) -> Result<&'a str> {
-    p.get("path").and_then(Value::as_str).filter(|s| !s.is_empty()).ok_or_else(|| bad(cmd, "pass `path`"))
+    match p.get("path") {
+        None | Some(Value::Null) => Err(bad(cmd, "pass `path`")),
+        Some(v) => v.as_str().filter(|s| !s.is_empty()).ok_or_else(|| bad(cmd, format!("`path` must be a non-empty string, not {v}"))),
+    }
 }
 
 /// Instances sharing contents in this document, including those inside groups.

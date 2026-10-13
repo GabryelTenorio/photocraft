@@ -35,6 +35,11 @@ pub struct PhotocraftMcp {
 
 // ---------------------------------------------------------------------------
 // Parameters
+
+// Optional scalars advertise their plain single JSON type (`with`), not schemars' union
+// `["integer","null"]`: some clients only coerce scalar arguments on plain-typed properties
+// and reject their string form against a union. Omitting the argument selects the default;
+// an explicit `null` still deserializes to the default.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -42,6 +47,7 @@ pub struct PhotocraftMcp {
 pub struct DocIndex {
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
 }
 
@@ -59,12 +65,15 @@ pub struct PlaceParams {
     pub path: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Scale as a percentage; defaults to fitting a file larger than the canvas.
     #[serde(default)]
+    #[schemars(with = "f64")]
     pub scale: Option<f64>,
-    /// Place at a centred size instead of a scaled one.
+    /// Place at a centred size instead of a scaled one (default off).
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub fit: Option<bool>,
     /// Centre of the placed layer, in document pixels.
     #[serde(default)]
@@ -78,6 +87,7 @@ pub struct ExportLayersParams {
     pub dir: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Export format (default png).
     #[serde(default)]
@@ -87,9 +97,11 @@ pub struct ExportLayersParams {
     pub prefix: Option<String>,
     /// Export only the layers that are visible (default true).
     #[serde(default, rename = "visible_only")]
+    #[schemars(with = "bool")]
     pub visible_only: Option<bool>,
-    /// Encoder quality, 0..12, for the formats that take one.
+    /// Encoder quality, 0..12, for the formats that take one (default: the format's own).
     #[serde(default)]
+    #[schemars(with = "f64")]
     pub quality: Option<f64>,
 }
 
@@ -100,6 +112,7 @@ pub struct ExportDataSetsParams {
     pub dir: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Export format (default png).
     #[serde(default)]
@@ -119,6 +132,7 @@ pub struct ImportDataSetsParams {
     pub path: String,
     /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Field delimiter (default `,`).
     #[serde(default)]
@@ -128,15 +142,20 @@ pub struct ImportDataSetsParams {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewParams {
+    /// Width in pixels (default 1920).
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub width: Option<u32>,
+    /// Height in pixels (default 1080).
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub height: Option<u32>,
     /// rgb | gray | cmyk | lab
     #[serde(default)]
     pub mode: Option<String>,
-    /// 8 | 16 | 32
+    /// 8 | 16 | 32 (default 8)
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub depth: Option<u32>,
     /// white | black | transparent | #rrggbb
     #[serde(default)]
@@ -150,8 +169,9 @@ pub struct NewParams {
 pub struct SaveParams {
     /// Target beneath the configured automation write root: relative (forward slashes) or absolute.
     /// The extension selects the format. Omit to write back to the document's own file, which
-    /// works only for a PSD, PSB or .pcraft file kept in its own format; any other save needs
-    /// `path`, so a flattened or converted copy never replaces the opened file.
+    /// works only for a PSD, PSB, .pcraft or OpenRaster file that holds the whole document,
+    /// kept in its own format; any other save needs `path`, so a flattened or converted copy
+    /// never replaces the opened file.
     #[serde(default)]
     pub path: Option<String>,
     /// Format override as an extension (pcraft, psd, png, jpg, tif, webp, exr, …).
@@ -159,6 +179,7 @@ pub struct SaveParams {
     pub format: Option<String>,
     /// JPEG or WebP quality 1..100. A WebP saved with a quality is lossy; without one it is lossless.
     #[serde(default)]
+    #[schemars(with = "u8")]
     pub quality: Option<u8>,
     /// TIFF: keep the layers (Photoshop layer data). Off by default: a flat TIFF.
     #[serde(default, rename = "tiffLayers")]
@@ -166,11 +187,15 @@ pub struct SaveParams {
     /// TGA: 24 or 32 bits per pixel. 32 writes the alpha channel (or else the transparency) as the
     /// alpha, 24 none. Unset: 32 with an alpha channel or transparency, else 24.
     #[serde(default, rename = "tgaBits")]
+    #[schemars(with = "u8")]
     pub tga_bits: Option<u8>,
     /// DPX: 8, 10, 12 or 16 bits per sample. Unset: 8 for an 8-bit document, else 16.
     #[serde(default, rename = "dpxBits")]
+    #[schemars(with = "u8")]
     pub dpx_bits: Option<u8>,
+    /// Document index from `session_list` (default: the active document).
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
 }
 
@@ -180,10 +205,12 @@ pub struct PreviewParams {
     /// Headless mode only: document index (default: the active document).
     /// Bridge previews capture the app window and reject `index`.
     #[serde(default)]
+    #[schemars(with = "usize")]
     pub index: Option<usize>,
     /// Longest side of a headless preview (default 1024, maximum 2048).
     /// Zero requests full size within that ceiling. Bridge mode returns the window screenshot.
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub max_side: Option<u32>,
 }
 
@@ -193,6 +220,7 @@ pub struct ScreenshotParams {
     /// Downscale the window screenshot to this longest side (maximum 2048).
     /// Omit or pass zero to keep the original size.
     #[serde(default)]
+    #[schemars(with = "u32")]
     pub max_side: Option<u32>,
 }
 
@@ -208,8 +236,9 @@ pub struct ListParams {
     /// Only commands whose id or label contains this text (case-insensitive).
     #[serde(default)]
     pub filter: Option<String>,
-    /// Only commands that can run right now.
+    /// Only commands that can run right now (default false).
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub enabled_only: Option<bool>,
 }
 
@@ -225,6 +254,7 @@ pub struct RunParams {
     /// true). With false it runs as a background job and the result is `{"job": id}`: poll it
     /// with `jobs_list`, stop it with `jobs_cancel`.
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub wait: Option<bool>,
 }
 
@@ -233,6 +263,7 @@ pub struct RunParams {
 pub struct JobCancelParams {
     /// The job id from `command_run` / `jobs_list` (omit to cancel every running job).
     #[serde(default)]
+    #[schemars(with = "u64")]
     pub job: Option<u64>,
 }
 
@@ -246,6 +277,7 @@ pub struct BatchParams {
     pub steps: Vec<RunParams>,
     /// Stop at the first failing step (default true).
     #[serde(default)]
+    #[schemars(with = "bool")]
     pub stop_on_error: Option<bool>,
 }
 
@@ -260,13 +292,17 @@ struct PointerEvent {
     /// Document y in pixels.
     y: f64,
     /// Pen pressure 0..1 (default 1).
+    #[schemars(with = "f64")]
     pressure: Option<f64>,
     /// A simulated pen's tilt, as a stylus reports it.
     #[serde(rename = "tiltX")]
+    #[schemars(with = "f64")]
     tilt_x: Option<f64>,
     #[serde(rename = "tiltY")]
+    #[schemars(with = "f64")]
     tilt_y: Option<f64>,
     /// A simulated pen's barrel rotation.
+    #[schemars(with = "f64")]
     rotation: Option<f64>,
 }
 
@@ -452,6 +488,16 @@ fn bridge_only(name: &str) -> Result<CallToolResult, McpError> {
     )))
 }
 
+/// A capability-scoped document tool in bridge mode: the headed app's automation gate refuses
+/// the filesystem-bearing engine commands, so the error names the surfaces that run it.
+fn bridge_refusal(tool: &str, serve_method: &str) -> CallToolResult {
+    fail(format!(
+        "`{tool}` is not available in bridge mode; use headless MCP \
+         (`photocraft-cli mcp --automation-read-root <dir> --automation-write-root <dir>`) \
+         or `photocraft-cli serve` (`{serve_method}`)"
+    ))
+}
+
 impl PhotocraftMcp {
     pub fn headless() -> Self {
         Self::with_backend(Backend::Headless(Arc::new(Mutex::new(Headless::new()))))
@@ -598,7 +644,7 @@ impl PhotocraftMcp {
     }
 
     #[tool(
-        description = "Place a file into the document as a Smart Object layer (Place Embedded), reading `path` beneath the read root. `scale` (percent), `fit` and `center` are the command's own."
+        description = "Place a file into the document as a Smart Object layer (Place Embedded), reading `path` beneath the read root. `scale` (percent), `fit` and `center` are the command's own. (bridge mode: not available)"
     )]
     async fn doc_place(&self, Parameters(p): Parameters<PlaceParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
@@ -612,20 +658,18 @@ impl PhotocraftMcp {
             opts.insert("center".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        // Bridge mode runs the app on this machine, which reads the path itself like any command.
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("path".into(), Value::String(p.path.clone()));
-        }
         let (path, index) = (p.path, p.index);
         if let Some(r) = self.headless_op(move |h| h.place(index, &path, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.placeEmbedded".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_place", "doc.place"));
+        }
+        Ok(no_backend())
     }
 
     #[tool(
-        description = "Export each exported layer of the document as its own file beneath the write root (the capability-scoped Layers to Files). A file that already exists is an error, not an overwrite."
+        description = "Export each exported layer of the document as its own file beneath the write root (the capability-scoped Layers to Files). A file that already exists is an error, not an overwrite. (bridge mode: not available)"
     )]
     async fn doc_export_layers(&self, Parameters(p): Parameters<ExportLayersParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
@@ -642,20 +686,18 @@ impl PhotocraftMcp {
             opts.insert("quality".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        // Bridge mode runs the app on this machine, which writes its own paths like any command.
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("dir".into(), Value::String(p.dir.clone()));
-        }
         let (dir, index) = (p.dir, p.index);
         if let Some(r) = self.headless_op(move |h| h.export_layers(index, &dir, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.export.layersToFiles".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_export_layers", "doc.exportLayers"));
+        }
+        Ok(no_backend())
     }
 
     #[tool(
-        description = "Export every data set of the document as its own flattened file beneath the write root (the capability-scoped Export Data Sets). The batch is planned first, so colliding filenames are refused before any file is written."
+        description = "Export every data set of the document as its own flattened file beneath the write root (the capability-scoped Export Data Sets). The batch is planned first, so colliding filenames are refused before any file is written. (bridge mode: not available)"
     )]
     async fn doc_export_data_sets(&self, Parameters(p): Parameters<ExportDataSetsParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
@@ -669,33 +711,33 @@ impl PhotocraftMcp {
             opts.insert("naming".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("dir".into(), Value::String(p.dir.clone()));
-        }
         let (dir, index) = (p.dir, p.index);
         if let Some(r) = self.headless_op(move |h| h.export_data_sets(index, &dir, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.export.dataSetsAsFiles".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_export_data_sets", "doc.exportDataSets"));
+        }
+        Ok(no_backend())
     }
 
-    #[tool(description = "Import a data set CSV from the read root into the document (the capability-scoped Import Variable Data Sets).")]
+    #[tool(
+        description = "Import a data set CSV from the read root into the document (the capability-scoped Import Variable Data Sets). (bridge mode: not available)"
+    )]
     async fn doc_import_data_sets(&self, Parameters(p): Parameters<ImportDataSetsParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
         if let Some(v) = p.delimiter {
             opts.insert("delimiter".into(), json!(v));
         }
         let opts = Value::Object(opts);
-        let mut bridge_params = opts.clone();
-        if let Some(o) = bridge_params.as_object_mut() {
-            o.insert("path".into(), Value::String(p.path.clone()));
-        }
         let (path, index) = (p.path, p.index);
         if let Some(r) = self.headless_op(move |h| h.import_data_sets(index, &path, &opts)).await {
             return to_result(r);
         }
-        self.run_command("file.import.variableDataSets".into(), bridge_params, true).await
+        if self.bridge_client().is_some() {
+            return Ok(bridge_refusal("doc_import_data_sets", "doc.importDataSets"));
+        }
+        Ok(no_backend())
     }
 
     #[tool(description = "Create a new document (defaults: 1920x1080 RGB 8-bit white).")]
@@ -723,7 +765,9 @@ impl PhotocraftMcp {
     }
 
     #[tool(description = "Save the document. `.pcraft` is the lossless native format (incremental); other extensions \
-        (psd, png, jpg, tif, webp, exr, …) export. Without `path` only a PSD, PSB or .pcraft document is written back to its own         file. Returns warnings about anything the format cannot hold.")]
+        (psd, png, jpg, tif, webp, exr, …) export. Without `path` only a document file that holds the whole \
+        document (PSD, PSB, .pcraft, or an OpenRaster that loses nothing) is written back to its own file. \
+        Returns warnings about anything the format cannot hold.")]
     async fn doc_save(&self, Parameters(p): Parameters<SaveParams>) -> Result<CallToolResult, McpError> {
         self.save_impl(p).await
     }
@@ -736,7 +780,10 @@ impl PhotocraftMcp {
         self.save_impl(p).await
     }
 
-    #[tool(description = "Document state as JSON: layer tree (top to bottom), history, selection, active layer.")]
+    #[tool(description = "Document state as JSON: layer tree (top to bottom), history, selection, active layer. \
+        With a document open the reply is the flat document.inspect JSON with no `document` key; headless \
+        with no `index` and no documents open it is `{\"document\": null, \"session\": …}`; in bridge mode \
+        an empty session is an error.")]
     async fn doc_inspect(&self, Parameters(p): Parameters<DocIndex>) -> Result<CallToolResult, McpError> {
         if let Some(r) = self
             .headless_op(move |h| {
@@ -948,7 +995,7 @@ impl PhotocraftMcp {
         }
     }
 
-    #[tool(description = "Bridge mode: call any control-protocol method (docs/control-protocol.md) with raw params.")]
+    #[tool(description = "Bridge mode: call any method the desktop control server registers (docs/control-protocol.md) with raw params.")]
     async fn control_call(&self, Parameters(p): Parameters<ControlParams>) -> Result<CallToolResult, McpError> {
         match self.bridge_client() {
             Some(b) => to_result(b.call(&p.method, p.params.unwrap_or_else(|| json!({}))).await),

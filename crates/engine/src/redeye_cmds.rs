@@ -223,7 +223,7 @@ fn red_eye(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let pupil = pupil_raw.clamp(1.0, 100.0);
     let darken = darken.clamp(0.0, 100.0);
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match crate::commands::opt_u64(CMD, p, "layer")? {
         Some(id) => Some(LayerId(id)),
         None => s.active().and_then(|d| d.active_layer),
     };

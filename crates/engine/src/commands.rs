@@ -196,6 +196,11 @@ pub(crate) fn int_i32(cmd: &str, p: &Value, key: &str) -> Result<Option<i32>> {
     }
 }
 
+/// `[x, y, w, h]` of a half-open [`Rect`] — the one bounds tuple command replies use.
+pub(crate) fn bounds_json(r: Rect) -> Value {
+    json!([r.x0, r.y0, r.width() as i32, r.height() as i32])
+}
+
 /// An id (layer comp, slice, style…) from a JSON value: a bad-params error unless it is a whole
 /// number in `u32` range. `as u32` would wrap `2^32 + 1` to `1` and target a real item.
 pub(crate) fn u32_id(cmd: &str, key: &str, v: &Value) -> Result<u32> {
@@ -205,6 +210,25 @@ pub(crate) fn u32_id(cmd: &str, key: &str, v: &Value) -> Result<u32> {
 /// [`u32_id`] of `p[key]`: `None` when absent.
 pub(crate) fn u32_id_param(cmd: &str, p: &Value, key: &str) -> Result<Option<u32>> {
     p.get(key).map(|v| u32_id(cmd, key, v)).transpose()
+}
+
+/// A required layer id (a whole number only, unlike [`int`], which rounds floats for geometry).
+/// Absent or `null` → "missing `{key}`"; any other JSON type → an error naming the value, so a
+/// wrong type is never reported as a missing key.
+pub(crate) fn req_u64(cmd: &str, p: &Value, key: &str) -> Result<u64> {
+    match p.get(key) {
+        None | Some(Value::Null) => Err(bad(cmd, format!("missing `{key}`"))),
+        Some(v) => v.as_u64().ok_or_else(|| bad(cmd, format!("`{key}` must be a layer id (unsigned integer), not {v}"))),
+    }
+}
+
+/// [`req_u64`] for an optional layer id: `Ok(None)` when the key is absent or `null`, so callers
+/// fall back — but a present value of the wrong type is an error, never a silent retarget.
+pub(crate) fn opt_u64(cmd: &str, p: &Value, key: &str) -> Result<Option<u64>> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(_) => req_u64(cmd, p, key).map(Some),
+    }
 }
 
 fn f32_or(p: &Value, key: &str, default: f32) -> f32 {
@@ -234,7 +258,9 @@ pub(crate) fn parse_hex(s: &str) -> Option<[f32; 4]> {
 /// becomes the base; Release releases every selected layer. One history step either way.
 fn set_clipped(s: &mut Session, p: &Value, clip: bool) -> Result<Value> {
     let label = if clip { "Create Clipping Mask" } else { "Release Clipping Mask" };
-    let ids: Vec<LayerId> = if p.get("layer").is_some() {
+    // `null` counts as absent everywhere a `layer` param is read, as `name_param` treats it.
+    let explicit = !matches!(p.get("layer"), None | Some(Value::Null));
+    let ids: Vec<LayerId> = if explicit {
         vec![layer_param(s, p)?]
     } else {
         let selected = s.active().ok_or(EngineError::NoDocument)?.selected_layers();
@@ -443,10 +469,10 @@ fn build() -> Vec<CommandSpec> {
                 Ok(json!({ "document": i }))
             }
         ),
-        cmd!("file.close", "Close", ["File"], Some("Cmd+W"), r##"{"document":index?}"##, has_doc, |s, p| {
+        cmd!("file.close", "Close", ["File"], Some("Cmd+W"), r##"{"document":index? (default active)}"##, has_doc, |s, p| {
             let i = p.get("document").and_then(Value::as_u64).map(|v| v as usize).or(s.active_index()).ok_or(EngineError::NoDocument)?;
             s.close(i).ok_or(EngineError::NoDocument)?;
-            Ok(Value::Null)
+            Ok(json!({ "closed": i, "remaining": s.documents().len() }))
         }),
         // Edit
         cmd!("edit.undo", "Undo", ["Edit"], Some("Cmd+Z"), "{}", can_undo, |s, _| Ok(json!(s.undo()))),
@@ -573,20 +599,29 @@ fn build() -> Vec<CommandSpec> {
             "Layer…",
             ["Layer", "New"],
             Some("Cmd+Shift+N"),
-            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error)}"##,
+            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error),"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)} → {"layer":id} (the new layer becomes the active layer, like every layer-creating command; re-select the target with layer.select)"##,
             has_doc,
             crate::new_layer::run
         ),
-        cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
-            let id = s.edit("New Group", |doc, active| {
-                let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
-                let id = doc.insert_above(*active, Layer::group(name, vec![]));
-                *active = Some(id);
-                Ok(id)
-            })?;
-            crate::layer_multi_cmds::note_inert_insert(s, id);
-            Ok(json!({ "layer": id.0 }))
-        }),
+        cmd!(
+            "layer.new.group",
+            "Group…",
+            ["Layer", "New"],
+            None,
+            r##"{"name":str?,"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)}"##,
+            has_doc,
+            |s, p| {
+                let place = crate::new_layer::placement("layer.new.group", p)?;
+                let id = s.edit("New Group", |doc, active| {
+                    let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
+                    let id = crate::new_layer::insert_at(doc, *active, place, Layer::group(name, vec![]))?;
+                    *active = Some(id);
+                    Ok(id)
+                })?;
+                crate::layer_multi_cmds::note_inert_insert(s, id);
+                Ok(json!({ "layer": id.0 }))
+            }
+        ),
         cmd!(
             "layer.groupLayers",
             "Group Layers",
@@ -1051,7 +1086,10 @@ fn build() -> Vec<CommandSpec> {
             params: r##"{"document":index}"##,
             enabled: has_doc,
             run: |s, p| {
-                let i = p.get("document").and_then(Value::as_u64).ok_or_else(|| bad("document.activate", "missing `document`"))?;
+                let i = match p.get("document") {
+                    None | Some(Value::Null) => return Err(bad("document.activate", "missing `document`")),
+                    Some(v) => v.as_u64().ok_or_else(|| bad("document.activate", format!("`document` must be an index (unsigned integer), not {v}")))?,
+                };
                 let idx = usize::try_from(i).map_err(|_| bad("document.activate", "`document` out of range"))?;
                 if s.set_active(idx) { Ok(Value::Null) } else { Err(EngineError::Other(format!("no document at index {idx}"))) }
             },
@@ -1533,5 +1571,29 @@ mod registry_tests {
         let registry = Registry::new(vec![first, second]);
         assert_eq!(registry.by_id.get(id), Some(&0));
         assert_eq!(registry.specs.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod close_tests {
+    use super::*;
+
+    #[test]
+    fn close_without_params_closes_the_active_document_and_names_it() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({ "width": 8, "height": 8 })).unwrap();
+        s.execute("file.new", json!({ "width": 9, "height": 9 })).unwrap();
+        assert_eq!(s.documents().len(), 2);
+        assert_eq!(s.active_index(), Some(1));
+        let r = s.execute("file.close", json!({})).unwrap();
+        assert_eq!(r, json!({ "closed": 1, "remaining": 1 }));
+        assert_eq!(s.documents().len(), 1, "the active document closed");
+        assert!(s.execute("file.close", json!({ "document": 5 })).is_err());
+    }
+
+    #[test]
+    fn close_with_no_document_open_is_an_error() {
+        let mut s = Session::new();
+        assert!(s.execute("file.close", json!({})).is_err());
     }
 }

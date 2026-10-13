@@ -31,6 +31,8 @@
 //! - `jobs.list` / `jobs.cancel {job?}`: background jobs (#210) with progress; cancel one (or all).
 //!   `engine.execute`, `ui.menu.invoke` and `ui.dialog.confirm` wait for a command that runs as a
 //!   job unless `wait: false` (then the reply is `{job, pending: true}`)
+//! - `methods`: this list. The headless serve surface (`photocraft-cli serve`) adds
+//!   `session.list`, `doc.*` and `batch`; those are not served here
 
 use std::sync::mpsc::Sender;
 
@@ -169,6 +171,39 @@ pub const UI_SET_FIELDS: [&str; 35] = [
     "tileGrid",
 ];
 
+/// Every method the control server dispatches, in dispatch order; the `methods` reply.
+pub const METHODS: &[&str] = &[
+    "ui.context.choose",
+    "engine.execute",
+    "ui.menu.invoke",
+    "engine.commands",
+    "jobs.list",
+    "jobs.cancel",
+    "ui.menu.list",
+    "ui.inspect",
+    "ui.set",
+    "ui.dialog.open",
+    "ui.dialog.set",
+    "ui.dialog.confirm",
+    "ui.dialog.apply",
+    "ui.dialog.cancel",
+    "ui.window.open",
+    "ui.window.close",
+    "ui.pointer",
+    "ui.click",
+    "ui.move",
+    "ui.key",
+    "ui.type",
+    "ui.resize",
+    "ui.gpu.simulateLoss",
+    "ui.focus",
+    "ui.screenshot",
+    "app.open",
+    "app.save",
+    "app.quit",
+    "methods",
+];
+
 /// Most clicks one `ui.click` may queue (#982). Each click is a press and a release that the app
 /// feeds in its own frame before replying, so `count` sizes both the input queue and the wait;
 /// the same ceiling as the steps of one batch request.
@@ -304,6 +339,26 @@ fn wrap(r: Result<Value, String>) -> Outcome {
     }
 }
 
+/// The key an automation open dedupes on: `/`-separated components with empty and `.` components
+/// dropped and `..` resolved lexically, without consulting the filesystem. A path that would
+/// climb above its own start keeps its raw spelling, so comparison falls back to exact text.
+fn dedupe_key(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if parts.pop().is_none() {
+                    return path.to_string();
+                }
+            }
+            _ => parts.push(part),
+        }
+    }
+    let joined = parts.join("/");
+    if path.starts_with('/') { format!("/{joined}") } else { joined }
+}
+
 /// Run a command the way automation does (script events off). Long commands may run as
 /// background jobs: by default the reply waits for the job's result (backward compatible); with
 /// `wait` false it is `{job, pending: true}` at once.
@@ -405,6 +460,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             ok(json!({"command": id, "dialog": app.ui.dialogs.last().map(|d| d.id)}))
         }
         "engine.execute" | "ui.menu.invoke" => {
+            let allowed: &[&str] = if req.method == "engine.execute" { &["command", "params", "wait"] } else { &["id", "params", "wait"] };
+            if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| !allowed.contains(&k.as_str())).cloned()) {
+                return err(format!("unknown parameter `{key}` for {} (parameters: {})", req.method, allowed.join(", ")));
+            }
             let Some(id) = s("command").or(s("id")) else { return err("missing `command`") };
             let params = p.get("params").cloned().unwrap_or(json!({}));
             // A control-channel menu click must respect the same modal gate as the native menu.
@@ -1181,6 +1240,18 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
         }
         "app.open" => match s("path") {
             Some(path) => {
+                // An automation open of a path that is already an open document's file activates
+                // that document instead of loading a second copy; interactive opens stay
+                // duplicate-legal, as in Photoshop.
+                let key = dedupe_key(path);
+                if let Some(index) = app.session.documents().iter().position(|st| st.path.as_deref().is_some_and(|p| dedupe_key(p) == key)) {
+                    let name = app.session.documents()[index].doc.name.clone();
+                    app.session.set_active(index);
+                    app.push_recent(path);
+                    app.ui.status = crate::i18n::fmt(tl!("Opened {name}"), &[("name", &name)]);
+                    app.ui.status_error = false;
+                    return ok(json!({"path": path, "name": name, "warnings": [], "index": index, "deduped": true}));
+                }
                 // Directory .pcraft (the native on-disk form) loads through a capability-scoped
                 // source; the single-file (zip) form falls back to the bytes path, as do all
                 // other formats.
@@ -1230,7 +1301,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             ok(Value::Null)
         }
-        other => err(format!("unknown method `{other}`")),
+        "methods" => ok(json!(METHODS)),
+        other => err(format!(
+            "unknown method `{other}` (try `methods`); the control server does not serve the headless `serve` methods (`session.list`, `doc.*`, `batch`): use `app.open` for `doc.open`, `app.save` for `doc.save`, `engine.execute {{\"command\":\"file.new\"}}` for `doc.new`, `engine.execute {{\"command\":\"document.inspect\"}}` for `doc.inspect`, `ui.inspect` for `session.list`; `doc.render` has no control equivalent (`ui.screenshot` captures the window, not the flattened document)"
+        )),
     }
 }
 
@@ -1287,6 +1361,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "view": app.ui.view,
         "views": app.ui.views,
         "dialogs": dialogs,
+        "discard": crate::discard_ui::pending(app),
         "windows": app.ui.windows,
         "theme": app.ui.theme,
         "status": app.ui.status,
@@ -1808,6 +1883,23 @@ mod tests {
         let r = call(&mut app, &ctx, "ui.menu.invoke", json!({"id": "filter.blur.gaussianBlur"}));
         assert!(r.to_string().contains("dialog"), "ui.menu.invoke should open the dialog: {r}");
         assert_eq!(app.session.active().unwrap().revision, rev, "opening a dialog must not edit the document");
+    }
+
+    #[test]
+    fn engine_execute_rejects_unknown_envelope_keys_without_running() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width": 32, "height": 32})).unwrap();
+        app.run("edit.fill", json!({"color": "#808080"})).unwrap();
+        let revision = app.session.active().unwrap().revision;
+        let r = call(&mut app, &ctx, "engine.execute", json!({"command": "filter.blur.gaussianBlur", "layer": 37, "params": {"radius": 5}}));
+        assert_eq!(r["ok"], false, "{r}");
+        assert!(r["error"].as_str().unwrap_or("").contains("layer"), "{r}");
+        // `ui.menu.invoke` names its target `id`; `command` belongs to `engine.execute`.
+        let r = call(&mut app, &ctx, "ui.menu.invoke", json!({"command": "filter.blur.blurMore"}));
+        assert_eq!(r["ok"], false, "{r}");
+        assert!(r["error"].as_str().unwrap_or("").contains("command"), "{r}");
+        assert_eq!(app.session.active().unwrap().revision, revision, "a rejected envelope must not run anything");
     }
 
     #[test]
@@ -2399,6 +2491,126 @@ mod tests {
     }
 
     #[test]
+    fn app_open_of_an_already_open_path_activates_the_existing_document() {
+        use photocraft_doc::Document;
+        use serde_json::json;
+        let services = crate::Services {
+            import: Some(Box::new(|name: &str, _b: &[u8], _depth: usize| {
+                Ok((Document::new(name, photocraft_doc::Size::new(4, 4), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8), Vec::new()))
+            })),
+            automation_read: Some(Box::new(|path: &str| Ok((path.rsplit('/').next().unwrap_or(path).to_string(), b"x".to_vec())))),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        let ctx = egui::Context::default();
+
+        let first = call(&mut app, &ctx, "app.open", json!({"path": "in/warn.psd"}));
+        assert!(first["result"]["deduped"].is_null(), "{first}");
+        let (doc_id, revision) = {
+            let st = app.session.active().unwrap();
+            (st.doc.id, st.revision)
+        };
+
+        let second = call(&mut app, &ctx, "app.open", json!({"path": "in/warn.psd"}));
+        assert_eq!(second["result"]["deduped"], json!(true), "{second}");
+        assert_eq!(second["result"]["index"], 0);
+        assert_eq!(app.session.documents().len(), 1, "the same path opens no second document");
+        let st = app.session.active().unwrap();
+        assert_eq!((st.doc.id, st.revision), (doc_id, revision), "the existing document is returned untouched");
+
+        // A different path still opens a second document.
+        let third = call(&mut app, &ctx, "app.open", json!({"path": "in/other.psd"}));
+        assert!(third["result"]["deduped"].is_null(), "{third}");
+        assert_eq!(app.session.documents().len(), 2);
+
+        // The already-open path is still the first document, not a third one.
+        let again = call(&mut app, &ctx, "app.open", json!({"path": "in/warn.psd"}));
+        assert_eq!(again["result"]["deduped"], json!(true), "{again}");
+        assert_eq!(again["result"]["index"], 0);
+        assert_eq!(app.session.documents().len(), 2);
+    }
+
+    #[test]
+    fn app_open_reopens_a_copy_where_no_path_is_stored() {
+        use photocraft_doc::Document;
+        use serde_json::json;
+        let services = crate::Services {
+            import: Some(Box::new(|name: &str, _b: &[u8], _depth: usize| {
+                Ok((Document::new(name, photocraft_doc::Size::new(4, 4), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8), Vec::new()))
+            })),
+            automation_read: Some(Box::new(|path: &str| Ok((path.rsplit('/').next().unwrap_or(path).to_string(), b"x".to_vec())))),
+            automation_open_pcraft: Some(Box::new(|path: &str| {
+                let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                Ok(Some((name, Document::new("Native", photocraft_doc::Size::new(16, 12), photocraft_doc::ColorMode::Rgb, photocraft_doc::SampleType::U8))))
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        let ctx = egui::Context::default();
+
+        // A template opens untitled and keeps no path, so a second open is a second document.
+        let first = call(&mut app, &ctx, "app.open", json!({"path": "in/card.psdt"}));
+        assert_eq!(first["result"]["name"], "Untitled-1");
+        assert!(first["result"]["deduped"].is_null(), "{first}");
+        let second = call(&mut app, &ctx, "app.open", json!({"path": "in/card.psdt"}));
+        assert_eq!(second["result"]["name"], "Untitled-2");
+        assert!(second["result"]["deduped"].is_null(), "{second}");
+        assert_eq!(app.session.documents().len(), 2);
+
+        // A directory .pcraft keeps no save-back target either: it too reopens as a copy.
+        let third = call(&mut app, &ctx, "app.open", json!({"path": "native.pcraft"}));
+        assert!(third["result"]["deduped"].is_null(), "{third}");
+        let fourth = call(&mut app, &ctx, "app.open", json!({"path": "native.pcraft"}));
+        assert!(fourth["result"]["deduped"].is_null(), "{fourth}");
+        assert_eq!(app.session.documents().len(), 4);
+    }
+
+    #[test]
+    fn dedupe_key_resolves_lexical_spellings_and_falls_back_to_raw_text() {
+        assert_eq!(dedupe_key("in/x.png"), "in/x.png");
+        assert_eq!(dedupe_key("./in/x.png"), "in/x.png");
+        assert_eq!(dedupe_key("in//sub/../x.png"), "in/x.png");
+        assert_eq!(dedupe_key("/root/in/x.png"), "/root/in/x.png");
+        assert_eq!(dedupe_key("../x.png"), "../x.png", "a climb above the start keeps the raw spelling");
+        assert_eq!(dedupe_key("a/../../x.png"), "a/../../x.png");
+    }
+
+    #[test]
+    fn methods_lists_every_served_method_and_unknown_names_the_serve_only_family() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        let r = call(&mut app, &ctx, "methods", json!({}));
+        let listed: Vec<&str> = r["result"].as_array().unwrap().iter().map(|m| m.as_str().unwrap()).collect();
+        for served in ["engine.execute", "ui.menu.invoke", "ui.inspect", "ui.screenshot", "app.save", "app.quit", "methods"] {
+            assert!(listed.contains(&served), "`{served}` is served but not listed: {listed:?}");
+        }
+        for serve_only in [
+            "doc.open",
+            "doc.save",
+            "doc.render",
+            "doc.inspect",
+            "doc.place",
+            "doc.new",
+            "doc.select",
+            "doc.close",
+            "doc.exportLayers",
+            "doc.exportDataSets",
+            "doc.importDataSets",
+            "session.list",
+            "batch",
+        ] {
+            assert!(!listed.contains(&serve_only), "`{serve_only}` is serve-only but listed: {listed:?}");
+        }
+        let r = call(&mut app, &ctx, "doc.render", json!({}));
+        let error = r["error"].as_str().unwrap();
+        assert!(error.contains("unknown method `doc.render`"), "{error}");
+        assert!(error.contains("serve"), "the error must name the serve-only family: {error}");
+        assert!(error.contains("app.save"), "the error must name the headed equivalent: {error}");
+        let r = call(&mut app, &ctx, "doc.nope", json!({}));
+        assert!(r["error"].as_str().unwrap().contains("unknown method `doc.nope`"), "{r}");
+    }
+
+    #[test]
     fn app_save_runs_as_a_background_job_and_the_final_reply_carries_the_path() {
         use photocraft_engine::automate_cmds::ScriptBinding;
         use serde_json::json;
@@ -2927,5 +3139,32 @@ mod tests {
         assert_eq!(plain, egui::Modifiers::default(), "{plain:?}");
         let shift_alt = key_modifiers(&mut app, &ctx, json!({"key":"N","shift":true,"alt":true}));
         assert!(shift_alt.shift && shift_alt.alt && !shift_alt.command && !shift_alt.ctrl, "{shift_alt:?}");
+    }
+
+    #[test]
+    fn a_close_parked_on_the_discard_prompt_says_so_and_inspect_reports_it() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({ "width": 8, "height": 8 })).unwrap();
+        app.run("file.new", json!({ "width": 9, "height": 9 })).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        let dirty = app.session.active().map(|d| d.doc.name.clone()).unwrap();
+
+        let r = call(&mut app, &ctx, "ui.menu.invoke", json!({ "id": "file.close" }));
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(r["result"]["pending"], "unsavedChanges", "{r}");
+        assert_eq!(r["result"]["dialog"], "discard-prompt", "{r}");
+        assert_eq!(r["result"]["documents"][0]["name"], dirty, "{r}");
+        assert_eq!(app.session.documents().len(), 2, "nothing closes before the user answers");
+
+        let parked = call(&mut app, &ctx, "ui.inspect", json!({}));
+        assert_eq!(parked["result"]["discard"]["command"], "file.close", "{parked}");
+        assert_eq!(parked["result"]["discard"]["documents"][0]["index"], 1, "{parked}");
+
+        crate::discard_ui::advance(&mut app, &ctx);
+        assert!(app.discard.is_none());
+        assert_eq!(app.session.documents().len(), 1, "the answered document closes");
+        let answered = call(&mut app, &ctx, "ui.inspect", json!({}));
+        assert!(answered["result"]["discard"].is_null(), "{answered}");
     }
 }

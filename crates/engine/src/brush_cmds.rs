@@ -53,7 +53,10 @@ pub(crate) const MAX_COORD: f64 = 1_000_000.0;
 /// Parse `points`: arrays `[x, y, pressure?, tiltX?, tiltY?, rotation?, timeMs?, wheel?]` or
 /// objects `{"x":…, "y":…, "pressure":…, "tiltX":…, …, "time":…}`.
 pub fn parse_points(p: &Value, cmd: &str) -> Result<Vec<StrokePoint>> {
-    let arr = p.get("points").and_then(Value::as_array).ok_or_else(|| bad(cmd, "missing `points`"))?;
+    let arr = match p.get("points") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `points`")),
+        Some(v) => v.as_array().ok_or_else(|| bad(cmd, format!("`points` must be an array, not {v}")))?,
+    };
     let pts: Vec<StrokePoint> = arr
         .iter()
         .filter_map(|v| match v {
@@ -216,7 +219,7 @@ pub fn resolve_brush(s: &Session, p: &Value, cmd: &str) -> Result<BrushSettings>
 }
 
 fn layer_id(s: &Session, p: &Value) -> Result<photocraft_doc::LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+    match crate::commands::opt_u64("layer", p, "layer")? {
         Some(id) => Ok(photocraft_doc::LayerId(id)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -746,7 +749,15 @@ fn presets_list(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn name_param(p: &Value, cmd: &str) -> Result<String> {
-    p.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty()).map(str::to_string).ok_or_else(|| bad(cmd, "missing `name`"))
+    match p.get("name") {
+        None | Some(Value::Null) => Err(bad(cmd, "missing `name`")),
+        Some(v) => v
+            .as_str()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| bad(cmd, format!("`name` must be a non-empty string, not {v}"))),
+    }
 }
 
 /// Replace the preset of that name, or append it at the end of the list.

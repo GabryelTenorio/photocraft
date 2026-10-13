@@ -60,7 +60,7 @@ fn accepted(s: &Session, p: &Value) -> HashSet<String> {
 fn layers_param(s: &Session, p: &Value) -> Vec<LayerId> {
     let Some(st) = s.active() else { return Vec::new() };
     let all = type_layers(&st.doc);
-    if p.get("allLayers").and_then(Value::as_bool) == Some(false) || p.get("layer").is_some() {
+    if p.get("allLayers").and_then(Value::as_bool) == Some(false) || !matches!(p.get("layer"), None | Some(Value::Null)) {
         let active = layer_param(s, p).ok();
         all.into_iter().filter(|id| Some(*id) == active).collect()
     } else {
@@ -88,10 +88,23 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
 /// Replaces one occurrence (verified to still be `word` when given).
 fn change(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "edit.checkSpelling";
-    let id = LayerId(p.get("layer").and_then(Value::as_u64).ok_or_else(|| bad(cmd, "`change` needs `layer`"))?);
-    let start = p.get("start").and_then(Value::as_u64).ok_or_else(|| bad(cmd, "`change` needs `start`"))? as usize;
-    let end = p.get("end").and_then(Value::as_u64).ok_or_else(|| bad(cmd, "`change` needs `end`"))? as usize;
-    let to = p.get("replace").and_then(Value::as_str).ok_or_else(|| bad(cmd, "`change` needs `replace`"))?.to_string();
+    let need = |key: &str| bad(cmd, format!("`change` needs `{key}`"));
+    let id = LayerId(match p.get("layer") {
+        Some(v) if !v.is_null() => v.as_u64().ok_or_else(|| bad(cmd, format!("`layer` must be a layer id (unsigned integer), not {v}")))?,
+        _ => return Err(need("layer")),
+    });
+    let start = match p.get("start") {
+        Some(v) if !v.is_null() => v.as_u64().ok_or_else(|| bad(cmd, format!("`start` must be a character position (unsigned integer), not {v}")))? as usize,
+        _ => return Err(need("start")),
+    };
+    let end = match p.get("end") {
+        Some(v) if !v.is_null() => v.as_u64().ok_or_else(|| bad(cmd, format!("`end` must be a character position (unsigned integer), not {v}")))? as usize,
+        _ => return Err(need("end")),
+    };
+    let to = match p.get("replace") {
+        Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(cmd, format!("`replace` must be a string, not {v}")))?.to_string(),
+        _ => return Err(need("replace")),
+    };
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     let t = text(&doc, id).ok_or_else(|| bad(cmd, format!("layer {} is not a type layer", id.0)))?;
     check_text_unlocked(&doc, id)?;
@@ -116,7 +129,10 @@ fn change(s: &mut Session, p: &Value) -> Result<Value> {
 fn change_all(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "edit.checkSpelling";
     let word = p.get("word").and_then(Value::as_str).filter(|w| !w.is_empty()).ok_or_else(|| bad(cmd, "`changeAll` needs `word`"))?.to_string();
-    let to = p.get("replace").and_then(Value::as_str).ok_or_else(|| bad(cmd, "`changeAll` needs `replace`"))?.to_string();
+    let to = match p.get("replace") {
+        Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(cmd, format!("`replace` must be a string, not {v}")))?.to_string(),
+        _ => return Err(bad(cmd, "`changeAll` needs `replace`")),
+    };
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     let plan: Vec<(LayerId, Vec<(usize, usize)>)> = layers_param(s, p)
         .into_iter()

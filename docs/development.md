@@ -220,7 +220,8 @@ claude mcp add photocraft -- "$PWD/target/release/photocraft-cli" mcp \
 ```
 
 `doc_inspect` (and the engine command `document.inspect`) reports the layer tree with kinds,
-bounds, masks, selection, effects (`effects.items[].kind`), smart filters (`smartFilters[]`), smart
+bounds (`[x, y, w, h]` everywhere; `edit.transform` takes and returns a source-frame
+`[x0, y0, x1, y1]` rect), masks, selection, effects (`effects.items[].kind`), smart filters (`smartFilters[]`), smart
 object sources (`smartSource`: `embedded` with its file name, or `linked` with a file path or, for a
 PSD placed layer, the `Idnt` uuid its duplicates share), type
 text, adjustment settings, channels and history, so agents can verify what they did without a

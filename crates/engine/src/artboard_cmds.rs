@@ -270,7 +270,11 @@ fn new_artboard(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn artboard_from_group(s: &mut Session, p: &Value) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
-    let id = p.get("layer").and_then(Value::as_u64).map(LayerId).or(d.active_layer).ok_or(EngineError::Other("no active layer".into()))?;
+    let id = match crate::commands::opt_u64("layer.new.artboardFromGroup", p, "layer")? {
+        Some(id) => Some(LayerId(id)),
+        None => d.active_layer,
+    }
+    .ok_or(EngineError::Other("no active layer".into()))?;
     let canvas = d.doc.bounds();
     let background = background_param(p, "layer.new.artboardFromGroup")?.unwrap_or_default();
     let rect = s.edit("Artboard from Group", |doc, active| {
@@ -320,7 +324,7 @@ fn artboard_from_layers(s: &mut Session, p: &Value) -> Result<Value> {
 fn set_props(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "layer.artboard.set";
     let d = s.active().ok_or(EngineError::NoDocument)?;
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match crate::commands::opt_u64(cmd, p, "layer")? {
         Some(v) => LayerId(v),
         None => active_artboard(s).ok_or_else(|| bad(cmd, "no artboard selected"))?,
     };
@@ -384,7 +388,7 @@ fn set_props(s: &mut Session, p: &Value) -> Result<Value> {
 fn add_beside(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "layer.artboard.addBeside";
     let d = s.active().ok_or(EngineError::NoDocument)?;
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match crate::commands::opt_u64(cmd, p, "layer")? {
         Some(v) => LayerId(v),
         None => active_artboard(s).ok_or_else(|| bad(cmd, "no artboard selected"))?,
     };

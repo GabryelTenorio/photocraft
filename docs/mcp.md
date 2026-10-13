@@ -7,7 +7,9 @@ photocraft-cli mcp --automation-read-root /work/project --automation-write-root 
 ```
 
 Paths are relative to the corresponding root, or absolute paths beneath it; without a root that
-filesystem authority is absent. Bridge mode uses `--bridge` and `--control-token-file` as
+filesystem authority is absent. Writes create missing parent directories beneath the write
+root, so a write that fails afterwards can leave an empty directory behind — never a file.
+Bridge mode uses `--bridge` and `--control-token-file` as
 described in [development.md](development.md). UI tools require a running desktop app.
 
 ## Tools and resources
@@ -15,15 +17,24 @@ described in [development.md](development.md). UI tools require a running deskto
 - `command_list`: discover engine ids, parameter docs and current enabled state; accepts
   `filter` and `enabled_only`.
 - `command_run`: `id`, optional `params` and `wait`. Command parameters remain engine-defined.
+  Every command that creates a layer (`layer.new.*`, `shape.create`, `type.create`, …) makes the
+  new layer the active layer, as Photoshop does; re-select the previous target with `layer.select`.
 - `command_batch`: ordered `steps`, optional `stop_on_error` (default true); stops at the first
   error unless false. Not an atomic transaction: earlier successful steps stay applied, with
   no rollback. Existing per-step results and reply budgets are preserved.
-- `doc_inspect`: layer tree, history and selection; an empty session returns `document:null`.
+- `doc_inspect`: layer tree, history and selection. With a document open the reply is the flat
+  `document.inspect` JSON — top-level `layers`, `history`, `activeLayer`, … — with no `document`
+  key, identical to `command_run` with `{"id":"document.inspect"}`. With no `index` and no
+  documents open, a headless session returns `{"document": null, "session": …}` instead; in
+  bridge mode that same empty state is an error, never the envelope.
   Every layer (including groups and nested children) reports raster-only `hasMask`,
   `hasVectorMask` for vector mask presence, and `vectorMaskEnabled` (`true`/`false` when
   present, `null` when absent). A disabled vector mask still has `hasVectorMask:true`.
-- `render_preview`: bounded PNG content; `index` and `max_side` (default 1024, maximum 2048).
+- `render_preview`: bounded PNG content; `index` and `max_side` (default 1024, maximum 2048; `0` still means full size, but fails if the document's longest edge exceeds 2048; `doc_save` a .png for full resolution).
 - `ui_inspect` and `ui_screenshot`: live app state/window in bridge mode.
+- `doc_place`, `doc_export_layers`, `doc_export_data_sets`, `doc_import_data_sets`:
+  capability-scoped beneath the automation roots; headless and `photocraft-cli serve`
+  only — bridge mode refuses them up front, naming those surfaces in the error.
 
 Existing document/session/job/UI tools remain listed, including the documented
 `doc_render_preview` spelling. There are no hidden legacy aliases. Every tool has a title

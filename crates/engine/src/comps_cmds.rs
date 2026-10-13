@@ -264,7 +264,10 @@ fn rename(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn set_comment(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "layerComp.setComment";
-    let comment = p.get("comment").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing \"comment\""))?.to_string();
+    let comment = match p.get("comment") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing \"comment\"")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`comment` must be a string, not {v}")))?.to_string(),
+    };
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let id = comp_param(&d.doc, p, cmd)?;
     s.edit("Layer Comp Options", |doc, _| {

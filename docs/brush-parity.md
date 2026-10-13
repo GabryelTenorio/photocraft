@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Brush Settings minimum fields follow their Control; checkbox-only rows and non-destructive Smoothing switch; shaped-tip cursor follows the view) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Brush Settings minimum fields follow their Control; checkbox-only rows and non-destructive Smoothing switch; shaped-tip cursor follows the view; Blur tool's per-stamp blur radius now scales with the brush size) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -95,7 +95,7 @@ tablets against Photoshop side by side.
 | Pattern Stamp (aligned, impressionist) | done | |
 | History Brush | done | Art History Brush missing |
 | Spot Healing, Healing | partial | grain not matched on flat colour (#2104), "horrible in general" (#1092), stops responding after switching (#1751) |
-| Blur, Sharpen, Smudge (premultiplied, Sample All Layers, spacing) | done | BUG-207-2/3, #2171 |
+| Blur, Sharpen, Smudge (premultiplied, Sample All Layers, spacing) | done | BUG-207-2/3, #2171; Blur's per-stamp radius calibrated to the tip (σ = 0.10·size, capped at 64; three box passes beyond σ 4 as Gaussian Blur; agent-facing `sigma` param), 2026-10-13 |
 | Dodge, Burn, Sponge | done | |
 | Background Eraser, Magic Eraser | done | |
 | Color Replacement | missing as a tool | engine command exists |
@@ -119,3 +119,4 @@ tablets against Photoshop side by side.
 | 2026-10-12 | minor | Five Brush Settings switch rows toggle without selecting a properties pane; Smoothing has a default-on switch and retains its settings while disabled (#4283). No brush-feel estimate changed. |
 | 2026-10-12 | minor | A shaped tip's cursor outline turns and flips with a rotated or flipped view, and follows pixel aspect correction |
 | 2026-10-13 | minor | Shape Dynamics and Transfer minimum inputs follow their Control and retain their values while disabled (#3825, partial). No brush-feel estimate changed. |
+| 2026-10-13 | minor | Blur tool's per-stamp radius calibrated to the brush tip: σ = 0.10·size capped at 64 (Kovesi box passes beyond σ 4, as Gaussian Blur), plus an agent-facing `sigma` param; Sharpen keeps its fixed σ |

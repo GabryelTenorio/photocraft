@@ -204,7 +204,7 @@ fn plan(s: &Session, p: &Value, margin: i32) -> Result<Plan> {
     let structure = level(p, "structure", 4, 1, 7)?;
     let color = level(p, "color", 0, 0, 10)?;
     let (dx, dy) = offset(CMD, p)?;
-    let id = target_layer(s, p)?;
+    let id = target_layer(s, CMD, p)?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
     let sel = d.doc.selection.as_ref().ok_or_else(|| bad(CMD, "select the area to move first"))?;

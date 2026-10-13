@@ -8,6 +8,25 @@ Stroke Options applies valid UI edits immediately; `strokeEditor` is the open ed
 not an uncommitted document preview. Escape/outside clicks close it without reverting edits.
 See [Shape stroke options](shape-strokes.md) for limits, preview and persistence behavior.
 
+## Which entry point when
+
+Two processes answer this protocol, and the MCP bridge is a client of the first:
+
+| You want to | Start | Port, token, roots | Method surface | stdio |
+|---|---|---|---|---|
+| Drive the live UI (tools, dialogs, panels, screenshots) | `photocraft --control <port>` | port: `--control` or `PHOTOCRAFT_CONTROL_PORT`; token: `--control-token{,-file}` (or `PHOTOCRAFT_CONTROL_TOKEN{,_FILE}`); roots: `--automation-read-root` / `--automation-write-root` (or `PHOTOCRAFT_AUTOMATION_{READ,WRITE}_ROOT`) | the live GUI session: `ui.*`, `app.*`, `engine.execute` / `engine.commands`, `jobs.*` — see [Methods](#methods) | no |
+| A windowless editing session | `photocraft-cli serve` (TCP: `--port <port>`) | port: `--port` (no env); token: `--control-token{,-file}` or the same env vars; roots: flags only (see the environment note under [MCP bridge](#mcp-bridge)) | one shared headless session: `doc.*`, `session.list`, `batch`, `methods`, `engine.execute` / `engine.commands`, `jobs.*` — see [Headless server](#headless-server) | yes — the default with no `--port` |
+| MCP for an agent client | `photocraft-cli mcp`, or `photocraft-cli mcp --bridge 127.0.0.1:<port>` (a client of the desktop server above) | token only in bridge mode | every MCP tool — see [MCP bridge](#mcp-bridge) | yes (MCP framing) |
+| One-shot scripting (convert, batch, droplets, listing commands) | `photocraft-cli convert` / `info` / `run` / `batch` / `droplet` / `commands` | per subcommand | none: each invocation is one job | — |
+
+Both servers may run side by side on different ports (independent loopback listeners), and bridge
+mode needs both processes at once: the desktop server and its `photocraft-cli mcp --bridge`
+client. The flag vocabularies differ: the desktop names the port `--control` and also reads port,
+token and roots from the environment; `serve` names the port `--port` and takes token and roots
+from flags only. A bad port value is a usage error (exit 2 on the desktop, exit 1 on `serve`),
+and a port that cannot be bound fails the launch on both, before any window opens on the desktop.
+`photocraft --help` and `photocraft-cli --help` print each binary's flags.
+
 The desktop app listens on `127.0.0.1:<port>` (loopback only). Start it with a token file so the credential is not exposed in the process command line:
 
 ```sh
@@ -16,6 +35,8 @@ photocraft --control 7878 --control-token-file /private/path/photocraft-control.
 ```
 
 If the file does not exist, PhotoCraft creates it with a fresh 256-bit token. On Unix the new file is mode `0600`; on Windows, protect it with an appropriate user-only ACL. An existing file is reused. If neither a token nor token file is configured, PhotoCraft generates a token for that launch and writes it to standard error. `PHOTOCRAFT_CONTROL_TOKEN` and `PHOTOCRAFT_CONTROL_TOKEN_FILE` are the environment-variable equivalents.
+
+The control port is bound before the window opens: if the port is already in use, the app exits with a non-zero status instead of starting, and the log names the port it tried.
 
 The first request on every TCP connection must authenticate. No other method is dispatched before this succeeds:
 
@@ -54,9 +75,9 @@ The transport is `apps/photocraft/src/control_server.rs`, and the handlers are i
 - `ui.set` also accepts `camTransformOnDrop` (boolean), the Content-Aware Move tool's Transform On Drop checkbox: a drop then puts a scale/rotate box on the patch (`ui.inspect` › `camTransform`: its document/revision, drag `offset` and `frame`), driven with `ui.pointer` (handles as Free Transform's; outside the box rotates), committed with `ui.key Enter` (one `paint.contentAwareMove` with `scaleX`, `scaleY`, `rotate`) or dropped with `Escape`.
 - `ui.set` also accepts `tileGrid` (boolean), a developer overlay of the active layer's storage tiles: the tile grid over the document, every stored tile filled and labelled `tx,ty`, tiles with identical pixels in a shared colour and unique ones in blue. It has no menu item and View › Extras doesn't hide it. `ui.inspect` reports it as `view.tile_grid`.
 - Each painting tool keeps its own brush, as in Photoshop: `tools.setBrush` and `ui.set {brushSize}` change the active tool's brush, and switching tools swaps in that tool's own (size, hardness, mode, opacity, flow, dynamics, smoothing). A tool used for the first time starts from the brush in hand. The colours, the erase flag and the stroke seed stay shared. So `ui.set {tool: "eraser", brushSize: 12}` sets the Eraser's size, and `ui.set {tool: "brush"}` afterwards brings the Brush's own size back.
-- `ui.set` also accepts the Eyedropper options bar (#1649): `eyedropperSampleSize` (`"point"` or 1, 3, 5, 11, 31, 51, 101: the side of the averaged square, shared by the Eyedropper, a painting tool's Alt-click eyedropper, the Curves/Color Picker eyedroppers and the Info panel), `eyedropperSample` (`current`, `currentAndBelow`, `all`, `allNoAdjustments`, `currentAndBelowNoAdjustments`) and `eyedropperRing` (boolean, Show Sampling Ring). `ui.inspect` reports them under `toolOptions` (`eyedropper_size`, `eyedropper_sample`, `eyedropper_ring`). The engine command `document.sampleColor {x, y, size, sampleLayer}` returns the colour such a sample picks.
+- `ui.set` also accepts the Eyedropper options bar (#1649): `eyedropperSampleSize` (`"point"` or 1, 3, 5, 11, 31, 51, 101: the side of the averaged square, shared by the Eyedropper, a painting tool's Alt-click eyedropper, the Curves/Color Picker eyedroppers and the Info panel), `eyedropperSample` (`current`, `currentAndBelow`, `all`, `allNoAdjustments`, `currentAndBelowNoAdjustments`) and `eyedropperRing` (boolean, Show Sampling Ring). `ui.inspect` reports them under `toolOptions` (`eyedropper_size`, `eyedropper_sample`, `eyedropper_ring`). The engine command `document.sampleColor {x, y, size, sampleLayer, layer?}` returns the colour such a sample picks; `layer` (a layer id) samples that one layer directly, implying `sampleLayer: "current"`.
 - `ui.set` also accepts the Crop tool's overlay menu (#1919): `cropOverlay` (`thirds`, `grid`, `diagonal`, `triangle`, `goldenRatio`, `goldenSpiral`), `cropOverlayShow` (`auto`: only while the crop box is dragged, Photoshop's default; `always`; `never`) and `cropOverlayOrientation` (0..3; Triangle has two orientations and Golden Spiral four, the others ignore it). `ui.inspect` reports them under `toolOptions` (`crop_overlay`, `crop_overlay_show`, `crop_overlay_orientation`). In the app, O cycles the overlay and ⇧O its orientation while the Crop tool shows a box.
-  Both gradient modes use the current preset, including its opacity stops. Select `Foreground to Transparent` through `gradient.presets.select`, or pass custom `stops` and `transparency: [[0,100],[1,0]]` (location 0..1, opacity 0..100). Use `applyToLayer: false` to edit only the tool preset. Classic gradient drags dispatch `paint.gradient` without overriding them.
+  Both gradient modes use the current preset, including its opacity stops. Select `Foreground to Transparent` through `gradient.presets.select`, or pass custom `stops` and `transparency: [[0,100],[1,0]]` (location 0..1, opacity 0..100). Use `applyToLayer: false` to edit only the tool preset. Classic gradient drags dispatch `paint.gradient` without overriding them. A classic drag fills the whole layer (or selection), as Photoshop's Gradient tool: the ramp runs between the drag points and the first/last stop colour continues beyond them. Confine a gradient by selecting first or painting into the layer mask (`paint.gradient {"target":"mask"}`); a shared `coalesce` key groups repeated scripted fills into one undo step.
 - `ui.set` also accepts the Crop tool's gear menu (#1919) as `cropShield`, an object patching any of `show_cropped_area` (Show Cropped Area; off hides everything outside the box behind the canvas colour, H in the app), `enabled` (Enable Crop Shield), `color` (`matchCanvas`, the pasteboard colour, or `custom`), `custom_color` (`[r, g, b]`, 0..255), `opacity` (0..100, default 75), `auto_adjust` (Auto Adjust Opacity: half the opacity while the box is dragged), `classic_mode` (Use Classic Mode, default off: the box turns and moves over the image; off is Photoshop's default mode, where the box stays upright and the view turns and pans the image behind it while the Crop tool shows a frame, P in the app; in both modes picking the tool turns a rotated view upright about its centre, Classic Mode keeping the camera upright with the frame drawn turned, and the view stays upright after a commit or cancel; Classic Mode greys out Show Cropped Area, which then acts as on, and Auto Center Preview) and `auto_center_preview` (default on: in default mode a box being resized keeps its centre where it is on screen, also after a pan, a drawn one moves to the middle of the canvas, and X re-centres it; a move never re-centres the box). `ui.inspect` reports it as `toolOptions.crop_shield`. The pending frame (`crop_rect`, `crop_angle`: its turn on the image) and the `image.crop` a commit runs are the same in both modes.
 - `ui.dialog.open {kind, fields?}` (kinds `newDocument`, `about`, `layerStyle {effect?}`, `colorPicker {target: foreground|background}`, `command {command}`, `newCropPreset` / `deleteCropPreset`: the Crop tool's New / Delete Crop Preset… dialogs, fields `name` and `selected: [names]`; crop presets are `crop` tool presets, so `tool.presets.new/list/edit {"tool":"crop"}` drive them too) / `ui.dialog.set {dialog, field, value}` / `ui.dialog.confirm {dialog, wait?}` / `ui.dialog.cancel {dialog}`. Like `ui.menu.invoke`, `ui.dialog.confirm` waits for a background job its command starts (a filter dialog's OK) and replies with the result; `"wait": false` replies `{job, pending: true}` at once
   - A Layer Style color field opens the shared picker with `ui.dialog.open {"kind":"colorPicker","parent":12,"effect":"fx2","field":"color"}`. `parent` is the Layer Style dialog id; `effect` is its effect instance id. `field` must be one of that instance's color parameters (`color`, or `from`/`to` for Gradient Overlay). The picker previews over the pending style without changing the document. Picker OK changes only the parent parameter; Cancel discards the preview. Confirm the parent afterwards to apply the style. Parent confirmation is refused while its picker is open; parent cancellation closes both. The binding is exposed in `ui.inspect` as `__layerStyleColor`; changed/closed targets or a document switch invalidate it.
@@ -83,8 +104,25 @@ The transport is `apps/photocraft/src/control_server.rs`, and the handlers are i
   base64 PNG data; a path is relative to the automation write root. Raises the window first
   (default) because occluded macOS windows stop rendering
 - `ui.focus`: bring the main window to the front
-- `app.open {path}` / `app.save {path?, tgaBits?}`: relative file I/O through the configured automation roots (`app.open` reads under the read root, `app.save` writes under the write root; absolute paths, `..` and paths escaping the root are refused, and both fail closed when no root was granted). Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name` (directory `.pcraft` — the native on-disk form — loads through the read root's capability; the single-file (zip) form takes the bytes path), `app.save` the `path` written. `app.save` without `path` writes back only to the document's own PSD, PSB or `.pcraft` file, like File › Save. `tgaBits` (24 or 32) sets a TGA's bits per pixel: 32 writes the alpha channel (or else the transparency) as its alpha, 24 none; without it, 32 with an alpha channel or transparency, else 24. Automation saves never show TGA or TIFF options. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
+- `app.open {path}` / `app.save {path?, tgaBits?}`: relative file I/O through the configured automation roots (`app.open` reads under the read root, `app.save` writes under the write root; absolute paths, `..` and paths escaping the root are refused, and both fail closed when no root was granted; `app.save` creates missing parent directories beneath the write root). Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name` (directory `.pcraft` — the native on-disk form — loads through the read root's capability; the single-file (zip) form takes the bytes path), `app.save` the `path` written. `app.save` without `path` writes back only to the document's own PSD, PSB, `.pcraft` or OpenRaster file that holds the whole document, like File › Save. `tgaBits` (24 or 32) sets a TGA's bits per pixel: 32 writes the alpha channel (or else the transparency) as its alpha, 24 none; without it, 32 with an alpha channel or transparency, else 24. Automation saves never show TGA or TIFF options. An automation open of a path that is already an open document's file activates that document instead of loading a copy (the reply's `deduped` is `true`; the file is not re-read — close first to reload — and `warnings` says so; in trusted-local mode a hard-link alias dedupes too, by file identity, and the warnings name it); interactive opens are unchanged. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
 - `app.quit`
+- `methods`: the list of methods the control server serves
+
+### Surface differences
+
+The control server serves the methods above. The headless serve surface
+(`photocraft-cli serve`, see [Headless server](#headless-server)) additionally serves
+`session.list`, `doc.open`, `doc.place`, `doc.new`, `doc.save`, `doc.exportLayers`,
+`doc.exportDataSets`, `doc.importDataSets`, `doc.inspect`, `doc.render`, `doc.select`,
+`doc.close`, `batch` and its own `methods` list; on the control channel those are `unknown
+method` errors that name this split. Their headed equivalents: `doc.open` → `app.open`;
+`doc.save` → `app.save`; `doc.new` → `engine.execute {"command":"file.new"}`; `doc.inspect`
+→ `engine.execute {"command":"document.inspect"}`; `session.list` → `ui.inspect` (its
+`session` key); `doc.render` has no headed equivalent — `ui.screenshot` captures the app
+window, not the flattened document; `doc.place`, `doc.exportLayers`, `doc.exportDataSets`,
+`doc.importDataSets`, `doc.select` and `doc.close` have no headed equivalent (open documents
+are addressed through `app.open` and `ui.window.*`; a batch is sequential `engine.execute`
+requests).
 
 ## Engine commands
 
@@ -98,6 +136,7 @@ store expose and persist the same setting; scripts keep using canonical command 
 | Command | Params |
 |---|---|
 | `file.new` | `{"width":1920,"height":1080,"mode":"rgb","depth":8,"background":"white"}` |
+| `file.close` | `{"document":index? (default active)}` → `{"closed":<index closed>,"remaining":<open documents left>}`; `file.closeAll` and `file.closeOthers` reply `{"closed":<count>}` |
 | `layer.new.layer` | `{"name":"Ink"}` |
 | `layer.select` | `{"layer":id,"mode":"replace\|toggle\|range\|add"}`: ⌘-click = toggle, ⇧-click = range; `document.inspect` reports `selectedLayers` and a per-layer `selected` flag |
 | `channel.target` / `channel.setVisible` | Channels panel target and eyes (`"composite"`, colour name, alpha index or name, `"quickMask"`). `document.inspect` (and `channel.list`) report `channels`: composite/colour/alpha rows with visibility, channel options, `quickMask`, `target`. Pixel commands without a `target` param follow the targeted channel |
@@ -108,8 +147,9 @@ store expose and persist the same setting; scripts keep using canonical command 
 | `layer.setExpanded` | `{"layer":id?,"expanded":bool?,"all":bool?}`: open/close a group in the Layers panel (no `expanded`: toggle; `all`: every group). A view change saved with the document (PSD open/closed folder), not an undo step; `document.inspect` reports `expanded` on groups |
 | `layer.newAdjustmentLayer.hueSaturation` | `{"hue":30,"saturation":10}` |
 | `paint.stroke` | `{"points":[[x,y,pressure],…],"size":20,"color":"#ff0000"}` |
+| `paint.gradient` | `{"from":[x,y],"to":[x,y],"colors":["#000000","#ffffff"],"style":"linear\|radial\|angle\|reflected\|diamond"?}`: the ramp runs between the two points and pixels beyond each end keep the first/last stop colour, as Photoshop's Gradient tool — without a selection the fill covers the whole layer (an empty selection behaves as none), with a selection only the selection, its bounds and mask. To confine a gradient, select first (`select.rect` / `select.lasso`, then `paint.gradient`, then `select.deselect`) or paint into the layer mask with `"target":"mask"`. A shared `coalesce` key groups consecutive repeated fills into one undo step; any other command in between records a step again. |
 | `select.rect` | `{"x":0,"y":0,"width":100,"height":50,"mode":"add","ellipse":false}` |
-| `document.inspect` | `{}`: layer tree, history, snapshots (`[{id, name}]`, for `history.selectSnapshot`), selection bounds |
+| `document.inspect` | `{}`: layer tree, history, snapshots (`[{id, name}]`, for `history.selectSnapshot`), selection bounds — every `bounds` value is `[x, y, w, h]` (see [Bounds formats](#bounds-formats)) |
 | `document.pixel` | `{"x":10,"y":10}`: composite RGBA |
 | `document.presets.list` | `{}` → `{presets:[{name,settings}]}`: saved New Document configurations |
 | `document.presets.save` | `{"name":"Product square","settings":{"width":1600,"height":1600,"background":"transparent"}}`: save a snapshot; names are trimmed, 1–255 characters, and ASCII case-insensitive duplicates are rejected |
@@ -156,7 +196,7 @@ automation permissions.
 
 UI-level commands (`view.zoomIn`, `window.theme.pro`, `edit.search`, …) are also accepted by `engine.execute` and `ui.menu.invoke`.
 
-Commands that read or write files by path, instead of through the automation roots, are refused with "automation command `…` uses ambient filesystem paths and is disabled; use capability-scoped document methods". That covers every `file.*` command except `file.new`, the `file.close*` commands and a few path-free ones such as `file.fileInfo`, so `file.open`, `file.save`, `file.saveAs` and `file.saveACopy` always fail here: open and save with `app.open` / `app.save`. Path parameters of other commands (`layer.exportAs {path}`, `filter.distort.displace {mapPath}`, preset imports, and plug-in install/reload) are refused the same way. `prefs.set` rejects whole-preference updates and file-backed sections (`colorSettings`, `scriptEvents`, `historyLog`, `plugIns` and `scratchDisks`) so automation cannot configure ambient file access indirectly. The desktop app also refuses `image.mode.*`, which can load the colour profiles set in its preferences. The rules are in `crates/automation/src/workspace.rs`.
+Commands that read or write files by path, instead of through the automation roots, are refused with "automation command `…` uses ambient filesystem paths and is disabled; use capability-scoped document methods". That covers every `file.*` command except `file.new`, the `file.close*` commands and a few path-free ones such as `file.fileInfo`, so `file.open`, `file.save`, `file.saveAs` and `file.saveACopy` always fail here: open and save with `app.open` / `app.save`. Path parameters of other commands (`layer.exportAs {path}`, `filter.distort.displace {mapPath}`, preset imports, `actions.load`/`actions.save` (`.atn` files), and plug-in install/reload) are refused the same way. `prefs.set` rejects whole-preference updates and file-backed sections (`colorSettings`, `scriptEvents`, `historyLog`, `plugIns` and `scratchDisks`) so automation cannot configure ambient file access indirectly. The desktop app also refuses `image.mode.*`, which can load the colour profiles set in its preferences. The rules are in `crates/automation/src/workspace.rs`.
 
 Embedded Smart Objects can be opened with `layer.smartObjects.editContents {layer?}` or
 unpacked with `layer.smartObjects.convertToLayers {layer?}`. This includes Photoshop sources
@@ -172,6 +212,18 @@ their usual file access. Source replacement, relinking and export commands remai
 `type.editText` starts inline editing of the active type layer and selects all its text, like
 double-clicking its thumbnail in Layers. Text input, Commit and Cancel use the existing Type tool
 editing session; non-type layers return an error without changing the tool or document.
+
+### Bounds formats
+
+Every reply key named `bounds` is `[x, y, w, h]` — never `[left, top, right, bottom]`.
+Rectangles are half-open and pixel-aligned (`[x0, x1) × [y0, y1)`, so `w = x1 - x0` with no
+`+1`); `view.newGuidesFromShape` keeps the float precision of path control bounds.
+
+| reply key | format | commands |
+|---|---|---|
+| `bounds` | `[x, y, w, h]` | `document.inspect` (per-layer `bounds`, `selectionBounds`), `shape.info`, `edit.copy`, `select.*`, `type.*` (including `type.createSelection`'s selection bounds), `file.place*`, `filter.render.*`, `view.newGuidesFromShape` |
+| `rect` param — create | `[x, y, w, h]` | `shape.create`/`shape.edit`, `select.object`, `slice.*`, `artboard.*` |
+| `rect` param — source frame | `[x0, y0, x1, y1]` | `edit.transform`, `edit.transform.warp` (its reply's `rect` too), `select.transformSelection`, `pattern.new` |
 
 ### Background jobs (#210)
 
@@ -268,12 +320,12 @@ How each MCP tool maps onto control methods in bridge mode:
 | `jobs_list` / `jobs_cancel {job?}` | `jobs.list` / `jobs.cancel {job?}` |
 | `command_list {filter?, enabled_only?}` | `engine.commands` (filtered by the MCP server; rows keep `disabledReason` and `needsDocument`) |
 | `doc_new {…}` | `engine.execute {command: "file.new", params}` |
-| `doc_inspect` | `engine.execute {command: "document.inspect"}` |
-| `doc_open {path}` | `app.open {path}` |
-| `doc_place {path, …}` | `engine.execute {command: "file.placeEmbedded", params}` |
-| `doc_export_layers {dir, …}` | `engine.execute {command: "file.export.layersToFiles", params}` |
-| `doc_export_data_sets {dir, …}` | `engine.execute {command: "file.export.dataSetsAsFiles", params}` |
-| `doc_import_data_sets {path, …}` | `engine.execute {command: "file.import.variableDataSets", params}` |
+| `doc_inspect` | `engine.execute {command: "document.inspect"}` (flat reply; an empty app session is an error — the headless empty-session `{"document": null, session}` envelope never appears in bridge mode) |
+| `doc_open {path}` | `app.open {path}` (activates the document when the path is already open) |
+| `doc_place {path, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
+| `doc_export_layers {dir, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
+| `doc_export_data_sets {dir, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
+| `doc_import_data_sets {path, …}` | not available in bridge mode (refused up front; use headless MCP or `serve`) |
 | `doc_save {path?, tgaBits?}` / `doc_export {path, tgaBits?}` | `app.save {path?, tgaBits?}` |
 | `doc_render_preview {max_side?}` | `ui.screenshot`, returned directly as PNG image content |
 | `session_list`, `ui_inspect` | `ui.inspect` |
@@ -285,7 +337,10 @@ How each MCP tool maps onto control methods in bridge mode:
 
 Bridge previews capture the app window; passing `index` is an error. Headless `doc_render_preview` supports `index` without changing the active document.
 
-`doc_select` and `doc_close` work only in headless mode. The `ui_*` tools and `control_call` work only in bridge mode; in headless mode they return a tool error that explains how to start bridge mode.
+`doc_select` and `doc_close` work only in headless mode. So do `doc_place`, `doc_export_layers`,
+`doc_export_data_sets` and `doc_import_data_sets`: the headed app's automation gate refuses the
+filesystem-bearing engine commands behind them, so in bridge mode they fail up front with a tool
+error naming headless MCP and `serve` as the working surfaces. The `ui_*` tools and `control_call` work only in bridge mode; in headless mode they return a tool error that explains how to start bridge mode.
 
 **Security note:** TCP control uses a bearer token, not client identity or general per-method
 authorization. A client that possesses the token receives the non-filesystem control surface,
@@ -305,8 +360,9 @@ beneath it. An absolute path is compared with the root as text and the rest is c
 relative path; nothing is resolved on the filesystem. Absolute paths outside the root, parent
 traversal, alternate separators in relative paths, drive/device/stream prefixes, malformed
 components, and link escapes are rejected before file effects. Read and write authority are
-independent; the parent of a new output file must already exist. Engine commands that still use
-ambient filesystem paths are disabled for automation until they are migrated to the same
+independent; writes create missing parent directories beneath the write root, so a write that
+fails afterwards can leave an empty directory behind — never a file. Engine commands that still
+use ambient filesystem paths are disabled for automation until they are migrated to the same
 capability interface. Interactive desktop file pickers retain normal user-selected access.
 
 ## Headless server
@@ -326,14 +382,14 @@ no MCP framing, no app start-up per command. Configure its file access with the 
 | `jobs.list` / `jobs.cancel` | `{}` / `{job?}`: background jobs; cancel one or all. Every request (and MCP tool call) first applies the jobs that finished, so `doc.save`, `doc.inspect`, `doc.render` and `session.list` include a finished job's result without polling `jobs.list` first |
 | `engine.commands` | `{filter?}`: registry with params docs and enablement (`enabled`, `disabledReason`, `needsDocument`) |
 | `session.list` | open documents and the active index |
-| `doc.open` / `doc.new` | `{path}` / `file.new` params |
-| `doc.place` | `{path, scale? (percent), fit? (true), center? ([x, y]), index?}`: places a file as a Smart Object layer above the active one and returns `{layer, scale, bounds}`. `path` resolves beneath the read root, so this is the capability-scoped `file.placeEmbedded` — that command itself still refuses an ambient path |
+| `doc.open` / `doc.new` | `{path}` / `file.new` params; `doc.open` of an already-open path activates that document without re-reading it (`deduped: true`; the reply's `warnings` say so — close first to reload — and a trusted-local hard-link alias dedupes by file identity, noted in the warnings) |
+| `doc.place` | `{path, scale? (percent), fit? (true), center? ([x, y]), index?}`: places a file as a Smart Object layer above the active one and returns `{layer, scale, bounds: [x, y, w, h]}`. `path` resolves beneath the read root, so this is the capability-scoped `file.placeEmbedded` — that command itself still refuses an ambient path |
 | `doc.exportLayers` | `{dir, format? (png), prefix?, visibleOnly? (true), quality?, index?}` → `{files, count}`: one file per exported layer, named like `file.export.layersToFiles` names them. `dir` resolves beneath the write root, so the ambient command stays refused. The bytes come from the command's own core, so both paths write the same files; the write capability refuses to overwrite an existing file |
 | `doc.exportDataSets` | `{dir, format? (png), dataSets? (all), naming? ("{name}\|{index}\|{document}"), index?}` → `{files, count}`: the capability-scoped `file.export.dataSetsAsFiles`. The batch is planned first and colliding names are refused before any file is written, as in the command |
 | `doc.importDataSets` | `{path, delimiter? (,), index?}` → `{imported}`: the capability-scoped `file.import.variableDataSets`; the CSV is read beneath the read root |
-| `doc.save` | `{path?, format?, quality?, index?, tiffLayers?, tgaBits?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF; `tgaBits` 24 or 32 sets a TGA's bits per pixel, as `app.save` does). Without `path` only a PSD, PSB or `.pcraft` document is written back to its own file, in its own format; anything else is an error and the file is left unchanged. A successful layered save (PSD, PSB or `.pcraft`) records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
-| `doc.inspect` | `{index?}`: same JSON as `document.inspect` |
-| `doc.render` | `{index?, maxSide? (1024; 0 = full), path?}`: PNG to `path`, else `{mime, base64}` |
+| `doc.save` | `{path?, format?, quality?, index?, tiffLayers?, tgaBits?, dpxBits?}` (`.pcraft` native, else export by extension; set `tiffLayers: true` to preserve TIFF layers rather than exporting a flattened TIFF; `tgaBits` 24 or 32 sets a TGA's bits per pixel, as `app.save` does; `dpxBits` 8, 10, 12 or 16 sets a DPX's bits per sample, unset: 8 for an 8-bit document, else 16). Without `path` only a document file that holds the whole document — a PSD, PSB, `.pcraft` or OpenRaster — is written back to its own file, in its own format; anything else is an error and the file is left unchanged. A successful layered save (PSD, PSB or `.pcraft`) records the current revision as saved and makes the file the document's path, so `session.list` reports `dirty: false`; a flat export is a copy and leaves the document dirty |
+| `doc.inspect` | `{index?}`: same JSON as `document.inspect` (flat; no document open is an error, not the MCP `doc_inspect` empty-session `{"document": null, session}` envelope) |
+| `doc.render` | `{index?, maxSide? (1024; 0 = full, any edge must be ≤ 2048 — see Transport limits), path?}`: PNG to `path`, else `{mime, base64}` |
 | `doc.select` / `doc.close` | `{index}` / `{index?}` |
 | `batch` | `{steps: [{command, params?, wait?} \| {method, params?}], stopOnError? (true)}` → `{completed, failed, results}` (a step with `wait: false` starts a long command as a background job, like `engine.execute`) |
 | `methods` | the list above |

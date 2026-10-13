@@ -32,7 +32,9 @@ pub fn check_preview(width: u32, height: u32, max_side: u32) -> Result<(), Autom
     }
     let side = if max_side == 0 { width.max(height) } else { max_side };
     if side > MAX_PREVIEW_SIDE {
-        return Err(bad(format!("automation preview side exceeds {MAX_PREVIEW_SIDE} pixels")));
+        return Err(bad(format!(
+            "automation preview side exceeds {MAX_PREVIEW_SIDE} pixels; maxSide 0 checks the document's longest edge; pass maxSide <= {MAX_PREVIEW_SIDE}, or doc.save a .png for full resolution"
+        )));
     }
     Ok(())
 }

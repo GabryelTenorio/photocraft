@@ -110,7 +110,7 @@ fn paste_shape_stroke(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn layer_id(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+    match crate::commands::opt_u64("layer", p, "layer")? {
         Some(id) => Ok(LayerId(id)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -1683,7 +1683,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Shape Layer",
             ["Layer", "New"],
             leak(format!(
-                r##"{{"kind":"rect|roundedRect|ellipse|polygon|star|line|path"="rect","rect":[x,y,w,h] (rect/roundedRect/ellipse/polygon/star),"radii":[tl,tr,br,bl]|r (roundedRect=10),"sides":3..100=5,"starRatio":0..1 (star=0.5),"from":[x,y],"to":[x,y],"weight":px=1 (line),"path":{{…}} (kind path),{fill}=foreground,{stroke}=none,"name":str?,"addTo":layerId? + "op":"combine|subtract|intersect|exclude" (append to an existing shape layer)}} → shape.info. {PATH_FORM}"##
+                r##"{{"kind":"rect|roundedRect|ellipse|polygon|star|line|path"="rect","rect":[x,y,w,h] (rect/roundedRect/ellipse/polygon/star),"radii":[tl,tr,br,bl]|r (roundedRect=10),"sides":3..100=5,"starRatio":0..1 (star=0.5),"from":[x,y],"to":[x,y],"weight":px=1 (line),"path":{{…}} (kind path),{fill}=foreground,{stroke}=none,"name":str?,"addTo":layerId? + "op":"combine|subtract|intersect|exclude" (append to an existing shape layer)}} → shape.info. The new layer becomes the active layer, like every layer-creating command; re-select the target with layer.select. {PATH_FORM}"##
             )),
             has_doc,
             shape_create
@@ -1703,7 +1703,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Shape Layer Info",
             menu: &[],
             shortcut: None,
-            params: r##"{"layer":id?} → {layer,name,kind,path,fill,stroke,live,bounds:[x,y,w,h]}"##,
+            params: r##"{"layer":id?} → {layer,name,kind,path,fill,stroke,live,bounds:[x,y,w,h]}; bounds = canvas-clipped painted bounds, live-shape rects are stored verbatim and never clamped"##,
             enabled: has_layer,
             run: |s, p| {
                 let id = layer_id(s, p)?;
@@ -1868,7 +1868,7 @@ pub fn specs() -> Vec<CommandSpec> {
         )),
         // Without `layer`, every selected shape layer (the shared Rasterize logic calls back here with one).
         spec!("layer.rasterize.shape", "Rasterize Shape", [], r##"{"layer":id?} (no layer: every selected shape layer)"##, has_layer, |s, p| {
-            if p.get("layer").is_some() { shape_rasterize(s, p) } else { crate::extra_cmds::rasterize(s, p, Some("shape")) }
+            if !matches!(p.get("layer"), None | Some(Value::Null)) { shape_rasterize(s, p) } else { crate::extra_cmds::rasterize(s, p, Some("shape")) }
         }),
         // With two or more shape layers selected (and no `layer`/`subpath`), these merge them into
         // the top-most one, as in Photoshop; with one, they set the operation of its components.

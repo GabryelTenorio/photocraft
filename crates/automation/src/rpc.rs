@@ -73,6 +73,11 @@ fn str_of<'a>(p: &'a Value, k: &str) -> Option<&'a str> {
     p.get(k).and_then(Value::as_str)
 }
 
+/// The first key of `p` outside `allowed`, for envelopes that name their fields.
+fn unknown_key(p: &Value, allowed: &[&str]) -> Option<String> {
+    p.as_object().and_then(|o| o.keys().find(|k| !allowed.contains(&k.as_str())).cloned())
+}
+
 impl Headless {
     /// Dispatch one request. Unknown methods and bad params are errors, never panics.
     pub fn handle(&mut self, method: &str, params: Value) -> Result<Value, AutomationError> {
@@ -80,6 +85,9 @@ impl Headless {
         let p = if params.is_null() { json!({}) } else { params };
         match method {
             "engine.execute" => {
+                if let Some(key) = unknown_key(&p, &["command", "params", "wait"]) {
+                    return Err(bad(format!("unknown parameter `{key}` for engine.execute (parameters: command, params, wait)")));
+                }
                 let id = str_of(&p, "command").ok_or_else(|| bad("engine.execute needs `command`"))?;
                 let wait = p.get("wait").and_then(Value::as_bool).unwrap_or(true);
                 self.command_start(id, p.get("params").cloned().unwrap_or(Value::Null), wait)
@@ -186,9 +194,18 @@ impl Headless {
     /// [`Headless::batch`] with a caller's reply budget (MCP charges escaped sizes, see
     /// [`BatchReplyBudget::escaped`]). Steps stop once the budget runs out.
     pub fn batch_with_budget(&mut self, p: &Value, mut reply_budget: BatchReplyBudget) -> Result<Value, AutomationError> {
+        if let Some(key) = unknown_key(p, &["steps", "stopOnError"]) {
+            return Err(bad(format!("unknown parameter `{key}` for batch (parameters: steps, stopOnError)")));
+        }
         let steps = p.get("steps").and_then(Value::as_array).ok_or_else(|| bad("batch needs `steps`"))?;
         if steps.len() > MAX_BATCH_STEPS {
             return Err(bad(format!("batch contains {} steps; maximum is {MAX_BATCH_STEPS}", steps.len())));
+        }
+        for (i, s) in steps.iter().enumerate() {
+            let allowed: &[&str] = if s.get("command").is_some() { &["command", "params", "wait"] } else { &["method", "params"] };
+            if let Some(key) = unknown_key(s, allowed) {
+                return Err(bad(format!("step {i}: unknown parameter `{key}` (parameters: {})", allowed.join(", "))));
+            }
         }
         let stop = p.get("stopOnError").and_then(Value::as_bool).unwrap_or(true);
         let mut results = Vec::with_capacity(steps.len());
@@ -361,6 +378,34 @@ mod tests {
                 assert_eq!(h.lock().unwrap().inspect(None).unwrap(), before);
             }
         }
+    }
+
+    #[test]
+    fn execute_rejects_unknown_envelope_keys_without_running() {
+        let h = session();
+        assert_eq!(respond(&h, r#"{"method":"doc.new","params":{"width":8,"height":8}}"#)["ok"], true);
+        let before = h.lock().unwrap().inspect(None).unwrap();
+        let request = json!({"method":"engine.execute","params":{"command":"filter.blur.gaussianBlur","layer":37,"params":{"radius":5}}});
+        let reply = respond(&h, &request.to_string());
+        assert_eq!(reply["ok"], false, "{reply}");
+        let error = reply["error"].as_str().unwrap();
+        assert!(error.contains("engine.execute") && error.contains("layer"), "{error}");
+        assert_eq!(h.lock().unwrap().inspect(None).unwrap(), before);
+    }
+
+    #[test]
+    fn batch_rejects_unknown_envelope_keys_without_running() {
+        let h = session();
+        let mut g = h.lock().unwrap();
+        g.handle("doc.new", json!({"width": 16, "height": 16})).unwrap();
+        let before = g.inspect(None).unwrap();
+        let error = g.handle("batch", json!({"steps": [{"command": "layer.new.layer"}], "stopOnError": false, "mode": "quick"})).unwrap_err();
+        assert!(error.to_string().contains("mode"), "{error}");
+        let error = g.handle("batch", json!({"steps": [{"command": "layer.new.layer", "params": {}, "layer": 3}]})).unwrap_err();
+        assert!(error.to_string().contains("layer"), "{error}");
+        let error = g.handle("batch", json!({"steps": [{"method": "doc.inspect", "wait": true}]})).unwrap_err();
+        assert!(error.to_string().contains("wait"), "{error}");
+        assert_eq!(g.inspect(None).unwrap(), before);
     }
 
     #[test]

@@ -42,11 +42,11 @@ pub(super) fn enabled(s: &Session) -> std::result::Result<(), String> {
 }
 
 /// The layer `p` targets (`None` for an alpha channel or the Quick Mask), as `parse_brush`.
-pub(super) fn target_layer(s: &Session, p: &Value) -> Result<Option<LayerId>> {
+pub(super) fn target_layer(s: &Session, cmd: &str, p: &Value) -> Result<Option<LayerId>> {
     if crate::channel_cmds::is_channel_target(p) {
         return Ok(None);
     }
-    match p.get("layer").and_then(Value::as_u64) {
+    match crate::commands::opt_u64(cmd, p, "layer")? {
         Some(id) => Ok(Some(LayerId(id))),
         None => Ok(Some(s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into()))?)),
     }
@@ -162,7 +162,7 @@ fn plan(s: &Session, p: &Value) -> Result<Plan> {
         o => return Err(bad(CMD, format!("unknown mode `{o}` (source|destination)"))),
     };
     let (dx, dy) = offset(CMD, p)?;
-    let id = target_layer(s, p)?;
+    let id = target_layer(s, CMD, p)?;
     let d = s.active().ok_or(EngineError::Other("no document open".into()))?;
     let canvas = d.doc.bounds();
     let sel = d.doc.selection.as_ref().ok_or_else(|| bad(CMD, "select the area to patch first"))?;

@@ -111,12 +111,23 @@ fn set_vars(s: &mut Session, f: impl FnOnce(&mut Variables)) -> Result<()> {
 // --------------------------------------------------------------------------- commands
 
 fn define(s: &mut Session, p: &Value) -> Result<Value> {
-    let defs_in = p.get("defs").and_then(Value::as_array).ok_or_else(|| bad("image.variables.define", "need `defs`"))?;
+    const CMD: &str = "image.variables.define";
+    let need = |what: &str| bad(CMD, what);
+    let defs_in = match p.get("defs") {
+        Some(v) if !v.is_null() => v.as_array().ok_or_else(|| bad(CMD, format!("`defs` must be an array, not {v}")))?,
+        _ => return Err(need("need `defs`")),
+    };
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     let mut defs = Vec::with_capacity(defs_in.len());
     for d in defs_in {
-        let name = d.get("name").and_then(Value::as_str).ok_or_else(|| bad("image.variables.define", "a def needs `name`"))?;
-        let layer = LayerId(d.get("layer").and_then(Value::as_u64).ok_or_else(|| bad("image.variables.define", "a def needs `layer`"))?);
+        let name = match d.get("name") {
+            Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(CMD, format!("a def's `name` must be a string, not {v}")))?,
+            _ => return Err(need("a def needs `name`")),
+        };
+        let layer = LayerId(match d.get("layer") {
+            Some(v) if !v.is_null() => v.as_u64().ok_or_else(|| bad(CMD, format!("a def's `layer` must be a layer id (unsigned integer), not {v}")))?,
+            _ => return Err(need("a def needs `layer`")),
+        });
         if doc.layer(layer).is_none() {
             return Err(EngineError::NoLayer(layer));
         }
@@ -131,13 +142,23 @@ fn define(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn data_sets(s: &mut Session, p: &Value) -> Result<Value> {
-    let rows = p.get("dataSets").and_then(Value::as_array).ok_or_else(|| bad("image.variables.dataSets", "need `dataSets`"))?;
+    const CMD: &str = "image.variables.dataSets";
+    let rows = match p.get("dataSets") {
+        Some(v) if !v.is_null() => v.as_array().ok_or_else(|| bad(CMD, format!("`dataSets` must be an array, not {v}")))?,
+        _ => return Err(bad(CMD, "need `dataSets`")),
+    };
     let mut sets = Vec::with_capacity(rows.len());
     for r in rows {
-        let name = r.get("name").and_then(Value::as_str).ok_or_else(|| bad("image.variables.dataSets", "a data set needs `name`"))?;
+        let name = match r.get("name") {
+            Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(CMD, format!("a data set's `name` must be a string, not {v}")))?,
+            _ => return Err(bad(CMD, "a data set needs `name`")),
+        };
         let mut values = Vec::new();
         for v in r.get("values").and_then(Value::as_array).into_iter().flatten() {
-            let variable = v.get("variable").and_then(Value::as_str).ok_or_else(|| bad("image.variables.dataSets", "a value needs `variable`"))?;
+            let variable = match v.get("variable") {
+                Some(x) if !x.is_null() => x.as_str().ok_or_else(|| bad(CMD, format!("a value's `variable` must be a string, not {x}")))?,
+                _ => return Err(bad(CMD, "a value needs `variable`")),
+            };
             let value = parse_value(v).ok_or_else(|| bad("image.variables.dataSets", "a value needs `kind` and `value`"))?;
             values.push(DataValue { variable: variable.to_string(), value });
         }
@@ -275,7 +296,10 @@ fn resolve_set(s: &Session, p: &Value, cmd: &str) -> Result<(DataSet, usize)> {
 /// A value is a boolean (true/false) for a Visibility variable, a path for a Pixel Replacement
 /// variable, else text. The first column may be a data-set name (header empty or `DataSet`).
 fn import_data_sets(s: &mut Session, p: &Value) -> Result<Value> {
-    let path = p.get("path").and_then(Value::as_str).ok_or_else(|| bad("file.import.variableDataSets", "need `path`"))?;
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(bad("file.import.variableDataSets", "need `path`")),
+        Some(v) => v.as_str().ok_or_else(|| bad("file.import.variableDataSets", format!("`path` must be a string, not {v}")))?,
+    };
     let text = std::fs::read_to_string(path).map_err(|e| EngineError::Other(format!("read `{path}`: {e}")))?;
     import_data_sets_text(s, &text, p)
 }
@@ -374,7 +398,10 @@ fn split_csv(line: &str, delim: u8) -> Vec<String> {
 /// Apply each data set in turn and export the flattened document, restoring the original after.
 /// `{dir, format?("png"), dataSets?[names]}` → `{files:[…],count}`.
 fn export_as_files(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = p.get("dir").and_then(Value::as_str).ok_or_else(|| bad("file.export.dataSetsAsFiles", "need `dir`"))?.to_string();
+    let dir = match p.get("dir") {
+        None | Some(Value::Null) => return Err(bad("file.export.dataSetsAsFiles", "need `dir`")),
+        Some(v) => v.as_str().ok_or_else(|| bad("file.export.dataSetsAsFiles", format!("`dir` must be a string, not {v}")))?.to_string(),
+    };
     // The directory appears only once the batch has been planned, as it always did, so a batch
     // rejected for colliding names still leaves no directory behind.
     let mut made_dir = false;

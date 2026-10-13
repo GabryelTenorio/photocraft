@@ -78,8 +78,13 @@ fn delete(s: &mut Session) -> Result<Value> {
 }
 
 fn set_frame(s: &mut Session, p: &Value) -> Result<Value> {
-    let f =
-        p.get("frame").and_then(Value::as_u64).ok_or_else(|| EngineError::BadParams { cmd: "timeline.setFrame".into(), msg: "need `frame`".into() })? as usize;
+    let f = match p.get("frame") {
+        None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "timeline.setFrame".into(), msg: "need `frame`".into() }),
+        Some(v) => v.as_u64().ok_or_else(|| EngineError::BadParams {
+            cmd: "timeline.setFrame".into(),
+            msg: format!("`frame` must be a frame number (unsigned integer), not {v}"),
+        })? as usize,
+    };
     with_timeline(s, |t| {
         if let Some(t) = t {
             t.current = f;

@@ -470,21 +470,32 @@ fn other_colour_modes_work() {
 #[test]
 fn layer_filters_repeat_the_canvas_edge() {
     // A fully opaque layer covering the canvas stays opaque at the edge (no transparent fade-in)
-    // and doesn't grow past the canvas; without an extent, samples beyond the data are transparent.
+    // and doesn't grow past the canvas; without an extent, samples beyond the data are
+    // transparent. Every border pixel is scanned, at radii on both arms: 2 runs the exact
+    // kernel, the larger radii the box passes.
     for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
         let canvas = Rect::new(0, 0, 40, 30);
         let s = flat(depth, canvas, [0.2, 0.6, 0.4, 1.0]);
-        let p = FilterParams::GaussianBlur { radius: 6.0 };
-        let area = output_area(&p, s.content_bounds(), canvas, None);
-        let clamped = apply_in(&s, &p, area, canvas, None, canvas);
-        assert_eq!(clamped.content_bounds(), canvas, "{depth:?}: grew past the canvas");
-        for (x, y) in [(0, 0), (39, 0), (0, 29), (39, 29), (20, 0)] {
-            let px = clamped.pixel(x, y);
-            assert!((px[3] - 1.0).abs() < 1e-3, "{depth:?}: alpha faded at ({x},{y}): {}", px[3]);
-            assert!((px[1] - 0.6).abs() < 2e-3, "{depth:?}: colour changed at ({x},{y})");
+        for radius in [2.0f32, 6.0, 40.0, 70.0] {
+            let p = FilterParams::GaussianBlur { radius };
+            let area = output_area(&p, s.content_bounds(), canvas, None);
+            let clamped = apply_in(&s, &p, area, canvas, None, canvas);
+            assert_eq!(clamped.content_bounds(), canvas, "{depth:?} r{radius}: grew past the canvas");
+            for y in 0..30 {
+                for x in 0..40 {
+                    if x > 0 && x < 39 && y > 0 && y < 29 {
+                        continue;
+                    }
+                    let px = clamped.pixel(x, y);
+                    assert!((px[3] - 1.0).abs() < 1e-3, "{depth:?} r{radius}: alpha faded at ({x},{y}): {}", px[3]);
+                    for (c, want) in [(0, 0.2), (1, 0.6), (2, 0.4)] {
+                        assert!((px[c] - want).abs() < 2e-3, "{depth:?} r{radius}: colour changed at ({x},{y}) ch {c}");
+                    }
+                }
+            }
+            let faded = apply(&s, &p, area, canvas, None);
+            assert!(faded.pixel(0, 0)[3] < 0.9, "{depth:?} r{radius}: unclamped path should read transparency");
         }
-        let faded = apply(&s, &p, area, canvas, None);
-        assert!(faded.pixel(0, 0)[3] < 0.9, "{depth:?}: unclamped path should read transparency");
     }
 }
 

@@ -23,7 +23,7 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
 }
 
 fn layer_id(s: &Session, p: &Value) -> Result<LayerId> {
-    match p.get("layer").and_then(Value::as_u64) {
+    match crate::commands::opt_u64("layer", p, "layer")? {
         Some(id) => Ok(LayerId(id)),
         None => s.active().and_then(|d| d.active_layer).ok_or(EngineError::Other("no active layer".into())),
     }
@@ -586,7 +586,7 @@ fn with_text_layer<R>(s: &mut Session, p: &Value, label: &str, f: impl FnOnce(&m
 /// range keeps its single-layer scope. Selected groups are not expanded.
 pub(crate) fn format_targets(s: &Session, p: &Value) -> Result<Vec<LayerId>> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
-    let single = p.get("layer").is_some() || (p.get("range").is_some() && p.get("layers").is_none());
+    let single = !matches!(p.get("layer"), None | Some(Value::Null)) || (p.get("range").is_some() && p.get("layers").is_none());
     let ids = if single {
         vec![layer_id(s, p)?]
     } else if let Some(value) = p.get("layers") {
@@ -634,7 +634,8 @@ pub(crate) fn with_text_targets(
         for id in &ids {
             let Some(LayerContent::Text(t)) = doc.layer_mut(*id).map(|l| &mut l.content) else { return Err(EngineError::NoLayer(*id)) };
             let before = t.cache.as_ref().map(|c| c.tile_bounds());
-            let range = if p.get("layers").is_none() || p.get("layer").is_some() { range_param(&t.text, p) } else { (0, t.text.len()) };
+            let range =
+                if p.get("layers").is_none() || !matches!(p.get("layer"), None | Some(Value::Null)) { range_param(&t.text, p) } else { (0, t.text.len()) };
             f(t, range)?;
             refresh(&snapshot, t);
             // An unknown old/new cache retains Session.edit's full-refresh fallback.
@@ -717,7 +718,7 @@ fn info(s: &Session, p: &Value) -> Result<Value> {
         .iter()
         .map(|ln| json!({ "start": char_at(text, ln.range.start), "end": char_at(text, ln.range.end), "baseline": ln.baseline, "x0": ln.x0, "x1": ln.x1, "ascent": ln.ascent, "descent": ln.descent }))
         .collect();
-    let bounds = t.cache.as_ref().map(|c| c.content_bounds()).map(|r| json!([r.x0, r.y0, r.x1, r.y1]));
+    let bounds = t.cache.as_ref().map(|c| c.content_bounds()).map(crate::commands::bounds_json);
     let warnings = crate::type_extra_cmds::missing_font_warnings_for_layer(t);
     let mut out = json!({
         "layer": id.0,
@@ -794,7 +795,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "New Type Layer",
             menu: &["Layer", "New"],
             shortcut: None,
-            params: r##"{"x":px,"y":px (baseline anchor of point text),"text":str,"box":[x,y,w,h]? (paragraph text),"name":str?,"align":"left|center|right|justify…"?,"orientation":"horizontal|vertical"="horizontal", …character keys: "font","size":pt=12,"color",…}"##,
+            params: r##"{"x":px,"y":px (point text: y of the FIRST baseline; "box" positions paragraph text by its top-left),"text":str,"box":[x,y,w,h]? (paragraph text),"name":str?,"align":"left|center|right|justify…"?,"orientation":"horizontal|vertical"="horizontal", …character keys: "font","size":pt=12,"color",…} → {"layer":id,"bounds":[x,y,w,h]} (the new layer becomes the active layer, like every layer-creating command; re-select the target with layer.select)"##,
             enabled: has_doc,
             journal: true,
             run: |s, p| {
@@ -807,7 +808,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     Ok(id)
                 })?;
                 let bounds = s.active().and_then(|d| d.doc.layer(id)).and_then(|l| l.surface()).map(|c| c.content_bounds());
-                let mut out = json!({ "layer": id.0, "bounds": bounds.map(|r| [r.x0, r.y0, r.x1, r.y1]) });
+                let mut out = json!({ "layer": id.0, "bounds": bounds.map(crate::commands::bounds_json) });
                 if let Some(LayerContent::Text(t)) = s.active().and_then(|d| d.doc.layer(id)).map(|l| &l.content) {
                     let warnings = crate::type_extra_cmds::missing_font_warnings_for_layer(t);
                     if !warnings.is_empty() {
@@ -822,7 +823,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Edit Type",
             menu: &[],
             shortcut: None,
-            params: r##"{"layer":id?,"text":str? (replace all, styles kept),"replace":{"start":char,"end":char,"text":str}?,"runs":[{"start":char,"end":char,…character keys}]?,"box":[x,y,w,h]? (to paragraph text),"point":[x,y]? (to point text),"move":[dx,dy]?,"transform":[a,b,c,d,e,f]?,"antialias":"none|sharp|crisp|strong|smooth"?,"name":str?,"kerning":1/1000em|"metrics"|"optical"|"off"? (with "range":[startChar,endChar]?, default all),"kernPair":{"at":caretChar,"by":1/1000em}? (Alt+←/→: the pair before the caret becomes manual, its current kerning + by)}"##,
+            params: r##"{"layer":id?,"text":str? (replace all, styles kept),"replace":{"start":char,"end":char,"text":str}?,"runs":[{"start":char,"end":char,…character keys}]?,"box":[x,y,w,h]? (to paragraph text),"point":[x,y]? (to point text),"move":[dx,dy]?,"transform":[a,b,c,d,e,f]?,"antialias":"none|sharp|crisp|strong|smooth"?,"name":str?,"kerning":1/1000em|"metrics"|"optical"|"off"? (with "range":[startChar,endChar]?, default all),"kernPair":{"at":caretChar,"by":1/1000em}? (Alt+←/→: the pair before the caret becomes manual, its current kerning + by)} → the type.info reply (bounds:[x,y,w,h])"##,
             enabled: has_doc,
             journal: true,
             run: |s, p| {
@@ -846,7 +847,10 @@ pub fn specs() -> Vec<CommandSpec> {
                 let kern_pair = match p.get("kernPair") {
                     None => None,
                     Some(k) => {
-                        let at = k.get("at").and_then(Value::as_u64).ok_or_else(|| bad("type.edit", "kernPair.at must be a caret position (character index)"))?;
+                        let at = match k.get("at") {
+                            Some(v) if !v.is_null() => v.as_u64().ok_or_else(|| bad("type.edit", format!("kernPair.at must be a caret position (character index), not {v}")))?,
+                            _ => return Err(bad("type.edit", "kernPair.at must be a caret position (character index)")),
+                        };
                         let by = k
                             .get("by")
                             .and_then(Value::as_f64)
@@ -943,7 +947,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: Box::leak(
-                format!(r##"{{"layer":id? or "layers":[id,…]? (default selected Type layers),"range":[startChar,endChar]? (single layer; default all),"metricsAsShown":bool=false (size/leading/leadingBy include each layer's transform scale), {CHAR_PARAMS}, relative steps from each character's own value: "leadingBy":pt (auto leading starts from its laid-out value; result 0.01..=5000),"baselineShiftBy":pt (result -5000..=5000),"trackingBy":1/1000 em (result -1000..=10000), paragraph keys: "align":"left|center|right|justify|justifyCenter|justifyRight|justifyAll","firstLineIndent":pt,"startIndent":pt,"endIndent":pt,"spaceBefore":pt,"spaceAfter":pt,"autoLeading":%,"direction":"auto|ltr|rtl","hyphenate":bool}}"##)
+                format!(r##"{{"layer":id? or "layers":[id,…]? (default selected Type layers),"range":[startChar,endChar]? (single layer; default all),"metricsAsShown":bool=false (size/leading/leadingBy include each layer's transform scale), {CHAR_PARAMS}, relative steps from each character's own value: "leadingBy":pt (auto leading starts from its laid-out value; result 0.01..=5000),"baselineShiftBy":pt (result -5000..=5000),"trackingBy":1/1000 em (result -1000..=10000), paragraph keys: "align":"left|center|right|justify|justifyCenter|justifyRight|justifyAll","firstLineIndent":pt,"startIndent":pt,"endIndent":pt,"spaceBefore":pt,"spaceAfter":pt,"autoLeading":%,"direction":"auto|ltr|rtl","hyphenate":bool}} → the type.info reply (bounds:[x,y,w,h])"##)
                     .into_boxed_str(),
             ),
             enabled: has_doc,
@@ -1006,7 +1010,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Type Layer Info",
             menu: &[],
             shortcut: None,
-            params: r##"{"layer":id?} → text, runs/paragraphs (char offsets + styles), shape, transform, laid-out lines (text space px), bounds"##,
+            params: r##"{"layer":id?} → text, runs/paragraphs (char offsets + styles), shape, transform, laid-out lines (text space px), bounds:[x,y,w,h]"##,
             enabled: has_doc,
             journal: false,
             run: |s, p| info(s, p),
@@ -1195,13 +1199,44 @@ mod tests {
         assert!(s.active().unwrap().doc.layer(id).is_none());
     }
 
+    /// One bounds format everywhere: `type.*` replies carry `[x, y, w, h]`, the same tuple
+    /// `document.inspect` reports for the layer.
+    #[test]
+    fn bounds_format_agrees_across_commands() {
+        let mut s = session();
+        let created = s.execute("type.create", json!({"x": 50, "y": 50, "text": "Hi", "size": 24})).unwrap();
+        let id = created["layer"].as_u64().unwrap();
+        let info = s.execute("type.info", json!({"layer": id})).unwrap();
+        let insp = s.execute("document.inspect", json!({})).unwrap();
+        let layer = insp["layers"].as_array().unwrap().iter().find(|l| l["id"] == id).unwrap();
+        let r = text_layer(&s, id).cache.unwrap().content_bounds();
+        let want = json!([r.x0, r.y0, r.width() as i32, r.height() as i32]);
+        assert_eq!(created["bounds"], want, "type.create reply bounds");
+        assert_eq!(info["bounds"], want, "type.info reply bounds");
+        assert_eq!(layer["bounds"], want, "document.inspect layer bounds");
+        // type.edit and type.setStyle reply with the same tuple inspect reports afterwards.
+        let edited = s.execute("type.edit", json!({"layer": id, "move": [10, 0]})).unwrap();
+        let insp = s.execute("document.inspect", json!({})).unwrap();
+        let moved = insp["layers"].as_array().unwrap().iter().find(|l| l["id"] == id).unwrap();
+        assert_eq!(edited["bounds"], moved["bounds"], "type.edit reply bounds");
+        let styled = s.execute("type.setStyle", json!({"layer": id, "tracking": 0})).unwrap();
+        assert_eq!(styled["bounds"], moved["bounds"], "type.setStyle reply bounds");
+        // The tuple really is x,y,w,h: wider text at the same x keeps bounds[0] and grows
+        // bounds[2] by the glyph width, not by an edge offset.
+        let wide = s.execute("type.create", json!({"x": 50, "y": 50, "text": "Hi there, wide text", "size": 24})).unwrap();
+        let (narrow_b, wide_b) = (created["bounds"].as_array().unwrap(), wide["bounds"].as_array().unwrap());
+        assert_eq!(narrow_b[0], wide_b[0], "same left edge: {} vs {}", created["bounds"], wide["bounds"]);
+        assert!(wide_b[2].as_i64().unwrap() > narrow_b[2].as_i64().unwrap(), "wider text widens the tuple: {} vs {}", created["bounds"], wide["bounds"]);
+    }
+
     #[test]
     fn create_renders_and_is_undoable() {
         let mut s = session();
         let r = s.execute("type.create", json!({"x": 10, "y": 50, "text": "Hello", "size": 24, "color": "#ff0000"})).unwrap();
         let id = r["layer"].as_u64().unwrap();
+        assert_eq!(s.active().unwrap().active_layer, Some(LayerId(id)), "the new layer becomes the active layer");
         let b = r["bounds"].as_array().unwrap();
-        assert!(b[0].as_i64().unwrap() >= 9 && b[3].as_i64().unwrap() <= 56, "{b:?}");
+        assert!(b[0].as_i64().unwrap() >= 9 && b[1].as_i64().unwrap() + b[3].as_i64().unwrap() <= 56, "{b:?}");
         let t = text_layer(&s, id);
         assert_eq!(t.text, "Hello");
         assert_eq!(t.runs[0].style.size_pt, 24.0);

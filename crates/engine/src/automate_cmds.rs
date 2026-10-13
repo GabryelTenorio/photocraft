@@ -87,7 +87,10 @@ fn parse_steps(v: &Value, cmd: &str) -> Result<Vec<(String, Value)>> {
                 Ok((a[0].as_str().ok_or_else(|| bad(cmd, "step id must be a string"))?.to_string(), a.get(1).cloned().unwrap_or(json!({}))))
             }
             Value::Object(o) => {
-                let id = o.get("command").or_else(|| o.get("id")).and_then(Value::as_str).ok_or_else(|| bad(cmd, "step needs \"command\""))?;
+                let id = match o.get("command").or_else(|| o.get("id")) {
+                    Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(cmd, format!("a step's \"command\" must be a string, not {v}")))?,
+                    _ => return Err(bad(cmd, "step needs \"command\"")),
+                };
                 Ok((id.to_string(), o.get("params").cloned().unwrap_or(json!({}))))
             }
             Value::String(id) => Ok((id.clone(), json!({}))),
@@ -197,7 +200,10 @@ fn script_events(s: &mut Session, p: &Value) -> Result<Value> {
         .filter(|_| p.get("script").and_then(Value::as_str).is_some_and(|v| !v.is_empty()))
         .map(|e| json!({"event": e, "script": p["script"], "name": p.get("name").cloned().unwrap_or(Value::Null)}));
     if let Some(a) = p.get("add").cloned().or(flat).as_ref() {
-        let event = a.get("event").and_then(Value::as_str).ok_or_else(|| bad(cmd, "add needs \"event\""))?;
+        let event = match a.get("event") {
+            Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(cmd, format!("add's \"event\" must be a string, not {v}")))?,
+            _ => return Err(bad(cmd, "add needs \"event\"")),
+        };
         if !EVENTS.iter().any(|(id, _)| *id == event) {
             return Err(bad(cmd, format!("unknown event `{event}` ({})", EVENTS.map(|e| e.0).join("|"))));
         }
@@ -289,7 +295,10 @@ pub fn document_saved(s: &mut Session, index: usize) -> Option<Value> {
 
 fn create_droplet(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "file.automate.createDroplet";
-    let path = p.get("path").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or_else(|| bad(cmd, "missing \"path\" (where to save the droplet)"))?;
+    let path = match p.get("path") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing \"path\" (where to save the droplet)")),
+        Some(v) => v.as_str().filter(|s| !s.is_empty()).ok_or_else(|| bad(cmd, format!("`path` must be a non-empty string, not {v}")))?,
+    };
     let steps_v = p.get("steps").or_else(|| p.get("action")).ok_or_else(|| bad(cmd, "missing \"steps\" (the action to run)"))?;
     let mut steps = parse_steps(steps_v, cmd)?;
     // The droplet's output folder replaces recorded saves, and view steps don't apply, as in batch.
@@ -346,7 +355,10 @@ fn write_shim(_: &str) -> Result<String> {
 /// Runs a droplet file on inputs (files and/or folders).
 fn run_droplet(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "file.automate.runDroplet";
-    let path = p.get("droplet").or_else(|| p.get("path")).and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing \"droplet\""))?;
+    let path = match p.get("droplet").or_else(|| p.get("path")) {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing \"droplet\"")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("\"droplet\" must be a string, not {v}")))?,
+    };
     let v: Value = serde_json::from_slice(&read_file(path)?).map_err(|e| bad(cmd, format!("{path}: {e}")))?;
     if v.get("photocraftDroplet").is_none() {
         return Err(bad(cmd, format!("{path} is not a PhotoCraft droplet")));

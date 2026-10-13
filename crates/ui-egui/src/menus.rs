@@ -151,7 +151,7 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: Va
         authorize(id, &params)?;
     }
     if crate::discard_ui::intercept(app, id, &params) {
-        return Ok(Value::Null);
+        return Ok(crate::discard_ui::pending_reply(app));
     }
     let r = invoke_unguarded(app, ctx, id, params)?;
     // The palette's empty-query list (UI-217-7); opening the palette isn't a command to recall.

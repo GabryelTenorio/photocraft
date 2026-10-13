@@ -332,15 +332,17 @@ fn native_pixels(doc: &Document, layer: Option<LayerId>) -> Result<(Vec<f32>, us
 /// Photoshop action refers to it), or `"merged"` (default). An unknown name is an error.
 fn source_layer(doc: &Document, p: &Value, cmd: &str) -> Result<Option<LayerId>> {
     match p.get("layer") {
-        Some(Value::Number(n)) => Ok(n.as_u64().map(LayerId)),
-        Some(Value::String(name)) if !name.is_empty() && name != "merged" => doc
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(n)) => n.as_u64().map(LayerId).map(Some).ok_or_else(|| bad(cmd, format!("`layer` must be a layer id or name, not {n}"))),
+        Some(Value::String(name)) if name.is_empty() || name == "merged" => Ok(None),
+        Some(Value::String(name)) => doc
             .walk()
             .into_iter()
             .rev()
             .find(|(_, _, l)| l.name == *name)
             .map(|(_, _, l)| Some(l.id))
             .ok_or_else(|| bad(cmd, format!("no source layer named \"{name}\""))),
-        _ => Ok(None),
+        Some(v) => Err(bad(cmd, format!("`layer` must be a layer id or name, not {v}"))),
     }
 }
 
@@ -1199,7 +1201,12 @@ fn move_channel(s: &mut Session, p: &Value) -> Result<Value> {
     let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
     let n = doc.channels.len();
     let i = alpha_index(doc, p, "channel", cmd)?;
-    let to = p.get("to").and_then(Value::as_u64).map(|v| (v as usize).min(n - 1)).ok_or_else(|| bad(cmd, "missing `to`"))?;
+    let to = match p.get("to") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `to`")),
+        Some(v) => {
+            v.as_u64().map(|v| (v as usize).min(n - 1)).ok_or_else(|| bad(cmd, format!("`to` must be a channel position (unsigned integer), not {v}")))?
+        }
+    };
     if to == i {
         return Ok(json!({ "channel": i }));
     }

@@ -168,7 +168,10 @@ fn caret(s: &Session, p: &Value) -> Result<Value> {
 fn navigate(s: &Session, p: &Value) -> Result<Value> {
     const CMD: &str = "type.navigate";
     let index = req_index(p, "index", CMD)?;
-    let mov = p.get("move").and_then(Value::as_str).ok_or_else(|| bad(CMD, "missing `move`"))?;
+    let mov = match p.get("move") {
+        None | Some(Value::Null) => return Err(bad(CMD, "missing `move`")),
+        Some(v) => v.as_str().ok_or_else(|| bad(CMD, format!("`move` must be a string, not {v}")))?,
+    };
     let doc_x = opt_f64(p, "x", CMD)?;
     let id = resolve_layer(s, p, CMD)?;
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();

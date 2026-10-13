@@ -74,14 +74,19 @@ impl AuthorizedWorkspace {
     /// as [`photocraft_format::atomic_write`], through the directory capability). On failure
     /// the previous file is untouched and the temporary file is removed.
     ///
-    /// The parent directory must already exist. `cap-std` performs path
-    /// resolution and file creation relative to the held directory handle, so
-    /// a non-existent final target is supported without ambient path access.
+    /// Missing parent directories are created through the held directory handle first, so a
+    /// write that fails afterwards can leave an empty directory behind — never a file.
+    /// `cap-std` performs path resolution and file creation relative to the held directory
+    /// handle, so a non-existent final target is supported without ambient path access.
     pub fn write(&self, path: &str, bytes: &[u8]) -> Result<(), AutomationError> {
         let relative = request_path(path, self.write.as_ref())?;
         let root = self.write.as_ref().ok_or_else(|| AutomationError::BadRequest(format!("{DENIED}: write authority is absent")))?;
+        let resolved = root.path.join(&relative);
         let leaf = relative.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let parent = relative.parent().map(Path::to_path_buf).unwrap_or_default();
+        if !parent.as_os_str().is_empty() {
+            root.dir.create_dir_all(&parent).map_err(|e| write_error("mkdir", path, &resolved, e))?;
+        }
         let tmp = parent.join(photocraft_format::atomic::temp_name(&leaf));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
@@ -93,7 +98,7 @@ impl AuthorizedWorkspace {
         let renamed = written.and_then(|()| photocraft_format::atomic::retry_rename(RenameRetry::platform(), || root.dir.rename(&tmp, &root.dir, &relative)));
         if let Err(e) = renamed {
             let _ = root.dir.remove_file(&tmp);
-            return Err(file_error("write", path, e));
+            return Err(write_error("write", path, &resolved, e));
         }
         // Flush the directory entry (Unix); best effort, the new bytes are already in place.
         #[cfg(unix)]
@@ -236,6 +241,12 @@ impl photocraft_format::ByteSource for DirHandle {
 fn file_error(operation: &str, path: &str, error: std::io::Error) -> AutomationError {
     let kind = error.kind();
     AutomationError::Io(format!("automation {operation} `{path}` failed ({kind:?}): {error}"))
+}
+
+/// [`file_error`] with the absolute path the request names beneath the write root.
+fn write_error(operation: &str, path: &str, resolved: &Path, error: std::io::Error) -> AutomationError {
+    let kind = error.kind();
+    AutomationError::Io(format!("automation {operation} `{path}` failed ({kind:?}): {error}; resolved to `{}`", resolved.display()))
 }
 
 /// Filesystem-bearing engine commands have not yet been converted to consume
@@ -622,11 +633,30 @@ mod tests {
     }
 
     #[test]
-    fn missing_parent_is_a_stable_error_before_any_file_is_created() {
-        let (inside, _, workspace) = roots("missing-parent");
-        let error = workspace.write("missing/output.txt", b"x").unwrap_err().to_string();
+    fn write_creates_missing_parents_beneath_the_root() {
+        let (inside, _, workspace) = roots("write-mkdir");
+        workspace.write("previews/brush-p1.png", b"x").unwrap();
+        assert_eq!(std::fs::read(inside.join("previews/brush-p1.png")).unwrap(), b"x");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_refuses_to_create_parents_through_an_escaping_symlink() {
+        let (inside, outside, workspace) = roots("write-mkdir-escape");
+        std::os::unix::fs::symlink(&outside, inside.join("link")).unwrap();
+        assert!(workspace.write("link/out.png", b"x").is_err());
+        assert!(!outside.join("out.png").exists());
+        assert_eq!(std::fs::read_dir(outside).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn write_errors_name_the_resolved_absolute_path() {
+        let (inside, _, workspace) = roots("write-error-path");
+        std::fs::create_dir(inside.join("adir")).unwrap();
+        let resolved = inside.join("adir").to_string_lossy().into_owned();
+        let error = workspace.write("adir", b"x").unwrap_err().to_string();
         assert!(error.contains("automation write"), "{error}");
-        assert!(!inside.join("missing").exists());
+        assert!(error.contains(&resolved), "{error}");
     }
 
     #[cfg(unix)]

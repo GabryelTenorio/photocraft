@@ -15,7 +15,7 @@ use photocraft_geom::warp::{BezierMesh, Warp, WarpStyle};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
-use crate::commands::CommandSpec;
+use crate::commands::{CommandSpec, opt_u64};
 use crate::{EngineError, Result, Session};
 
 fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
@@ -272,7 +272,7 @@ const MAX_WARP_SIDE: u32 = 100_000;
 
 fn target(s: &Session, cmd: &str, p: &Value) -> Result<(LayerId, Rect)> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
-    let id = match p.get("layer").and_then(Value::as_u64) {
+    let id = match opt_u64(cmd, p, "layer")? {
         Some(v) => LayerId(v),
         None => st.active_layer.ok_or(EngineError::Other("no active layer".into()))?,
     };

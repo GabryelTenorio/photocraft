@@ -10,7 +10,7 @@ use photocraft_doc::{Document, Layer, LayerContent, LayerId};
 use photocraft_geom::Rect;
 use serde_json::{Value, json};
 
-use crate::commands::{CommandSpec, int_i32};
+use crate::commands::{CommandSpec, int_i32, req_u64};
 use crate::{DocState, EngineError, Result, Session};
 
 // ---------- selection state ----------
@@ -27,7 +27,7 @@ pub fn selected(s: &Session) -> Vec<LayerId> {
 /// The layers a layer command acts on: the `layer` param when given, else every selected layer
 /// (bottom-to-top), else the active layer. A single layer behaves exactly as before.
 pub(crate) fn targets(s: &Session, p: &serde_json::Value) -> Result<Vec<LayerId>> {
-    if p.get("layer").is_some() {
+    if !matches!(p.get("layer"), None | Some(Value::Null)) {
         return Ok(vec![crate::commands::layer_param(s, p)?]);
     }
     match selected(s) {
@@ -185,7 +185,10 @@ fn select_all_layers(s: &mut Session) -> Result<Value> {
 }
 
 fn find_layers(s: &mut Session, p: &Value) -> Result<Value> {
-    let needle = p.get("name").and_then(Value::as_str).ok_or_else(|| bad("select.findLayers", "missing `name`"))?.to_lowercase();
+    let needle = match p.get("name") {
+        None | Some(Value::Null) => return Err(bad("select.findLayers", "missing `name`")),
+        Some(v) => v.as_str().ok_or_else(|| bad("select.findLayers", format!("`name` must be a string, not {v}")))?.to_lowercase(),
+    };
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let ids: Vec<LayerId> = d.doc.walk().into_iter().filter(|(_, _, l)| l.name.to_lowercase().contains(&needle)).map(|(_, _, l)| l.id).collect();
     if ids.is_empty() {
@@ -1009,7 +1012,7 @@ fn distribute(s: &mut Session, kind: &str) -> Result<Value> {
 /// selected nodes are detached, and every reference is validated before editing.
 pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "layer.moveTo";
-    let target = LayerId(p.get("target").and_then(Value::as_u64).ok_or_else(|| bad(CMD, "missing `target`"))?);
+    let target = LayerId(req_u64(CMD, p, "target")?);
     let pos = p.get("position").and_then(Value::as_str).unwrap_or("above");
     if !matches!(pos, "above" | "below" | "into") {
         return Err(bad(CMD, "position must be above, below, or into"));
@@ -1018,14 +1021,14 @@ pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
     let copy = p.get("copy").and_then(Value::as_bool).unwrap_or(false);
 
     let batch = p.get("layers");
-    if batch.is_some() && p.get("layer").is_some() {
+    if batch.is_some() && !matches!(p.get("layer"), None | Some(Value::Null)) {
         return Err(bad(CMD, "give either `layer` or `layers`, not both"));
     }
     let requested = if let Some(raw) = batch {
         let arr = raw.as_array().filter(|a| !a.is_empty()).ok_or_else(|| bad(CMD, "`layers` must be a nonempty array of ids"))?;
         let mut ids = Vec::with_capacity(arr.len());
         for item in arr {
-            let id = LayerId(item.as_u64().ok_or_else(|| bad(CMD, "every layer id must be an unsigned integer"))?);
+            let id = LayerId(item.as_u64().ok_or_else(|| bad(CMD, format!("every layer id must be an unsigned integer, not {item}")))?);
             if ids.contains(&id) {
                 return Err(bad(CMD, "duplicate layer id"));
             }
@@ -1376,7 +1379,7 @@ pub fn set_visible_selected(s: &mut Session, visible: bool) -> Result<Value> {
 
 /// Is more than one layer selected (so single-layer commands should act on the whole set)?
 pub fn multi(s: &Session, p: &Value) -> bool {
-    p.get("layer").is_none() && selected(s).len() > 1
+    matches!(p.get("layer"), None | Some(Value::Null)) && selected(s).len() > 1
 }
 
 // ---------- registry ----------
@@ -1475,6 +1478,26 @@ mod tests {
         // Names that merely contain "copy" keep it.
         assert_eq!(doc.copy_name("Copywriting"), "Copywriting copy");
         assert_eq!(doc.copy_name("A copyedit"), "A copyedit copy");
+    }
+
+    /// A `layer` of the wrong JSON type must read as a type error, never as "missing", and must
+    /// never silently retarget the active layer. A string names a layer; a name that isn't there
+    /// is an error naming it, not the active layer.
+    #[test]
+    fn wrong_typed_layer_param_is_not_reported_missing() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 10, "height": 10})).unwrap();
+        let bg = s.active().unwrap().doc.layers[0].id;
+        let e = s.execute("layer.select", json!({"layer": true})).unwrap_err().to_string();
+        assert!(e.contains("true") && !e.contains("missing"), "{e}");
+        let e = s.execute("layer.select", json!({"layer": "Mountains Mid"})).unwrap_err().to_string();
+        assert!(e.contains("\"Mountains Mid\"") && !e.contains("missing"), "{e}");
+        let e = s.execute("layer.select", json!({})).unwrap_err().to_string();
+        assert!(e.contains("missing `layer`"), "{e}");
+        s.execute("layer.select", json!({"layer": bg.0})).unwrap();
+        let e = s.execute("layer.setProps", json!({"layer": "Mountains Mid", "visible": false})).unwrap_err().to_string();
+        assert!(e.contains("\"Mountains Mid\""), "{e}");
+        assert!(s.active().unwrap().doc.layer(bg).unwrap().visible, "nothing was modified");
     }
 
     fn session(depth: u32) -> Session {

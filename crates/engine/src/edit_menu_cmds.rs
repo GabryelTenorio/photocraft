@@ -863,7 +863,12 @@ fn has_type_layer(s: &Session) -> std::result::Result<(), String> {
 
 fn find_replace(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "edit.findAndReplaceText";
-    let find = p.get("find").and_then(Value::as_str).filter(|f| !f.is_empty()).ok_or_else(|| bad(cmd, "missing `find`"))?.to_string();
+    let find = match p.get("find") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `find`")),
+        Some(v) => {
+            v.as_str().map(str::trim).filter(|f| !f.is_empty()).ok_or_else(|| bad(cmd, format!("`find` must be a non-empty string, not {v}")))?.to_string()
+        }
+    };
     let replace = str_or(p, "replace", "").to_string();
     let (case, whole, forward, all_layers) =
         (bool_or(p, "caseSensitive", false), bool_or(p, "wholeWord", false), bool_or(p, "forward", true), bool_or(p, "allLayers", true));
@@ -990,7 +995,10 @@ fn preset_index(s: &Session, kind: &str, p: &Value) -> Result<usize> {
     if let Some(i) = p.get("index").and_then(Value::as_u64) {
         return if (i as usize) < names.len() { Ok(i as usize) } else { Err(bad("edit.presets.presetManager", format!("no preset {i}"))) };
     }
-    let name = p.get("name").and_then(Value::as_str).ok_or_else(|| bad("edit.presets.presetManager", "give `index` or `name`"))?;
+    let name = match p.get("name") {
+        None | Some(Value::Null) => return Err(bad("edit.presets.presetManager", "give `index` or `name`")),
+        Some(v) => v.as_str().ok_or_else(|| bad("edit.presets.presetManager", format!("`name` must be a string, not {v}")))?,
+    };
     names.iter().position(|n| n == name).ok_or_else(|| bad("edit.presets.presetManager", format!("no preset named `{name}`")))
 }
 
@@ -1008,12 +1016,22 @@ fn preset_manager(s: &mut Session, p: &Value) -> Result<Value> {
         }
         return Ok(Value::Object(out));
     }
-    let kind = p.get("kind").and_then(Value::as_str).ok_or_else(|| bad(cmd, "missing `kind`"))?.to_string();
+    let kind = match p.get("kind") {
+        None | Some(Value::Null) => return Err(bad(cmd, "missing `kind`")),
+        Some(v) => v.as_str().ok_or_else(|| bad(cmd, format!("`kind` must be a string, not {v}")))?.to_string(),
+    };
     let i = preset_index(s, &kind, p)?;
     match action {
         "rename" => {
-            let new =
-                p.get("newName").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(cmd, "missing `newName`"))?.to_string();
+            let new = match p.get("newName") {
+                None | Some(Value::Null) => return Err(bad(cmd, "missing `newName`")),
+                Some(v) => v
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .ok_or_else(|| bad(cmd, format!("`newName` must be a non-empty string, not {v}")))?
+                    .to_string(),
+            };
             match kind.as_str() {
                 "brushes" => {
                     // A renamed built-in is the user's preset now (and persists as one).
@@ -1031,7 +1049,10 @@ fn preset_manager(s: &mut Session, p: &Value) -> Result<Value> {
             _ => drop(s.edit_state.custom_shapes.remove(i)),
         },
         "move" => {
-            let to = p.get("to").and_then(Value::as_u64).ok_or_else(|| bad(cmd, "missing `to`"))? as usize;
+            let to = match p.get("to") {
+                None | Some(Value::Null) => return Err(bad(cmd, "missing `to`")),
+                Some(v) => v.as_u64().ok_or_else(|| bad(cmd, format!("`to` must be a preset position (unsigned integer), not {v}")))? as usize,
+            };
             match kind.as_str() {
                 "brushes" => crate::move_item(&mut s.tools.presets, i, to),
                 "patterns" => crate::move_item(&mut s.patterns.items, i, to),

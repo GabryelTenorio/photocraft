@@ -18,6 +18,51 @@ fn untrusted(filesystem: Filesystem) -> Headless {
     Headless { session, writers: HashMap::new(), filesystem }
 }
 
+/// The key an automation open dedupes on by path spelling: `/`-separated components with empty
+/// and `.` components dropped and `..` resolved lexically, without consulting the filesystem.
+/// A path that would climb above its own start keeps its raw spelling, so comparison falls back
+/// to exact text. A trusted-local open also dedupes by file identity, so a hard-link alias
+/// activates the open document. Either way activation only switches documents — the file is
+/// never re-read — so the reply warns.
+fn dedupe_key(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if parts.pop().is_none() {
+                    return path.to_string();
+                }
+            }
+            _ => parts.push(part),
+        }
+    }
+    let joined = parts.join("/");
+    if path.starts_with('/') { format!("/{joined}") } else { joined }
+}
+
+/// On-disk identity of a path: device and file index, so hard links and spelling variants of
+/// one file are seen as the same file. `None` when the file cannot be statted.
+#[cfg(all(unix, not(target_arch = "wasm32")))]
+fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.dev(), m.ino()))
+}
+
+#[cfg(target_os = "windows")]
+fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::windows::fs::MetadataExt;
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.volume_serial_number(), m.file_index().unwrap_or(0)))
+}
+
+/// Other targets dedupe by path spelling only.
+#[cfg(not(any(all(unix, not(target_arch = "wasm32")), target_os = "windows")))]
+fn file_identity(_path: &Path) -> Option<(u64, u64)> {
+    None
+}
+
 enum Filesystem {
     Denied,
     TrustedLocal,
@@ -72,9 +117,45 @@ impl Headless {
         }
     }
 
-    /// Open a file and make it the active document.
+    /// Open a file and make it the active document. A path that is already an open document's
+    /// file — by path spelling, or by file identity for trusted-local opens — activates that
+    /// document instead of loading a second copy, and the reply's warnings say the file was not
+    /// re-read.
     pub fn open(&mut self, path: &Path) -> Result<Value, AutomationError> {
         let requested = path.to_str().ok_or_else(|| AutomationError::BadRequest("automation paths must be valid UTF-8".into()))?;
+        let key = dedupe_key(requested);
+        // A stored path that resolves to the requested file by identity (hard link, symlink,
+        // alternate spelling) dedupes too; the capability roots expose no metadata, so
+        // identity matching is a trusted-local open only.
+        let identity = if matches!(&self.filesystem, Filesystem::TrustedLocal) { file_identity(path) } else { None };
+        let mut alias = false;
+        let found = self.session.documents().iter().position(|st| {
+            let Some(p) = st.path.as_deref() else { return false };
+            if dedupe_key(p) == key {
+                return true;
+            }
+            let same_file = identity.is_some() && file_identity(Path::new(p)) == identity;
+            alias |= same_file;
+            same_file
+        });
+        if let Some(index) = found {
+            let _ = self.session.set_active(index);
+            let d = &self.session.documents()[index];
+            let mut warnings =
+                vec!["already open; the document was activated without re-reading the file — close it first to load the current bytes".to_string()];
+            if alias {
+                warnings.push("the requested path is another name for the open document's file".to_string());
+            }
+            return Ok(json!({
+                "index": index,
+                "name": d.doc.name,
+                "width": d.doc.size.width,
+                "height": d.doc.size.height,
+                "layers": d.doc.layer_count(),
+                "warnings": warnings,
+                "deduped": true,
+            }));
+        }
         let mut o = match &self.filesystem {
             Filesystem::Denied => return Err(AutomationError::BadRequest("automation filesystem access is not granted: read authority is absent".into())),
             Filesystem::TrustedLocal => files::open(path)?,
@@ -396,5 +477,71 @@ fn exported(dir: &str, written: photocraft_engine::Result<Vec<String>>, outputs:
             outputs.cleanup()?;
             Err(error.into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedupe_key_resolves_lexical_spellings_and_falls_back_to_raw_text() {
+        assert_eq!(dedupe_key("x.png"), "x.png");
+        assert_eq!(dedupe_key("./x.png"), "x.png");
+        assert_eq!(dedupe_key("in//sub/../x.png"), "in/x.png");
+        assert_eq!(dedupe_key("/root/in/x.png"), "/root/in/x.png");
+        assert_eq!(dedupe_key("../x.png"), "../x.png", "a climb above the start keeps the raw spelling");
+        assert_eq!(dedupe_key("a/../../x.png"), "a/../../x.png");
+    }
+
+    fn write_png(path: &Path, w: u32, h: u32) {
+        let img = photocraft_codecs::Image::from_u8(w, h, photocraft_codecs::ChannelLayout::Rgb, vec![200; (w * h * 3) as usize]).unwrap();
+        let bytes = photocraft_codecs::encode(&img, photocraft_codecs::Format::Png, &Default::default()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn a_path_spelling_dedupe_reply_warns_that_the_file_is_not_re_read() {
+        let dir = std::env::temp_dir().join(format!("pc-headless-dedupe-warn-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("x.png");
+        write_png(&file, 8, 4);
+        let mut h = Headless::trusted_local();
+        let first = h.open(&file).unwrap();
+        assert!(first["deduped"].is_null(), "{first}");
+        let second = h.open(&dir.join("./x.png")).unwrap();
+        assert_eq!(second["deduped"], json!(true), "{second}");
+        let warnings = second["warnings"].as_array().unwrap();
+        assert!(warnings.iter().all(|w| w.as_str().is_some_and(|w| !w.is_empty())), "{second}");
+        assert!(warnings.iter().any(|w| w.as_str().is_some_and(|w| w.contains("without re-reading"))), "{second}");
+        drop(h);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(all(unix, not(target_arch = "wasm32")))]
+    #[test]
+    fn a_hard_link_alias_dedupes_to_the_open_document_and_names_the_alias() {
+        let dir = std::env::temp_dir().join(format!("pc-headless-dedupe-link-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let original = dir.join("original.png");
+        write_png(&original, 8, 4);
+        let alias = dir.join("alias.png");
+        std::fs::hard_link(&original, &alias).unwrap();
+        let mut h = Headless::trusted_local();
+        let first = h.open(&original).unwrap();
+        assert!(first["deduped"].is_null(), "{first}");
+        let second = h.open(&alias).unwrap();
+        assert_eq!(second["deduped"], json!(true), "{second}");
+        assert_eq!(second["index"], first["index"], "the alias opens no second document");
+        assert_eq!(h.session.documents().len(), 1);
+        let warnings: Vec<&str> = second["warnings"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(warnings.iter().any(|w| w.contains("without re-reading")), "{second}");
+        assert!(warnings.iter().any(|w| w.contains("another name for the open document")), "{second}");
+        let third = h.open(&original).unwrap();
+        assert_eq!(third["deduped"], json!(true), "{third}");
+        let warnings: Vec<&str> = third["warnings"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert_eq!(warnings.len(), 1, "a spelling-only dedupe has no alias note: {third}");
+        drop(h);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
