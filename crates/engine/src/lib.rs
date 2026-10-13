@@ -9,6 +9,7 @@
 
 pub mod actions_cmds;
 pub mod actions_edit_cmds;
+pub mod actions_record;
 pub mod adjust_cmds;
 pub mod adjust_params;
 pub mod align_cmds;
@@ -377,6 +378,8 @@ pub struct Session {
     pub journal: Vec<(String, Value)>,
     /// Coalescing key of the command being executed.
     coalesce_request: Option<String>,
+    /// The text layer the last journal entry made or typed into ([`actions_record`]).
+    typed_layer: Option<LayerId>,
     /// Pixels copied with Edit › Copy / Cut (shared by all documents, like Photoshop).
     pub clipboard: Option<edit_cmds::Clip>,
     /// Layer › Layer Style › Copy Layer Style: effects, blend mode, fill opacity and the Advanced

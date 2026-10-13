@@ -182,6 +182,8 @@ struct Running {
     started_ms: f64,
     coalesce: Option<String>,
     color_restrict: Option<usize>,
+    /// The document before the command, for document-independent journaling.
+    before: crate::actions_record::Before,
     rx: std::sync::mpsc::Receiver<Result<Payload>>,
     apply: Option<Apply>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -335,6 +337,7 @@ pub fn run<T: Send + 'static>(
         started_ms: now_ms(),
         coalesce: s.coalesce_request.clone(),
         color_restrict: s.color_restrict,
+        before: crate::actions_record::Before::capture(s),
         rx,
         apply: Some(erased),
         #[cfg(not(target_arch = "wasm32"))]
@@ -659,6 +662,7 @@ impl Session {
         // action it plays (a script step) must not flush the steps it ran so far into the action
         // being recorded, nor move the recording mark past the entries it is about to replace.
         let recording = if spec.journal && crate::actions_cmds::replayable(id) { self.actions.recording.take() } else { None };
+        let before = crate::actions_record::Before::capture(self);
         // Last-resort guard (AGENTS.md, Never crash): a command that panics anyway fails with an
         // error instead of taking the app down. `edit` only commits a document after its closure
         // returns, so the documents are unchanged.
@@ -686,7 +690,7 @@ impl Session {
                 Ok(Started::Job(jid))
             }
             (Ok(v), None) => {
-                self.after_command(id, params, spec.journal, Some(nested_from));
+                self.after_command(id, params, spec.journal, Some(nested_from), &before);
                 Ok(Started::Done(v))
             }
         }
@@ -699,7 +703,11 @@ impl Session {
     /// dropped, so a recorded action replays the command once, not its steps as well (#3067).
     /// Edit › Transform › Again (and Again on a Copy) is not replayable and keeps the concrete
     /// steps it ran instead.
-    fn after_command(&mut self, id: &str, params: Value, journal: bool, nested_from: Option<usize>) {
+    ///
+    /// `before` is the active document before the command: the journal names layers as the
+    /// command's caller saw them, in a form that replays on another document
+    /// ([`crate::actions_record`]).
+    fn after_command(&mut self, id: &str, params: Value, journal: bool, nested_from: Option<usize>, before: &crate::actions_record::Before) {
         // A layer-mask view ends when another layer becomes active (#196).
         if let Some(st) = self.active_mut() {
             crate::mask_view_cmds::fix(st);
@@ -713,9 +721,18 @@ impl Session {
         if let Some(from) = nested_from.filter(|_| crate::actions_cmds::replayable(id)) {
             self.journal.truncate(from);
         }
-        if !crate::brush_cmds::coalesce_journal(self, id, &params) {
-            self.journal.push((id.to_string(), params));
+        let typed = crate::actions_record::typed_layer(self, id, &params);
+        let params = crate::actions_record::portable(id, params, before);
+        match crate::actions_record::fold_keystroke(self, id, &params, self.typed_layer) {
+            crate::actions_record::Keystroke::Folded => {}
+            crate::actions_record::Keystroke::Step(step) => self.journal.push((id.to_string(), step)),
+            crate::actions_record::Keystroke::None => {
+                if !crate::brush_cmds::coalesce_journal(self, id, &params) {
+                    self.journal.push((id.to_string(), params));
+                }
+            }
         }
+        self.typed_layer = typed;
     }
 
     /// Apply (or report the failure of) a job whose worker has delivered `r`.
@@ -735,7 +752,7 @@ impl Session {
     }
 
     fn apply_job(&mut self, job: &Running, apply: Option<Apply>, payload: Payload) -> Result<Value> {
-        let Running { label, doc, snapshot, coalesce, color_restrict, command, params, journal, .. } = job;
+        let Running { label, doc, snapshot, coalesce, color_restrict, command, params, journal, before, .. } = job;
         let prev_active = self.active;
         let target = match doc {
             Some(d) => {
@@ -770,7 +787,7 @@ impl Session {
         // Restoring the viewed document first would attribute Fade and slice updates
         // to that document instead, when the user switched tabs mid-job.
         if r.is_ok() {
-            self.after_command(command, params.clone(), *journal, Some(nested_from));
+            self.after_command(command, params.clone(), *journal, Some(nested_from), before);
         }
         // Keep the user's active document unless the job opened a new one.
         // This also restores the selection when the apply step returned an error.

@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (G11: document-independent recording landed, AUTO-219-1 done; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -88,7 +88,7 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G11. Actions and scripting
-- **Missing:** document-independent action recording (AUTO-219-1), Batch recursion and naming
+- **Missing:** Batch recursion and naming
   (AUTO-219-5), ExtendScript/UXP compatibility. `.atn` steps outside the
   mapped events (paths, scripts, Generative Fill, Filter Gallery effects other than Spatter,
   Duplicate Layers into a new document, Bitmap halftone screens…) load as kept Photoshop steps
@@ -111,6 +111,10 @@ what an agent can't finish alone.
   in set folders, has the dialog toggle column (playback pauses on the step's dialog and resumes
   on OK) and Insert Stop…; `actions.insert`, `actions.dialog`, `actions.assignSet` for agents
   (AUTO-219-2 done).
+- **Done 2026-10-12:** recording is document-independent (AUTO-219-1): a step on the active
+  layer records no layer, any other layer records by name (Select Layer always), and the Type
+  tool's keystrokes fold into one Make Type Layer / Edit Type step with the whole text, as
+  Photoshop records them; a recording replays on a document whose layers have other ids.
 - **Ahead of Photoshop:** CLI, MCP and the JSON control channel drive every command.
 - **Estimate:** 120–200 h. **Human:** whether to support a JavaScript scripting dialect at all
   (AGENTS.md forbids JS in the app).
@@ -266,6 +270,7 @@ what an agent can't finish alone.
 | 2026-10-12 | minor | G4: checkbox-only Brush Settings rows preserve the open controls and Smoothing settings (#4283); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G11: Load/Save Actions `.atn` landed (AUTO-219-2 partial); remaining panel work listed |
 | 2026-10-12 | minor | Refreshed against main: G5 items fixed by #2480, #2327, #2609, #2684, #2675, #2556, #2396, #2527, #2625 and TOOL-214-5/#2442; G7 TOOL-214-7 and Transform On Drop done; G2 #2377 fixed (#2417); G9 UI scale (UI-217-9) and Stamp Visible (UI-217-22) done, prefs 27 of 156; G10 #2225 done (#2482); G13 Khmer, Lao, Myanmar fallback (#3259); G14 CR3 line; G17 Windows ARM64 done (DIST-220-2) |
+| 2026-10-12 | minor | G11: document-independent recording landed (AUTO-219-1 done) |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |
 | 2026-10-11 | minor | G13: Czech dynamic UI text localized; engine messages and native review remain open |
 | 2026-10-11 | minor | G8: triple/quadruple/five-click type selection done (TYPE-218-8, #3493); Type evidence recounted |

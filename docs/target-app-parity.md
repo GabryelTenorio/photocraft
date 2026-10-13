@@ -177,7 +177,7 @@ parity for the area and are already contained in the dimension rows above.
 | Vector shapes and paths | 55% | 80–140 | Pen, Direct/Path Selection, shapes, shape strokes. Freeform and Curvature Pen (#1054). Add/Delete Anchor Point and Convert Point tools exist (`Tool` enum); missing on-canvas corner radius (TOOL-214-12), path-point nudge; shape parity tracking issue #2496 |
 | Colour management and modes | 70% | 60–100 | Own ICC engine, soft proof, CMYK/Lab/Indexed/Duotone/Multichannel; no Adobe CMYK profiles, no spot plates (FILE-215-17), monitor profile only at launch |
 | Camera Raw and computational photo (Photomerge, HDR, lens) | 45% | 120–200 | Raw for DNG/CR2/NEF/ARW/RW2/ORF/RAF(uncompressed)/PEF; no CR3; ACR dialog partial (no masking, calibration); generic lens profiles only |
-| Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; Actions panel and recording not document-independent (AUTO-219-1/2); `.atn` load/save since 2026-10-12 (112 events mapped, the rest kept verbatim); no ExtendScript/UXP |
+| Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; recording document-independent and the panel complete since 2026-10-12 (AUTO-219-1/2); `.atn` load/save since 2026-10-12 (112 events mapped, the rest kept verbatim); no ExtendScript/UXP |
 | File I/O | 60% | 300–500 | See [file-format-parity.md](file-format-parity.md) |
 | Print, export, Save for Web | 50% | 60–100 | JPEG Options dialog missing (FILE-215-19), no Photoshop PDF, no separations, Save for Web settings not remembered |
 | Video / timeline, data-driven graphics | 30% | 100–200 | Menu items live; frame model persists in `.pcraft`; no PSD video-layer mapping |
@@ -567,6 +567,7 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 | 2026-10-12 | minor | `.atn` import: 112 events mapped (TrueGrit Texture Supply sets play end to end); percentages unchanged |
 | 2026-10-12 | minor | Photoshop Actions `.atn` load and save (90 events mapped both ways); percentages unchanged |
 | 2026-10-12 | minor | Rows checked against `main` and the regenerated scorecard: menu count 631, Workspace checklist and preference count, transform context menu, Puppet Warp mesh, Select and Mask, anchor-point tools, Smart Object conversion, Stamp Visible, mask targeting, Free Transform commit/cancel, Vietnamese catalog, Windows ARM64; percentages, weights and hours not re-measured |
+| 2026-10-12 | minor | Document-independent action recording (AUTO-219-1); percentages unchanged |
 | 2026-10-10 | minor | Added measured Tilt-Shift computation/filtered-proxy gains and inconclusive cases; parity percentages and budgets unchanged |
 | 2026-10-10 | minor | Readiness-by-audience table: percent and hours for full, mainstream and essentials; full number confirmed as the additive weighted sum over dimensions (46%, reported ~45%) |
 | 2026-10-10 | minor | Added mainstream-practitioner (~43%) and essentials-user (~61%) numbers with written weights and discounts; full ready-for-real-work rechecked against its written weights (46%, reported ~45%), unchanged |
