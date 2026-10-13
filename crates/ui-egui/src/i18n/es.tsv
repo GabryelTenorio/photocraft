@@ -846,6 +846,12 @@
 	Baseline shift	Desplazamiento de línea de base
 	Basic	Básico
 	Before (Y)	Antes (Y)
+	Save Settings…	Guardar ajustes…
+	Load Settings…	Cargar ajustes…
+	Save these settings as a Camera Raw .xmp file	Guardar estos ajustes como archivo .xmp de Camera Raw
+	Load settings from a Camera Raw .xmp file	Cargar ajustes desde un archivo .xmp de Camera Raw
+	Loaded Camera Raw settings from {file}	Ajustes de Camera Raw cargados desde {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Ajustes de Camera Raw cargados desde {file} ({n} no compatibles)
 	Begin recording	Iniciar grabación
 	Bend:	Curvatura:
 	Bicubic	Bicúbica
@@ -1148,6 +1154,9 @@
 	Ignore All	Ignorar todo
 	Image Size	Tamaño de imagen
 	Import Brushes…	Importar pinceles…
+	Gradient Preset Options	Opciones de ajustes preestablecidos de degradado
+	Import .GRD	Importar .GRD
+	Choose a gradient file (.grd).	Seleccione un archivo de degradados (.grd).
 	Import brushes (.abr)	Importar pinceles (.abr)
 	Import Presets	Importar ajustes preestablecidos
 	Imported	Importado
@@ -2731,9 +2740,14 @@ curves	Smooth	Suavizar
 	Light Red	Rojo claro
 	Medium Blue	Azul medio
 	Light Gray	Gris claro
+	Object Finder	Buscador de objetos
+	No object found there — drag a rectangle around it	No se encontró ningún objeto ahí; arrastra un rectángulo a su alrededor
 	Remove after each stroke	Eliminar después de cada trazo
 	Apply the removal ({key})	Aplicar la eliminación ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Trazos por eliminar: {n} (Intro aplica, Esc cancela)
+	Clear Brush Controls	Borrar controles de pincel
+	Reset All Locked Settings	Restaurar todos los ajustes bloqueados
+	Copy Texture to Other Tools	Copiar textura en otras herramientas
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Cargar acciones…

@@ -3784,6 +3784,9 @@ cameraData	Lens	Lens
 @plural	{n} step|{n} steps	{n} adım
 @plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} fırça ön ayarı uyarısı daha)
 @plural	{what} with {n} warning|{what} with {n} warnings	{what}, {n} uyarı ile
+	Clear Brush Controls	Fırça Denetimlerini Temizle
+	Reset All Locked Settings	Tüm Kilitli Ayarları Sıfırla
+	Copy Texture to Other Tools	Dokuyu Diğer Araçlara Kopyala
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Eylemleri Yükle…
@@ -3805,4 +3808,15 @@ cameraData	Lens	Lens
 	Action playback stopped	Eylem oynatma durduruldu
 	Step {step} is waiting for its dialog	{step}. adım iletişim kutusunu bekliyor
 @plural	{n} action|{n} actions	{n} eylem
+	Object Finder	Nesne Bulucu
+	No object found there — drag a rectangle around it	Orada nesne bulunamadı — çevresine bir dikdörtgen sürükleyin
 	Drag to pan · Scroll to zoom · Double-click to fit	Kaydırmak için sürükleyin · Yakınlaştırmak için kaydırın · Sığdırmak için çift tıklayın
+	Gradient Preset Options	Gradyan Ön Ayarı Seçenekleri
+	Import .GRD	.GRD İçe Aktar
+	Choose a gradient file (.grd).	Bir gradyan dosyası (.grd) seçin.
+	Save Settings…	Ayarları Kaydet…
+	Load Settings…	Ayarları Yükle…
+	Save these settings as a Camera Raw .xmp file	Bu ayarları Camera Raw .xmp dosyası olarak kaydet
+	Load settings from a Camera Raw .xmp file	Ayarları bir Camera Raw .xmp dosyasından yükle
+	Loaded Camera Raw settings from {file}	Camera Raw ayarları {file} dosyasından yüklendi
+	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw ayarları {file} dosyasından yüklendi ({n} desteklenmiyor)

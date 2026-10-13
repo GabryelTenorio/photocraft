@@ -819,6 +819,12 @@
 	Baseline shift	기준선 이동
 	Basic	기본
 	Before (Y)	이전 (Y)
+	Save Settings…	설정 저장…
+	Load Settings…	설정 불러오기…
+	Save these settings as a Camera Raw .xmp file	이 설정을 Camera Raw .xmp 파일로 저장
+	Load settings from a Camera Raw .xmp file	Camera Raw .xmp 파일에서 설정 불러오기
+	Loaded Camera Raw settings from {file}	{file}에서 Camera Raw 설정을 불러왔습니다
+	Loaded Camera Raw settings from {file} ({n} not supported)	{file}에서 Camera Raw 설정을 불러왔습니다 (미지원 {n}개)
 	Begin recording	기록 시작
 	Bend:	구부림:
 	Bicubic	쌍입방
@@ -1118,6 +1124,9 @@
 	Ignore All	모두 무시
 	Image Size	이미지 크기
 	Import Brushes…	브러시 가져오기…
+	Gradient Preset Options	그레이디언트 사전 설정 옵션
+	Import .GRD	.GRD 가져오기
+	Choose a gradient file (.grd).	그레이디언트 파일 (.grd)을 선택하세요.
 	Import brushes (.abr)	브러시 가져오기(.abr)
 	Import Presets	사전 설정 가져오기
 	Imported	가져옴
@@ -3220,9 +3229,14 @@ curves	Smooth	매끄럽게
 	Light Red	연한 빨강
 	Medium Blue	중간 파랑
 	Light Gray	연한 회색
+	Object Finder	개체 찾기
+	No object found there — drag a rectangle around it	그곳에서 개체를 찾지 못했습니다 — 주위에 사각형을 드래그하세요
 	Remove after each stroke	획마다 제거
 	Apply the removal ({key})	제거 적용 ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	제거할 획: {n} (Enter 적용, Esc 취소)
+	Clear Brush Controls	브러시 제어 지우기
+	Reset All Locked Settings	모든 잠긴 설정 재설정
+	Copy Texture to Other Tools	다른 도구로 텍스처 복사
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	액션 불러오기…
