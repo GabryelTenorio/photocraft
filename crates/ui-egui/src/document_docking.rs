@@ -39,6 +39,19 @@ fn checked_rect(params: &Value, default: [f32; 4]) -> Result<[f32; 4], String> {
     }
     Ok(rect)
 }
+/// Place a primary view using its independent preferred size, keeping the header reachable.
+pub(crate) fn placement(app: &PhotocraftApp, doc: usize, at: Pos2, available: Rect) -> Result<[f32; 4], String> {
+    let id = app.session.documents().get(doc).ok_or("unknown document")?.doc.id.0;
+    let preferred = app.ui.floating_documents.get(&id).or_else(|| app.ui.document_float_memory.get(&id)).copied().unwrap_or([100.0, 120.0, 800.0, 600.0]);
+    let preferred = checked_rect(&json!({}), preferred)?;
+    if !at.is_finite() || !available.is_finite() || !available.is_positive() {
+        return Err("invalid document placement geometry".into());
+    }
+    let visible = clamp(Rect::from_min_size(at, egui::vec2(preferred[2], preferred[3])), available);
+    // Clamping must not overwrite preferred dimensions on a narrow viewport.
+    checked_rect(&json!({}), [visible.left(), visible.top(), preferred[2], preferred[3]])
+}
+
 pub(crate) fn detach(app: &mut PhotocraftApp, doc: usize, rect: Option<[f32; 4]>) -> Result<u64, String> {
     if app.session.prefs().workspace_locked {
         return Err("workspace is locked".into());
@@ -375,8 +388,13 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 let _ = app.run("window.document.dock", json!({"documentView":drag.id}));
             } else if !drag.tab || app.tab_strip.as_ref().is_some_and(|s| tab_outside(ctx, s.rect)) {
                 let rect = moved(&drag, pointer);
-                let _ = app
-                    .run("window.document.float", json!({"documentView":drag.id,"x":rect.left(),"y":rect.top(),"width":rect.width(),"height":rect.height()}));
+                if app
+                    .run("window.document.float", json!({"documentView":drag.id,"x":rect.left(),"y":rect.top(),"width":rect.width(),"height":rect.height()}))
+                    .is_ok()
+                    && let Some(doc) = index(app, drag.id)
+                {
+                    app.session.set_active(doc);
+                }
             }
         }
     }
