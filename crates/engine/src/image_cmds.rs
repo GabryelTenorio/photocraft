@@ -165,8 +165,26 @@ fn image_size(s: &mut Session, p: &Value) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let (ow, oh) = (d.doc.size.width, d.doc.size.height);
     let resample = parse_resample(p.get("resample").and_then(Value::as_str).unwrap_or("bicubic"));
-    let pw = p.get("width").and_then(Value::as_f64);
-    let ph = p.get("height").and_then(Value::as_f64);
+    let mut pw = p.get("width").and_then(Value::as_f64);
+    let mut ph = p.get("height").and_then(Value::as_f64);
+    // `percent` scales both sides (what a Photoshop action records as "200%"); an explicit side wins.
+    if let Some(pc) = p.get("percent") {
+        let pc = pc.as_f64().filter(|v| v.is_finite() && *v > 0.0).ok_or_else(|| bad("image.imageSize", "`percent` must be a positive number"))?;
+        pw = pw.or(Some(ow as f64 * pc / 100.0));
+        ph = ph.or(Some(oh as f64 * pc / 100.0));
+    }
+    // `keepPrintSize`: only the resolution given, the pixels follow it (Photoshop's Image Size
+    // with Resample on, as an action records it).
+    if p.get("keepPrintSize").and_then(Value::as_bool) == Some(true)
+        && pw.is_none()
+        && ph.is_none()
+        && let Some(r) = p.get("resolution").and_then(Value::as_f64)
+    {
+        let r = r.clamp(1.0, 10_000.0);
+        let old = f64::from(d.doc.resolution_dpi).max(1.0);
+        pw = Some(ow as f64 * r / old);
+        ph = Some(oh as f64 * r / old);
+    }
     // Missing dimension keeps the aspect ratio.
     let (nw, nh) = match (pw, ph) {
         (Some(w), Some(h)) => (w, h),
@@ -713,7 +731,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "image.imageSize",
             "Image Size…",
             ["Image"],
-            r##"{"width":px,"height":px,"resolution":ppi,"resample":"automatic|preserveDetails|bicubicSmoother|bicubicSharper|bicubicAutomatic|bicubic|nearest|bilinear|lanczos|none"="bicubic"} → {width,height} (the document's size after the command; "none" changes the resolution only)"##,
+            r##"{"width":px,"height":px,"percent":%? (both sides; an explicit side wins),"resolution":ppi,"keepPrintSize":bool=false (with only a resolution: resample the pixels to keep the print size),"resample":"automatic|preserveDetails|bicubicSmoother|bicubicSharper|bicubicAutomatic|bicubic|nearest|bilinear|lanczos|none"="bicubic"} → {width,height} (the document's size after the command; "none" changes the resolution only)"##,
             has_doc,
             image_size
         ),
@@ -854,6 +872,21 @@ mod tests {
 
     fn doc(s: &Session) -> &Document {
         &s.active().unwrap().doc
+    }
+
+    /// Resample on with only a new resolution keeps the print size, as Photoshop's Image Size
+    /// does (an action's `imageSize` with `Rslt` alone); without `keepPrintSize` only the
+    /// resolution changes.
+    #[test]
+    fn image_size_keep_print_size_resamples_to_the_resolution() {
+        let mut s = session();
+        s.execute("image.imageSize", json!({"resolution": 144, "resample": "bicubic"})).unwrap();
+        assert_eq!((doc(&s).size, doc(&s).resolution_dpi), (Size::new(40, 20), 144.0));
+        s.execute("image.imageSize", json!({"resolution": 288, "resample": "bicubic", "keepPrintSize": true})).unwrap();
+        assert_eq!((doc(&s).size, doc(&s).resolution_dpi), (Size::new(80, 40), 288.0));
+        // An explicit side still wins.
+        s.execute("image.imageSize", json!({"width": 20, "resolution": 72, "resample": "bicubic", "keepPrintSize": true})).unwrap();
+        assert_eq!(doc(&s).size, Size::new(20, 10));
     }
 
     #[test]
