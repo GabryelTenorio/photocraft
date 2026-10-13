@@ -507,23 +507,36 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
 // ---------------------------------------------------------------- options bar
 
 /// A ramp of RGBA stops over a checkerboard in `r`.
+/// Horizontal span of ramp slice `k` of `n`. Neighbouring slices overlap by half a point so the
+/// GPU's edge rule cannot leave a transparent column between them (#4577).
+fn ramp_slice(left: f32, width: f32, k: usize, n: usize) -> (f32, f32) {
+    let n = n.max(1);
+    let u0 = k as f32 / n as f32;
+    let u1 = (k + 1) as f32 / n as f32;
+    let x0 = left + u0 * width - if k == 0 { 0.0 } else { 0.5 };
+    let x1 = left + u1 * width + if k + 1 == n { 0.0 } else { 0.5 };
+    (x0, x1)
+}
+
 fn paint_ramp(p: &egui::Painter, r: Rect, sample: impl Fn(f32) -> [f32; 4]) {
     widgets::checker(p, r, 5.0);
     let n = 64;
     let mut mesh = egui::Mesh::default();
-    for k in 0..=n {
-        let u = k as f32 / n as f32;
-        let c = sample(u);
-        let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let col = Color32::from_rgba_unmultiplied(q(c[0]), q(c[1]), q(c[2]), q(c[3]));
-        let x = r.left() + u * r.width();
-        mesh.colored_vertex(pos2(x, r.top()), col);
-        mesh.colored_vertex(pos2(x, r.bottom()), col);
-        if k > 0 {
-            let i = (2 * k) as u32;
-            mesh.add_triangle(i - 2, i - 1, i);
-            mesh.add_triangle(i - 1, i + 1, i);
-        }
+    for k in 0..n {
+        let (x0, x1) = ramp_slice(r.left(), r.width(), k, n);
+        let sample_at = |u: f32| {
+            let c = sample(u);
+            let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+            Color32::from_rgba_unmultiplied(q(c[0]), q(c[1]), q(c[2]), q(c[3]))
+        };
+        let (ca, cb) = (sample_at(k as f32 / n as f32), sample_at((k + 1) as f32 / n as f32));
+        let i = mesh.vertices.len() as u32;
+        mesh.colored_vertex(pos2(x0, r.top()), ca);
+        mesh.colored_vertex(pos2(x1, r.top()), cb);
+        mesh.colored_vertex(pos2(x1, r.bottom()), cb);
+        mesh.colored_vertex(pos2(x0, r.bottom()), ca);
+        mesh.add_triangle(i, i + 1, i + 2);
+        mesh.add_triangle(i, i + 2, i + 3);
     }
     p.add(mesh);
 }
@@ -1020,6 +1033,20 @@ mod tests {
 
     fn mods() -> egui::Modifiers {
         egui::Modifiers::NONE
+    }
+
+    #[test]
+    fn ramp_slices_overlap_so_a_column_cannot_fall_through() {
+        let n = 64;
+        let width = 96.0;
+        let mut prev = ramp_slice(0.0, width, 0, n);
+        assert_eq!(prev.0, 0.0);
+        for k in 1..n {
+            let span = ramp_slice(0.0, width, k, n);
+            assert!(span.0 < prev.1, "slice {k} starts at {} after {} ended", span.0, prev.1);
+            prev = span;
+        }
+        assert!((prev.1 - width).abs() < 1e-4);
     }
 
     fn drag(app: &mut PhotocraftApp, a: [f64; 2], b: [f64; 2]) {
