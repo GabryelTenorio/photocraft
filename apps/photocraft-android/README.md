@@ -7,6 +7,9 @@ framework. No webview is used. This platform adapter currently needs two unsafe 
 bootstrap calls, isolated in `src/android.rs`, to wrap android-activity's JVM and Activity
 handles. This is a platform exception requiring upstream review.
 
+Current community source: **0.8.2-android-alpha.4**, pinned upstream 24930b31.
+See [porting guide and migration bundle tools](../../docs/android-porting.md).
+
 ## Build
 
 Install the workspace Rust toolchain, cargo-ndk, Android SDK 35, NDK r27c and JDK 17+.

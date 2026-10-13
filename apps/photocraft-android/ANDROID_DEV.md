@@ -81,3 +81,19 @@ selection. Host and Android clippy (all targets), layers and wasm passed. Vietna
 labels were added without dropping newer upstream translations. The 0.8.0 press-stroke
 boolean is cleared during sampling; Android development versionCode is 4.
 The published APK remains the independently tested 0.7.0 alpha.3 build.
+
+## 0.8.2 migration (alpha.4, 2026-10-13)
+
+Pinned upstream: 24930b31 (0.8.2), preserving the original Android application id.
+Android versionCode 5; source branch codex/android-0.8.2. Safe SAF code and service
+registration moved into android_files.rs; the existing two unsafe bootstrap calls
+remain in android.rs. Generic touch gesture ownership and navigation moved into
+touch_navigation.rs. Source/color sampling remains in touch_ui.rs.
+
+UI regression: 2545 passed, 12 ignored. Android host file service test passed.
+The old Windows path assertion now passes on this upstream base. Host/Android clippy,
+layers and wasm passed; safe-GPU synthetic snapshot inspected. Three new catalog-port
+tests passed. The helper exports platform, touch and docs/tools patches plus keyed
+catalog additions, preserving upstream translations. PSD export options added upstream
+are forwarded by the Android service adapter. Final APK/device and corpus results
+are recorded below once completed. [Porting guide](../../docs/android-porting.md).

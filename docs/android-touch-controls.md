@@ -1,6 +1,6 @@
 # PhotoCraft Android: keyboard-free touch tools
 
-Updated 2026-10-13 · Community build **0.7.0-android-alpha.3** · Contributor **@HubWithTorch**
+Updated 2026-10-13 · Community build **0.8.2-android-alpha.4** · Contributor **@HubWithTorch**
 
 Clone Stamp and Healing previously asked for Alt-click to set a source. A tablet user
 without a keyboard could select the tool but could not start retouching. Android now
@@ -9,7 +9,9 @@ The same shared Rust UI remains optional on desktop, under Window > Modifier Key
 
 Download the [community APK and checksums](https://github.com/HubWithTorch/photocraft/releases/tag/android-v0.7.0-alpha.3).
 This is an experimental community release, not an official upstream Android release.
-The released APK uses the preserved 0.7.0 branch; the upstream contribution is forward-ported to 0.8.0.
+The new alpha.4 release uses upstream 0.8.2 with the same file and touch fixes.
+Screenshots below remain the original alpha.2/alpha.3 device comparison, not new-build evidence.
+See [migration boundaries and build tools](android-porting.md).
 
 ## Before and after / 修复前后
 

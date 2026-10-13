@@ -17,6 +17,8 @@ pub(crate) fn services() -> Services {
             opts.tiff_layers = settings.tiff_layers;
             opts.xmp = if settings.xmp_all { photocraft_io::XmpEmbed::All } else { photocraft_io::XmpEmbed::None };
             opts.tga_bits = settings.tga_bits;
+            opts.image_previews = settings.image_previews;
+            opts.psd_maximize_compatibility = settings.psd_maximize_compatibility;
             photocraft_io::export(doc, name, &opts).map(|r| (r.bytes, r.warnings)).map_err(|e| e.to_string())
         })),
         ..Default::default()
@@ -27,6 +29,21 @@ mod tests {
     use super::*;
     use photocraft_ui_egui::{FileDialogAnswer, FileDialogRequest, PhotocraftApp};
     use std::sync::{Arc, Mutex};
+    #[test]
+    fn psd_preview_preference_reaches_the_encoder() {
+        let services = services();
+        let mut session = photocraft_engine::Session::new();
+        session.execute("file.new", serde_json::json!({"width": 8, "height": 8})).unwrap();
+        let doc = &session.active().unwrap().doc;
+        let encode = services.export.as_ref().unwrap();
+        let (with_preview, _) = encode(doc, "preview.psd", &Default::default()).unwrap();
+        let settings = photocraft_ui_egui::ExportSettings { image_previews: false, ..Default::default() };
+        let (without_preview, _) = encode(doc, "preview.psd", &settings).unwrap();
+        // The PSD thumbnail resource (1036) is omitted when the UI preference is off.
+        let has_thumbnail = |bytes: &[u8]| bytes.windows(6).any(|w| w == b"8BIM\x04\x0c");
+        assert!(has_thumbnail(&with_preview));
+        assert!(!has_thumbnail(&without_preview));
+    }
     #[test]
     fn picker_open_export_and_repeated_save_round_trip() {
         let mut services = services();
