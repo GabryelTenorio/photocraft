@@ -814,6 +814,9 @@
 	Add Layer Mask	Ebenenmaske hinzufügen
 	Add Stop	Farbstopp hinzufügen
 	Add a layer style	Ebenenstil hinzufügen
+	Move effect up	Effekt nach oben verschieben
+	Move effect down	Effekt nach unten verschieben
+	Delete effect	Effekt löschen
 	Add a mask  (from the selection; {key} inverts)	Maske hinzufügen  (aus der Auswahl; {key} kehrt um)
 	Add an adjustment	Anpassung hinzufügen
 	Add disk	Festplatte hinzufügen
@@ -2391,6 +2394,8 @@
 	Add to Swatches	Zu Farbfeldern hinzufügen
 # Layer Style > Blending Options (Advanced Blending)
 	Blend If:	Farbbereich:
+	Current Layer:	Aktuelle Ebene:
+	Underlying Layer:	Darunter liegende Ebene:
 	Channels:	Kanäle:
 	Knockout	Aussparung
 	Apply At Canvas Bounds	Effekt an Arbeitsflächenbegrenzungen anwenden
