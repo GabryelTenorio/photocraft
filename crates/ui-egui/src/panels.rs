@@ -298,11 +298,36 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     let sm = icons::button(ui, "app-window", bx, false, tl!("Change Screen Mode  (F)"));
                     paint_toolbar_flyout_indicator(ui, &t, &sm);
 
-                    if sm.clicked() {
+                    // Right-click, or click and hold like the tool flyouts (#4444), lists the modes,
+                    // like Photoshop's flyout. The release that ends a hold doesn't cycle the mode.
+                    let held_id = sm.id.with("held");
+                    let was_held = ui.data(|d| d.get_temp::<bool>(held_id)).unwrap_or(false);
+                    let held_for = sm.is_pointer_button_down_on().then(|| ui.input(|i| i.pointer.press_start_time().map(|t0| i.time - t0))).flatten();
+                    if let Some(seconds) = held_for
+                        && seconds < 0.35
+                    {
+                        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(0.35 - seconds));
+                    }
+                    let long_press = !was_held && held_for.is_some_and(|seconds| seconds >= 0.35);
+                    if long_press {
+                        ui.data_mut(|d| d.insert_temp(held_id, true));
+                    } else if was_held && !sm.is_pointer_button_down_on() {
+                        ui.data_mut(|d| d.remove::<bool>(held_id));
+                    }
+                    let cycle = sm.clicked() && !was_held;
+                    if cycle {
                         let _ = crate::menus::invoke(app, &ctx, "view.screenMode.cycle", json!({}));
                     }
-                    // Right-click (or long-press) lists the modes, like Photoshop's flyout.
-                    egui::Popup::context_menu(&sm).show(|ui| {
+                    let open = if sm.secondary_clicked() || long_press {
+                        Some(egui::SetOpenCommand::Bool(true))
+                    } else if cycle {
+                        Some(egui::SetOpenCommand::Bool(false))
+                    } else {
+                        None
+                    };
+                    // The release ending the hold counts as a click; it mustn't close the list it opened.
+                    let close = if was_held || long_press { egui::PopupCloseBehavior::IgnoreClicks } else { egui::PopupCloseBehavior::CloseOnClick };
+                    egui::Popup::menu(&sm).open_memory(open).close_behavior(close).at_pointer_fixed().show(|ui| {
                         ui.set_min_width(220.0);
                         for (id, label) in [
                             ("view.screenMode.standard", tl!("Standard Screen Mode")),
@@ -1963,7 +1988,16 @@ fn empty(ui: &mut egui::Ui, s: &str) {
     ui.add_space(6.0);
 }
 
+/// The Color tab of the themes other than Photoshop's: the same spectrum field (chips, saturation
+/// and brightness field, hue strip and readout) with HSB sliders under it (#4367).
 fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    color_field(app, ui);
+    ui.add_space(8.0);
+    hsb_sliders(app, ui);
+}
+
+/// Hue, Saturation and Brightness sliders for the foreground colour.
+fn hsb_sliders(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let fg = app.session.tools.foreground;
     // Keep the last edited HSB while it still gives the foreground: black and greys have no hue or
     // saturation of their own, so recomputing them from RGB would reset what was just typed to 0.
@@ -1990,16 +2024,6 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.data_mut(|d| d.insert_temp(key, hsva));
         crate::type_tool::foreground_changed(app);
     }
-    ui.horizontal(|ui| {
-        let (sw, _) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::hover());
-        ui.painter().rect_filled(sw, 6.0, hsva_color32(hsva));
-        let mut c = app.session.tools.foreground;
-        if color_readout(ui, ui.id().with("color-panel"), &mut c) {
-            app.session.tools.foreground = c;
-            ui.data_mut(|d| d.insert_temp(key, srgb_hsva(c)));
-            crate::type_tool::foreground_changed(app);
-        }
-    });
 }
 
 // ----------------------------------------------------------------------------- layers
@@ -3358,7 +3382,9 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let strip_w = 14.0;
     // Photoshop's Color panel field fills the panel: take the height the dock offers, less the
     // hex/RGB readout (which folds onto a second line in a narrow dock). Without a dock, 120 pt.
-    let h = color_field_height(ui.data(|d| d.get_temp::<f32>(color_field_fill_id())), w);
+    // Only Photoshop's themes stretch it over the group: the other themes put sliders under it.
+    let fill = if t.pro { ui.data(|d| d.get_temp::<f32>(color_field_fill_id())) } else { None };
+    let h = color_field_height(fill, w);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let (chips, _) = ui.allocate_exact_size(vec2(38.0, h), Sense::hover());
@@ -4123,7 +4149,7 @@ mod color_tests {
         let mut h = egui_kittest::Harness::builder().with_size(vec2(300.0, 300.0)).build_ui_state(
             |ui, app: &mut PhotocraftApp| {
                 if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
-                    color_picker(app, ui);
+                    hsb_sliders(app, ui);
                 }
             },
             app,
@@ -4664,6 +4690,65 @@ mod type_flyout_tests {
         frame(&mut app, &ctx, 2.05, vec![pointer(row, false)]);
         assert_eq!(app.ui.tool, Tool::VerticalType);
         assert!(ctx.data(|d| d.get_temp::<(egui::Id, Rect)>(egui::Id::new("tool-flyout"))).is_none());
+    }
+
+    /// #4444: click and hold on Change Screen Mode opens its list like the tool flyouts, without
+    /// cycling the mode on release; a plain click still cycles, and right-click still opens it.
+    #[test]
+    fn long_press_screen_mode_opens_the_modes_without_cycling() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::ALL[0]);
+        frame(&mut app, &ctx, 0.0, vec![]);
+        frame(&mut app, &ctx, 0.1, vec![]);
+        let bx = if Tokens::get(&ctx).pro { 30.0 } else { 36.0 };
+        // The toolbar's last button: Change Screen Mode, after Quick Mask.
+        let at = ctx
+            .viewport(|v| {
+                v.prev_pass
+                    .widgets
+                    .layers()
+                    .flat_map(|(_, w)| w.iter())
+                    .filter(|w| w.rect.size() == egui::Vec2::splat(bx) && w.sense.senses_click())
+                    .map(|w| w.rect)
+                    .max_by(|a, b| a.top().total_cmp(&b.top()).then(a.left().total_cmp(&b.left())))
+            })
+            .unwrap()
+            .center();
+        let standard = |app: &PhotocraftApp| crate::view_cmds::checked(app, "view.screenMode.standard") == Some(true);
+        let menu_open = |ctx: &egui::Context| egui::Popup::is_any_open(ctx);
+        let pointer = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        assert!(standard(&app));
+        // Hold, then release: the list opens and stays open, and the mode is unchanged.
+        frame(&mut app, &ctx, 1.0, vec![egui::Event::PointerMoved(at), pointer(at, true)]);
+        frame(&mut app, &ctx, 1.2, vec![]);
+        assert!(!menu_open(&ctx), "not before the hold time");
+        frame(&mut app, &ctx, 1.4, vec![]);
+        assert!(menu_open(&ctx), "open while still held");
+        frame(&mut app, &ctx, 1.5, vec![pointer(at, false)]);
+        frame(&mut app, &ctx, 1.55, vec![]);
+        assert!(menu_open(&ctx), "the release keeps it open");
+        assert!(standard(&app), "the release doesn't cycle the mode");
+        // Escape closes it; a plain click cycles the mode and opens nothing.
+        frame(
+            &mut app,
+            &ctx,
+            2.0,
+            vec![egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }],
+        );
+        frame(&mut app, &ctx, 2.05, vec![]);
+        assert!(!menu_open(&ctx));
+        frame(&mut app, &ctx, 3.0, vec![egui::Event::PointerMoved(at), pointer(at, true)]);
+        frame(&mut app, &ctx, 3.1, vec![pointer(at, false)]);
+        frame(&mut app, &ctx, 3.15, vec![]);
+        assert!(!standard(&app), "a click cycles");
+        assert!(!menu_open(&ctx));
+        // Right-click opens it too.
+        let secondary = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+        frame(&mut app, &ctx, 4.0, vec![secondary(true)]);
+        frame(&mut app, &ctx, 4.05, vec![secondary(false)]);
+        frame(&mut app, &ctx, 4.1, vec![]);
+        assert!(menu_open(&ctx));
     }
 
     #[test]

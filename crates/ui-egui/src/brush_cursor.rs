@@ -125,7 +125,6 @@ pub(crate) fn tip_mask(rings: &[Vec<[f32; 2]>], at: [f64; 2], radius: f64, rect:
     mask
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

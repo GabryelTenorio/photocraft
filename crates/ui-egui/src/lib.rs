@@ -191,6 +191,7 @@ pub mod targa_options_ui;
 pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
+mod tile_overlay;
 mod timeline_ui;
 mod titlebar;
 pub mod tone;
@@ -1449,6 +1450,11 @@ impl PhotocraftApp {
                 }
                 Ok(())
             });
+            // The file the document now lives in goes to the top of Open Recent and the Home
+            // screen, as opening it does (#4400). Automation saves don't touch the user's list.
+            if hooks {
+                self.push_recent(path);
+            }
         }
         self.ui.status_error = false;
         let what = crate::i18n::fmt(tl!("Saved {name}"), &[("name", file_open::display_name(path).as_str())]);
@@ -2367,6 +2373,9 @@ mod move_auto_select_tests;
 
 #[cfg(test)]
 mod new_group_button_tests;
+
+#[cfg(test)]
+mod color_tab_theme_tests;
 
 #[cfg(test)]
 mod new_layer_button_tests;
