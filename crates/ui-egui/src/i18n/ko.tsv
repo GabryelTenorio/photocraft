@@ -97,6 +97,14 @@
 	Script Events Manager…	스크립트 이벤트 관리자…
 	Import	가져오기
 	Browse…	찾아보기…
+	Source Files	소스 파일
+	Use:	사용:
+	Files	파일
+	Folder	폴더
+	Add Open Files	열린 파일 추가
+	Sort By Name	이름순 정렬
+	Attempt to Automatically Align Source Images	소스 이미지 자동 정렬 시도
+	Create Smart Object after Loading Layers	레이어를 불러온 후 스마트 오브젝트 만들기
 	Reveal in Finder	Finder에서 보기
 	Show in Explorer	파일 탐색기에서 보기
 	Show in Folder	폴더에서 보기
@@ -121,6 +129,8 @@
 	Search…	검색…
 	Check Spelling…	맞춤법 검사…
 	Find and Replace Text…	텍스트 찾기 및 바꾸기…
+	Add to Dictionary	사전에 추가
+	No Spelling Suggestions	맞춤법 제안 없음
 	Fill…	채우기…
 	Stroke…	획…
 	Content-Aware Fill…	내용 인식 채우기…
@@ -135,6 +145,8 @@
 	Transform Again on a Copy	사본에 변형 다시 적용
 	Scale	크기 조절
 	Rotate	회전
+	Set horizontal skew	가로 기울이기 설정
+	Set vertical skew	세로 기울이기 설정
 	Skew	기울이기
 	Distort	왜곡
 	Perspective	원근
@@ -700,6 +712,10 @@
 	Breeze Dark Theme	Breeze 어두운 테마
 	Breeze light	Breeze 밝게
 	Breeze Light Theme	Breeze 밝은 테마
+	Soft dark	소프트 다크
+	Soft light	소프트 라이트
+	Soft Dark Theme	소프트 다크 테마
+	Soft Light Theme	소프트 라이트 테마
 	Next Theme	다음 테마
 	Actions	액션
 	Brush Settings	브러시 설정
@@ -3258,3 +3274,4 @@ curves	Smooth	매끄럽게
 	Action playback stopped	액션 재생이 중지되었습니다
 	Step {step} is waiting for its dialog	{step}단계가 대화 상자를 기다리고 있습니다
 @plural	{n} action|{n} actions	액션 {n}개
+	Auto Add/Delete	자동 추가/삭제
