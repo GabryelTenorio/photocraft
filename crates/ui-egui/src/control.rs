@@ -31,6 +31,8 @@
 //! - `jobs.list` / `jobs.cancel {job?}`: background jobs (#210) with progress; cancel one (or all).
 //!   `engine.execute`, `ui.menu.invoke` and `ui.dialog.confirm` wait for a command that runs as a
 //!   job unless `wait: false` (then the reply is `{job, pending: true}`)
+//! - `methods`: this list. The headless serve surface (`photocraft-cli serve`) adds
+//!   `session.list`, `doc.*` and `batch`; those are not served here
 
 use std::sync::mpsc::Sender;
 
@@ -124,6 +126,39 @@ pub const UI_SET_FIELDS: [&str; 34] = [
     "cropShield",
     "shapeStroke",
     "camTransformOnDrop",
+];
+
+/// Every method the control server dispatches, in dispatch order; the `methods` reply.
+pub const METHODS: &[&str] = &[
+    "ui.context.choose",
+    "engine.execute",
+    "ui.menu.invoke",
+    "engine.commands",
+    "jobs.list",
+    "jobs.cancel",
+    "ui.menu.list",
+    "ui.inspect",
+    "ui.set",
+    "ui.dialog.open",
+    "ui.dialog.set",
+    "ui.dialog.confirm",
+    "ui.dialog.apply",
+    "ui.dialog.cancel",
+    "ui.window.open",
+    "ui.window.close",
+    "ui.pointer",
+    "ui.click",
+    "ui.move",
+    "ui.key",
+    "ui.type",
+    "ui.resize",
+    "ui.gpu.simulateLoss",
+    "ui.focus",
+    "ui.screenshot",
+    "app.open",
+    "app.save",
+    "app.quit",
+    "methods",
 ];
 
 /// Most clicks one `ui.click` may queue (#982). Each click is a press and a release that the app
@@ -1198,7 +1233,10 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             ok(Value::Null)
         }
-        other => err(format!("unknown method `{other}`")),
+        "methods" => ok(json!(METHODS)),
+        other => err(format!(
+            "unknown method `{other}` (try `methods`); the control server does not serve the headless `serve` methods (`session.list`, `doc.*`, `batch`): use `app.open` for `doc.open`, `app.save` for `doc.save`, `engine.execute {{\"command\":\"file.new\"}}` for `doc.new`, `engine.execute {{\"command\":\"document.inspect\"}}` for `doc.inspect`, `ui.inspect` for `session.list`; `doc.render` has no control equivalent (`ui.screenshot` captures the window, not the flattened document)"
+        )),
     }
 }
 
@@ -2390,6 +2428,27 @@ mod tests {
         assert_eq!(dedupe_key("/root/in/x.png"), "/root/in/x.png");
         assert_eq!(dedupe_key("../x.png"), "../x.png", "a climb above the start keeps the raw spelling");
         assert_eq!(dedupe_key("a/../../x.png"), "a/../../x.png");
+    }
+
+    #[test]
+    fn methods_lists_every_served_method_and_unknown_names_the_serve_only_family() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        let r = call(&mut app, &ctx, "methods", json!({}));
+        let listed: Vec<&str> = r["result"].as_array().unwrap().iter().map(|m| m.as_str().unwrap()).collect();
+        for served in ["engine.execute", "ui.menu.invoke", "ui.inspect", "ui.screenshot", "app.save", "app.quit", "methods"] {
+            assert!(listed.contains(&served), "`{served}` is served but not listed: {listed:?}");
+        }
+        for serve_only in ["doc.open", "doc.save", "doc.render", "doc.inspect", "doc.place", "doc.new", "doc.select", "doc.close", "doc.exportLayers", "doc.exportDataSets", "doc.importDataSets", "session.list", "batch"] {
+            assert!(!listed.contains(&serve_only), "`{serve_only}` is serve-only but listed: {listed:?}");
+        }
+        let r = call(&mut app, &ctx, "doc.render", json!({}));
+        let error = r["error"].as_str().unwrap();
+        assert!(error.contains("unknown method `doc.render`"), "{error}");
+        assert!(error.contains("serve"), "the error must name the serve-only family: {error}");
+        assert!(error.contains("app.save"), "the error must name the headed equivalent: {error}");
+        let r = call(&mut app, &ctx, "doc.nope", json!({}));
+        assert!(r["error"].as_str().unwrap().contains("unknown method `doc.nope`"), "{r}");
     }
 
     #[test]

@@ -103,6 +103,23 @@ The transport is `apps/photocraft/src/control_server.rs`, and the handlers are i
 - `ui.focus`: bring the main window to the front
 - `app.open {path}` / `app.save {path?, tgaBits?}`: relative file I/O through the configured automation roots (`app.open` reads under the read root, `app.save` writes under the write root; absolute paths, `..` and paths escaping the root are refused, and both fail closed when no root was granted; `app.save` creates missing parent directories beneath the write root). Both reply with `warnings` (import/export notes such as "adjustment layer flattened"; `[]` when none), also shown to the user in the status bar and as a notice (`notices` in `ui.inspect`); `app.open` also returns the `path` and document `name` (directory `.pcraft` — the native on-disk form — loads through the read root's capability; the single-file (zip) form takes the bytes path), `app.save` the `path` written. `app.save` without `path` writes back only to the document's own PSD, PSB or `.pcraft` file, like File › Save. `tgaBits` (24 or 32) sets a TGA's bits per pixel: 32 writes the alpha channel (or else the transparency) as its alpha, 24 none; without it, 32 with an alpha channel or transparency, else 24. Automation saves never show TGA or TIFF options. Automation opens and saves never fire script events. Use these two rather than `file.open`, `file.save`, `file.saveAs` or `file.saveACopy`, which the control channel refuses (see [Engine commands](#engine-commands))
 - `app.quit`
+- `methods`: the list of methods the control server serves
+
+### Surface differences
+
+The control server serves the methods above. The headless serve surface
+(`photocraft-cli serve`, see [Headless server](#headless-server)) additionally serves
+`session.list`, `doc.open`, `doc.place`, `doc.new`, `doc.save`, `doc.exportLayers`,
+`doc.exportDataSets`, `doc.importDataSets`, `doc.inspect`, `doc.render`, `doc.select`,
+`doc.close`, `batch` and its own `methods` list; on the control channel those are `unknown
+method` errors that name this split. Their headed equivalents: `doc.open` → `app.open`;
+`doc.save` → `app.save`; `doc.new` → `engine.execute {"command":"file.new"}`; `doc.inspect`
+→ `engine.execute {"command":"document.inspect"}`; `session.list` → `ui.inspect` (its
+`session` key); `doc.render` has no headed equivalent — `ui.screenshot` captures the app
+window, not the flattened document; `doc.place`, `doc.exportLayers`, `doc.exportDataSets`,
+`doc.importDataSets`, `doc.select` and `doc.close` have no headed equivalent (open documents
+are addressed through `app.open` and `ui.window.*`; a batch is sequential `engine.execute`
+requests).
 
 ## Engine commands
 
