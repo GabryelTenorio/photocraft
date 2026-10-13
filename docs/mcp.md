@@ -7,7 +7,9 @@ photocraft-cli mcp --automation-read-root /work/project --automation-write-root 
 ```
 
 Paths are relative to the corresponding root, or absolute paths beneath it; without a root that
-filesystem authority is absent. Bridge mode uses `--bridge` and `--control-token-file` as
+filesystem authority is absent. Writes create missing parent directories beneath the write
+root, so a write that fails afterwards can leave an empty directory behind — never a file.
+Bridge mode uses `--bridge` and `--control-token-file` as
 described in [development.md](development.md). UI tools require a running desktop app.
 
 ## Tools and resources

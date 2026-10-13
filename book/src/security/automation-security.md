@@ -38,6 +38,8 @@ Automation is a privilege boundary because requests can cause filesystem access,
 - Automation paths must be relative beneath the applicable root. Absolute paths, parent
   traversal, alternate separators, Windows device names, malformed components, and link escapes
   are rejected before file effects.
+- Writes create missing parent directories beneath the write root through the held directory
+  capability; a write that fails afterwards can leave an empty directory behind — never a file.
 - Engine commands that still use ambient paths fail closed at the automation boundary. Synthetic
   UI input reaches the same command policy, and automation-triggered file hooks do not run
   user-configured script-event paths. The policy also covers every command a command runs on its
