@@ -429,3 +429,25 @@ fn parallel_linear_encodes_match_the_scalar_curve() {
         assert_eq!(*o, [code(p[0]), code(p[1]), code(p[2]), (p[3].clamp(0.0, 1.0) * 255.0 + 0.5) as u8], "{p:?}");
     }
 }
+
+#[test]
+fn parallel_plain_quantize_matches_the_scalar_rounding() {
+    let n: usize = 3 * 16 * 1024 + 77;
+    let px: Vec<[f32; 4]> = (0..n)
+        .map(|i| {
+            let v = match i % 9 {
+                0 => f32::NAN,
+                1 => -0.5,
+                2 => 3.25,
+                _ => (i % 1001) as f32 / 1000.0,
+            };
+            [v, (i % 257) as f32 / 256.0, 1.0 - (i % 113) as f32 / 112.0, (i % 5) as f32 / 4.0]
+        })
+        .collect();
+    let buf = photocraft_compose::Buffer { rect: Rect::new(-4, 2, -4 + n as i32, 3), px };
+    let img = buf.to_rgba8();
+    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    for (o, p) in img.pixels.as_chunks::<4>().0.iter().zip(&buf.px) {
+        assert_eq!(*o, p.map(q), "{p:?}");
+    }
+}
