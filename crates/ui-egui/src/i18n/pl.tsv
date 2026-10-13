@@ -131,6 +131,8 @@
 	Search…	Szukaj…
 	Check Spelling…	Sprawdź pisownię…
 	Find and Replace Text…	Znajdź i zamień tekst…
+	Add to Dictionary	Dodaj do słownika
+	No Spelling Suggestions	Brak sugestii pisowni
 	Fill…	Wypełnij…
 	Stroke…	Obrys…
 	Content-Aware Fill…	Wypełnienie z uwzględnieniem zawartości…
@@ -527,6 +529,14 @@
 	Blur	Rozmycie
 	Blur Gallery	Galeria rozmyć
 	Field Blur…	Rozmycie pola…
+# Field Blur pins (#3373)
+	No pin selected	Nie zaznaczono pinezki
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kliknij obraz, aby dodać pinezkę; przeciągnij pinezkę, aby ją przesunąć, lub jej pierścień, aby zmienić rozmycie. Delete usuwa zaznaczoną pinezkę.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Przeciągnij uchwyty na obrysie, aby zmienić rozmiar i obrócić kształt, kwadrat, aby zaokrąglić narożniki, a punkty wewnątrz, aby ustawić, gdzie zaczyna się rozmycie.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Przeciągnij pinezkę, aby przesunąć pas, lub jej pierścień, aby zmienić rozmycie. Przeciągnij linie ciągłe, aby poszerzyć ostry pas, przerywane, aby ustawić przejście, a punkty, aby go obrócić.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Przeciągnij uchwyty na obrysie, aby zmienić rozmiar i obrócić kształt; pierścień ustawia kąt rozmycia.
+	No path selected	Nie zaznaczono ścieżki
+	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Przeciągnij po obrazie, aby narysować ścieżkę; przeciągnij jej punkty, aby ją wygiąć, kliknij jej linię, aby dodać punkt, a kliknij punkt z Alt, aby go usunąć. Delete usuwa zaznaczoną ścieżkę.
 	Iris Blur…	Rozmycie irysowe…
 	Tilt-Shift…	Tilt-shift…
 	Path Blur…	Rozmycie ścieżki…
@@ -845,6 +855,12 @@
 	Baseline shift	Przesunięcie linii bazowej
 	Basic	Podstawowe
 	Before (Y)	Przed (Y)
+	Save Settings…	Zapisz ustawienia…
+	Load Settings…	Wczytaj ustawienia…
+	Save these settings as a Camera Raw .xmp file	Zapisz te ustawienia jako plik .xmp Camera Raw
+	Load settings from a Camera Raw .xmp file	Wczytaj ustawienia z pliku .xmp Camera Raw
+	Loaded Camera Raw settings from {file}	Wczytano ustawienia Camera Raw z pliku {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Wczytano ustawienia Camera Raw z pliku {file} (nieobsługiwane: {n})
 	Begin recording	Rozpocznij nagrywanie
 	Bend:	Zgięcie:
 	Bicubic	Dwusześcienna
@@ -3655,6 +3671,9 @@ curves	Smooth	Wygładź
 	Remove after each stroke	Usuwaj po każdym pociągnięciu
 	Apply the removal ({key})	Zastosuj usuwanie ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Pociągnięcia do usunięcia: {n} (Enter stosuje, Esc anuluje)
+	Clear Brush Controls	Wyczyść elementy sterujące pędzlem
+	Reset All Locked Settings	Resetuj wszystkie zablokowane ustawienia
+	Copy Texture to Other Tools	Kopiuj teksturę do innych narzędzi
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Wczytaj operacje…
@@ -3676,11 +3695,4 @@ curves	Smooth	Wygładź
 	Action playback stopped	Odtwarzanie operacji zatrzymane
 	Step {step} is waiting for its dialog	Krok {step} czeka na swoje okno dialogowe
 @plural	{n} action|{n} actions	{n} operacja|{n} operacje|{n} operacji
-# Field Blur pins (#3373)
-	No pin selected	Nie zaznaczono pinezki
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kliknij obraz, aby dodać pinezkę; przeciągnij pinezkę, aby ją przesunąć, lub jej pierścień, aby zmienić rozmycie. Delete usuwa zaznaczoną pinezkę.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Przeciągnij uchwyty na obrysie, aby zmienić rozmiar i obrócić kształt, kwadrat, aby zaokrąglić narożniki, a punkty wewnątrz, aby ustawić, gdzie zaczyna się rozmycie.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Przeciągnij pinezkę, aby przesunąć pas, lub jej pierścień, aby zmienić rozmycie. Przeciągnij linie ciągłe, aby poszerzyć ostry pas, przerywane, aby ustawić przejście, a punkty, aby go obrócić.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Przeciągnij uchwyty na obrysie, aby zmienić rozmiar i obrócić kształt; pierścień ustawia kąt rozmycia.
-	No path selected	Nie zaznaczono ścieżki
-	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Przeciągnij po obrazie, aby narysować ścieżkę; przeciągnij jej punkty, aby ją wygiąć, kliknij jej linię, aby dodać punkt, a kliknij punkt z Alt, aby go usunąć. Delete usuwa zaznaczoną ścieżkę.
+	Auto Add/Delete	Automatyczne dodawanie/usuwanie

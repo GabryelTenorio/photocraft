@@ -132,6 +132,8 @@
 	Search…	Pesquisar…
 	Check Spelling…	Verificar ortografia…
 	Find and Replace Text…	Localizar e substituir texto…
+	Add to Dictionary	Adicionar ao dicionário
+	No Spelling Suggestions	Sem sugestões de ortografia
 	Fill…	Preencher…
 	Stroke…	Traçado…
 	Content-Aware Fill…	Preenchimento sensível ao conteúdo…
@@ -513,6 +515,14 @@
 	Blur	Desfoque
 	Blur Gallery	Galeria de desfoque
 	Field Blur…	Desfoque de campo…
+# Field Blur pins (#3373)
+	No pin selected	Nenhum alfinete selecionado
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Clique na imagem para adicionar um alfinete; arraste um alfinete para movê-lo ou o anel dele para alterar o desfoque. Delete remove o alfinete selecionado.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Arraste as alças do contorno para redimensionar e girar, o quadrado para arredondar os cantos e os pontos internos para definir onde o desfoque começa.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Arraste o alfinete para mover a faixa ou o anel para alterar o desfoque. Arraste as linhas contínuas para alargar a faixa nítida, as tracejadas para definir a transição e os pontos para girá-la.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Arraste as alças do contorno para redimensionar e girar; o anel define o ângulo de desfoque.
+	No path selected	Nenhum demarcador selecionado
+	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Arraste na imagem para desenhar um demarcador; arraste os pontos para curvá-lo, clique na linha para adicionar um ponto e Alt-clique em um ponto para removê-lo. Delete remove o demarcador selecionado.
 	Iris Blur…	Desfoque de íris…
 	Tilt-Shift…	Tilt-shift…
 	Path Blur…	Desfoque de demarcador…
@@ -829,6 +839,12 @@
 	Baseline shift	Deslocamento da linha de base
 	Basic	Básico
 	Before (Y)	Antes (Y)
+	Save Settings…	Salvar configurações…
+	Load Settings…	Carregar configurações…
+	Save these settings as a Camera Raw .xmp file	Salvar estas configurações como arquivo .xmp do Camera Raw
+	Load settings from a Camera Raw .xmp file	Carregar configurações de um arquivo .xmp do Camera Raw
+	Loaded Camera Raw settings from {file}	Configurações do Camera Raw carregadas de {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Configurações do Camera Raw carregadas de {file} ({n} sem suporte)
 	Begin recording	Iniciar gravação
 	Bend:	Curvatura:
 	Bicubic	Bicúbica
@@ -3848,6 +3864,9 @@ layerLabel	No Color	Sem cor
 	Remove after each stroke	Remover após cada traço
 	Apply the removal ({key})	Aplicar a remoção ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Traços a remover: {n} (Enter aplica, Esc cancela)
+	Clear Brush Controls	Limpar controles de pincel
+	Reset All Locked Settings	Redefinir todas as configurações bloqueadas
+	Copy Texture to Other Tools	Copiar textura para outras ferramentas
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Carregar ações…
@@ -3869,11 +3888,4 @@ layerLabel	No Color	Sem cor
 	Action playback stopped	Reprodução da ação interrompida
 	Step {step} is waiting for its dialog	A etapa {step} está aguardando sua caixa de diálogo
 @plural	{n} action|{n} actions	{n} ação|{n} ações
-# Field Blur pins (#3373)
-	No pin selected	Nenhum alfinete selecionado
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Clique na imagem para adicionar um alfinete; arraste um alfinete para movê-lo ou o anel dele para alterar o desfoque. Delete remove o alfinete selecionado.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Arraste as alças do contorno para redimensionar e girar, o quadrado para arredondar os cantos e os pontos internos para definir onde o desfoque começa.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Arraste o alfinete para mover a faixa ou o anel para alterar o desfoque. Arraste as linhas contínuas para alargar a faixa nítida, as tracejadas para definir a transição e os pontos para girá-la.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Arraste as alças do contorno para redimensionar e girar; o anel define o ângulo de desfoque.
-	No path selected	Nenhum demarcador selecionado
-	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Arraste na imagem para desenhar um demarcador; arraste os pontos para curvá-lo, clique na linha para adicionar um ponto e Alt-clique em um ponto para removê-lo. Delete remove o demarcador selecionado.
+	Auto Add/Delete	Adicionar/excluir automaticamente

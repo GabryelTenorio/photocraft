@@ -121,6 +121,8 @@
 	Search…	Ara…
 	Check Spelling…	Yazımı Denetle…
 	Find and Replace Text…	Metni Bul ve Değiştir…
+	Add to Dictionary	Sözlüğe Ekle
+	No Spelling Suggestions	Yazım Önerisi Yok
 	Fill…	Doldur…
 	Stroke…	Kontur…
 	Content-Aware Fill…	İçeriğe Uygun Dolgu…
@@ -514,6 +516,13 @@
 	Blur	Bulanıklaştırma
 	Blur Gallery	Bulanıklaştırma Galerisi
 	Field Blur…	Alan Bulanıklığı…
+	No pin selected	Seçili pim yok
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Pim eklemek için görüntüye tıklayın; taşımak için pimi, bulanıklığını değiştirmek için halkasını sürükleyin. Delete seçili pimi siler.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Yeniden boyutlandırmak ve döndürmek için dış çizgideki tutamaçları, köşeleri yuvarlamak için kareyi, bulanıklığın nerede başlayacağını belirlemek için içerideki noktaları sürükleyin.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Bandı taşımak için pimi, bulanıklığını değiştirmek için halkasını sürükleyin. Keskin bandı genişletmek için düz çizgileri, geçişi ayarlamak için kesikli çizgileri, döndürmek için noktaları sürükleyin.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Yeniden boyutlandırmak ve döndürmek için dış çizgideki tutamaçları sürükleyin; halka bulanıklık açısını belirler.
+	No path selected	Seçili yol yok
+	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Yol çizmek için görüntü üzerinde sürükleyin; bükmek için noktalarını sürükleyin, nokta eklemek için çizgisine tıklayın ve kaldırmak için bir noktaya Alt tuşuna basarak tıklayın. Delete seçili yolu siler.
 	Iris Blur…	İris Bulanıklığı…
 	Tilt-Shift…	Tilt-Shift…
 	Path Blur…	Yol Bulanıklığı…
@@ -2314,6 +2323,7 @@
 	Color Picker (Stroke Color)	Renk Seçici (Kontur Rengi)
 	Stroke color	Kontur rengi
 	Pick screen color	Ekran rengini seç
+	Pick Color From Image	Görüntüden Renk Seç
 	Sample a pixel anywhere on the screen	Ekranın herhangi bir yerinde bir pikseli örnekleyin
 	Click to pick · Esc to cancel	Seçmek için tıklayın · İptal etmek için Esc
 	Pick a screen pixel or press Esc to cancel	Bir ekran pikseli seçin veya iptal etmek için Esc tuşuna basın
@@ -3784,6 +3794,9 @@ cameraData	Lens	Lens
 @plural	{n} step|{n} steps	{n} adım
 @plural	{warning} (+{n} more brush preset warning)|{warning} (+{n} more brush preset warnings)	{warning} (+{n} fırça ön ayarı uyarısı daha)
 @plural	{what} with {n} warning|{what} with {n} warnings	{what}, {n} uyarı ile
+	Clear Brush Controls	Fırça Denetimlerini Temizle
+	Reset All Locked Settings	Tüm Kilitli Ayarları Sıfırla
+	Copy Texture to Other Tools	Dokuyu Diğer Araçlara Kopyala
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Eylemleri Yükle…
@@ -3811,10 +3824,10 @@ cameraData	Lens	Lens
 	Gradient Preset Options	Gradyan Ön Ayarı Seçenekleri
 	Import .GRD	.GRD İçe Aktar
 	Choose a gradient file (.grd).	Bir gradyan dosyası (.grd) seçin.
-	No pin selected	Seçili pim yok
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Pim eklemek için görüntüye tıklayın; taşımak için pimi, bulanıklığını değiştirmek için halkasını sürükleyin. Delete seçili pimi siler.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Yeniden boyutlandırmak ve döndürmek için dış çizgideki tutamaçları, köşeleri yuvarlamak için kareyi, bulanıklığın nerede başlayacağını belirlemek için içerideki noktaları sürükleyin.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Bandı taşımak için pimi, bulanıklığını değiştirmek için halkasını sürükleyin. Keskin bandı genişletmek için düz çizgileri, geçişi ayarlamak için kesikli çizgileri, döndürmek için noktaları sürükleyin.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Yeniden boyutlandırmak ve döndürmek için dış çizgideki tutamaçları sürükleyin; halka bulanıklık açısını belirler.
-	No path selected	Seçili yol yok
-	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Yol çizmek için görüntü üzerinde sürükleyin; bükmek için noktalarını sürükleyin, nokta eklemek için çizgisine tıklayın ve kaldırmak için bir noktaya Alt tuşuna basarak tıklayın. Delete seçili yolu siler.
+	Save Settings…	Ayarları Kaydet…
+	Load Settings…	Ayarları Yükle…
+	Save these settings as a Camera Raw .xmp file	Bu ayarları Camera Raw .xmp dosyası olarak kaydet
+	Load settings from a Camera Raw .xmp file	Ayarları bir Camera Raw .xmp dosyasından yükle
+	Loaded Camera Raw settings from {file}	Camera Raw ayarları {file} dosyasından yüklendi
+	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw ayarları {file} dosyasından yüklendi ({n} desteklenmiyor)
+	Auto Add/Delete	Otomatik Ekle/Sil

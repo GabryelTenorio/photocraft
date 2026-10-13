@@ -134,6 +134,8 @@
 	Search…	Suchen…
 	Check Spelling…	Rechtschreibung prüfen…
 	Find and Replace Text…	Text suchen und ersetzen…
+	Add to Dictionary	Zum Wörterbuch hinzufügen
+	No Spelling Suggestions	Keine Rechtschreibvorschläge
 	Fill…	Füllen…
 	Stroke…	Nachziehen…
 	Content-Aware Fill…	Inhaltsbasiert füllen…
@@ -531,6 +533,17 @@
 	Blur	Weichzeichnen
 	Blur Gallery	Weichzeichnen-Galerie
 	Field Blur…	Feldweichzeichner…
+# Field Blur pins (#3373)
+	No pin selected	Kein Pin ausgewählt
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Klicken Sie ins Bild, um einen Pin hinzuzufügen; ziehen Sie einen Pin, um ihn zu verschieben, oder seinen Ring, um die Unschärfe zu ändern. Entf entfernt den ausgewählten Pin.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Ziehen Sie die Griffe am Umriss, um ihn zu skalieren und zu drehen, das Quadrat, um die Ecken abzurunden, und die Punkte innen, um festzulegen, wo die Unschärfe beginnt.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Ziehen Sie den Pin, um das Band zu verschieben, oder seinen Ring, um die Unschärfe zu ändern. Ziehen Sie die durchgezogenen Linien, um das scharfe Band zu verbreitern, die gestrichelten für den Übergang und die Punkte zum Drehen.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Ziehen Sie die Griffe am Umriss, um ihn zu skalieren und zu drehen; der Ring legt den Unschärfewinkel fest.
+	Blur Angle	Unschärfewinkel
+	No path selected	Kein Pfad ausgewählt
+	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Ziehen Sie im Bild, um einen Pfad zu zeichnen; ziehen Sie seine Punkte, um ihn zu biegen, klicken Sie auf seine Linie, um einen Punkt hinzuzufügen, und Alt-klicken Sie einen Punkt, um ihn zu entfernen. Entf entfernt den ausgewählten Pfad.
+	Speed	Geschwindigkeit
+	Taper	Verjüngung
 	Iris Blur…	Irisweichzeichner…
 	Tilt-Shift…	Tilt-Shift…
 	Path Blur…	Pfadweichzeichner…
@@ -837,6 +850,12 @@
 	Baseline shift	Grundlinienverschiebung
 	Basic	Grundeinstellungen
 	Before (Y)	Davor (Y)
+	Save Settings…	Einstellungen speichern…
+	Load Settings…	Einstellungen laden…
+	Save these settings as a Camera Raw .xmp file	Diese Einstellungen als Camera-Raw-.xmp-Datei speichern
+	Load settings from a Camera Raw .xmp file	Einstellungen aus einer Camera-Raw-.xmp-Datei laden
+	Loaded Camera Raw settings from {file}	Camera-Raw-Einstellungen aus {file} geladen
+	Loaded Camera Raw settings from {file} ({n} not supported)	Camera-Raw-Einstellungen aus {file} geladen ({n} nicht unterstützt)
 	Begin recording	Aufnahme starten
 	Bend:	Biegung:
 	Bicubic	Bikubisch
@@ -2698,6 +2717,9 @@ curves	Smooth	Glätten
 	Remove after each stroke	Nach jedem Strich entfernen
 	Apply the removal ({key})	Entfernen anwenden ({key})
 	Strokes to remove: {n} (Enter applies, Esc cancels)	Striche zum Entfernen: {n} (Eingabe wendet an, Esc bricht ab)
+	Clear Brush Controls	Pinselsteuerungen löschen
+	Reset All Locked Settings	Alle gesperrten Einstellungen zurücksetzen
+	Copy Texture to Other Tools	Struktur auf andere Werkzeuge kopieren
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Aktionen laden…
@@ -2719,14 +2741,4 @@ curves	Smooth	Glätten
 	Action playback stopped	Aktionswiedergabe angehalten
 	Step {step} is waiting for its dialog	Schritt {step} wartet auf seinen Dialog
 @plural	{n} action|{n} actions	{n} Aktion|{n} Aktionen
-# Field Blur pins (#3373)
-	No pin selected	Kein Pin ausgewählt
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Klicken Sie ins Bild, um einen Pin hinzuzufügen; ziehen Sie einen Pin, um ihn zu verschieben, oder seinen Ring, um die Unschärfe zu ändern. Entf entfernt den ausgewählten Pin.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Ziehen Sie die Griffe am Umriss, um ihn zu skalieren und zu drehen, das Quadrat, um die Ecken abzurunden, und die Punkte innen, um festzulegen, wo die Unschärfe beginnt.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Ziehen Sie den Pin, um das Band zu verschieben, oder seinen Ring, um die Unschärfe zu ändern. Ziehen Sie die durchgezogenen Linien, um das scharfe Band zu verbreitern, die gestrichelten für den Übergang und die Punkte zum Drehen.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Ziehen Sie die Griffe am Umriss, um ihn zu skalieren und zu drehen; der Ring legt den Unschärfewinkel fest.
-	Blur Angle	Unschärfewinkel
-	No path selected	Kein Pfad ausgewählt
-	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Ziehen Sie im Bild, um einen Pfad zu zeichnen; ziehen Sie seine Punkte, um ihn zu biegen, klicken Sie auf seine Linie, um einen Punkt hinzuzufügen, und Alt-klicken Sie einen Punkt, um ihn zu entfernen. Entf entfernt den ausgewählten Pfad.
-	Speed	Geschwindigkeit
-	Taper	Verjüngung
+	Auto Add/Delete	Autom. hinzuf./löschen

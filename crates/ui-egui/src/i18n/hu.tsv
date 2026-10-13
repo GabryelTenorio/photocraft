@@ -126,6 +126,8 @@
 	File Info…	Fájladatok…
 	Fill…	Kitöltés…
 	Find and Replace Text…	Szöveg keresése és cseréje…
+	Add to Dictionary	Hozzáadás a szótárhoz
+	No Spelling Suggestions	Nincs helyesírási javaslat
 	Fit Image…	Kép méretre igazítása…
 	Flatten All Layer Effects	Összes rétegeffektus egybesimítása
 	Flatten All Masks	Összes maszk egybesimítása
@@ -535,6 +537,13 @@
 	Facet	Lapolás
 	Fibers…	Szálak…
 	Field Blur…	Mezőelmosás…
+	No pin selected	Nincs kijelölt tű
+	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kattints a képre tű hozzáadásához; húzd a tűt az áthelyezéséhez, vagy a gyűrűjét az elmosás módosításához. A Delete törli a kijelölt tűt.
+	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Húzd a körvonal fogantyúit az átméretezéshez és az elforgatáshoz, a négyzetet a sarkok lekerekítéséhez, a belső pontokat pedig annak beállításához, hol kezdődjön az elmosás.
+	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Húzd a tűt a sáv áthelyezéséhez, vagy a gyűrűjét az elmosás módosításához. Húzd a folytonos vonalakat az éles sáv szélesítéséhez, a szaggatott vonalakat az átmenet beállításához, a pontokat pedig a sáv elforgatásához.
+	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Húzd a körvonal fogantyúit az átméretezéshez és az elforgatáshoz; a gyűrű az elmosás szögét állítja be.
+	No path selected	Nincs kijelölt útvonal
+	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Húzással rajzolj útvonalat a képre; húzd a pontjait a hajlításához, kattints a vonalára új pont hozzáadásához, és Alt+kattintással távolíts el egy pontot. A Delete törli a kijelölt útvonalat.
 	Fill Path…	Útvonal kitöltése…
 	Fill Screen	Képernyő kitöltése
 	Filter	Szűrő
@@ -3394,6 +3403,7 @@ cameraRaw	Yellow	Sárga
 	Photomerge	Fotóegyesítés
 	Pick a screen pixel or press Esc to cancel	Válassz egy pixelt a képernyőn, vagy nyomd meg az Esc billentyűt a megszakításhoz
 	Pick screen color	Szín kiválasztása a képernyőről
+	Pick Color From Image	Szín felvétele a képről
 	Pins	Tűk
 	Pixel Layer	Pixelréteg
 	Place Scale Marker	Méretarány-jelölő elhelyezése
@@ -3972,6 +3982,9 @@ cameraRaw	Yellow	Sárga
 	Transform On Drop	Átalakítás elengedéskor
 	Vanishing Point is not active	Az Enyészpont nem aktív
 	Vanishing Point: click four corners to create a plane	Enyészpont: sík létrehozásához kattints a négy sarokra
+	Clear Brush Controls	Ecsetvezérlők törlése
+	Reset All Locked Settings	Összes zárolt beállítás visszaállítása
+	Copy Texture to Other Tools	Textúra másolása más eszközökre
 
 # Actions panel: Load/Save Actions (.atn) and kept Photoshop steps
 	Load Actions…	Műveletek betöltése…
@@ -3999,10 +4012,10 @@ cameraRaw	Yellow	Sárga
 	Gradient Preset Options	Színátmenet-előbeállítás beállításai
 	Import .GRD	.GRD importálása
 	Choose a gradient file (.grd).	Válasszon színátmenetfájlt (.grd).
-	No pin selected	Nincs kijelölt tű
-	Click the image to add a pin; drag a pin to move it, or its ring to change its blur. Delete removes the selected pin.	Kattints a képre tű hozzáadásához; húzd a tűt az áthelyezéséhez, vagy a gyűrűjét az elmosás módosításához. A Delete törli a kijelölt tűt.
-	Drag the handles on the outline to resize and turn it, the square to round its corners, and the dots inside to set where the blur starts.	Húzd a körvonal fogantyúit az átméretezéshez és az elforgatáshoz, a négyzetet a sarkok lekerekítéséhez, a belső pontokat pedig annak beállításához, hol kezdődjön az elmosás.
-	Drag the pin to move the band, or its ring to change its blur. Drag the solid lines to widen the sharp band, the dashed lines to set the transition, and the dots to turn it.	Húzd a tűt a sáv áthelyezéséhez, vagy a gyűrűjét az elmosás módosításához. Húzd a folytonos vonalakat az éles sáv szélesítéséhez, a szaggatott vonalakat az átmenet beállításához, a pontokat pedig a sáv elforgatásához.
-	Drag the handles on the outline to resize and turn it; the ring sets the blur angle.	Húzd a körvonal fogantyúit az átméretezéshez és az elforgatáshoz; a gyűrű az elmosás szögét állítja be.
-	No path selected	Nincs kijelölt útvonal
-	Drag on the image to draw a path; drag its points to bend it, click its line to add a point, and Alt-click a point to remove it. Delete removes the selected path.	Húzással rajzolj útvonalat a képre; húzd a pontjait a hajlításához, kattints a vonalára új pont hozzáadásához, és Alt+kattintással távolíts el egy pontot. A Delete törli a kijelölt útvonalat.
+	Save Settings…	Beállítások mentése…
+	Load Settings…	Beállítások betöltése…
+	Save these settings as a Camera Raw .xmp file	A beállítások mentése Camera Raw .xmp-fájlként
+	Load settings from a Camera Raw .xmp file	Beállítások betöltése Camera Raw .xmp-fájlból
+	Loaded Camera Raw settings from {file}	Camera Raw-beállítások betöltve innen: {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw-beállítások betöltve innen: {file} ({n} nem támogatott)
+	Auto Add/Delete	Automatikus hozzáadás/törlés
