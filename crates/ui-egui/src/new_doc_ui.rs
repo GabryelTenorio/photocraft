@@ -38,6 +38,8 @@ pub const CATEGORIES: &[(&str, &[Preset])] = &[
             ("A4", 2480, 3508, 300.0),
             ("A3", 3508, 4961, 300.0),
             ("A5", 1748, 2480, 300.0),
+            ("B3", 4165, 5906, 300.0),
+            ("B4", 2953, 4165, 300.0),
         ],
     ),
     (
@@ -169,6 +171,18 @@ pub fn swap_size(f: &mut Map<String, Value>) {
 /// Print and photo presets (listed at 300 ppi) are specified in inches, screen presets in pixels.
 fn is_print(p: &Preset) -> bool {
     p.3 >= 300.0
+}
+
+/// Rotate a preset to the dialog's current orientation (#4668): as in Photoshop, the Portrait and
+/// Landscape buttons turn the whole preset grid, so a preset whose aspect differs from `portrait`
+/// swaps its width and height. Square presets are unaffected and the Clipboard preset is the
+/// copied pixels, never rotated.
+pub fn orient(p: Preset, portrait: bool) -> Preset {
+    if p.0 == CLIPBOARD || (p.2 > p.1) == portrait {
+        p
+    } else {
+        (p.0, p.2, p.1, p.3)
+    }
 }
 
 /// A built-in preset at Preferences › Units & Rulers › New Document Preset Resolutions, as in
@@ -324,14 +338,15 @@ impl Card {
         }
     }
 
-    /// The size line, in the unit the preset is specified in (a recent one: the unit it was made in).
-    fn size_line(&self, units: &UnitsAndRulers) -> String {
+    /// The size line, in the unit the dialog shows sizes in (`unit`, else the unit the preset is
+    /// specified in; a recent one: the unit it was made in).
+    fn size_line(&self, units: &UnitsAndRulers, unit: Option<&str>) -> String {
         let (w, h, ppi) = self.size(units);
-        let unit = match self {
+        let unit = unit.unwrap_or(match self {
             Card::Builtin(p) if is_print(p) => "in",
             Card::Builtin(_) => "px",
             Card::Recent(s) => s.unit.as_str(),
-        };
+        });
         if unit == "px" {
             format!("{w} x {h} px @ {} ppi", widgets::fmt_num(f64::from(ppi)))
         } else {
@@ -463,9 +478,17 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
     widgets::hairline(ui);
     ui.add_space(8.0);
     let units = app.session.prefs().units_and_rulers.clone();
+    // The Portrait/Landscape buttons and the Width/Height unit rotate and relabel the preset grid
+    // (#4668), as in Photoshop.
+    let portrait = get_f(f, "height", 1080.0) > get_f(f, "width", 1920.0);
+    let display_unit = f.get("__unit").and_then(Value::as_str).map(str::to_string);
+    let rotate = |c: Card| match c {
+        Card::Builtin(p) => Card::Builtin(orient(p, portrait)),
+        recent => recent,
+    };
     let presets: Vec<Card> = match CATEGORIES.iter().find(|c| c.0 == cat) {
-        Some(c) if c.0 != CATEGORIES[0].0 => c.1.iter().copied().map(Card::Builtin).collect(),
-        _ => recent_cards(f, &app.session.presets.recent_documents, &units),
+        Some(c) if c.0 != CATEGORIES[0].0 => c.1.iter().map(|p| rotate(Card::Builtin(*p))).collect(),
+        _ => recent_cards(f, &app.session.presets.recent_documents, &units).into_iter().map(rotate).collect(),
     };
     let chosen = get_s(f, "__preset", "");
     ui.horizontal_top(|ui| {
@@ -509,7 +532,7 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
                             let title = card_title(ui.painter(), tl!(c.title()), card.x - 12.0, t.text);
                             let elided = title.elided;
                             ui.painter().galley(pos2(r.center().x, r.top() + 70.0 - title.size().y / 2.0), title, t.text);
-                            let size = c.size_line(&units);
+                            let size = c.size_line(&units, display_unit.as_deref());
                             ui.painter().text(pos2(r.center().x, r.top() + 97.0), Align2::CENTER_CENTER, &size, egui::FontId::proportional(10.5), t.text_faint);
                             let resp = match c {
                                 // A recent document's tooltip names everything it restores.
@@ -703,6 +726,32 @@ mod tests {
         assert_eq!((shown_size(&f, "width", 1920.0, "mm", 72.0), shown_size(&f, "height", 1080.0, "mm", 72.0)), (1189.0, 841.0));
     }
 
+    /// #4668: the Portrait/Landscape buttons rotate the preset grid, so a preset whose aspect
+    /// differs from the chosen orientation swaps its width and height.
+    #[test]
+    fn orientation_rotates_the_presets() {
+        let landscape = ("Landscape, 6 x 4", 1800, 1200, 300.0);
+        assert_eq!(orient(landscape, true), ("Landscape, 6 x 4", 1200, 1800, 300.0));
+        assert_eq!(orient(landscape, false), landscape);
+        let portrait = ("Portrait, 4 x 6", 1200, 1800, 300.0);
+        assert_eq!(orient(portrait, false), ("Portrait, 4 x 6", 1800, 1200, 300.0));
+        let square = ("Square, 5 x 5", 1500, 1500, 300.0);
+        assert_eq!(orient(square, true), square, "rotating a square changes nothing");
+        let clipboard = (CLIPBOARD, 123, 45, 72.0);
+        assert_eq!(orient(clipboard, true), clipboard, "the copied pixels are never rotated");
+    }
+
+    /// #4668: preset cards show their size in the unit the details panel is set to.
+    #[test]
+    fn preset_cards_show_the_dialog_unit() {
+        let stock = UnitsAndRulers::default();
+        let find = |cat: &str, name: &str| *CATEGORIES.iter().find(|c| c.0 == cat).unwrap().1.iter().find(|p| p.0 == name).unwrap();
+        assert_eq!(Card::Builtin(find("Print", "A4")).size_line(&stock, None), "8.3 x 11.7 in @ 300 ppi", "unset: the unit the preset is specified in");
+        assert_eq!(Card::Builtin(find("Print", "A4")).size_line(&stock, Some("mm")), "210 x 297 mm @ 300 ppi");
+        assert_eq!(Card::Builtin(find("Web", "Web Minimum")).size_line(&stock, None), "1024 x 768 px @ 72 ppi");
+        assert_eq!(Card::Builtin(find("Web", "Web Minimum")).size_line(&stock, Some("in")), "14.2 x 10.7 in @ 72 ppi");
+    }
+
     #[test]
     fn resolution_keeps_physical_size_in_physical_units_and_pixels_in_px() {
         let a4 = CATEGORIES.iter().find(|c| c.0 == "Print").unwrap().1.iter().find(|p| p.0 == "A4").unwrap();
@@ -798,7 +847,7 @@ mod tests {
         let mut f = Map::new();
         set_clipboard(&mut f, 20, 30);
         let cards = recent_cards(&f, &[settings(800, 600, 72.0), settings(1920, 1080, 72.0)], &UnitsAndRulers::default());
-        let titles: Vec<(&str, String)> = cards.iter().map(|c| (c.title(), c.size_line(&UnitsAndRulers::default()))).collect();
+        let titles: Vec<(&str, String)> = cards.iter().map(|c| (c.title(), c.size_line(&UnitsAndRulers::default(), None))).collect();
         assert_eq!(
             titles,
             [
@@ -1087,6 +1136,10 @@ mod tests {
             set_fields(&mut h, f);
             h.get_by_label("Photo").click();
             h.run_steps(2);
+            // The dialog opens landscape; the grid follows the orientation, so pick Portrait to
+            // create "Portrait, 4 x 6" as listed (#4668).
+            h.get_by_label("Portrait").click();
+            h.run_steps(2);
             let at = preset_title_at(&h, "Portrait, 4 x 6");
             click_at(&mut h, at);
             assert_eq!(fields(&h)["__preset"], "Portrait, 4 x 6");
@@ -1101,6 +1154,21 @@ mod tests {
             assert_eq!(doc.name, "Portrait proof");
             assert_eq!((doc.mode, doc.depth), (photocraft_doc::ColorMode::Cmyk, photocraft_doc::SampleType::U16));
             assert_pixel(&mut h, [0.0; 4]);
+        }
+
+        /// #4668: the Portrait button rotates the grid, so clicking a landscape preset creates a
+        /// portrait document.
+        #[test]
+        fn orientation_button_rotates_the_preset_grid() {
+            let mut h = harness();
+            h.get_by_label("Photo").click();
+            h.run_steps(2);
+            h.get_by_label("Portrait").click();
+            h.run_steps(2);
+            let at = preset_title_at(&h, "Landscape, 6 x 4");
+            click_at(&mut h, at);
+            let f = fields(&h);
+            assert_eq!((f["width"].as_u64(), f["height"].as_u64()), (Some(1200), Some(1800)), "the rotated card applies its swapped size");
         }
 
         #[test]
@@ -1246,7 +1314,7 @@ mod tests {
         #[test]
         fn clicking_a_preset_card_after_typing_sets_its_size() {
             let mut h = harness();
-            type_into(&mut h, 0, "512");
+            type_into(&mut h, 1, "512");
             h.get_by_label("Photo").click();
             h.run_steps(2);
             // The first card ("Landscape, 6 x 4") sits under the presets heading.
