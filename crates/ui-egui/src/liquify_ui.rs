@@ -1219,11 +1219,8 @@ mod tests {
         let mut app = app_with_layer();
         open(&mut app, &ctx).unwrap();
         control(&mut app, &json!({"tool": "forwardWarp", "size": 40})).unwrap();
-        for ev in [
-            ToolEvent::Down { x: 35.0, y: 40.0, pressure: 1.0 },
-            ToolEvent::Move { x: 55.0, y: 40.0, pressure: 1.0 },
-            ToolEvent::Up { x: 55.0, y: 40.0 },
-        ] {
+        for ev in [ToolEvent::Down { x: 35.0, y: 40.0, pressure: 1.0 }, ToolEvent::Move { x: 55.0, y: 40.0, pressure: 1.0 }, ToolEvent::Up { x: 55.0, y: 40.0 }]
+        {
             pointer(&mut app, ev, egui::Modifiers::NONE);
         }
         {
