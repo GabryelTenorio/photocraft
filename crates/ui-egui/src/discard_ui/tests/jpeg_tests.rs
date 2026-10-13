@@ -121,7 +121,7 @@ fn save_a_copy_to_a_jpeg_asks_and_keeps_the_document_unsaved() {
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
     assert_eq!(h.state().jpeg_options.as_ref().map(|p| p.copy), Some(true));
-    assert!(jpeg_options_ui::park(h.state_mut(), "other.jpg".into(), false, true).is_err(), "the waiting prompt is kept");
+    assert!(jpeg_options_ui::park(h.state_mut(), "other.jpg".into(), false, "file.saveAs").is_err(), "the waiting prompt is kept");
     h.key_press(Key::Enter);
     h.run_steps(3);
     assert_eq!(writes.borrow().as_slice(), &[("copy.jpg".to_string(), asked(pct(10), JpegFormat::Baseline))]);

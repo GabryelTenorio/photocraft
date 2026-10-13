@@ -87,9 +87,9 @@ pub struct Prompt {
     pub format: JpegFormat,
     /// Save a Copy: the document keeps its path and unsaved changes.
     pub copy: bool,
-    /// File › Save As: the answered save is recorded as a `file.saveAs` step, so an action being
-    /// recorded keeps it (#2032).
-    pub record: bool,
+    /// The step the answered save is recorded as, so an action being recorded keeps it:
+    /// `file.saveAs` for Save As (#2032) and `file.saveACopy` for Save a Copy (#4373).
+    pub record: &'static str,
 }
 
 /// `true` when `path` names a JPEG (`.jpg`, `.jpeg`, `.jpe`, …).
@@ -104,7 +104,7 @@ pub fn wants_prompt(app: &PhotocraftApp, path: &str) -> bool {
 
 /// Parks the save behind the prompt, starting at the Export preferences' JPEG quality (the one
 /// Quick Export uses). A prompt already waiting is never replaced.
-pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: bool) -> Result<(), String> {
+pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: &'static str) -> Result<(), String> {
     if app.save_options_open() {
         return Err(crate::SAVE_OPTIONS_OPEN.into());
     }
@@ -169,7 +169,7 @@ pub fn confirm(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let mut step = serde_json::json!({"path": p.path});
     choice.record(&mut step);
     let settings = choice.apply(app.save_settings());
-    app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, p.record.then_some(step));
+    app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, (p.record, step));
 }
 
 #[cfg(test)]

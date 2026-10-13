@@ -20,9 +20,10 @@ pub struct Prompt {
     pub bits: TgaBits,
     /// Save a Copy: the document keeps its path and unsaved changes.
     pub copy: bool,
-    /// File › Save As: the answered save is recorded as a `file.saveAs` step, so an action being
-    /// recorded keeps it (#2032). The dialog's Save a Copy isn't recorded.
-    pub record: bool,
+    /// The step the answered save is recorded as, so an action being recorded keeps it:
+    /// `file.saveAs` for Save As (#2032, even when a flat Targa is written as a copy) and
+    /// `file.saveACopy` for Save a Copy (#4373).
+    pub record: &'static str,
 }
 
 /// `true` when `path` names a Targa (`.tga`, and the rarer `.icb`, `.vda`, `.vst`).
@@ -43,7 +44,7 @@ pub fn bits_param(params: &serde_json::Value, cmd: &str) -> Result<Option<TgaBit
 
 /// Parks the save behind the prompt, starting at 32 bits when the document has an alpha channel.
 /// A prompt already waiting is never replaced (a shortcut can still reach Save a Copy).
-pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: bool) -> Result<(), String> {
+pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: &'static str) -> Result<(), String> {
     if app.save_options_open() {
         return Err(crate::SAVE_OPTIONS_OPEN.into());
     }
@@ -79,7 +80,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         let Some(p) = app.targa_options.take() else { return };
         let settings = ExportSettings { tga_bits: Some(p.bits), ..app.save_settings() };
         let step = serde_json::json!({"path": p.path, "tgaBits": p.bits.bits()});
-        app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, p.record.then_some(step));
+        app.write_answered_save(ctx, p.doc, p.path, &settings, p.copy, (p.record, step));
     } else if cancel {
         app.targa_options = None;
         app.ui.status = tl!("Save cancelled").into();
