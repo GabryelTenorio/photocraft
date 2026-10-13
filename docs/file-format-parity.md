@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (modern Brightness/Contrast's brightness curve; Photoshop-oracle floor 151/258; DDS textures open, #1327; DPX read and write, #1049; #2465 fixed: CS2 placed layers with only a `PlLd` block open their contents; Photoshop Actions `.atn` read and write; `.shc` contour files read and write; earlier the same day: indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-13 · **Change:** minor (modern Brightness/Contrast's brightness curve; Photoshop-oracle floor 151/258; CMYK Invert, Posterize and Threshold on the inks; 16-bit Lab Invert; Photoshop-oracle floor 145/258; `.atn` import maps 112 events; DDS textures open, #1327; DPX read and write, #1049; #2465 fixed: CS2 placed layers with only a `PlLd` block open their contents; Photoshop Actions `.atn` read and write; `.shc` contour files read and write; earlier the same day: indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -131,7 +131,7 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 | LUTs `.cube` / `.3dl` / `.look` | R/W (Export Color Lookup) | R/W / R / R | `cms/src/lutfile.rs` |
 | Keyboard shortcuts `.kys` | R/W | R | `engine/src/kys.rs` |
 | ICC profiles | R | R | Own CMS |
-| Actions `.atn` | R/W | R/W | `psd/src/atn.rs` (version 16 sets, exact round trip), `engine/src/atn_cmds.rs` (108 Photoshop events ↔ commands; other steps kept verbatim). Panel menu, CLI `batch --actions set.atn`, `actions.load`/`actions.save`. Photoshop 5-era version 12 files unsupported (AUTO-219-2) |
+| Actions `.atn` | R/W | R/W | `psd/src/atn.rs` (version 16 sets, exact round trip), `engine/src/atn_cmds.rs` (112 Photoshop events ↔ commands; other steps kept verbatim). Panel menu, CLI `batch --actions set.atn`, `actions.load`/`actions.save`. Photoshop 5-era version 12 files unsupported (AUTO-219-2) |
 | Styles `.asl` | R/W | no | #1693 |
 | Contours `.shc` | R/W | R/W | `psd/src/shc.rs`; Contour Editor Load…/Save… (FILE-215-15). No user contour library; not yet checked against a Photoshop-written file |
 | Custom shapes `.csh`, tool presets `.tpl` | R/W | no | |
@@ -142,9 +142,11 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-12 | minor | Modern Brightness/Contrast: the brightness curve refit to Photoshop, so the rgb and gray 8/16/32 brightness-contrast oracles pass; Photoshop-oracle floor 133 → 151 of 258 |
+| 2026-10-13 | minor | Modern Brightness/Contrast: the brightness curve refit to Photoshop, so the rgb and gray 8/16/32 brightness-contrast oracles pass; Photoshop-oracle floor 145 → 151 of 258 |
+| 2026-10-12 | minor | `.atn`: 112 events mapped (Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | DDS textures open, read-only (#1327) |
 | 2026-10-12 | minor | #2465 fixed: Photoshop CS2 placed layers (`PlLd` only, file in `lnkD`) open as editable smart objects and save their edits |
+| 2026-10-12 | minor | CMYK Invert, Posterize and Threshold work on the inks and 16-bit Lab Invert mirrors a and b around neutral (oracle bad pixels: CMYK 71–77% → 9–10%, 37% → 1.6%; lab16 invert 52% → 1.2%); Photoshop-oracle floor 133 → 145 of 258 |
 | 2026-10-12 | minor | DPX read and write (#1049); Cineon still missing |
 | 2026-10-12 | minor | Photoshop Actions `.atn`: read and write, 90 events mapped, the rest kept verbatim (AUTO-219-2) |
 | 2026-10-12 | minor | Presets table: Contours `.shc` read and write through the Contour Editor (FILE-215-15); `.csh` and `.tpl` stay missing |
