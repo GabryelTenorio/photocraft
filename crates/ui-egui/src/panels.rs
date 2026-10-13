@@ -2892,6 +2892,19 @@ fn draw_layer_thumb(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &egui::Ui,
     };
     p.rect_stroke(rect, CornerRadius::same(if t.pro { 0 } else { 5 }), stroke, StrokeKind::Outside);
     crate::smart_ui::thumb_badge(ui, l, rect);
+    shape_badge(ui, l, rect);
+}
+
+/// Vector-shape badge in the thumbnail corner, the same place as a smart-object badge (#4584).
+fn shape_badge(ui: &egui::Ui, l: &Layer, thumb: Rect) {
+    if !matches!(l.content, LayerContent::Shape(_)) {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    let r = Rect::from_min_size(pos2(thumb.right() - 9.0, thumb.bottom() - 9.0), vec2(11.0, 11.0));
+    ui.painter().rect_filled(r, 2.0, t.field);
+    ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
+    icons::paint(ui, r, "pentagon", 9.0, t.icon);
 }
 
 fn channels(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
