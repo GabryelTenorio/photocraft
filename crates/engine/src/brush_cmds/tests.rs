@@ -237,6 +237,45 @@ fn presets_save_load_delete_round_trip() {
     assert!(s.execute("brush.presets.save", json!({})).is_err());
 }
 
+/// The New Brush Preset dialog's boxes (#4490): a preset saved without Capture Brush Size or
+/// Include Tool Settings leaves the tool's size, mode, opacity, flow and pressure buttons as they
+/// are when picked; one saved with Include Color brings its colour back as the foreground. A preset
+/// saved without the boxes picks as it always did.
+#[test]
+fn presets_save_captures_size_tool_settings_and_color_as_asked() {
+    let mut s = session(10, 10);
+    s.execute("tools.setBrush", json!({"size": 40, "opacity": 0.5, "flow": 0.25, "mode": "Multiply", "pressureSize": false})).unwrap();
+    s.tools.foreground = [1.0, 0.0, 0.0, 1.0];
+    s.execute("brush.presets.save", json!({"name": "Legacy"})).unwrap();
+    s.execute("brush.presets.save", json!({"name": "Bare", "captureSize": false, "toolSettings": false})).unwrap();
+    s.execute("brush.presets.save", json!({"name": "Red", "color": true})).unwrap();
+    let caps = |n: &str| s.tools.presets.iter().find(|p| p.name == n).unwrap().captures.clone();
+    assert!(caps("Legacy").is_default(), "no boxes, the captures of any other preset");
+    assert_eq!(caps("Bare"), PresetCaptures { size: false, tool_settings: false, color: false });
+    assert!(caps("Red").color);
+
+    // Change the tool, then pick each.
+    let other = json!({"size": 9, "opacity": 1.0, "flow": 1.0, "mode": "Normal", "pressureSize": true});
+    s.execute("tools.setBrush", other.clone()).unwrap();
+    s.tools.foreground = [0.0, 0.0, 1.0, 1.0];
+    s.execute("tools.setBrush", json!({"preset": "Legacy"})).unwrap();
+    let b = &s.tools.brush;
+    assert_eq!((b.size, b.opacity, b.flow, b.mode, b.pressure_size), (40.0, 0.5, 0.25, photocraft_color::BlendMode::Multiply, false), "everything it saved");
+    assert_eq!(s.tools.foreground, [0.0, 0.0, 1.0, 1.0], "a preset without Include Color leaves the foreground");
+
+    s.execute("tools.setBrush", other.clone()).unwrap();
+    s.execute("tools.setBrush", json!({"preset": "Bare"})).unwrap();
+    let b = &s.tools.brush;
+    assert_eq!((b.size, b.opacity, b.flow, b.mode, b.pressure_size), (9.0, 1.0, 1.0, photocraft_color::BlendMode::Normal, true), "the tool's own");
+    assert_eq!(s.tools.current_preset.as_deref(), Some("Bare"));
+
+    s.execute("tools.setBrush", json!({"preset": "Red"})).unwrap();
+    assert_eq!(s.tools.foreground, [1.0, 0.0, 0.0, 1.0], "Include Color sets the foreground");
+    // A stroke naming the preset takes the same brush.
+    let r = resolve_brush(&s, &json!({"preset": "Bare"}), "paint.brush").unwrap();
+    assert_eq!(r.size, s.tools.brush.size);
+}
+
 #[test]
 fn presets_save_appends_at_the_end_and_update_overwrites_in_place() {
     let mut s = session(10, 10);
@@ -881,5 +920,23 @@ fn clear_mode_erases_with_the_brush_or_pencil() {
         assert_eq!(rgba(&s, 20, 10)[3], 0.0, "{cmd}: cleared to transparency");
         assert_eq!(rgba(&s, 20, 2), [1.0, 0.0, 0.0, 1.0], "{cmd}: untouched pixels stay");
         assert_eq!(s.active().unwrap().history.undo_label(), Some(label), "{cmd}");
+    }
+}
+
+/// #4344: a foreground picked as CMYK 100/0/0/0 is painted into a CMYK document as those inks by
+/// the Brush and the Pencil, not as whatever its sRGB stand-in converts back to (100/28/0/17).
+#[test]
+fn brush_and_pencil_paint_a_cmyk_pick_with_the_picked_inks() {
+    let cyan = [1.0f32, 0.0, 0.0, 0.0];
+    for cmd in ["paint.stroke", "paint.pencil"] {
+        let mut s = session(16, 16);
+        s.execute("image.mode.cmyk", json!({})).unwrap();
+        let rgb = photocraft_color::convert::cmyk_to_rgb(cyan).map(|c| c.clamp(0.0, 1.0));
+        s.execute("tools.setColors", json!({"foreground": rgb, "foregroundCmyk": cyan})).unwrap();
+        s.execute(cmd, json!({"points": [[8.0, 8.0]], "size": 6.0, "hardness": 1.0})).unwrap();
+        let st = s.active().unwrap();
+        let surf = st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap();
+        let got: Vec<f32> = surf.read_region(Rect::new(8, 8, 9, 9)).into_iter().take(4).collect();
+        assert!(got.iter().zip(cyan).all(|(a, b)| (a - b).abs() < 0.02), "{cmd}: {got:?}");
     }
 }
