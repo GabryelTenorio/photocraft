@@ -16,6 +16,10 @@
 # letters; the trailing "…" of dialog commands is kept.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	用紙の幅
+	Paper Height	用紙の高さ
 	Rows	行
 	Number	数
 	Top:	上:
@@ -108,6 +112,14 @@
 	Script Events Manager…	スクリプトイベント管理…
 	Import	読み込み
 	Browse…	参照…
+	Source Files	ソースファイル
+	Use:	使用:
+	Files	ファイル
+	Folder	フォルダー
+	Add Open Files	開いているファイルを追加
+	Sort By Name	名前順に並べ替え
+	Attempt to Automatically Align Source Images	ソース画像の自動整列を試す
+	Create Smart Object after Loading Layers	レイヤーの読み込み後にスマートオブジェクトを作成
 	Reveal in Finder	Finder で表示
 	Show in Explorer	エクスプローラーで表示
 	Show in Folder	フォルダーで表示
@@ -148,6 +160,8 @@
 	Transform Again on a Copy	複製してもう一度変形
 	Scale	拡大・縮小
 	Rotate	回転
+	Set horizontal skew	水平方向の斜体を設定
+	Set vertical skew	垂直方向の斜体を設定
 	Skew	斜体
 	Distort	ゆがみ
 	Perspective	遠近法
@@ -728,6 +742,10 @@
 	Breeze Dark Theme	Breeze ダークテーマ
 	Breeze light	Breeze ライト
 	Breeze Light Theme	Breeze ライトテーマ
+	Soft dark	ソフトダーク
+	Soft light	ソフトライト
+	Soft Dark Theme	ソフトダークテーマ
+	Soft Light Theme	ソフトライトテーマ
 	Next Theme	次のテーマ
 	Actions	アクション
 	Brush Settings	ブラシ設定
@@ -2096,6 +2114,11 @@
 	Rename Brush…	ブラシの名前を変更…
 	Delete Brush	ブラシを削除
 	New Brush Preset…	新規ブラシプリセット…
+	Capture Brush Size in Preset	ブラシサイズをプリセットに保存
+	Include Tool Settings	ツール設定を含める
+	Include Color	カラーを含める
+	Enter a name for the brush preset	ブラシプリセットの名前を入力してください
+	A brush preset with this name already exists	この名前のブラシプリセットは既に存在します
 	Brush Preset Options	ブラシプリセットのオプション
 	Group name	グループ名
 	Brush name	ブラシ名

@@ -30,6 +30,7 @@ mod brand;
 pub(crate) mod brush_cursor;
 pub mod brush_panel;
 pub mod brush_picker;
+pub mod brush_preset_dialog;
 pub mod brush_preview;
 pub mod brush_resize;
 pub mod brush_sections;
@@ -165,6 +166,7 @@ pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
 pub mod scrollbars;
+mod scrub_wrap;
 pub mod select_mask_view;
 pub mod served_fonts;
 pub mod shape_dialog;
@@ -179,6 +181,7 @@ pub mod smart_ui;
 pub mod snap_ui;
 pub(crate) mod solid_fill_ui;
 pub mod spring_tools;
+pub mod stack_dialog;
 pub mod state;
 pub mod stroke_constraint;
 pub mod stroke_trail;
@@ -195,6 +198,7 @@ pub mod tiff_options_ui;
 mod tile_overlay;
 mod timeline_ui;
 mod titlebar;
+pub use titlebar::{Caption, CaptionFamily, CaptionIcon, CaptionIcons, CaptionStyle, RenderIconFn};
 pub mod tone;
 mod tool_cursor;
 pub mod tool_feedback;
@@ -379,6 +383,8 @@ pub type CapsLockFn = Box<dyn FnMut() -> bool>;
 /// Keeps an undecorated window's OS frame from offsetting its content and pointer (#2246).
 /// Called once per frame; `None` when the window is decorated or the platform needs no fixing.
 pub type WindowFrameFn = Box<dyn FnMut()>;
+/// The caption buttons' current style ([`Services::caption_style`]).
+pub type CaptionStyleFn = Box<dyn Fn(&egui::Context) -> CaptionStyle>;
 
 /// Platform services injected by the app binary (file dialogs, codecs), keeping this crate free of
 /// I/O dependencies.
@@ -455,6 +461,10 @@ pub struct Services {
     /// (Windows custom title bar, #2246). Called once per frame; `None` when the window is
     /// decorated or the platform needs no fixing.
     pub window_frame: Option<WindowFrameFn>,
+    /// How the custom title bar's caption buttons look and where they sit (Linux: the desktop's
+    /// style and button layout). Read every frame, with the context to wake when it changes;
+    /// `None` keeps Windows' buttons at the right end.
+    pub caption_style: Option<CaptionStyleFn>,
     /// The persistent brush preset store, loading in the background (desktop; see
     /// `photocraft_engine::preset_store`). Attached to the session once it arrives; without
     /// one, brush presets are session-only unless the shell attached a store before startup.
@@ -1182,6 +1192,7 @@ impl PhotocraftApp {
             st.source_read_only = photocraft_io::affinity::is_affinity(bytes);
         }
         self.sync_views();
+        let warnings = file_open::with_missing_fonts(self, warnings);
         self.ui.status = crate::i18n::fmt(tl!("Opened {name}"), &[("name", name)]);
         self.ui.status_error = false;
         if camera_raw_ui::wants_open_dialog(self, &warnings) {
