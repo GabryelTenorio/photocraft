@@ -29,15 +29,20 @@ pub mod focus;
 pub mod gmm;
 pub mod grabcut;
 pub mod maxflow;
+pub mod provider;
 pub mod quick;
 pub mod sky;
 pub mod slic;
 pub mod subject;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "ml-segmentation"))]
+mod comfyui;
+
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
 
 pub use crate::selection::Region;
+pub use provider::{SegmentationBackend, SegmentationProvider, create_provider};
 use gmm::Gmm;
 use maxflow::Graph;
 
