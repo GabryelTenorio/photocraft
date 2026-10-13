@@ -1,6 +1,8 @@
 //! JSON views of engine state for automation, tests and debugging.
 
-use photocraft_doc::{Layer, LayerContent, SmartSource};
+use std::collections::HashMap;
+
+use photocraft_doc::{Layer, LayerContent, SmartContentsId, SmartSource};
 use serde_json::{Value, json};
 
 use crate::{DocState, Session};
@@ -25,6 +27,7 @@ pub fn session(s: &Session) -> Value {
 pub fn document(d: &DocState) -> Value {
     let doc = &d.doc;
     let selected = d.selected_layers();
+    let instances = smart_instances(&doc.layers);
     json!({
         "name": doc.name,
         "path": &d.path,
@@ -38,7 +41,7 @@ pub fn document(d: &DocState) -> Value {
         "isolatedLayers": d.isolated_layers.iter().map(|l| l.0).collect::<Vec<_>>(),
         "hasSelection": doc.selection.is_some(),
         "selectionBounds": doc.selection.as_ref().map(|s| { let r = s.content_bounds(); [r.x0, r.y0, r.width() as i32, r.height() as i32] }),
-        "layers": doc.layers.iter().rev().map(|l| layer_sel(l, &selected)).collect::<Vec<_>>(),
+        "layers": doc.layers.iter().rev().map(|l| layer_sel(l, &selected, &instances)).collect::<Vec<_>>(),
         "history": d.history.entries(),
         "snapshots": d.snapshots.iter().map(|snap| json!({"id": snap.id, "name": snap.name})).collect::<Vec<_>>(),
         "canUndo": d.history.can_undo(),
@@ -61,13 +64,27 @@ pub fn document(d: &DocState) -> Value {
     })
 }
 
-/// Layer tree top-to-bottom (display order).
+/// Layer tree top-to-bottom (display order). Smart object instances are counted within `l`.
 pub fn layer(l: &Layer) -> Value {
-    layer_sel(l, &[])
+    layer_sel(l, &[], &smart_instances(std::slice::from_ref(l)))
+}
+
+/// How many smart objects in `layers`, groups included, share each contents identity.
+fn smart_instances(layers: &[Layer]) -> HashMap<SmartContentsId, usize> {
+    let mut counts = HashMap::new();
+    let mut pending: Vec<&Layer> = layers.iter().collect();
+    while let Some(l) = pending.pop() {
+        match &l.content {
+            LayerContent::Smart(sm) => *counts.entry(sm.contents_id).or_default() += 1,
+            LayerContent::Group(g) => pending.extend(&g.children),
+            _ => {}
+        }
+    }
+    counts
 }
 
 /// [`layer`] with a `selected` flag on every node (Layers panel multi-selection).
-fn layer_sel(l: &Layer, selected: &[photocraft_doc::LayerId]) -> Value {
+fn layer_sel(l: &Layer, selected: &[photocraft_doc::LayerId], instances: &HashMap<SmartContentsId, usize>) -> Value {
     let bounds = l.surface().map(|s| {
         let r = s.content_bounds();
         [r.x0, r.y0, r.width() as i32, r.height() as i32]
@@ -91,7 +108,7 @@ fn layer_sel(l: &Layer, selected: &[photocraft_doc::LayerId]) -> Value {
     });
     match &l.content {
         LayerContent::Group(g) => {
-            v["children"] = Value::Array(g.children.iter().rev().map(|c| layer_sel(c, selected)).collect());
+            v["children"] = Value::Array(g.children.iter().rev().map(|c| layer_sel(c, selected, instances)).collect());
             v["expanded"] = json!(g.expanded);
             if let Some(a) = &g.artboard {
                 v["artboard"] = json!({"rect": [a.rect.x0, a.rect.y0, a.rect.width(), a.rect.height()], "background": a.background.name(), "preset": a.preset});
@@ -115,6 +132,9 @@ fn layer_sel(l: &Layer, selected: &[photocraft_doc::LayerId]) -> Value {
                 SmartSource::Embedded { file_name, .. } => json!({"kind": "embedded", "fileName": file_name}),
                 SmartSource::Linked { path } => json!({"kind": "linked", "path": path}),
             };
+            // Copies of the same contents change together (Edit and Replace Contents), and
+            // `smartSource` can't tell them from independent copies of one file (#4075).
+            v["smartContents"] = json!({"id": sm.contents_id.0, "instances": instances.get(&sm.contents_id).copied().unwrap_or(1)});
         }
         LayerContent::Text(t) => {
             v["text"] = json!({"text": t.text, "font": t.font_family, "sizePt": t.size_pt});
