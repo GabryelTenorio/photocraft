@@ -150,15 +150,17 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             ui.set_min_size(vec2(300.0, 160.0));
             ui.set_max_width(300.0);
             egui::ScrollArea::vertical().id_salt("load-stack-files").max_height(160.0).auto_shrink([false, false]).show(ui, |ui| {
-                if folder_mode && !folder(f).is_empty() {
-                    ui.label(RichText::new(folder(f)).color(t.text_dim));
-                }
-                for (i, p) in shown.iter().enumerate() {
-                    let row = ui.add(egui::Button::selectable(!folder_mode && sel == Some(i), file_name(p))).on_hover_text(p.as_str());
-                    if row.clicked() && !folder_mode {
-                        f.insert("selected".into(), json!(i));
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    if folder_mode && !folder(f).is_empty() {
+                        ui.label(RichText::new(folder(f)).color(t.text_dim));
                     }
-                }
+                    for (i, p) in shown.iter().enumerate() {
+                        let row = ui.add(egui::Button::selectable(!folder_mode && sel == Some(i), file_name(p))).on_hover_text(p.as_str());
+                        if row.clicked() && !folder_mode {
+                            f.insert("selected".into(), json!(i));
+                        }
+                    }
+                });
             });
         });
         ui.add_space(8.0);

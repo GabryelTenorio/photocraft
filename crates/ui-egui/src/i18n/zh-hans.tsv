@@ -2710,3 +2710,4 @@ curves	Smooth	平滑
 	Step {step} is waiting for its dialog	步骤 {step} 正在等待其对话框
 @plural	{n} action|{n} actions	{n} 个动作
 	Auto Add/Delete	自动添加/删除
+	Choose Stack Mode:	选择堆栈模式：

@@ -3106,3 +3106,4 @@ curves	Smooth	Lisser
 	Step {step} is waiting for its dialog	L’étape {step} attend sa boîte de dialogue
 @plural	{n} action|{n} actions	{n} action|{n} actions
 	Auto Add/Delete	Ajout/suppr. auto
+	Choose Stack Mode:	Choisir le mode de pile :

@@ -3715,3 +3715,4 @@ curves	Smooth	スムーズ
 	Step {step} is waiting for its dialog	ステップ {step} はダイアログを待っています
 @plural	{n} action|{n} actions	アクション {n} 個
 	Auto Add/Delete	自動追加・削除
+	Choose Stack Mode:	スタックモードを選択:

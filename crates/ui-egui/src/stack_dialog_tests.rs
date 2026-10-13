@@ -72,6 +72,7 @@ fn statistics_browse_and_mode_selection_compute_the_chosen_statistic() {
     h.get_by_label("Browse…").click();
     h.run_steps(4);
     assert_eq!(listed(&h), ["first.png", "second.png"]);
+    assert!(h.get_by_label("first.png").rect().bottom() <= h.get_by_label("second.png").rect().top(), "source files must be vertical rows");
     h.get_by_value("Median").click();
     h.run_steps(2);
     for mode in photocraft_doc::StackMode::ALL {
@@ -171,6 +172,7 @@ fn source_files_list_is_built_with_browse_remove_sort_and_open_files() {
     h.run_steps(4);
     assert!(matches!(asked.borrow()[0], FileDialogRequest::Open { multiple: true, .. }), "{:?}", asked.borrow());
     assert_eq!(listed(&h), ["b.png", "c.png"]);
+    assert!(h.get_by_label("b.png").rect().bottom() <= h.get_by_label("c.png").rect().top(), "source files must be vertical rows");
     h.get_by_label("Browse…").click();
     h.run_steps(4);
     assert_eq!(listed(&h), ["b.png", "c.png", "a.png"], "b.png only once");
