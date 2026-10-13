@@ -249,6 +249,9 @@ fn inspect_and_replace_contents_report_shared_instances() {
     changed.sort_unstable();
     assert_eq!(changed, if o < d { [o, d] } else { [d, o] });
     assert_eq!([o, d, i].map(|id| contents_pixel(&s, id)), [[0.0, 1.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]]);
+    for (id, expected) in [(o, [0.0, 1.0, 0.0, 1.0]), (d, [0.0, 1.0, 0.0, 1.0]), (i, [0.0, 0.0, 1.0, 1.0])] {
+        assert_eq!(smart(&s, id).cache.as_ref().unwrap().rgba(4, 3), expected, "instance {id} must display its current contents");
+    }
 }
 
 /// The same with the placed layer Photoshop wrote, twice: Photoshop's copies of a smart object
@@ -279,5 +282,13 @@ fn photoshop_placed_copies_import_as_shared_instances() {
     assert_eq!(changed, ids);
     for id in ids {
         assert_eq!(contents_pixel(&s, id), [0.0, 1.0, 0.0, 1.0]);
+        let cache = smart(&s, id).cache.as_ref().unwrap();
+        let bounds = cache.content_bounds();
+        assert!(!bounds.is_empty(), "instance {id} must have rendered pixels");
+        assert_eq!(
+            cache.rgba(bounds.x0 + bounds.width() as i32 / 2, bounds.y0 + bounds.height() as i32 / 2),
+            [0.0, 1.0, 0.0, 1.0],
+            "instance {id} must refresh its imported cache"
+        );
     }
 }
