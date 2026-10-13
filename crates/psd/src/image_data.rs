@@ -72,7 +72,7 @@ mod tests {
         let header = Header::new(Version::Psd, 2, 1, 3, 8, ColorMode::Rgb);
         let data = ImageData { compression: Compression::Raw, data: vec![10, 11, 20, 21, 30, 31] };
         for (index, expected) in [(0, [10, 11]), (1, [20, 21]), (2, [30, 31])] {
-            assert_eq!(data.decode_channel(&header, index).unwrap(), expected);
+            assert_eq!(data.decode_channel(&header, index).unwrap(), expected.to_vec());
         }
         for index in [3, 4, usize::MAX] {
             assert!(data.decode_channel(&header, index).is_err(), "invalid channel {index}");
