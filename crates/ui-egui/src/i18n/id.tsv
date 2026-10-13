@@ -129,6 +129,8 @@
 	Search…	Cari…
 	Check Spelling…	Periksa Ejaan…
 	Find and Replace Text…	Cari dan Ganti Teks…
+	Add to Dictionary	Tambahkan ke Kamus
+	No Spelling Suggestions	Tidak Ada Saran Ejaan
 	Fill…	Isi…
 	Stroke…	Stroke…
 	Content-Aware Fill…	Isi Content-Aware…
@@ -709,6 +711,10 @@
 	Breeze Dark Theme	Tema Breeze Gelap
 	Breeze light	Breeze terang
 	Breeze Light Theme	Tema Breeze Terang
+	Soft dark	Lembut gelap
+	Soft light	Lembut terang
+	Soft Dark Theme	Tema lembut gelap
+	Soft Light Theme	Tema lembut terang
 	Next Theme	Tema Berikutnya
 	Actions	Action
 	Brush Settings	Pengaturan Kuas
@@ -3076,3 +3082,4 @@ curves	Smooth	Haluskan
 	Action playback stopped	Pemutaran tindakan dihentikan
 	Step {step} is waiting for its dialog	Langkah {step} menunggu dialognya
 @plural	{n} action|{n} actions	{n} tindakan
+	Auto Add/Delete	Tambah/Hapus Otomatis

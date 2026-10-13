@@ -134,6 +134,8 @@
 	Search…	Suchen…
 	Check Spelling…	Rechtschreibung prüfen…
 	Find and Replace Text…	Text suchen und ersetzen…
+	Add to Dictionary	Zum Wörterbuch hinzufügen
+	No Spelling Suggestions	Keine Rechtschreibvorschläge
 	Fill…	Füllen…
 	Stroke…	Nachziehen…
 	Content-Aware Fill…	Inhaltsbasiert füllen…
@@ -719,6 +721,10 @@
 	Breeze Dark Theme	Breeze-Design (Dunkel)
 	Breeze light	Breeze hell
 	Breeze Light Theme	Breeze-Design (Hell)
+	Soft dark	Weich dunkel
+	Soft light	Weich hell
+	Soft Dark Theme	Weiches Design (Dunkel)
+	Soft Light Theme	Weiches Design (Hell)
 	Next Theme	Nächstes Design
 	Actions	Aktionen
 	Brush Settings	Pinseleinstellungen
@@ -2728,3 +2734,4 @@ curves	Smooth	Glätten
 	Action playback stopped	Aktionswiedergabe angehalten
 	Step {step} is waiting for its dialog	Schritt {step} wartet auf seinen Dialog
 @plural	{n} action|{n} actions	{n} Aktion|{n} Aktionen
+	Auto Add/Delete	Autom. hinzuf./löschen

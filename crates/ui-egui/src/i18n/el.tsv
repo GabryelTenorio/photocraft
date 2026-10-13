@@ -115,6 +115,8 @@
 	Search…	Αναζήτηση…
 	Check Spelling…	Ορθογραφικός έλεγχος…
 	Find and Replace Text…	Εύρεση και αντικατάσταση κειμένου…
+	Add to Dictionary	Προσθήκη στο λεξικό
+	No Spelling Suggestions	Δεν υπάρχουν ορθογραφικές προτάσεις
 	Fill…	Γέμισμα…
 	Stroke…	Περίγραμμα…
 	Preferences…	Προτιμήσεις…
@@ -2130,6 +2132,10 @@
 	Breeze Dark Theme	Σκούρο θέμα Breeze
 	Breeze light	Breeze φωτεινό
 	Breeze Light Theme	Φωτεινό θέμα Breeze
+	Soft dark	Απαλό σκούρο
+	Soft light	Απαλό ανοιχτό
+	Soft Dark Theme	Απαλό σκούρο θέμα
+	Soft Light Theme	Απαλό ανοιχτό θέμα
 	Clear Canvas Guides	Απαλοιφή οδηγών καμβά
 	Clear Override	Απαλοιφή παράκαμψης
 	Clear Samples	Απαλοιφή δειγμάτων
@@ -3786,3 +3792,4 @@ curves	Smooth	Εξομάλυνση
 	Action playback stopped	Η αναπαραγωγή της ενέργειας σταμάτησε
 	Step {step} is waiting for its dialog	Το βήμα {step} περιμένει το παράθυρο διαλόγου του
 @plural	{n} action|{n} actions	{n} ενέργεια|{n} ενέργειες
+	Auto Add/Delete	Αυτόματη προσθήκη/διαγραφή

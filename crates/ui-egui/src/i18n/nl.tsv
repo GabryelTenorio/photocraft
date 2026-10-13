@@ -124,6 +124,8 @@
 	Search…	Zoeken…
 	Check Spelling…	Spelling controleren…
 	Find and Replace Text…	Tekst zoeken en vervangen…
+	Add to Dictionary	Aan woordenboek toevoegen
+	No Spelling Suggestions	Geen spellingsuggesties
 	Fill…	Vullen…
 	Stroke…	Omlijnen…
 	Content-Aware Fill…	Inhoudsbewust vullen…
@@ -705,6 +707,10 @@
 	Breeze Dark Theme	Breeze-thema donker
 	Breeze light	Breeze licht
 	Breeze Light Theme	Breeze-thema licht
+	Soft dark	Zacht donker
+	Soft light	Zacht licht
+	Soft Dark Theme	Zacht donker thema
+	Soft Light Theme	Zacht licht thema
 	Adwaita Light Theme	Adwaita-thema licht
 	Adwaita Dark Theme	Adwaita-thema donker
 	Adwaita	Adwaita
@@ -3848,3 +3854,4 @@ curves	Smooth	Vloeiend maken
 	Action playback stopped	Afspelen van de handeling gestopt
 	Step {step} is waiting for its dialog	Stap {step} wacht op zijn dialoogvenster
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
+	Auto Add/Delete	Automatisch toevoegen/verwijderen

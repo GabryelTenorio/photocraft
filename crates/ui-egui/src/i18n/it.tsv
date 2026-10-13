@@ -131,6 +131,8 @@
 	Search…	Cerca…
 	Check Spelling…	Controlla ortografia…
 	Find and Replace Text…	Trova e sostituisci testo…
+	Add to Dictionary	Aggiungi al dizionario
+	No Spelling Suggestions	Nessun suggerimento ortografico
 	Fill…	Riempi…
 	Stroke…	Traccia…
 	Content-Aware Fill…	Riempimento in base al contenuto…
@@ -724,6 +726,10 @@
 	Breeze Dark Theme	Tema Breeze scuro
 	Breeze light	Breeze chiaro
 	Breeze Light Theme	Tema Breeze chiaro
+	Soft dark	Morbido scuro
+	Soft light	Morbido chiaro
+	Soft Dark Theme	Tema morbido scuro
+	Soft Light Theme	Tema morbido chiaro
 	Next Theme	Tema successivo
 	Actions	Azioni
 	Brush Settings	Impostazioni pennello
@@ -4052,3 +4058,4 @@ navigator	Zoom	Zoom
 	Action playback stopped	Esecuzione dell’azione interrotta
 	Step {step} is waiting for its dialog	Il passaggio {step} attende la sua finestra di dialogo
 @plural	{n} action|{n} actions	{n} azione|{n} azioni
+	Auto Add/Delete	Aggiungi/elimina automaticamente

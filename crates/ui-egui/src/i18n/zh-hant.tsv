@@ -138,6 +138,8 @@
 	Search…	搜尋…
 	Check Spelling…	拼字檢查…
 	Find and Replace Text…	尋找並取代文字…
+	Add to Dictionary	加入字典
+	No Spelling Suggestions	沒有拼字建議
 	Fill…	填滿…
 	Stroke…	筆畫…
 	Content-Aware Fill…	內容感知填滿…
@@ -733,6 +735,10 @@
 	Breeze Dark Theme	Breeze 深色主題
 	Breeze light	Breeze 淺色
 	Breeze Light Theme	Breeze 淺色主題
+	Soft dark	柔和深色
+	Soft light	柔和淺色
+	Soft Dark Theme	柔和深色主題
+	Soft Light Theme	柔和淺色主題
 	Next Theme	下一個主題
 	Actions	動作
 	Brush Settings	筆刷設定
@@ -2678,3 +2684,4 @@ curves	Smooth	平滑
 	Action playback stopped	動作播放已停止
 	Step {step} is waiting for its dialog	步驟 {step} 正在等待其對話框
 @plural	{n} action|{n} actions	{n} 個動作
+	Auto Add/Delete	自動增加/刪除
