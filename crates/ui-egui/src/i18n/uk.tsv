@@ -1412,6 +1412,10 @@
 	Breeze Dark Theme	Темна тема Breeze
 	Breeze light	Breeze світла
 	Breeze Light Theme	Світла тема Breeze
+	Soft dark	М'яка темна
+	Soft light	М'яка світла
+	Soft Dark Theme	М'яка темна тема
+	Soft Light Theme	М'яка світла тема
 	Adwaita Light Theme	Світла тема Adwaita
 	Adwaita Dark Theme	Темна тема Adwaita
 	Adwaita	Adwaita
@@ -3788,3 +3792,4 @@ curves	Smooth	Згладити
 	Action playback stopped	Відтворення операції зупинено
 	Step {step} is waiting for its dialog	Крок {step} очікує на свій діалог
 @plural	{n} action|{n} actions	{n} операція|{n} операції|{n} операцій
+	Auto Add/Delete	Автододавання/видалення

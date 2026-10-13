@@ -123,6 +123,10 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             if ui.input(|i| i.pointer.any_pressed()) {
                 ui.data_mut(|d| d.remove::<egui::Id>(held_id));
             }
+            // No tool tooltips over an open flyout, or while a button is held to open one (#4450):
+            // Photoshop shows none there. (The flyout is our own Area, so egui's rule for popups
+            // doesn't hide them.)
+            let tool_tips = ui.data(|d| d.get_temp::<(egui::Id, Rect)>(flyout_id)).is_none() && !ui.input(|i| i.pointer.primary_down());
             let ctx = ui.ctx().clone();
             let footer = (if t.pro { 8.0 } else { 14.0 })
                 + chips_height(t.pro, t.round_chips, t.round_chips && double)
@@ -153,9 +157,12 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                     let key = egui::Id::new(("tool-slot", *slot_index));
                                     let tool = slot_tool(ui, app.ui.tool, slot, key);
                                     let sel = slot.contains(&app.ui.tool);
-                                    let tip =
-                                        if tool.key() == '\0' { tl!(tool.label()).to_string() } else { format!("{}  ({})", tl!(tool.label()), tool.key()) };
-                                    let resp = icons::button_with_icon_size(ui, icons::tool_icon(tool), bx, toolbar_icon_size(bx, t.pro), sel, &tip);
+                                    let tip = match crate::tool_shortcuts::shortcut(app, tool) {
+                                        Some(sc) => format!("{}  ({})", tl!(tool.label()), crate::shortcuts::pretty(&sc)),
+                                        None => tl!(tool.label()).to_string(),
+                                    };
+                                    let resp =
+                                        icons::button_with_icon_size_tip(ui, icons::tool_icon(tool), bx, toolbar_icon_size(bx, t.pro), sel, &tip, tool_tips);
                                     if slot.len() > 1 {
                                         paint_toolbar_flyout_indicator(ui, &t, &resp);
                                     }
@@ -242,11 +249,11 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                                             egui::FontId::proportional(12.5),
                                                             t.text,
                                                         );
-                                                        if item.key() != '\0' {
+                                                        if let Some(sc) = crate::tool_shortcuts::shortcut(app, item) {
                                                             ui.painter().text(
                                                                 pos2(r.right() - 8.0, r.center().y),
                                                                 Align2::RIGHT_CENTER,
-                                                                item.key().to_string(),
+                                                                crate::shortcuts::pretty(&sc),
                                                                 egui::FontId::proportional(12.0),
                                                                 t.text_dim,
                                                             );
@@ -259,10 +266,13 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                                 });
                                             },
                                         );
-                                        let held_release = resp.clicked() && ui.data(|d| d.get_temp::<egui::Id>(held_id)) == Some(key);
-                                        let clicked_outside =
-                                            ui.input(|i| i.pointer.any_click()) && !held_release && !area.response.hovered() && !resp.hovered();
-                                        if clicked_outside || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                        // Any press outside the flyout and its button closes it, as in Photoshop: a
+                                        // drag on the canvas (cropping, painting) isn't a click (#4460).
+                                        let pressed_outside = ui.input(|i| {
+                                            i.pointer.any_pressed()
+                                                && i.pointer.press_origin().is_some_and(|p| !area.response.rect.contains(p) && !resp.rect.contains(p))
+                                        });
+                                        if pressed_outside || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                             ui.data_mut(|d| d.remove::<(egui::Id, Rect)>(flyout_id));
                                         }
                                     }
@@ -284,18 +294,20 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
                 ui.with_layout(layout, |ui| {
                     let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
-                    if icons::button(
+                    if icons::button_with_icon_size_tip(
                         ui,
                         "square-dashed",
                         bx,
+                        (bx * 0.52).round(),
                         quick_mask,
                         if quick_mask { tl!("Edit in Standard Mode  (Q)") } else { tl!("Edit in Quick Mask Mode  (Q)") },
+                        tool_tips,
                     )
                     .clicked()
                     {
                         let _ = crate::menus::invoke(app, &ctx, "select.editInQuickMaskMode", json!({}));
                     }
-                    let sm = icons::button(ui, "app-window", bx, false, tl!("Change Screen Mode  (F)"));
+                    let sm = icons::button_with_icon_size_tip(ui, "app-window", bx, (bx * 0.52).round(), false, tl!("Change Screen Mode  (F)"), tool_tips);
                     paint_toolbar_flyout_indicator(ui, &t, &sm);
 
                     // Right-click, or click and hold like the tool flyouts (#4444), lists the modes,
@@ -538,17 +550,25 @@ fn color_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, two_columns: bool) {
 
 /// The app's top bar: brand mark, menus, the document title and the workspace controls. With
 /// [`PhotocraftApp::custom_titlebar`] (Windows and Linux) it is also the window's title bar, as in
-/// Photoshop on Windows: the caption buttons take its right end (`titlebar`). With the system
+/// Photoshop on Windows: the caption buttons take its ends (`titlebar`). With the system
 /// title bar (Windows and Linux, `system_title_bar`) the OS draws its own icon and title, so the
 /// in-app bar shows menus and workspace controls only: no brand mark, no centred title.
 pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let custom = app.custom_titlebar;
     let system = system_title_bar(app);
-    let left = if cfg!(target_os = "macos") && app.integrated_titlebar { 78 } else { 10 };
-    let right = if custom { 0 } else { 10 };
+    // The caption buttons' room at each end (`titlebar`); a side with buttons has no margin.
+    let (caption_left, caption_right) = crate::titlebar::reserved(app, ui.ctx());
+    let left = if cfg!(target_os = "macos") && app.integrated_titlebar {
+        78
+    } else if caption_left > 0.0 {
+        0
+    } else {
+        10
+    };
+    let right = if caption_right > 0.0 { 0 } else { 10 };
     let bar = egui::Panel::top("title_bar")
-        .exact_size(if t.pro { 32.0 } else { 38.0 })
+        .exact_size(crate::titlebar::bar_height(app, ui.ctx(), if t.pro { 32.0 } else { 38.0 }))
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left, right, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             let full = ui.max_rect();
@@ -574,9 +594,10 @@ pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             let rtl = crate::direction::is_rtl();
             let mut free = (full.left(), full.right());
             crate::direction::horizontal_centered(ui, |ui| {
-                if rtl && custom {
-                    // The caption buttons keep the right end; the menus start beside them.
-                    ui.add_space(crate::titlebar::WIDTH + 4.0);
+                // The menus start beside the caption buttons at their end, if it has any.
+                let lead = if rtl { caption_right } else { caption_left };
+                if lead > 0.0 {
+                    ui.add_space(lead + 4.0);
                 }
                 if !system {
                     let side = if t.pro { 18.0 } else { 20.0 };
@@ -594,9 +615,10 @@ pub fn title_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 // The menu bar takes the whole row, so the far-end group gets its own rect: from
                 // the menus to the bar's end, or to the caption buttons.
                 let group = if rtl {
-                    egui::Rect::from_min_max(egui::pos2(full.left(), full.top()), egui::pos2((menus_end - TITLE_GAP).max(full.left()), full.bottom()))
+                    let left_edge = if caption_left > 0.0 { full.left() + caption_left + 4.0 } else { full.left() };
+                    egui::Rect::from_min_max(egui::pos2(left_edge, full.top()), egui::pos2((menus_end - TITLE_GAP).max(left_edge), full.bottom()))
                 } else {
-                    let right_edge = if custom { full.right() - crate::titlebar::WIDTH - 4.0 } else { full.right() };
+                    let right_edge = if caption_right > 0.0 { full.right() - caption_right - 4.0 } else { full.right() };
                     egui::Rect::from_min_max(egui::pos2((menus_end + TITLE_GAP).min(right_edge), full.top()), egui::pos2(right_edge, full.bottom()))
                 };
                 let mut group_ui = ui.new_child(egui::UiBuilder::new().max_rect(group).layout(crate::direction::trailing()));
@@ -1226,7 +1248,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         widgets::vline(ui, 22.0);
                         opt_label(ui, tl!("Mode"));
                         let opts: Vec<(BlendMode, &str)> = BlendMode::LAYER_MODES.iter().map(|m| (*m, m.label())).collect();
-                        widgets::dropdown(ui, "gradient-blend-mode", &mut app.ui.tool_options.gradient_blend_mode, &opts, 96.0);
+                        // The wheel over it steps the mode, as over the Layers panel's (#2061).
+                        widgets::dropdown_wheel_hovered(ui, "gradient-blend-mode", &mut app.ui.tool_options.gradient_blend_mode, &opts, 96.0);
                         opt_label(ui, tl!("Opacity"));
                         widgets::value_field(ui, &mut app.ui.tool_options.fill_opacity, 1.0..=100.0, "%", 62.0);
                         widgets::checkbox(ui, &mut app.ui.tool_options.gradient_reverse, tl!("Reverse"));
@@ -2234,8 +2257,13 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             if !ctx.input(|i| i.pointer.primary_down() || i.pointer.any_released()) {
                 ctx.data_mut(|d| d.remove::<FxDrag>(fx_drag_key()));
                 ctx.data_mut(|d| d.remove::<MaskDrag>(mask_drag_key()));
+                ctx.data_mut(|d| d.remove::<crate::smart_ui::FilterDrag>(crate::smart_ui::drag_key()));
             }
-            let held = ctx.data(|d| d.get_temp::<u64>(egui::Id::new("layer-drag")).is_some() || d.get_temp::<FxDrag>(fx_drag_key()).is_some());
+            let held = ctx.data(|d| {
+                d.get_temp::<u64>(egui::Id::new("layer-drag")).is_some()
+                    || d.get_temp::<FxDrag>(fx_drag_key()).is_some()
+                    || d.get_temp::<crate::smart_ui::FilterDrag>(crate::smart_ui::drag_key()).is_some()
+            });
             let dragging = held && ctx.input(|i| i.pointer.primary_down());
             let pointer = ctx.input(|i| i.pointer.interact_pos());
             let delta = layer_drag_edge_scroll(pointer, ui.clip_rect(), dragging, ctx.input(|i| i.stable_dt));
@@ -2319,6 +2347,9 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // An effect row can be dropped on Delete too (#3102), and a mask's thumbnail (#3113, #3119).
     let fx_footer_drag = ctx.data(|d| d.get_temp::<FxDrag>(fx_drag_key()));
     fx_drag_feedback(&ctx, &doc);
+    // And a smart filter's row (#4271).
+    let filter_footer_drag = ctx.data(|d| d.get_temp::<crate::smart_ui::FilterDrag>(crate::smart_ui::drag_key()));
+    crate::smart_ui::drag_feedback(&ctx, &doc);
     let mask_footer_drag = ctx.data(|d| d.get_temp::<MaskDrag>(mask_drag_key()));
     if let Some((_, kind)) = mask_footer_drag
         && let Some(p) = ctx.input(|i| i.pointer.interact_pos())
@@ -2331,6 +2362,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ctx.data_mut(|d| d.remove::<u64>(egui::Id::new("layer-drag")));
         ctx.data_mut(|d| d.remove::<FxDrag>(fx_drag_key()));
         ctx.data_mut(|d| d.remove::<MaskDrag>(mask_drag_key()));
+        ctx.data_mut(|d| d.remove::<crate::smart_ui::FilterDrag>(crate::smart_ui::drag_key()));
     }
     widgets::panel_footer(ui, |ui| {
         let active_layer = active.and_then(|id| doc.layer(id));
@@ -2350,6 +2382,11 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         actions.extend(footer_drop(ui, &trash, footer_drag, "layer.delete"));
         actions.extend(fx_trash_drop(ui, &trash, fx_footer_drag));
+        if let Some(drag) = filter_footer_drag
+            && dropped_on(ui, &trash)
+        {
+            actions.push(crate::smart_ui::trash_action(drag));
+        }
         // Photoshop asks "Apply mask to layer before removing?" or "Delete the vector mask?"
         // (`mask_trash_prompt`).
         if let Some((layer, kind)) = mask_footer_drag
@@ -2629,6 +2666,7 @@ fn layer_row(
     let mask_drag = mask_drag.is_some();
     layer_drag_and_drop(app, ctx, ui, l, rect, &resp, actions);
     fx_drop(ctx, ui, l, rect, actions);
+    crate::smart_ui::drop_on_row(ctx, ui, l, rect, actions);
     if resp.drag_started() && !mask_drag {
         crate::layer_transfer::begin_from_panel(app, ctx, l.id);
     }
@@ -3576,13 +3614,13 @@ fn brush_tip(p: &egui::Painter, c: egui::Pos2, rad: f32, hardness: f32, color: C
 
 /// The Brush's or Pencil's Mode dropdown: the blend modes, with Photoshop's painting-only Clear
 /// after Dissolve (#3439). Clear erases with the brush (`clear`); it shows while chosen, or while
-/// `~` is held (`held`).
+/// `~` is held (`held`). The wheel over it steps the mode, as over the Layers panel's (#2061).
 fn paint_mode_dropdown(ui: &mut egui::Ui, id: &str, b: &mut photocraft_engine::BrushSettings, clear: &mut bool, held: bool) {
     let mut opts: Vec<(Option<BlendMode>, &str)> = BlendMode::LAYER_MODES.iter().map(|m| (Some(*m), m.label())).collect();
     let at = opts.iter().position(|o| o.0 == Some(BlendMode::Dissolve)).map_or(opts.len(), |i| i + 1);
     opts.insert(at, (None, "Clear"));
     let mut mode = if *clear || held { None } else { Some(b.mode) };
-    if widgets::dropdown(ui, id, &mut mode, &opts, 96.0) {
+    if !widgets::dropdown_wheel_hovered(ui, id, &mut mode, &opts, 96.0).0.is_empty() {
         *clear = mode.is_none();
         if let Some(m) = mode {
             b.mode = m;
@@ -4749,6 +4787,121 @@ mod type_flyout_tests {
         frame(&mut app, &ctx, 4.05, vec![secondary(false)]);
         frame(&mut app, &ctx, 4.1, vec![]);
         assert!(menu_open(&ctx));
+    }
+
+    /// Every text drawn in one toolbar frame.
+    fn frame_texts(app: &mut PhotocraftApp, ctx: &egui::Context, time: f64, events: Vec<egui::Event>) -> Vec<String> {
+        fn collect(shape: &egui::Shape, out: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(t) => out.push(t.galley.text().to_string()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| collect(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = ctx.run_ui(
+            egui::RawInput { time: Some(time), events, screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1200.0, 1800.0))), ..Default::default() },
+            |ui| toolbar(app, ui),
+        );
+        out.textures_delta.clear();
+        let mut texts = Vec::new();
+        out.shapes.iter().for_each(|c| collect(&c.shape, &mut texts));
+        texts
+    }
+
+    /// #4450: no tool tooltip while a flyout is open or a tool button is held to open one, for the
+    /// held tool or any other; a plain hover still shows its tooltip.
+    #[test]
+    fn no_tooltips_over_an_open_tool_flyout() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::ALL[0]);
+        frame(&mut app, &ctx, 0.0, vec![]);
+        frame(&mut app, &ctx, 0.1, vec![]);
+        let bx = if Tokens::get(&ctx).pro { 30.0 } else { 36.0 };
+        let mut buttons: Vec<Rect> = ctx.viewport(|v| {
+            v.prev_pass
+                .widgets
+                .layers()
+                .flat_map(|(_, w)| w.iter())
+                .filter(|w| w.rect.size() == egui::Vec2::splat(bx) && w.sense.senses_click())
+                .map(|w| w.rect)
+                .collect()
+        });
+        buttons.sort_by(|a, b| a.top().total_cmp(&b.top()));
+        let slot_of = |tool: Tool| TOOL_SECTIONS.iter().flat_map(|section| section.iter()).position(|slot| slot.contains(&tool)).unwrap();
+        let (eyedropper, brush) = (buttons[slot_of(Tool::Eyedropper)].center(), buttons[slot_of(Tool::Brush)].center());
+        let tip = |tool: Tool| format!("{}  ({})", tl!(tool.label()), tool.key());
+        let pointer = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        // A plain hover shows the tooltip.
+        frame(&mut app, &ctx, 1.0, vec![egui::Event::PointerMoved(brush)]);
+        let mut texts = Vec::new();
+        for k in 1..=10 {
+            texts = frame_texts(&mut app, &ctx, 1.0 + 0.1 * f64::from(k), vec![]);
+        }
+        assert!(texts.contains(&tip(Tool::Brush)), "hovered long enough: {texts:?}");
+        // Held on the Eyedropper: no tooltip before or after its flyout opens.
+        frame(&mut app, &ctx, 3.0, vec![egui::Event::PointerMoved(eyedropper), pointer(eyedropper, true)]);
+        for k in 1..=10 {
+            let texts = frame_texts(&mut app, &ctx, 3.0 + 0.1 * f64::from(k), vec![]);
+            assert!(!texts.contains(&tip(Tool::Eyedropper)), "held {k}: {texts:?}");
+        }
+        assert!(ctx.data(|d| d.get_temp::<(egui::Id, Rect)>(egui::Id::new("tool-flyout"))).is_some(), "the flyout is open");
+        // Released, with the flyout still open: none for the held tool or another one.
+        frame(&mut app, &ctx, 4.1, vec![pointer(eyedropper, false)]);
+        for (start, at, tool) in [(4.5, eyedropper, Tool::Eyedropper), (6.0, brush, Tool::Brush)] {
+            frame(&mut app, &ctx, start, vec![egui::Event::PointerMoved(at)]);
+            for k in 1..=10 {
+                let texts = frame_texts(&mut app, &ctx, start + 0.1 * f64::from(k), vec![]);
+                assert!(!texts.contains(&tip(tool)), "{tool:?} under the flyout: {texts:?}");
+            }
+        }
+    }
+
+    /// #4460: a press outside an open flyout closes it, even when it becomes a drag (cropping or
+    /// painting on the canvas) rather than a click; a press on the flyout keeps it for its pick.
+    #[test]
+    fn a_drag_outside_closes_the_tool_flyout() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        PhotocraftApp::setup_context(&ctx, crate::theme::ThemeKind::ALL[0]);
+        frame(&mut app, &ctx, 0.0, vec![]);
+        frame(&mut app, &ctx, 0.1, vec![]);
+        let index = TOOL_SECTIONS.iter().flat_map(|section| section.iter()).position(|slot| slot.contains(&Tool::Brush)).unwrap();
+        let bx = if Tokens::get(&ctx).pro { 30.0 } else { 36.0 };
+        let mut buttons: Vec<Rect> = ctx.viewport(|v| {
+            v.prev_pass
+                .widgets
+                .layers()
+                .flat_map(|(_, w)| w.iter())
+                .filter(|w| w.rect.size() == egui::Vec2::splat(bx) && w.sense.senses_click())
+                .map(|w| w.rect)
+                .collect()
+        });
+        buttons.sort_by(|a, b| a.top().total_cmp(&b.top()));
+        let at = buttons[index].center();
+        let flyout = |ctx: &egui::Context| ctx.data(|d| d.get_temp::<(egui::Id, Rect)>(egui::Id::new("tool-flyout"))).is_some();
+        let secondary = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+        let primary = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        let open = |app: &mut PhotocraftApp, t: f64| {
+            frame(app, &ctx, t, vec![egui::Event::PointerMoved(at), secondary(true)]);
+            frame(app, &ctx, t + 0.05, vec![secondary(false)]);
+            frame(app, &ctx, t + 0.1, vec![]);
+            assert!(flyout(&ctx), "right-click opens it");
+        };
+        // A press on the flyout itself keeps it open (the row picks on release).
+        open(&mut app, 1.0);
+        let menu = ctx.memory(|m| m.area_rect(egui::Id::new(("tool-slot", index)).with("flyout"))).unwrap();
+        frame(&mut app, &ctx, 1.5, vec![egui::Event::PointerMoved(menu.center()), primary(menu.center(), true)]);
+        assert!(flyout(&ctx), "a press on the flyout keeps it");
+        frame(&mut app, &ctx, 1.55, vec![primary(menu.center(), false)]);
+        // A drag far from the toolbar (the canvas) closes it as soon as it starts.
+        open(&mut app, 2.0);
+        let canvas = egui::pos2(900.0, 900.0);
+        frame(&mut app, &ctx, 2.5, vec![egui::Event::PointerMoved(canvas), primary(canvas, true)]);
+        frame(&mut app, &ctx, 2.55, vec![egui::Event::PointerMoved(canvas + vec2(80.0, 60.0))]);
+        assert!(!flyout(&ctx), "a press outside closes it, even one that becomes a drag");
+        frame(&mut app, &ctx, 2.6, vec![primary(canvas + vec2(80.0, 60.0), false)]);
+        assert!(!flyout(&ctx));
     }
 
     #[test]

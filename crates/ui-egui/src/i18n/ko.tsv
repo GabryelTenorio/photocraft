@@ -702,6 +702,10 @@
 	Breeze Dark Theme	Breeze 어두운 테마
 	Breeze light	Breeze 밝게
 	Breeze Light Theme	Breeze 밝은 테마
+	Soft dark	소프트 다크
+	Soft light	소프트 라이트
+	Soft Dark Theme	소프트 다크 테마
+	Soft Light Theme	소프트 라이트 테마
 	Next Theme	다음 테마
 	Actions	액션
 	Brush Settings	브러시 설정
@@ -3260,3 +3264,4 @@ curves	Smooth	매끄럽게
 	Action playback stopped	액션 재생이 중지되었습니다
 	Step {step} is waiting for its dialog	{step}단계가 대화 상자를 기다리고 있습니다
 @plural	{n} action|{n} actions	액션 {n}개
+	Auto Add/Delete	자동 추가/삭제

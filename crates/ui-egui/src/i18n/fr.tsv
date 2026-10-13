@@ -718,6 +718,10 @@
 	Breeze Dark Theme	Thème Breeze sombre
 	Breeze light	Breeze clair
 	Breeze Light Theme	Thème Breeze clair
+	Soft dark	Doux sombre
+	Soft light	Doux clair
+	Soft Dark Theme	Thème doux sombre
+	Soft Light Theme	Thème doux clair
 	Next Theme	Thème suivant
 	Actions	Actions
 	Brush Settings	Paramètres du pinceau
@@ -3091,3 +3095,4 @@ curves	Smooth	Lisser
 	Action playback stopped	Exécution de l’action arrêtée
 	Step {step} is waiting for its dialog	L’étape {step} attend sa boîte de dialogue
 @plural	{n} action|{n} actions	{n} action|{n} actions
+	Auto Add/Delete	Ajout/suppr. auto
