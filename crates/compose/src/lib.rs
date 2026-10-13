@@ -1717,9 +1717,17 @@ fn composite_atop_any(layer: &Layer, base: &mut Buffer, cx: &Ctx) {
         if alpha <= 0.0 {
             continue;
         }
-        let s = content.px[i];
+        let mut s = content.px[i];
         // Blend as if the base were opaque, then keep the base's alpha.
-        let r = blend::composite_gamma(layer.blend, [p[0], p[1], p[2], 1.0], s, opacity, gamma);
+        // Dissolve needs a binary coverage decision before compositing.
+        let r = if layer.blend == BlendMode::Dissolve {
+            let x = rect.x0 + (i as i32 % rect.width());
+            let y = rect.y0 + (i as i32 / rect.width());
+            s[3] = if dissolve_noise(x, y) < s[3] * opacity { 1.0 } else { 0.0 };
+            blend::composite(BlendMode::Normal, [p[0], p[1], p[2], 1.0], s, 1.0)
+        } else {
+            blend::composite_gamma(layer.blend, [p[0], p[1], p[2], 1.0], s, opacity, gamma)
+        };
         *p = [r[0], r[1], r[2], alpha];
     }
 }
