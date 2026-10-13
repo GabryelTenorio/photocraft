@@ -91,6 +91,13 @@
 	Script Events Manager…	Διαχείριση συμβάντων δεσμών ενεργειών…
 	Import	Εισαγωγή
 	Browse…	Περιήγηση…
+	Source Files	Αρχεία προέλευσης
+	Use:	Χρήση:
+	Files	Αρχεία
+	Add Open Files	Προσθήκη ανοιχτών αρχείων
+	Sort By Name	Ταξινόμηση κατά όνομα
+	Attempt to Automatically Align Source Images	Απόπειρα αυτόματης στοίχισης εικόνων προέλευσης
+	Create Smart Object after Loading Layers	Δημιουργία έξυπνου αντικειμένου μετά τη φόρτωση επιπέδων
 	Reveal in Finder	Εμφάνιση στο Finder
 	Show in Explorer	Εμφάνιση στην Εξερεύνηση αρχείων
 	Show in Folder	Εμφάνιση στον φάκελο
@@ -115,6 +122,8 @@
 	Search…	Αναζήτηση…
 	Check Spelling…	Ορθογραφικός έλεγχος…
 	Find and Replace Text…	Εύρεση και αντικατάσταση κειμένου…
+	Add to Dictionary	Προσθήκη στο λεξικό
+	No Spelling Suggestions	Δεν υπάρχουν ορθογραφικές προτάσεις
 	Fill…	Γέμισμα…
 	Stroke…	Περίγραμμα…
 	Preferences…	Προτιμήσεις…
@@ -1899,6 +1908,12 @@
 	Aqua	Κυανό
 	Balance	Ισορροπία
 	Before (Y)	Πριν (Y)
+	Save Settings…	Αποθήκευση ρυθμίσεων…
+	Load Settings…	Φόρτωση ρυθμίσεων…
+	Save these settings as a Camera Raw .xmp file	Αποθήκευση αυτών των ρυθμίσεων ως αρχείο Camera Raw .xmp
+	Load settings from a Camera Raw .xmp file	Φόρτωση ρυθμίσεων από αρχείο Camera Raw .xmp
+	Loaded Camera Raw settings from {file}	Φορτώθηκαν ρυθμίσεις Camera Raw από το {file}
+	Loaded Camera Raw settings from {file} ({n} not supported)	Φορτώθηκαν ρυθμίσεις Camera Raw από το {file} ({n} δεν υποστηρίζονται)
 	Blending	Ανάμειξη
 	Camera Raw Filter ({layer})	Φίλτρο Camera Raw ({layer})
 	Camera Raw isn't open	Το Camera Raw δεν είναι ανοιχτό
@@ -2124,6 +2139,10 @@
 	Breeze Dark Theme	Σκούρο θέμα Breeze
 	Breeze light	Breeze φωτεινό
 	Breeze Light Theme	Φωτεινό θέμα Breeze
+	Soft dark	Απαλό σκούρο
+	Soft light	Απαλό ανοιχτό
+	Soft Dark Theme	Απαλό σκούρο θέμα
+	Soft Light Theme	Απαλό ανοιχτό θέμα
 	Clear Canvas Guides	Απαλοιφή οδηγών καμβά
 	Clear Override	Απαλοιφή παράκαμψης
 	Clear Samples	Απαλοιφή δειγμάτων
@@ -3780,3 +3799,4 @@ curves	Smooth	Εξομάλυνση
 	Action playback stopped	Η αναπαραγωγή της ενέργειας σταμάτησε
 	Step {step} is waiting for its dialog	Το βήμα {step} περιμένει το παράθυρο διαλόγου του
 @plural	{n} action|{n} actions	{n} ενέργεια|{n} ενέργειες
+	Auto Add/Delete	Αυτόματη προσθήκη/διαγραφή
