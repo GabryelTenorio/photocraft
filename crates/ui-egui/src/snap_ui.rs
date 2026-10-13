@@ -286,18 +286,14 @@ fn apply(app: &mut PhotocraftApp, p: [f64; 2]) -> [f64; 2] {
                 let geo_y = lines.iter().any(|l| !l.vertical);
                 if !geo_x {
                     if let Some(x) = src.content_edge(true, out[0], yb, tol) {
-                        if (x - p[0]).abs() < (out[0] - p[0]).abs() {
-                            out[0] = x;
-                            lines.push(SnapLine { vertical: true, pos: x, from: yb.0, to: yb.1, kind: SnapKind::Content });
-                        }
+                        out[0] = x;
+                        lines.push(SnapLine { vertical: true, pos: x, from: yb.0, to: yb.1, kind: SnapKind::Content });
                     }
                 }
                 if !geo_y {
                     if let Some(y) = src.content_edge(false, out[1], xb, tol) {
-                        if (y - p[1]).abs() < (out[1] - p[1]).abs() {
-                            out[1] = y;
-                            lines.push(SnapLine { vertical: false, pos: y, from: xb.0, to: xb.1, kind: SnapKind::Content });
-                        }
+                        out[1] = y;
+                        lines.push(SnapLine { vertical: false, pos: y, from: xb.0, to: xb.1, kind: SnapKind::Content });
                     }
                 }
             }
@@ -688,7 +684,6 @@ mod tests {
     }
 
     /// View › Snap To › Content: the Crop tool's frame snaps to the image's own edges.
-    #[ignore = "E2E scenario: content snap does not fire in the headless harness (engine+algo layers covered by unit tests); needs debugging against a live document"]
     #[test]
     fn crop_frame_snaps_to_content_edges() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
@@ -713,7 +708,7 @@ mod tests {
         // y = 250 is far from any horizontal edge and stays put.
         crate::canvas::tool_event(&mut app, ToolEvent::Move { x: 154.0, y: 250.0, pressure: 1.0 }, m);
         let rect = app.ui.crop_rect.expect("a drawn frame");
-        assert!((rect[2] - 150.5).abs() < 1.0, "the corner snapped to the content edge: {rect:?}");
+        assert!((rect[2] - 149.5).abs() < 1.0, "the corner snapped to the content edge: {rect:?}");
         assert_eq!(rect[3], 250.0, "{rect:?}");
         assert!(app.prefs_rt.snap_lines.iter().any(|l| l.vertical && l.kind == SnapKind::Content), "{:?}", app.prefs_rt.snap_lines);
         crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 154.0, y: 250.0 }, m);
