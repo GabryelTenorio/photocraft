@@ -464,6 +464,32 @@ fn open_runs_as_a_job_and_cancel_adds_nothing() {
 }
 
 #[test]
+fn warm_layer_bounds_visits_every_layer_and_can_be_cancelled() {
+    let mut s = session(40, 30);
+    s.execute("layer.groupLayers", json!({})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let doc = s.active().unwrap().doc.clone();
+    fn count(layers: &[photocraft_doc::Layer]) -> usize {
+        layers.iter().map(|l| 1 + l.children().map_or(0, count)).sum()
+    }
+    assert!(doc.layers.iter().any(|l| l.children().is_some_and(|c| !c.is_empty())), "a group with a layer in it");
+    let mut checks = 0;
+    warm_layer_bounds(&doc, || {
+        checks += 1;
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(checks, count(&doc.layers), "one check per layer, nested ones included");
+    let mut checks = 0;
+    let r = warm_layer_bounds(&doc, || {
+        checks += 1;
+        if checks > 1 { Err(EngineError::Cancelled) } else { Ok(()) }
+    });
+    assert!(matches!(r, Err(EngineError::Cancelled)));
+    assert_eq!(checks, 2, "stops at the first failed check");
+}
+
+#[test]
 fn wait_job_blocks_until_applied() {
     let mut s = session(400, 300);
     let id = job(s.start("filter.blur.gaussianBlur", json!({"radius": 3})).unwrap());
