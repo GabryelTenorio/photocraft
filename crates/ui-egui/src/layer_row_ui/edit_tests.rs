@@ -157,6 +157,26 @@ fn mask_double_click_launches_select_and_mask_with_preference() {
     assert_eq!(dialog.fields.get("__command").and_then(|v| v.as_str()), Some("select.refineEdge"));
 }
 
+/// #4723: the padlock painted on a layer row unlocks that layer, including Background.
+#[test]
+fn clicking_the_row_padlock_unlocks_the_layer() {
+    let mut s = session();
+    let bg = s.active().unwrap().doc.layers[0].id.0;
+    assert!(s.active().unwrap().doc.is_background(photocraft_doc::LayerId(bg)));
+    let id = s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.lockLayers", json!({"all": true})).unwrap();
+    let mut h = harness(s, 1.0);
+    let lock = row(&h, id).indicators.into_iter().find(|(k, _)| *k == super::Indicator::Lock).expect("padlock").1.center();
+    click(&mut h, lock, PointerButton::Primary);
+    let locked = h.state().session.active().unwrap().doc.layer(LayerId(id)).unwrap().locks.any();
+    assert!(!locked, "the row padlock clears every lock");
+    let bg_lock = row(&h, bg).indicators.into_iter().find(|(k, _)| *k == super::Indicator::Lock).expect("background padlock").1.center();
+    click(&mut h, bg_lock, PointerButton::Primary);
+    let doc = &h.state().session.active().unwrap().doc;
+    assert!(doc.layers.iter().any(|l| l.name == "Layer 0" && !l.locks.any()));
+    assert!(doc.background().is_none());
+}
+
 #[test]
 fn edit_type_command_rejects_missing_or_non_type_layers_without_changes() {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());

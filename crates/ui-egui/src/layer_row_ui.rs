@@ -110,6 +110,7 @@ pub fn indicators(
     name_left: f32,
     l: &Layer,
     fx_open: bool,
+    background: bool,
     actions: &mut Vec<(String, Value)>,
 ) -> (f32, Vec<(Indicator, Rect)>, bool) {
     let t = Tokens::get(ui.ctx());
@@ -139,7 +140,16 @@ pub fn indicators(
     let cy = row.center().y;
     for &(kind, r) in &rects {
         match kind {
-            Indicator::Lock => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "lock", 12.0, t.text_faint),
+            Indicator::Lock => {
+                // The padlock on the row unlocks that layer, including the Background (#4723).
+                let resp = ui.interact(r, ui.id().with(("layer-lock", l.id.0)), Sense::click());
+                icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "lock", 12.0, t.text_faint);
+                if resp.clicked() {
+                    clicked = true;
+                    actions.push(unlock_row(background, l));
+                }
+                resp.on_hover_text(tl!("Unlock layer"));
+            }
             Indicator::Link => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "link-2", 12.0, t.text_faint),
             Indicator::Fx => {
                 if let Some(g) = fx_galley.clone() {
@@ -171,6 +181,15 @@ pub fn indicators(
         }
     }
     (name_right, rects, clicked)
+}
+
+/// Clicking the row padlock. The Background becomes a normal layer; any other locked layer
+/// loses every lock.
+fn unlock_row(background: bool, l: &Layer) -> (String, Value) {
+    if background {
+        return ("layer.new.layerFromBackground".into(), json!({}));
+    }
+    ("layer.setProps".into(), json!({"layer": l.id.0, "locks": {"transparency": false, "pixels": false, "position": false, "artboard": false, "all": false}}))
 }
 
 /// A small disclosure triangle: pointing down when open, right when closed.
