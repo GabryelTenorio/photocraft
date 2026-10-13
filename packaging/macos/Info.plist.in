@@ -27,6 +27,8 @@
     <string>el</string>
     <string>nl</string>
     <string>it</string>
+    <string>hu</string>
+    <string>tr</string>
     <string>vi</string>
   </array>
   <key>CFBundleDisplayName</key>
