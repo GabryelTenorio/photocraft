@@ -1896,14 +1896,7 @@ pub fn specs() -> Vec<CommandSpec> {
             has_layer,
             merge_components
         ),
-        spec!(
-            "select.convertToShape",
-            "Convert to Shape",
-            [],
-            r##"{"tolerance":0.5..10 px=2} → shape.info"##,
-            has_selection,
-            selection_to_shape
-        ),
+        spec!("select.convertToShape", "Convert to Shape", [], r##"{"tolerance":0.5..10 px=2} → shape.info"##, has_selection, selection_to_shape),
         CommandSpec {
             id: "layer.vectorMask.info",
             label: "Vector Mask Info",
