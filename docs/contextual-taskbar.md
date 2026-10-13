@@ -47,23 +47,17 @@ in that request. The stored state is serde-compatible with older UI settings.
 Focused regressions cover real drag/click dispatch on a placed photo, source preservation and
 one-step Undo/Redo at 8/16/32-bit, locks and absent caches, modal suppression, reachability after
 resize, settings persistence, menu recovery, atomic automation validation and catalog lookups
-in every complete language. On macOS the full engine/UI/automation suites with HEIF passed:
-1,170 / 1,740 / 52 unit tests, with 11 / 10 / 0 ignored, plus integration tests. Final lint/wasm and
-platform results are recorded in the PR. Ignored cases are not counted as passes.
+in every complete language. Current local and platform results are recorded in the PR. Ignored cases are not counted as
+passes. Tests create their own synthetic scenes in memory; no fixture image is committed.
 
-Offscreen captures use an original synthetic illustration, with the source and licence recorded
-beside the images. They demonstrate the actual engine mask and UI, not model accuracy.
-
-
-![Floating background action](images/contextual-taskbar-before.png)
-
-![After actual mask creation](images/contextual-taskbar-after.png)
-
-Replay from the repository root (no window or focus change):
+Offscreen visual validation uses a generated synthetic illustration saved outside the source
+tree. It demonstrates the actual engine mask and UI, not model accuracy. To inspect a local
+image without opening a window or changing focus, run from the repository root:
 
 ```sh
-cargo run -p photocraft-ui-egui --example snapshot -- --size 1200x800 --scale 1 --open docs/images/contextual-taskbar-demo.ppm --out before.png
-cargo run -p photocraft-ui-egui --example snapshot -- --size 1200x800 --scale 1 --open docs/images/contextual-taskbar-demo.ppm --script '[["ui.menu.invoke",{"id":"layer.removeBackground"}]]' --out after.png
+cargo run -p photocraft-ui-egui --example snapshot -- --size 1200x800 --scale 1 --open /absolute/path/to/test-image.png --out before.png
+cargo run -p photocraft-ui-egui --example snapshot -- --size 1200x800 --scale 1 --open /absolute/path/to/test-image.png --script '[["ui.menu.invoke",{"id":"layer.removeBackground"}]]' --out after.png
 ```
 
-Asset provenance and licence: [LICENSE-contextual-taskbar.txt](images/LICENSE-contextual-taskbar.txt).
+Keep generated captures outside the source tree. Shared real-file oracles belong in
+[photocraft-corpus](https://github.com/storytold/photocraft-corpus).
