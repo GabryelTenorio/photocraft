@@ -241,6 +241,14 @@ photocraft-cli mcp
 
 The desktop app also offers an authenticated, loopback-only control channel (`photocraft --control`) for inspecting UI state, driving tools with pointer events, and taking offscreen screenshots. Every image in this README was rendered that way. See [`docs/control-protocol.md`](docs/control-protocol.md).
 
+If you have the Linux AppImage you can access the headless cli like this
+
+```sh
+/path/to/photocraft.AppImage --cli run ...
+/path/to/photocraft.AppImage --cli batch ...
+/path/to/photocraft.AppImage --cli mcp ...
+```
+
 ## Under the hood
 
 - **Engine first:** a pure-data document model and a command engine, with a thin egui UI on top. Layering is enforced at build time across 24 crates.
