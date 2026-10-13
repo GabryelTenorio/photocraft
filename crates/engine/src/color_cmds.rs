@@ -824,7 +824,9 @@ fn always(_: &Session) -> std::result::Result<(), String> {
 fn assign_profile(s: &mut Session, p: &Value) -> Result<Value> {
     let spec = match p.get("profile") {
         None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "edit.assignProfile".into(), msg: "missing `profile`".into() }),
-        Some(v) => v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "edit.assignProfile".into(), msg: format!("`profile` must be a string, not {v}") })?,
+        Some(v) => {
+            v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "edit.assignProfile".into(), msg: format!("`profile` must be a string, not {v}") })?
+        }
     };
     let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
     let bytes = if spec == "none" {
@@ -850,7 +852,9 @@ fn assign_profile(s: &mut Session, p: &Value) -> Result<Value> {
 fn convert_to_profile(s: &mut Session, p: &Value) -> Result<Value> {
     let spec = match p.get("profile") {
         None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "edit.convertToProfile".into(), msg: "missing `profile`".into() }),
-        Some(v) => v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "edit.convertToProfile".into(), msg: format!("`profile` must be a string, not {v}") })?,
+        Some(v) => {
+            v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "edit.convertToProfile".into(), msg: format!("`profile` must be a string, not {v}") })?
+        }
     };
     let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
     let dst = s.color.resolve(spec, Some(doc), None)?;

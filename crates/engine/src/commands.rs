@@ -579,17 +579,25 @@ fn build() -> Vec<CommandSpec> {
             has_doc,
             crate::new_layer::run
         ),
-        cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?,"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)}"##, has_doc, |s, p| {
-            let place = crate::new_layer::placement("layer.new.group", p)?;
-            let id = s.edit("New Group", |doc, active| {
-                let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
-                let id = crate::new_layer::insert_at(doc, *active, place, Layer::group(name, vec![]))?;
-                *active = Some(id);
-                Ok(id)
-            })?;
-            crate::layer_multi_cmds::note_inert_insert(s, id);
-            Ok(json!({ "layer": id.0 }))
-        }),
+        cmd!(
+            "layer.new.group",
+            "Group…",
+            ["Layer", "New"],
+            None,
+            r##"{"name":str?,"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)}"##,
+            has_doc,
+            |s, p| {
+                let place = crate::new_layer::placement("layer.new.group", p)?;
+                let id = s.edit("New Group", |doc, active| {
+                    let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
+                    let id = crate::new_layer::insert_at(doc, *active, place, Layer::group(name, vec![]))?;
+                    *active = Some(id);
+                    Ok(id)
+                })?;
+                crate::layer_multi_cmds::note_inert_insert(s, id);
+                Ok(json!({ "layer": id.0 }))
+            }
+        ),
         cmd!(
             "layer.groupLayers",
             "Group Layers",

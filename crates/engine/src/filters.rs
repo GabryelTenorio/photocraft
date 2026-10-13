@@ -366,14 +366,29 @@ pub fn specs() -> Vec<CommandSpec> {
             r##"{"amount":0.1..400=12.5,"distribution":"uniform|gaussian","monochromatic":bool,"seed":u32=0,"layer":id?=active}"##
         ),
         filter_cmd!("filter.noise.median", "Median…", ["Filter", "Noise"], r##"{"radius":1..500=1,"layer":id?=active}"##),
-        filter_cmd!("filter.noise.dustAndScratches", "Dust & Scratches…", ["Filter", "Noise"], r##"{"radius":1..500=1,"threshold":0..255=0,"layer":id?=active}"##),
+        filter_cmd!(
+            "filter.noise.dustAndScratches",
+            "Dust & Scratches…",
+            ["Filter", "Noise"],
+            r##"{"radius":1..500=1,"threshold":0..255=0,"layer":id?=active}"##
+        ),
         filter_cmd!("filter.pixelate.mosaic", "Mosaic…", ["Filter", "Pixelate"], r##"{"cellSize":2..200=10,"layer":id?=active}"##),
-        filter_cmd!("filter.stylize.emboss", "Emboss…", ["Filter", "Stylize"], r##"{"angle":-180..180=135,"height":1..100=3,"amount":1..500=100,"layer":id?=active}"##),
+        filter_cmd!(
+            "filter.stylize.emboss",
+            "Emboss…",
+            ["Filter", "Stylize"],
+            r##"{"angle":-180..180=135,"height":1..100=3,"amount":1..500=100,"layer":id?=active}"##
+        ),
         filter_cmd!("filter.stylize.findEdges", "Find Edges", ["Filter", "Stylize"], r##"{"layer":id?=active}"##),
         filter_cmd!("filter.stylize.solarize", "Solarize", ["Filter", "Stylize"], r##"{"layer":id?=active}"##),
         filter_cmd!("filter.distort.twirl", "Twirl…", ["Filter", "Distort"], r##"{"angle":-999..999=50,"layer":id?=active}"##),
         filter_cmd!("filter.distort.pinch", "Pinch…", ["Filter", "Distort"], r##"{"amount":-100..100=50,"layer":id?=active}"##),
-        filter_cmd!("filter.distort.spherize", "Spherize…", ["Filter", "Distort"], r##"{"amount":-100..100=100,"mode":"normal|horizontalOnly|verticalOnly","layer":id?=active}"##),
+        filter_cmd!(
+            "filter.distort.spherize",
+            "Spherize…",
+            ["Filter", "Distort"],
+            r##"{"amount":-100..100=100,"mode":"normal|horizontalOnly|verticalOnly","layer":id?=active}"##
+        ),
         filter_cmd!(
             "filter.distort.wave",
             "Wave…",
@@ -381,7 +396,12 @@ pub fn specs() -> Vec<CommandSpec> {
             r##"{"generators":1..999=5,"wavelengthMin":1..998=10,"wavelengthMax":2..999=120,"amplitudeMin":1..998=5,"amplitudeMax":1..999=35,"type":"sine|triangle|square","undefinedAreas":"wrap|repeat","seed":u32=0,"layer":id?=active}"##
         ),
         filter_cmd!("filter.distort.ripple", "Ripple…", ["Filter", "Distort"], r##"{"amount":-999..999=100,"size":"small|medium|large","layer":id?=active}"##),
-        filter_cmd!("filter.distort.polarCoordinates", "Polar Coordinates…", ["Filter", "Distort"], r##"{"mode":"rectangularToPolar|polarToRectangular","layer":id?=active}"##),
+        filter_cmd!(
+            "filter.distort.polarCoordinates",
+            "Polar Coordinates…",
+            ["Filter", "Distort"],
+            r##"{"mode":"rectangularToPolar|polarToRectangular","layer":id?=active}"##
+        ),
         filter_cmd!("filter.other.highPass", "High Pass…", ["Filter", "Other"], r##"{"radius":0.1..1000=10,"layer":id?=active}"##),
         filter_cmd!("filter.other.minimum", "Minimum…", ["Filter", "Other"], r##"{"radius":0.2..500=1,"preserve":"squareness|roundness","layer":id?=active}"##),
         filter_cmd!("filter.other.maximum", "Maximum…", ["Filter", "Other"], r##"{"radius":0.2..500=1,"preserve":"squareness|roundness","layer":id?=active}"##),

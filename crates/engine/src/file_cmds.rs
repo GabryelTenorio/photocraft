@@ -307,7 +307,10 @@ pub(crate) fn save_doc(doc: &Document, path: &str, save: impl Into<SaveOpts>) ->
 pub(crate) fn str_param<'a>(p: &'a Value, key: &str, cmd: &str) -> Result<&'a str> {
     match p.get(key) {
         None | Some(Value::Null) => Err(EngineError::BadParams { cmd: cmd.into(), msg: format!("missing \"{key}\"") }),
-        Some(v) => v.as_str().filter(|s| !s.is_empty()).ok_or_else(|| EngineError::BadParams { cmd: cmd.into(), msg: format!("\"{key}\" must be a non-empty string, not {v}") }),
+        Some(v) => v
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| EngineError::BadParams { cmd: cmd.into(), msg: format!("\"{key}\" must be a non-empty string, not {v}") }),
     }
 }
 
@@ -1520,7 +1523,15 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             new_guide_layout
         ),
-        spec!("view.newGuidesFromShape", "New Guides From Shape", &["View"], None, r##"{"layer":id?} → {"bounds":[x,y,w,h] (floats)}"##, has_shape, guides_from_shape),
+        spec!(
+            "view.newGuidesFromShape",
+            "New Guides From Shape",
+            &["View"],
+            None,
+            r##"{"layer":id?} → {"bounds":[x,y,w,h] (floats)}"##,
+            has_shape,
+            guides_from_shape
+        ),
         spec!("view.clearCanvasGuides", "Clear Canvas Guides", &["View"], None, "{}", has_doc, |s, _| clear_canvas_guides(s)),
     ]
 }

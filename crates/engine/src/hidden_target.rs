@@ -57,7 +57,7 @@ pub fn refusal(s: &Session, id: &str, params: &Value) -> Option<&'static str> {
         Some(v) if !v.is_null() => {
             let id = v.as_u64()?;
             LayerId(id)
-        },
+        }
         _ => st.active_layer?,
     };
     (st.doc.layer(layer).is_some() && !shown(&st.doc, layer)).then_some(HIDDEN)

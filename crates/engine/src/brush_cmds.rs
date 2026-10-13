@@ -746,7 +746,12 @@ fn presets_list(s: &mut Session, p: &Value) -> Result<Value> {
 fn name_param(p: &Value, cmd: &str) -> Result<String> {
     match p.get("name") {
         None | Some(Value::Null) => Err(bad(cmd, "missing `name`")),
-        Some(v) => v.as_str().map(str::trim).filter(|n| !n.is_empty()).map(str::to_string).ok_or_else(|| bad(cmd, format!("`name` must be a non-empty string, not {v}"))),
+        Some(v) => v
+            .as_str()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| bad(cmd, format!("`name` must be a non-empty string, not {v}"))),
     }
 }
 

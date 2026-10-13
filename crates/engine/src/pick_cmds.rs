@@ -95,11 +95,15 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
     let miss = |k: &str| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("missing `{k}`") };
     let x = match p.get("x") {
         None | Some(Value::Null) => return Err(miss("x")),
-        Some(v) => v.as_f64().ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`x` must be a number, not {v}") })?.floor() as i32,
+        Some(v) => {
+            v.as_f64().ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`x` must be a number, not {v}") })?.floor() as i32
+        }
     };
     let y = match p.get("y") {
         None | Some(Value::Null) => return Err(miss("y")),
-        Some(v) => v.as_f64().ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`y` must be a number, not {v}") })?.floor() as i32,
+        Some(v) => {
+            v.as_f64().ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`y` must be a number, not {v}") })?.floor() as i32
+        }
     };
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     // The right-click list names the layers with pixels under the pointer.

@@ -847,7 +847,9 @@ fn find_replace(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "edit.findAndReplaceText";
     let find = match p.get("find") {
         None | Some(Value::Null) => return Err(bad(cmd, "missing `find`")),
-        Some(v) => v.as_str().map(str::trim).filter(|f| !f.is_empty()).ok_or_else(|| bad(cmd, format!("`find` must be a non-empty string, not {v}")))?.to_string(),
+        Some(v) => {
+            v.as_str().map(str::trim).filter(|f| !f.is_empty()).ok_or_else(|| bad(cmd, format!("`find` must be a non-empty string, not {v}")))?.to_string()
+        }
     };
     let replace = str_or(p, "replace", "").to_string();
     let (case, whole, forward, all_layers) =
@@ -1001,7 +1003,12 @@ fn preset_manager(s: &mut Session, p: &Value) -> Result<Value> {
         "rename" => {
             let new = match p.get("newName") {
                 None | Some(Value::Null) => return Err(bad(cmd, "missing `newName`")),
-                Some(v) => v.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(cmd, format!("`newName` must be a non-empty string, not {v}")))?.to_string(),
+                Some(v) => v
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .ok_or_else(|| bad(cmd, format!("`newName` must be a non-empty string, not {v}")))?
+                    .to_string(),
             };
             match kind.as_str() {
                 "brushes" => {

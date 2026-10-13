@@ -2461,7 +2461,21 @@ mod tests {
         for served in ["engine.execute", "ui.menu.invoke", "ui.inspect", "ui.screenshot", "app.save", "app.quit", "methods"] {
             assert!(listed.contains(&served), "`{served}` is served but not listed: {listed:?}");
         }
-        for serve_only in ["doc.open", "doc.save", "doc.render", "doc.inspect", "doc.place", "doc.new", "doc.select", "doc.close", "doc.exportLayers", "doc.exportDataSets", "doc.importDataSets", "session.list", "batch"] {
+        for serve_only in [
+            "doc.open",
+            "doc.save",
+            "doc.render",
+            "doc.inspect",
+            "doc.place",
+            "doc.new",
+            "doc.select",
+            "doc.close",
+            "doc.exportLayers",
+            "doc.exportDataSets",
+            "doc.importDataSets",
+            "session.list",
+            "batch",
+        ] {
             assert!(!listed.contains(&serve_only), "`{serve_only}` is serve-only but listed: {listed:?}");
         }
         let r = call(&mut app, &ctx, "doc.render", json!({}));

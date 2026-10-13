@@ -69,10 +69,9 @@ fn pixel(doc: &Document, x: f64, y: f64) -> Option<[f64; 2]> {
 fn index_param(cmd: &str, p: &Value) -> Result<usize> {
     match p.get("index") {
         None | Some(Value::Null) => Err(bad(cmd, "pass `index` (0-based)")),
-        Some(v) => v
-            .as_u64()
-            .and_then(|n| usize::try_from(n).ok())
-            .ok_or_else(|| bad(cmd, format!("`index` must be a 0-based position (unsigned integer), not {v}"))),
+        Some(v) => {
+            v.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad(cmd, format!("`index` must be a 0-based position (unsigned integer), not {v}")))
+        }
     }
 }
 

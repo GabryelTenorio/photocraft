@@ -715,7 +715,9 @@ impl PhotocraftMcp {
         Ok(no_backend())
     }
 
-    #[tool(description = "Import a data set CSV from the read root into the document (the capability-scoped Import Variable Data Sets). (bridge mode: not available)")]
+    #[tool(
+        description = "Import a data set CSV from the read root into the document (the capability-scoped Import Variable Data Sets). (bridge mode: not available)"
+    )]
     async fn doc_import_data_sets(&self, Parameters(p): Parameters<ImportDataSetsParams>) -> Result<CallToolResult, McpError> {
         let mut opts = serde_json::Map::new();
         if let Some(v) = p.delimiter {

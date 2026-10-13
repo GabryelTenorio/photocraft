@@ -273,7 +273,8 @@ fn artboard_from_group(s: &mut Session, p: &Value) -> Result<Value> {
     let id = match crate::commands::opt_u64("layer.new.artboardFromGroup", p, "layer")? {
         Some(id) => Some(LayerId(id)),
         None => d.active_layer,
-    }.ok_or(EngineError::Other("no active layer".into()))?;
+    }
+    .ok_or(EngineError::Other("no active layer".into()))?;
     let canvas = d.doc.bounds();
     let background = background_param(p, "layer.new.artboardFromGroup")?.unwrap_or_default();
     let rect = s.edit("Artboard from Group", |doc, active| {

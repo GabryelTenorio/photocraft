@@ -555,7 +555,8 @@ pub(crate) fn with_text_targets(
         for id in &ids {
             let Some(LayerContent::Text(t)) = doc.layer_mut(*id).map(|l| &mut l.content) else { return Err(EngineError::NoLayer(*id)) };
             let before = t.cache.as_ref().map(|c| c.tile_bounds());
-            let range = if p.get("layers").is_none() || !matches!(p.get("layer"), None | Some(Value::Null)) { range_param(&t.text, p) } else { (0, t.text.len()) };
+            let range =
+                if p.get("layers").is_none() || !matches!(p.get("layer"), None | Some(Value::Null)) { range_param(&t.text, p) } else { (0, t.text.len()) };
             f(t, range)?;
             refresh(&snapshot, t);
             // An unknown old/new cache retains Session.edit's full-refresh fallback.
@@ -1144,12 +1145,7 @@ mod tests {
         let wide = s.execute("type.create", json!({"x": 50, "y": 50, "text": "Hi there, wide text", "size": 24})).unwrap();
         let (narrow_b, wide_b) = (created["bounds"].as_array().unwrap(), wide["bounds"].as_array().unwrap());
         assert_eq!(narrow_b[0], wide_b[0], "same left edge: {} vs {}", created["bounds"], wide["bounds"]);
-        assert!(
-            wide_b[2].as_i64().unwrap() > narrow_b[2].as_i64().unwrap(),
-            "wider text widens the tuple: {} vs {}",
-            created["bounds"],
-            wide["bounds"]
-        );
+        assert!(wide_b[2].as_i64().unwrap() > narrow_b[2].as_i64().unwrap(), "wider text widens the tuple: {} vs {}", created["bounds"], wide["bounds"]);
     }
 
     #[test]

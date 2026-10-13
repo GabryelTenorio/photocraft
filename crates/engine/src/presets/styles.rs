@@ -237,7 +237,9 @@ fn new_preset(s: &mut Session, p: &Value) -> Result<Value> {
             list.iter()
                 .map(|e| {
                     let kind = match e.get(0) {
-                        Some(v) if !v.is_null() => v.as_str().ok_or_else(|| bad(CMD, format!("each effect is [kind, params]; kind must be a string, not {v}")))?,
+                        Some(v) if !v.is_null() => {
+                            v.as_str().ok_or_else(|| bad(CMD, format!("each effect is [kind, params]; kind must be a string, not {v}")))?
+                        }
                         _ => return Err(bad(CMD, "each effect is [kind, params]")),
                     };
                     effect_from_params(kind, e.get(1).unwrap_or(&Value::Null)).ok_or_else(|| bad(CMD, format!("unknown effect {kind}")))

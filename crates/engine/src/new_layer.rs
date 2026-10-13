@@ -85,7 +85,9 @@ pub fn run(s: &mut Session, p: &Value) -> Result<Value> {
         None | Some(Value::Null) => BlendMode::Normal,
         Some(v) => {
             let name = v.as_str().ok_or_else(|| bad(CMD, "`mode` must be a blend mode name"))?;
-            crate::commands::blend_from_str(name).filter(|m| *m != BlendMode::PassThrough).ok_or_else(|| bad(CMD, format!("unknown layer blend mode `{name}`")))?
+            crate::commands::blend_from_str(name)
+                .filter(|m| *m != BlendMode::PassThrough)
+                .ok_or_else(|| bad(CMD, format!("unknown layer blend mode `{name}`")))?
         }
     };
     let opacity = match p.get("opacity") {

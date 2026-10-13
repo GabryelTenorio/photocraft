@@ -111,11 +111,8 @@ async fn bridge_refusals_send_nothing_to_the_app() {
     }
     client.cancel().await.unwrap();
     let seen = tokio::time::timeout(std::time::Duration::from_secs(5), app).await.expect("fake app finished").unwrap();
-    let commands: Vec<&str> = seen
-        .iter()
-        .filter(|request| request["method"] == "engine.execute")
-        .map(|request| request["params"]["command"].as_str().unwrap_or(""))
-        .collect();
+    let commands: Vec<&str> =
+        seen.iter().filter(|request| request["method"] == "engine.execute").map(|request| request["params"]["command"].as_str().unwrap_or("")).collect();
     assert_eq!(commands, ["layer.new.layer"], "the refused tools must not reach the app: {seen:?}");
 }
 

@@ -282,7 +282,10 @@ fn load_frames(path: &str, fmt: photocraft_color::PixelFormat) -> Result<Footage
 fn new_from_file(s: &mut Session, p: &Value) -> Result<Value> {
     let path = match p.get("path") {
         None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "layer.videoLayers.newVideoLayerFromFile".into(), msg: "need `path`".into() }),
-        Some(v) => v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.newVideoLayerFromFile".into(), msg: format!("`path` must be a string, not {v}") })?.to_string(),
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.newVideoLayerFromFile".into(), msg: format!("`path` must be a string, not {v}") })?
+            .to_string(),
     };
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let Footage { frames, fps: footage_fps } = load_frames(&path, fmt)?;
@@ -314,7 +317,10 @@ fn new_from_file(s: &mut Session, p: &Value) -> Result<Value> {
 fn replace_footage(s: &mut Session, p: &Value) -> Result<Value> {
     let path = match p.get("path") {
         None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "layer.videoLayers.replaceFootage".into(), msg: "need `path`".into() }),
-        Some(v) => v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.replaceFootage".into(), msg: format!("`path` must be a string, not {v}") })?.to_string(),
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| EngineError::BadParams { cmd: "layer.videoLayers.replaceFootage".into(), msg: format!("`path` must be a string, not {v}") })?
+            .to_string(),
     };
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let frames = load_frames(&path, fmt)?.frames;
@@ -363,7 +369,10 @@ fn reload_frame(s: &mut Session, _p: &Value) -> Result<Value> {
 fn frames_to_layers(s: &mut Session, p: &Value) -> Result<Value> {
     let path = match p.get("path") {
         None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "file.import.videoFramesToLayers".into(), msg: "need `path`".into() }),
-        Some(v) => v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "file.import.videoFramesToLayers".into(), msg: format!("`path` must be a string, not {v}") })?.to_string(),
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| EngineError::BadParams { cmd: "file.import.videoFramesToLayers".into(), msg: format!("`path` must be a string, not {v}") })?
+            .to_string(),
     };
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let frames = load_frames(&path, fmt)?.frames;
@@ -388,7 +397,9 @@ fn frames_to_layers(s: &mut Session, p: &Value) -> Result<Value> {
 fn render_video(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = match p.get("dir") {
         None | Some(Value::Null) => return Err(EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: "need `dir`".into() }),
-        Some(v) => v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: format!("`dir` must be a string, not {v}") })?,
+        Some(v) => {
+            v.as_str().ok_or_else(|| EngineError::BadParams { cmd: "file.export.renderVideo".into(), msg: format!("`dir` must be a string, not {v}") })?
+        }
     };
     std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("mkdir `{dir}`: {e}")))?;
     render_video_with(s, p, |name, bytes| crate::file_cmds::write_file(&format!("{dir}/{name}"), bytes), |_, _| true)

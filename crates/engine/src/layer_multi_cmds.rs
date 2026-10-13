@@ -1458,8 +1458,11 @@ mod tests {
         s.execute("file.new", json!({"width": 10, "height": 10})).unwrap();
         let bg = s.active().unwrap().doc.layers[0].id;
         let e = s.execute("layer.select", json!({"layer": "Mountains Mid"})).unwrap_err();
-        assert!(matches!(&e, EngineError::BadParams { msg, .. }
-            if msg.contains("must be") && msg.contains("Mountains Mid") && !msg.contains("missing")), "{e}");
+        assert!(
+            matches!(&e, EngineError::BadParams { msg, .. }
+            if msg.contains("must be") && msg.contains("Mountains Mid") && !msg.contains("missing")),
+            "{e}"
+        );
         let e = s.execute("layer.select", json!({})).unwrap_err();
         assert!(matches!(&e, EngineError::BadParams { msg, .. } if msg.contains("missing `layer`")), "{e}");
         s.execute("layer.select", json!({"layer": bg.0})).unwrap();

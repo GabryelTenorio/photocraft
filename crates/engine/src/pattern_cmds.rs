@@ -249,7 +249,9 @@ fn rename(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "pattern.rename";
     let name = match p.get("name") {
         None | Some(Value::Null) => return Err(bad(cmd, "missing `name`")),
-        Some(v) => v.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(cmd, format!("`name` must be a non-empty string, not {v}")))?.to_string(),
+        Some(v) => {
+            v.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(cmd, format!("`name` must be a non-empty string, not {v}")))?.to_string()
+        }
     };
     let i = library_index(s, cmd, p)?;
     let id = s.patterns.items[i].id.clone();

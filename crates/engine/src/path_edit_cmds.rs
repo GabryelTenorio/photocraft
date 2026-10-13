@@ -40,10 +40,7 @@ fn point(cmd: &str, p: &Value, key: &str) -> Result<Option<Point>> {
 fn index(cmd: &str, p: &Value, key: &str) -> Result<usize> {
     match p.get(key) {
         None | Some(Value::Null) => Err(bad(cmd, format!("missing `{key}` index"))),
-        Some(v) => v
-            .as_u64()
-            .and_then(|i| usize::try_from(i).ok())
-            .ok_or_else(|| bad(cmd, format!("`{key}` must be an index (unsigned integer), not {v}"))),
+        Some(v) => v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or_else(|| bad(cmd, format!("`{key}` must be an index (unsigned integer), not {v}"))),
     }
 }
 

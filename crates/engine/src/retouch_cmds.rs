@@ -91,11 +91,11 @@ fn parse_brush(s: &Session, p: &Value, cmd: &str) -> Result<(Stroke, Option<Laye
         Some(v) => v.as_array().ok_or_else(|| bad(cmd, format!("`points` must be an array, not {v}")))?,
     }
     .iter()
-        .filter_map(|v| {
-            let a = v.as_array()?;
-            Some(StrokePoint::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2).and_then(Value::as_f64).unwrap_or(1.0) as f32))
-        })
-        .collect();
+    .filter_map(|v| {
+        let a = v.as_array()?;
+        Some(StrokePoint::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2).and_then(Value::as_f64).unwrap_or(1.0) as f32))
+    })
+    .collect();
     if pts.is_empty() {
         return Err(bad(cmd, "`points` is empty"));
     }
@@ -1230,7 +1230,9 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Blur",
             menu: &[],
             shortcut: None,
-            params: brush_params!(r#","strength":1..100=50,"sigma":0<σ≤64?=0.1·size (the per-stamp Gaussian σ; automation only — the tool derives it from the tip as Photoshop's does),"sampleAllLayers":bool=false"#),
+            params: brush_params!(
+                r#","strength":1..100=50,"sigma":0<σ≤64?=0.1·size (the per-stamp Gaussian σ; automation only — the tool derives it from the tip as Photoshop's does),"sampleAllLayers":bool=false"#
+            ),
             enabled: has_pixel_layer,
             run: |s, p| dab_cmd(s, p, "paint.blur"),
             journal: true,

@@ -377,14 +377,7 @@ fn blur_sigma_param_overrides_the_radius_and_validates() {
     let mut s = session(64, 48, 8, "rgb");
     paint_layer(&mut s, texture);
     let before = rgba(&s, 20, 24);
-    for bad in [
-        json!({"sigma": 0.0}),
-        json!({"sigma": -3.0}),
-        json!({"sigma": 64.5}),
-        json!({"sigma": 1e9}),
-        json!({"sigma": "big"}),
-        json!({"sigma": [30]}),
-    ] {
+    for bad in [json!({"sigma": 0.0}), json!({"sigma": -3.0}), json!({"sigma": 64.5}), json!({"sigma": 1e9}), json!({"sigma": "big"}), json!({"sigma": [30]})] {
         let mut p = json!({"points": [[20, 24]], "size": 60, "strength": 50});
         for (k, v) in bad.as_object().into_iter().flatten() {
             p[k] = v.clone();

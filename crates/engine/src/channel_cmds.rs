@@ -1179,7 +1179,9 @@ fn move_channel(s: &mut Session, p: &Value) -> Result<Value> {
     let i = alpha_index(doc, p, "channel", cmd)?;
     let to = match p.get("to") {
         None | Some(Value::Null) => return Err(bad(cmd, "missing `to`")),
-        Some(v) => v.as_u64().map(|v| (v as usize).min(n - 1)).ok_or_else(|| bad(cmd, format!("`to` must be a channel position (unsigned integer), not {v}")))?,
+        Some(v) => {
+            v.as_u64().map(|v| (v as usize).min(n - 1)).ok_or_else(|| bad(cmd, format!("`to` must be a channel position (unsigned integer), not {v}")))?
+        }
     };
     if to == i {
         return Ok(json!({ "channel": i }));
