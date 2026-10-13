@@ -445,10 +445,10 @@ fn build() -> Vec<CommandSpec> {
                 Ok(json!({ "document": i }))
             }
         ),
-        cmd!("file.close", "Close", ["File"], Some("Cmd+W"), r##"{"document":index?}"##, has_doc, |s, p| {
+        cmd!("file.close", "Close", ["File"], Some("Cmd+W"), r##"{"document":index? (default active)}"##, has_doc, |s, p| {
             let i = p.get("document").and_then(Value::as_u64).map(|v| v as usize).or(s.active_index()).ok_or(EngineError::NoDocument)?;
             s.close(i).ok_or(EngineError::NoDocument)?;
-            Ok(Value::Null)
+            Ok(json!({ "closed": i, "remaining": s.documents().len() }))
         }),
         // Edit
         cmd!("edit.undo", "Undo", ["Edit"], Some("Cmd+Z"), "{}", can_undo, |s, _| Ok(json!(s.undo()))),
@@ -1509,5 +1509,29 @@ mod registry_tests {
         let registry = Registry::new(vec![first, second]);
         assert_eq!(registry.by_id.get(id), Some(&0));
         assert_eq!(registry.specs.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod close_tests {
+    use super::*;
+
+    #[test]
+    fn close_without_params_closes_the_active_document_and_names_it() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({ "width": 8, "height": 8 })).unwrap();
+        s.execute("file.new", json!({ "width": 9, "height": 9 })).unwrap();
+        assert_eq!(s.documents().len(), 2);
+        assert_eq!(s.active_index(), Some(1));
+        let r = s.execute("file.close", json!({})).unwrap();
+        assert_eq!(r, json!({ "closed": 1, "remaining": 1 }));
+        assert_eq!(s.documents().len(), 1, "the active document closed");
+        assert!(s.execute("file.close", json!({ "document": 5 })).is_err());
+    }
+
+    #[test]
+    fn close_with_no_document_open_is_an_error() {
+        let mut s = Session::new();
+        assert!(s.execute("file.close", json!({})).is_err());
     }
 }

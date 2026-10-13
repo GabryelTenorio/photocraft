@@ -1300,6 +1300,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "view": app.ui.view,
         "views": app.ui.views,
         "dialogs": dialogs,
+        "discard": crate::discard_ui::pending(app),
         "windows": app.ui.windows,
         "theme": app.ui.theme,
         "status": app.ui.status,
@@ -2998,5 +2999,32 @@ mod tests {
         assert_eq!(plain, egui::Modifiers::default(), "{plain:?}");
         let shift_alt = key_modifiers(&mut app, &ctx, json!({"key":"N","shift":true,"alt":true}));
         assert!(shift_alt.shift && shift_alt.alt && !shift_alt.command && !shift_alt.ctrl, "{shift_alt:?}");
+    }
+
+    #[test]
+    fn a_close_parked_on_the_discard_prompt_says_so_and_inspect_reports_it() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({ "width": 8, "height": 8 })).unwrap();
+        app.run("file.new", json!({ "width": 9, "height": 9 })).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        let dirty = app.session.active().map(|d| d.doc.name.clone()).unwrap();
+
+        let r = call(&mut app, &ctx, "ui.menu.invoke", json!({ "id": "file.close" }));
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(r["result"]["pending"], "unsavedChanges", "{r}");
+        assert_eq!(r["result"]["dialog"], "discard-prompt", "{r}");
+        assert_eq!(r["result"]["documents"][0]["name"], dirty, "{r}");
+        assert_eq!(app.session.documents().len(), 2, "nothing closes before the user answers");
+
+        let parked = call(&mut app, &ctx, "ui.inspect", json!({}));
+        assert_eq!(parked["result"]["discard"]["command"], "file.close", "{parked}");
+        assert_eq!(parked["result"]["discard"]["documents"][0]["index"], 1, "{parked}");
+
+        crate::discard_ui::advance(&mut app, &ctx);
+        assert!(app.discard.is_none());
+        assert_eq!(app.session.documents().len(), 1, "the answered document closes");
+        let answered = call(&mut app, &ctx, "ui.inspect", json!({}));
+        assert!(answered["result"]["discard"].is_null(), "{answered}");
     }
 }
