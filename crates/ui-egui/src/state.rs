@@ -861,7 +861,7 @@ pub enum TransformMode {
     Free,
     /// Edit › Transform › Rotate: handle drags rotate about the reference point (#3941).
     Rotate,
-    /// Edge handles skew; corners skew the adjacent edge instead of scaling.
+    /// Edge and corner handles skew: each moves along one axis.
     Skew,
     /// Corner handles move freely, one at a time; nothing else moves them (no rotating, no
     /// edges) and nothing snaps.
