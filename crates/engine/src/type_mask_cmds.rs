@@ -135,7 +135,7 @@ fn create_selection(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(st) = s.active_mut() {
         st.history.set_current_label("Type Mask");
     }
-    Ok(json!({ "selected": selected.is_some(), "bounds": selected.map(|r| [r.x0, r.y0, r.x1, r.y1]) }))
+    Ok(json!({ "selected": selected.is_some(), "bounds": selected.map(crate::commands::bounds_json) }))
 }
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -144,7 +144,7 @@ pub fn specs() -> Vec<CommandSpec> {
         label: "Type Mask",
         menu: &[],
         shortcut: None,
-        params: r##"{"layer":id? (a type layer whose glyphs become the selection),"removeLayer":bool=false (delete that layer in the same step: the Type Mask tools' temporary text),"operation":"new|add|subtract|intersect"="new","antialias":"none|sharp|crisp|strong|smooth"?, …without "layer", type.create's keys: "text","x","y" or "box","orientation","font","size","align",…}"##,
+        params: r##"{"layer":id? (a type layer whose glyphs become the selection),"removeLayer":bool=false (delete that layer in the same step: the Type Mask tools' temporary text),"operation":"new|add|subtract|intersect"="new","antialias":"none|sharp|crisp|strong|smooth"?, …without "layer", type.create's keys: "text","x","y" or "box","orientation","font","size","align",…} → {selected,bounds:[x,y,w,h]}"##,
         enabled: has_doc,
         journal: true,
         run: create_selection,
@@ -170,15 +170,16 @@ mod tests {
         let mut s = session();
         let layers = s.active().unwrap().doc.layers.len();
         let text = json!({"text": "I", "x": 40, "y": 120, "size": 48});
-        s.execute(CMD, text.clone()).unwrap();
+        let mask = s.execute(CMD, text.clone()).unwrap();
         let sel = bounds(&s).expect("the glyph is selected");
         assert_eq!(s.active().unwrap().doc.layers.len(), layers, "no layer added");
+        assert_eq!(mask["bounds"], json!([sel.x0, sel.y0, sel.width() as i32, sel.height() as i32]), "the selection bounds reply");
         // The same text as a type layer covers the same pixels.
         s.execute("edit.undo", json!({})).unwrap();
         assert!(bounds(&s).is_none(), "one undo step");
         let r = s.execute("type.create", text).unwrap();
         let b: Vec<i32> = r["bounds"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap() as i32).collect();
-        assert_eq!([sel.x0, sel.y0, sel.x1, sel.y1], [b[0], b[1], b[2], b[3]]);
+        assert_eq!([sel.x0, sel.y0, sel.x1, sel.y1], [b[0], b[1], b[0] + b[2], b[1] + b[3]]);
 
         // Vertical: the word runs down the column, so its selection is taller than wide.
         let mut s = session();

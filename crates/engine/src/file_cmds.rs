@@ -498,7 +498,7 @@ pub fn place_bytes(s: &mut Session, name: &str, bytes: Vec<u8>, linked: Option<S
         *active = Some(id);
         Ok(id)
     })?;
-    Ok(json!({"layer": id.0, "scale": scale * 100.0, "bounds": [dx, dy, dx + w * scale, dy + h * scale], "smartObject": smart}))
+    Ok(json!({"layer": id.0, "scale": scale * 100.0, "bounds": [dx, dy, w * scale, h * scale], "smartObject": smart}))
 }
 
 fn place(s: &mut Session, p: &Value, linked: bool) -> Result<Value> {
@@ -1329,7 +1329,7 @@ fn guides_from_shape(s: &mut Session, p: &Value) -> Result<Value> {
         }
         Ok(())
     })?;
-    Ok(json!({"bounds": [x0, y0, x1, y1]}))
+    Ok(json!({"bounds": [x0, y0, x1 - x0, y1 - y0]}))
 }
 
 fn clear_canvas_guides(s: &mut Session) -> Result<Value> {
@@ -1413,7 +1413,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place Embedded…",
             &["File"],
             None,
-            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool? (default: Preferences > General > Resize Image During Place),"smartObject":bool? (default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
+            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool? (default: Preferences > General > Resize Image During Place),"smartObject":bool? (default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?} → {"layer":id,"scale":%,"bounds":[x,y,w,h],"smartObject":bool}"##,
             native_doc,
             |s, p| place(s, p, false)
         ),
@@ -1422,7 +1422,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place Linked…",
             &["File"],
             None,
-            r##"{"path":str,"scale":%?,"fit":bool? (default: Preferences > General > Resize Image During Place),"center":[x,y]?}"##,
+            r##"{"path":str,"scale":%?,"fit":bool? (default: Preferences > General > Resize Image During Place),"center":[x,y]?} → {"layer":id,"scale":%,"bounds":[x,y,w,h],"smartObject":bool}"##,
             native_doc,
             |s, p| place(s, p, true)
         ),
@@ -1517,7 +1517,7 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             new_guide_layout
         ),
-        spec!("view.newGuidesFromShape", "New Guides From Shape", &["View"], None, r##"{"layer":id?}"##, has_shape, guides_from_shape),
+        spec!("view.newGuidesFromShape", "New Guides From Shape", &["View"], None, r##"{"layer":id?} → {"bounds":[x,y,w,h] (floats)}"##, has_shape, guides_from_shape),
         spec!("view.clearCanvasGuides", "Clear Canvas Guides", &["View"], None, "{}", has_doc, |s, _| clear_canvas_guides(s)),
     ]
 }

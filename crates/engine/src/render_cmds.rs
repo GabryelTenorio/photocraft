@@ -128,7 +128,7 @@ fn draw(s: &mut Session, label: &str, p: &Value, prims: Vec<Prim>, extra: Value)
     let mut r = json!({
         "layer": layer.0,
         "newLayer": created,
-        "bounds": if used.is_empty() { Value::Null } else { json!([used.x0, used.y0, used.x1, used.y1]) },
+        "bounds": if used.is_empty() { Value::Null } else { crate::commands::bounds_json(used) },
         "primitives": count,
     });
     if let (Value::Object(m), Value::Object(e)) = (&mut r, extra) {
@@ -207,7 +207,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Flame…",
             menu: &["Filter", "Render"],
             shortcut: None,
-            params: r##"{"flameType":"oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection","length":1..1000=150,"randomizeLength":bool,"width":1..1000=40,"angle":-180..180=0,"interval":1..1000=60,"adjustIntervalForLoops":bool=true,"useCustomColor":bool,"color":color,"turbulent":0..100=25,"jag":0..100=25,"opacity":0..100=75,"flameLines":1..100=20,"flameBottomAlignment":0..100=20,"flameStyle":"normal|violent|flat","flameShape":"parallel|toCenter|spread|oval|pointed","randomizeShapes":bool,"seed":u32=0,"quality":"draft|low|medium|high|fine","path":text,"newLayer":bool} → {layer,newLayer,bounds,primitives,usedPath}"##,
+            params: r##"{"flameType":"oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection","length":1..1000=150,"randomizeLength":bool,"width":1..1000=40,"angle":-180..180=0,"interval":1..1000=60,"adjustIntervalForLoops":bool=true,"useCustomColor":bool,"color":color,"turbulent":0..100=25,"jag":0..100=25,"opacity":0..100=75,"flameLines":1..100=20,"flameBottomAlignment":0..100=20,"flameStyle":"normal|violent|flat","flameShape":"parallel|toCenter|spread|oval|pointed","randomizeShapes":bool,"seed":u32=0,"quality":"draft|low|medium|high|fine","path":text,"newLayer":bool} → {layer,newLayer,bounds:[x,y,w,h],primitives,usedPath}"##,
             enabled: has_doc,
             run: run_flame,
             journal: true,
@@ -217,7 +217,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Picture Frame…",
             menu: &["Filter", "Render"],
             shortcut: None,
-            params: r##"{"frame":"vineWithFlowers|vineWithLeaves|ivy|roses|daisies|berries|bamboo|waves|zigzag|dots|rope|scallops|doubleLine|snowflakes|stars|hearts","margin":0..30=4,"size":1..100=50,"arrangement":1..100=50,"lines":1..5=1,"thickness":1..100=30,"fade":0..100=0,"vineColor":color,"flowerColor":color,"leafColor":color,"seed":u32=0,"newLayer":bool} → {layer,newLayer,bounds,primitives,frame}"##,
+            params: r##"{"frame":"vineWithFlowers|vineWithLeaves|ivy|roses|daisies|berries|bamboo|waves|zigzag|dots|rope|scallops|doubleLine|snowflakes|stars|hearts","margin":0..30=4,"size":1..100=50,"arrangement":1..100=50,"lines":1..5=1,"thickness":1..100=30,"fade":0..100=0,"vineColor":color,"flowerColor":color,"leafColor":color,"seed":u32=0,"newLayer":bool} → {layer,newLayer,bounds:[x,y,w,h],primitives,frame}"##,
             enabled: has_doc,
             run: run_frame,
             journal: true,
@@ -227,7 +227,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Tree…",
             menu: &["Filter", "Render"],
             shortcut: None,
-            params: r##"{"baseTreeType":1..34=1,"lightDirection":1..5=3,"leavesAmount":0..100=50,"leavesSize":0..200=100,"branchesHeight":50..300=100,"branchesThickness":50..200=100,"defaultLeaves":bool=true,"leavesColor":color,"customBranchColor":bool,"branchesColor":color,"flatShading":bool,"seed":u32=0,"x":0..1=0.5,"y":0..1=0.95,"size":0.05..2=0.8,"newLayer":bool} → {layer,newLayer,bounds,primitives,treeType}"##,
+            params: r##"{"baseTreeType":1..34=1,"lightDirection":1..5=3,"leavesAmount":0..100=50,"leavesSize":0..200=100,"branchesHeight":50..300=100,"branchesThickness":50..200=100,"defaultLeaves":bool=true,"leavesColor":color,"customBranchColor":bool,"branchesColor":color,"flatShading":bool,"seed":u32=0,"x":0..1=0.5,"y":0..1=0.95,"size":0.05..2=0.8,"newLayer":bool} → {layer,newLayer,bounds:[x,y,w,h],primitives,treeType}"##,
             enabled: has_doc,
             run: run_tree,
             journal: true,
@@ -303,7 +303,7 @@ mod tests {
         let r = s.execute("filter.render.flame", json!({"width": 16, "length": 60})).unwrap();
         assert_eq!(r["usedPath"], json!(true));
         let b: Vec<i64> = r["bounds"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap()).collect();
-        assert!(b[0] < 20 && b[2] < 60, "flame bounds {b:?} hug the path at x=20");
+        assert!(b[0] < 20 && b[0] + b[2] < 60 && b[1] + b[3] <= 120, "flame bounds {b:?} hug the path at x=20");
     }
 
     #[test]

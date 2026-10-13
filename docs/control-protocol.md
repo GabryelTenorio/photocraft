@@ -109,7 +109,7 @@ store expose and persist the same setting; scripts keep using canonical command 
 | `paint.stroke` | `{"points":[[x,y,pressure],…],"size":20,"color":"#ff0000"}` |
 | `paint.gradient` | `{"from":[x,y],"to":[x,y],"colors":["#000000","#ffffff"],"style":"linear\|radial\|angle\|reflected\|diamond"?}`: the ramp runs between the two points and pixels beyond each end keep the first/last stop colour, as Photoshop's Gradient tool — without a selection the fill covers the whole layer (an empty selection behaves as none), with a selection only the selection, its bounds and mask. To confine a gradient, select first (`select.rect` / `select.lasso`, then `paint.gradient`, then `select.deselect`) or paint into the layer mask with `"target":"mask"`. A shared `coalesce` key groups consecutive repeated fills into one undo step; any other command in between records a step again. |
 | `select.rect` | `{"x":0,"y":0,"width":100,"height":50,"mode":"add","ellipse":false}` |
-| `document.inspect` | `{}`: layer tree, history, snapshots (`[{id, name}]`, for `history.selectSnapshot`), selection bounds |
+| `document.inspect` | `{}`: layer tree, history, snapshots (`[{id, name}]`, for `history.selectSnapshot`), selection bounds — every `bounds` value is `[x, y, w, h]` (see [Bounds formats](#bounds-formats)) |
 | `document.pixel` | `{"x":10,"y":10}`: composite RGBA |
 | `document.presets.list` | `{}` → `{presets:[{name,settings}]}`: saved New Document configurations |
 | `document.presets.save` | `{"name":"Product square","settings":{"width":1600,"height":1600,"background":"transparent"}}`: save a snapshot; names are trimmed, 1–255 characters, and ASCII case-insensitive duplicates are rejected |
@@ -172,6 +172,18 @@ their usual file access. Source replacement, relinking and export commands remai
 `type.editText` starts inline editing of the active type layer and selects all its text, like
 double-clicking its thumbnail in Layers. Text input, Commit and Cancel use the existing Type tool
 editing session; non-type layers return an error without changing the tool or document.
+
+### Bounds formats
+
+Every reply key named `bounds` is `[x, y, w, h]` — never `[left, top, right, bottom]`.
+Rectangles are half-open and pixel-aligned (`[x0, x1) × [y0, y1)`, so `w = x1 - x0` with no
+`+1`); `view.newGuidesFromShape` keeps the float precision of path control bounds.
+
+| reply key | format | commands |
+|---|---|---|
+| `bounds` | `[x, y, w, h]` | `document.inspect` (per-layer `bounds`, `selectionBounds`), `shape.info`, `edit.copy`, `select.*`, `type.*` (including `type.createSelection`'s selection bounds), `file.place*`, `filter.render.*`, `view.newGuidesFromShape` |
+| `rect` param — create | `[x, y, w, h]` | `shape.create`/`shape.edit`, `select.object`, `slice.*`, `artboard.*` |
+| `rect` param — source frame | `[x0, y0, x1, y1]` | `edit.transform`, `edit.transform.warp` (its reply's `rect` too), `select.transformSelection`, `pattern.new` |
 
 ### Background jobs (#210)
 
@@ -331,7 +343,7 @@ no MCP framing, no app start-up per command. Configure its file access with the 
 | `engine.commands` | `{filter?}`: registry with params docs and enablement (`enabled`, `disabledReason`, `needsDocument`) |
 | `session.list` | open documents and the active index |
 | `doc.open` / `doc.new` | `{path}` / `file.new` params |
-| `doc.place` | `{path, scale? (percent), fit? (true), center? ([x, y]), index?}`: places a file as a Smart Object layer above the active one and returns `{layer, scale, bounds}`. `path` resolves beneath the read root, so this is the capability-scoped `file.placeEmbedded` — that command itself still refuses an ambient path |
+| `doc.place` | `{path, scale? (percent), fit? (true), center? ([x, y]), index?}`: places a file as a Smart Object layer above the active one and returns `{layer, scale, bounds: [x, y, w, h]}`. `path` resolves beneath the read root, so this is the capability-scoped `file.placeEmbedded` — that command itself still refuses an ambient path |
 | `doc.exportLayers` | `{dir, format? (png), prefix?, visibleOnly? (true), quality?, index?}` → `{files, count}`: one file per exported layer, named like `file.export.layersToFiles` names them. `dir` resolves beneath the write root, so the ambient command stays refused. The bytes come from the command's own core, so both paths write the same files; the write capability refuses to overwrite an existing file |
 | `doc.exportDataSets` | `{dir, format? (png), dataSets? (all), naming? ("{name}\|{index}\|{document}"), index?}` → `{files, count}`: the capability-scoped `file.export.dataSetsAsFiles`. The batch is planned first and colliding names are refused before any file is written, as in the command |
 | `doc.importDataSets` | `{path, delimiter? (,), index?}` → `{imported}`: the capability-scoped `file.import.variableDataSets`; the CSV is read beneath the read root |
