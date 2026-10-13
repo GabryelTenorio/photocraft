@@ -47,7 +47,7 @@ pub extern "C" fn pc_alloc(size: u32) -> u32 {
 ///
 /// # Safety
 /// The host guarantees `buf..buf + len` is a block it got from `pc_alloc`, holding `len / 4`
-/// samples.
+/// samples. 
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pc_filter(
