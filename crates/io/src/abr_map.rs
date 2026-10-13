@@ -425,13 +425,16 @@ impl Mapper<'_> {
                 dual.hardness = pct(t, "Hrdn").unwrap_or(1.0).clamp(0.0, 1.0);
                 dual.roundness = pct(t, "Rndn").unwrap_or(1.0).clamp(0.01, 1.0);
                 dual.angle = num(t, "Angl").unwrap_or(0.0) as f32;
-                dual.spacing = pct(t, "Spcn").unwrap_or(dual.spacing).clamp(0.01, 10.0);
             }
             dual.mode = mask_mode(enum_value(db, "BlnM")).unwrap_or(MaskMode::Multiply);
             dual.flip = boolean(db, "Flip").unwrap_or(false);
-            if let Some(v) = pct(db, "Spcn") {
-                dual.spacing = v.clamp(0.01, 10.0);
-            }
+            // The nested brush tip owns its spacing. Some ABR presets also carry a
+            // wrapper value, which is only a fallback when the tip omits Spcn.
+            dual.spacing = obj(db, "Brsh")
+                .and_then(|tip| pct(tip, "Spcn"))
+                .or_else(|| pct(db, "Spcn"))
+                .unwrap_or(dual.spacing)
+                .clamp(0.01, 10.0);
             dual.scatter = self.dynamic(obj(db, "scatterDynamics")).jitter;
             dual.both_axes = boolean(db, "bothAxes").unwrap_or(false);
             dual.count = num(db, "Cnt ").map_or(1, |v| v.clamp(1.0, 16.0) as u32);
