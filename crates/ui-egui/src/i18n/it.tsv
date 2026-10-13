@@ -4090,3 +4090,108 @@ navigator	Zoom	Zoom
 @plural	{n} action|{n} actions	{n} azione|{n} azioni
 	Auto Add/Delete	Aggiungi/elimina automaticamente
 	ICO is limited to 256 × 256 pixels	ICO è limitato a 256 × 256 pixel
+
+# Color management, Liquify, glyph group, warp and Camera Raw labels the Serbian, Vietnamese and Japanese catalogs added
+	Adobe-rgb-compat	Adobe RGB (compatibile)
+	All shortcuts reset to Photoshop defaults.	Tutte le scorciatoie ripristinate ai predefiniti di Photoshop.
+	Arc Lower	Arco inferiore
+	Arc Upper	Arco superiore
+	Arrows	Frecce
+	Ask On Mismatch	Chiedi se il profilo non corrisponde
+	Ask On Missing	Chiedi se manca il profilo
+	Ask On Paste	Chiedi quando incolli
+	Based On	Basato su
+	Basic Latin	Latino di base
+	Bend	Curvatura
+	Blend Text Gamma	Gamma per la fusione del testo
+	Bloat	Gonfiamento
+	Bpc	Compensazione punto nero
+	Coated-cmyk	CMYK patinato
+	Convert	Converti
+	Currency	Valute
+	Cyrillic	Cirillico
+	Default Photoshop Size	Dimensione predefinita di Photoshop
+	Display-p3	Display P3
+	Drag a crop box · drag inside to move · edges resize ({ratio} ratio, {centre} centre) · Space moves while drawing · {commit} commits · Esc cancels	Trascina un riquadro ritaglio · trascina dentro per spostare · bordi ridimensionano ({ratio} proporzione, {centre} centro) · Spazio sposta durante disegno · {commit} conferma · Esc annulla
+	Drag: draw freehand · Release on the start point: close	Trascina: disegna a mano libera · Rilascia sul punto iniziale: chiudi
+	Forward Warp	Altera in avanti
+	Freeze Lasso	Lazo congela
+	Freeze Mask	Congela maschera
+	Gray-gamma-2.2	Grigio gamma 2,2
+	Greek	Greco
+	Horizontal Distortion	Distorsione orizzontale
+	Import Photoshop brushes (.abr)	Importa pennelli di Photoshop (.abr)
+	Intent	Intento
+	Kerning: Metrics, Optical or a value in 1/1000 em (Alt+←/→ at the caret)	Crenatura: metrica, ottica o un valore in 1/1000 em (Alt+←/→ al cursore)
+	Latin 1	Latino 1
+	Latin Extended-A	Latino esteso A
+	Latin Extended-B	Latino esteso B
+	Linear-srgb	sRGB lineare
+	Mask Channel	Canale maschera
+	Mask None	Nessuna maschera
+	Math Symbols	Simboli matematici
+	Monitor Profile	Profilo monitor
+	Numbers	Numeri
+	Pick Color From Image	Preleva colore dall'immagine
+	Policy Cmyk	Criterio CMYK
+	Policy Gray	Criterio grigio
+	Policy Rgb	Criterio RGB
+	Prophoto-compat	ProPhoto RGB (compatibile)
+	Pucker	Piega
+	Push Left	Spingi a sinistra
+	R g b	RGB
+	Rec2020	Rec. 2020
+	Reconstruct All	Ricostruisci tutto
+	Save Path	Salva tracciato
+	Sgray	sGray
+	Source Channel	Canale sorgente
+	Source Invert	Inverti sorgente
+	Source1 Channel	Canale sorgente 1
+	Source1 Invert	Inverti sorgente 1
+	Source2 Channel	Canale sorgente 2
+	Source2 Invert	Inverti sorgente 2
+	Temporary	Temporanei
+	Thaw Mask	Scongela maschera
+	Twirl Clockwise	Vortice orario
+	Twirl Counterclockwise	Vortice antiorario
+	Vertical Distortion	Distorsione verticale
+	Working Cmyk	CMYK di lavoro
+	Working Gray	Grigio di lavoro
+	Working Rgb	RGB di lavoro
+	blue	blu
+	gray	grigio
+	green	verde
+	none	nessuno
+	orange	arancione
+	red	rosso
+	violet	viola
+	yellow	giallo
+@id	edit.clear	Cancella
+@id	file.close	Chiudi
+@id	layer.layerMask.apply	Applica
+cameraRaw	Balance	Bilanciamento
+cameraRaw	Clarity	Chiarezza
+cameraRaw	Color Mixer	Miscelatore colore
+cameraRaw	Contrast	Contrasto
+cameraRaw	Curve	Curva
+cameraRaw	Dehaze	Elimina foschia
+cameraRaw	Detail	Dettaglio
+cameraRaw	Effects	Effetti
+cameraRaw	Exposure	Esposizione
+cameraRaw	Feather	Sfumatura
+cameraRaw	Highlights	Luci
+cameraRaw	Midpoint	Punto medio
+cameraRaw	Midtones	Mezzi toni
+cameraRaw	Radius	Raggio
+cameraRaw	Roundness	Rotondità
+cameraRaw	Saturation	Saturazione
+cameraRaw	Shadows	Ombre
+cameraRaw	Size	Dimensione
+cameraRaw	Texture	Texture
+colorRange	Invert	Inverti
+document	Orientation	Orientamento
+layerLabel	Magenta	Magenta
+layerLabel	Red	Rosso
+layers	Fill	Riempimento
+layers	Fill:	Riempimento:
+shape	Appearance	Aspetto
