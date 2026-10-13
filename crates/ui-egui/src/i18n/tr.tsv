@@ -7,6 +7,10 @@
 # entries the same way. Product and technology names (PhotoCraft, ArtCraft, OpenType, CMYK, Lab ...)
 # stay as they are; the trailing "…" of dialog commands is kept.
 #
+# Custom paper dimensions in Print Settings.
+	Paper Width	Kağıt Genişliği
+	Paper Height	Kağıt Yüksekliği
+
 	Rows	Satırlar
 	Number	Sayı
 	Top:	Üst:
@@ -817,6 +821,9 @@
 	Appearance	Görünüm
 	Appearance (Layer Style)	Görünüm (Katman Stili)
 	Apply Layer Mask	Katman Maskesini Uygula
+	Add Mask to Selection	Maskeyi Seçime Ekle
+	Subtract Mask from Selection	Maskeyi Seçimden Çıkar
+	Intersect Mask with Selection	Maskeyi Seçimle Kesiştir
 	Apply Per Tip	İpucu Başına Uygula
 	Apply next selected layer comp	Sonraki seçilen katman kompozisyonunu uygula
 	Apply previous selected layer comp	Önceki seçilen katman kompozisyonunu uygula
@@ -2058,6 +2065,11 @@
 	Rename Brush…	Fırçayı Yeniden Adlandır…
 	Delete Brush	Fırçayı Sil
 	New Brush Preset…	Yeni Fırça Ön Ayarı…
+	Capture Brush Size in Preset	Fırça Boyutunu Ön Ayara Kaydet
+	Include Tool Settings	Araç Ayarlarını Dahil Et
+	Include Color	Rengi Dahil Et
+	Enter a name for the brush preset	Fırça ön ayarı için bir ad girin
+	A brush preset with this name already exists	Bu adda bir fırça ön ayarı zaten var
 	Brush Preset Options	Fırça Ön Ayarı Seçenekleri
 	Group name	Grup adı
 	Brush name	Fırça adı

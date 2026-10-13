@@ -13,6 +13,10 @@
 # letters; the trailing "…" of dialog commands is kept.
 
 # Guide layout dialog
+
+# Custom print paper (#3820)
+	Paper Width	Lebar kertas
+	Paper Height	Tinggi kertas
 	Rows	Baris
 	Number	Jumlah
 	Margin	Margin
@@ -824,6 +828,9 @@
 	Appearance	Tampilan
 	Appearance (Layer Style)	Tampilan (Gaya Layer)
 	Apply Layer Mask	Terapkan Mask Layer
+	Add Mask to Selection	Tambahkan Mask ke Seleksi
+	Subtract Mask from Selection	Kurangi Mask dari Seleksi
+	Intersect Mask with Selection	Iriskan Mask dengan Seleksi
 	Apply Per Tip	Terapkan Per Ujung
 	Apply next selected layer comp	Terapkan layer comp terpilih berikutnya
 	Apply previous selected layer comp	Terapkan layer comp terpilih sebelumnya
@@ -2070,6 +2077,11 @@
 	Rename Brush…	Ganti Nama Kuas…
 	Delete Brush	Hapus Kuas
 	New Brush Preset…	Preset Kuas Baru…
+	Capture Brush Size in Preset	Simpan Ukuran Kuas di Preset
+	Include Tool Settings	Sertakan Pengaturan Alat
+	Include Color	Sertakan Warna
+	Enter a name for the brush preset	Masukkan nama untuk preset kuas
+	A brush preset with this name already exists	Preset kuas dengan nama ini sudah ada
 	Brush Preset Options	Opsi Preset Kuas
 	Group name	Nama grup
 	Brush name	Nama kuas
