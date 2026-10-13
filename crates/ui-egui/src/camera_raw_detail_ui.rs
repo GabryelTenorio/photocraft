@@ -341,15 +341,25 @@ fn visible_pixels(image: Rect, viewport: Rect, area: PixelRect, max_side: usize)
     (crop.width() as usize <= max_side && crop.height() as usize <= max_side && crop.width() as u64 * crop.height() as u64 <= 16_777_216).then_some(crop)
 }
 
-/// Pixels per band [`crop_image`] reads and colour-converts at once: at least `photocraft-cms`'s
+/// Pixels per band [`display_image`] reads and colour-converts at once: at least `photocraft-cms`'s
 /// parallel threshold (16K pixels), and small enough that a band's float scratch is 1 MiB.
 const CROP_BAND_PIXELS: usize = 64 * 1024;
 
-/// The visible pixels of `surface`, as the canvas shows them. Converted in bands of rows, in
-/// parallel off wasm, not one row at a time: a row is below `photocraft-cms`'s parallel threshold,
-/// so a per-row conversion ran the display transform (any document profile other than the
-/// monitor's, such as an Adobe RGB photo on sRGB) on one core of the UI thread for every edit (#4682).
+/// The visible pixels of `surface`, as the canvas shows them.
 fn crop_image(surface: &Surface, area: PixelRect, display: &photocraft_engine::display_color::CanvasDisplay) -> ColorImage {
+    display_image(area, display, |rect, out| surface.read_rgba_into(rect, out))
+}
+
+/// `area` as the canvas shows it, with `read` filling each band's float pixels. Converted in
+/// bands of rows, in parallel off wasm, not one row or one whole copy at a time: a row is below
+/// `photocraft-cms`'s parallel threshold, so a per-row conversion ran the display transform (any
+/// document profile other than the monitor's, such as an Adobe RGB photo on sRGB) on one core of
+/// the UI thread for every edit (#4682).
+pub(crate) fn display_image(
+    area: PixelRect,
+    display: &photocraft_engine::display_color::CanvasDisplay,
+    read: impl Fn(PixelRect, &mut [[f32; 4]]) + Sync,
+) -> ColorImage {
     let (width, height) = (area.width() as usize, area.height() as usize);
     let mut pixels = vec![Color32::TRANSPARENT; width * height];
     if width == 0 {
@@ -360,7 +370,7 @@ fn crop_image(surface: &Surface, area: PixelRect, display: &photocraft_engine::d
         let y0 = area.y0.saturating_add((index * band_rows) as i32);
         let rect = PixelRect::new(area.x0, y0, area.x1, y0.saturating_add((out.len() / width) as i32));
         let mut buf = photocraft_compose::Buffer { rect, px: vec![[0.0; 4]; out.len()] };
-        surface.read_rgba_into(rect, &mut buf.px);
+        read(rect, &mut buf.px);
         let img = display.to_rgba8(&buf);
         for (o, &[r, g, b, a]) in out.iter_mut().zip(img.pixels.as_chunks::<4>().0) {
             *o = Color32::from_rgba_unmultiplied(r, g, b, a);
