@@ -104,8 +104,8 @@ pub fn legacy_pinch_to_zoom(events: &mut [Event], now: f64, last: Option<f64>, n
         _ => None,
     };
     let fraction = |d: Vec2| d.x.fract() != 0.0 || d.y.fract() != 0.0;
-    let pinching = last.is_some_and(|t| (0.0..PINCH_GAP).contains(&(now - t)))
-        || events.iter().filter_map(ctrl_wheel).any(|(d, high_res)| high_res || fraction(d));
+    let pinching =
+        last.is_some_and(|t| (0.0..PINCH_GAP).contains(&(now - t))) || events.iter().filter_map(ctrl_wheel).any(|(d, high_res)| high_res || fraction(d));
     if !pinching {
         return last;
     }
@@ -351,12 +351,7 @@ mod tests {
     fn linux_wayland_point_unit_pinch_keeps_mouse_notches_for_sideways_scroll() {
         // Some Wayland compositors report fractional Ctrl-wheel pinch steps in points
         // rather than line units. The delta must not be multiplied by notch twice.
-        let mut point = [Event::MouseWheel {
-            unit: MouseWheelUnit::Point,
-            delta: Vec2::new(0.0, 8.0),
-            phase: TouchPhase::Move,
-            modifiers: CTRL,
-        }];
+        let mut point = [Event::MouseWheel { unit: MouseWheelUnit::Point, delta: Vec2::new(0.0, 8.0), phase: TouchPhase::Move, modifiers: CTRL }];
         assert_eq!(legacy_pinch_to_zoom(&mut point, 1.0, None, 40.0, 0.005), Some(1.0));
         assert!(matches!(point[0], Event::Zoom(f) if (f - (8.0f32 * 0.005).exp()).abs() < 1e-5));
         let mut wheel_only = [wheel(Vec2::new(0.0, 1.0), CTRL)];
