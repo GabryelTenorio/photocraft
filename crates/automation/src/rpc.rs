@@ -30,7 +30,7 @@ use serde_json::{Value, json};
 use crate::budgets::{BatchReplyBudget, write_reply};
 use crate::security::{
     ConnectionLimiter, LineRead, MAX_BATCH_STEPS, MAX_CONNECTIONS, MAX_REQUEST_BYTES, authentication_reply, configure_stream, discard_rest_of_line,
-    read_bounded_line,
+    read_bounded_line, repeat_auth_reply,
 };
 use crate::{AutomationError, Headless};
 
@@ -116,6 +116,7 @@ impl Headless {
                 let tga_bits = photocraft_engine::file_cmds::tga_bits_param(&p, "doc.save").map_err(|e| bad(e.to_string()))?;
                 let mut opts =
                     photocraft_io::ExportOptions { tiff_layers: p.get("tiffLayers").and_then(Value::as_bool).unwrap_or(false), tga_bits, ..Default::default() };
+                opts.encode.dpx_bits = photocraft_engine::file_cmds::dpx_bits_param(&p, "doc.save").map_err(|e| bad(e.to_string()))?;
                 if let Some(q) = p.get("quality").and_then(Value::as_u64) {
                     opts.encode.jpeg_quality = q.clamp(1, 100) as u8;
                     opts.encode.webp_quality = q.clamp(1, 100) as u8;
@@ -288,7 +289,7 @@ fn serve_tcp_connection(h: &Mutex<Headless>, stream: std::net::TcpStream, token:
             LineRead::Line => {}
         }
         let reply = if authenticated {
-            respond(h, &line)
+            repeat_auth_reply(&line).unwrap_or_else(|| respond(h, &line))
         } else {
             let (reply, ok) = authentication_reply(&line, token);
             authenticated = ok;
@@ -778,6 +779,36 @@ mod tests {
         let v: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(v["id"], "a");
         assert!(v["result"].as_array().unwrap().iter().any(|m| m == "batch"));
+    }
+
+    #[test]
+    fn tcp_repeat_auth_reports_already_authenticated_and_keeps_serving() {
+        use std::io::{BufReader, Write as _};
+        const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let h = Arc::new(Mutex::new(Headless::new()));
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = serve_tcp("127.0.0.1:0", h, TOKEN.into(), move |a| tx.send(a).unwrap());
+        });
+        let addr = rx.recv().unwrap();
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        let mut reader = BufReader::new(s.try_clone().unwrap());
+        let mut line = String::new();
+        for id in ["auth", "again"] {
+            writeln!(s, r#"{{"id":"{id}","method":"auth","params":{{"token":"{TOKEN}"}}}}"#).unwrap();
+            line.clear();
+            reader.read_line(&mut line).unwrap();
+        }
+        let again: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(again["id"], "again");
+        assert_eq!(again["ok"], false);
+        assert_eq!(again["error"], "already authenticated");
+        writeln!(s, r#"{{"id":"m","method":"methods"}}"#).unwrap();
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["id"], "m");
+        assert_eq!(v["ok"], true);
     }
 
     #[test]
