@@ -195,9 +195,7 @@ pub fn erase_held(app: &PhotocraftApp, ctx: &egui::Context) -> bool {
 
 /// Is the reposition key (the Hand key, any modifiers) down?
 pub fn reposition_held(app: &PhotocraftApp, ctx: &egui::Context) -> bool {
-    !ctx.text_edit_focused()
-        && app.ui.text_edit.is_none()
-        && binding(app, Temporary::Hand).is_some_and(|sc| ctx.input(|i| i.key_down(sc.logical_key)))
+    !ctx.text_edit_focused() && app.ui.text_edit.is_none() && binding(app, Temporary::Hand).is_some_and(|sc| ctx.input(|i| i.key_down(sc.logical_key)))
 }
 
 /// Tools whose in-progress drag the reposition key moves.
