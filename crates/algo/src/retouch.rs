@@ -7,6 +7,8 @@
 //! "Protect Tones" works on luminance (scaling RGB so hue and saturation are kept, with gamut
 //! compression instead of per-channel clipping).
 
+use photocraft_geom::Rect;
+use photocraft_raster::Interrupt;
 use serde::{Deserialize, Serialize};
 
 /// Tonal range targeted by Dodge/Burn.
@@ -113,8 +115,69 @@ pub fn sponge(c: [f32; 3], amount: f32, saturate: bool, vibrance: bool) -> [f32;
 /// neighbours with edge clamping. With an alpha channel (`alpha = Some(index)`), colour is blurred
 /// premultiplied so transparent pixels don't bleed their (meaningless) colour. Returns the window's
 /// blurred pixels (`(x1−x0) × (y1−y0) × ch`).
+///
+/// Small σ convolve the exact separable kernel; beyond that the same three box passes
+/// `filter.blur.gaussianBlur` runs approximate it, at a cost independent of σ.
 #[allow(clippy::too_many_arguments)]
 pub fn local_blur(data: &[f32], w: usize, h: usize, ch: usize, alpha: Option<usize>, win: (usize, usize, usize, usize), sigma: f32) -> Vec<f32> {
+    if let Some(boxes) = crate::blur::box_widths(&crate::FilterParams::GaussianBlur { radius: sigma })
+        && let Some(blurred) = blur_boxes(data, w, h, ch, alpha, win, &boxes)
+    {
+        return blurred;
+    }
+    local_blur_exact(data, w, h, ch, alpha, win, sigma)
+}
+
+/// [`local_blur`] through `filter.blur.gaussianBlur`'s box passes: the window's rows and columns
+/// blurred by `boxes` in turn, with the buffer's edge pixels repeated beyond it. `None` only when
+/// the blur was cancelled, which `local_blur` never requests.
+fn blur_boxes(data: &[f32], w: usize, h: usize, ch: usize, alpha: Option<usize>, win: (usize, usize, usize, usize), boxes: &[usize]) -> Option<Vec<f32>> {
+    let (x0, y0, x1, y1) = win;
+    let (ow, oh) = (x1 - x0, y1 - y0);
+    let out = Rect::new(x0 as i32, y0 as i32, x1 as i32, y1 as i32);
+    let read = |r: Rect, buf: &mut Vec<f32>| {
+        buf.clear();
+        buf.reserve(r.width() as usize * r.height() as usize * ch);
+        for y in r.y0..r.y1 {
+            for x in r.x0..r.x1 {
+                let i = (y as usize * w + x as usize) * ch;
+                match data.get(i..i + ch) {
+                    Some(px) => buf.extend_from_slice(px),
+                    None => buf.resize(buf.len() + ch, 0.0),
+                }
+            }
+        }
+    };
+    let strips = crate::blur::box_blur(Rect::new(0, 0, w as i32, h as i32), &read, out, ch, alpha.is_some(), boxes, &Interrupt::NONE)?;
+    let stride = ow * ch;
+    let mut blurred = vec![0.0f32; ow * oh * ch];
+    for (t, s) in strips {
+        let (c0, cw) = ((t.x0 - x0 as i32) as usize * ch, t.width() as usize * ch);
+        for (row, src) in s.chunks_exact(cw).enumerate() {
+            let o = row * stride + c0;
+            if let Some(dst) = blurred.get_mut(o..o + cw) {
+                dst.copy_from_slice(src);
+            }
+        }
+    }
+    // The box passes zero out the colour under (nearly) transparent pixels; the exact kernel keeps
+    // the original, so put it back.
+    if let Some(a) = alpha {
+        for (i, px) in blurred.chunks_exact_mut(ch).enumerate() {
+            if px.get(a).is_some_and(|av| *av <= 1e-6) {
+                let o = ((y0 + i / ow) * w + x0 + i % ow) * ch;
+                if let Some(orig) = data.get(o..o + ch) {
+                    px.copy_from_slice(orig);
+                }
+            }
+        }
+    }
+    Some(blurred)
+}
+
+/// [`local_blur`] by the exact separable Gaussian.
+#[allow(clippy::too_many_arguments)]
+fn local_blur_exact(data: &[f32], w: usize, h: usize, ch: usize, alpha: Option<usize>, win: (usize, usize, usize, usize), sigma: f32) -> Vec<f32> {
     let (x0, y0, x1, y1) = win;
     let (ow, oh) = (x1 - x0, y1 - y0);
     let r = (sigma * 3.0).ceil().max(1.0) as i32;
@@ -298,6 +361,47 @@ mod tests {
         let (w, h, ch) = (8, 1, 4);
         let data: Vec<f32> = (0..w).flat_map(|x| if x < 4 { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 0.0] }).collect();
         let b = local_blur(&data, w, h, ch, Some(3), (2, 0, 6, 1), 1.0);
+        for p in b.as_chunks::<4>().0 {
+            if p[3] > 0.01 {
+                assert!(p[0] > 0.99 && p[1] < 0.01, "{p:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn box_passes_match_the_exact_kernel_at_large_sigma() {
+        // The σ > 4 path must track the exact separable Gaussian, at the buffer's edges and under
+        // varying alpha, as `filter.blur.gaussianBlur`'s box passes do.
+        let (w, h, ch) = (48, 32, 4);
+        let mut s = 0x9e37_79b9u32;
+        let mut data = vec![0.0f32; w * h * ch];
+        for px in data.as_chunks_mut::<4>().0 {
+            for v in px.iter_mut() {
+                s ^= s << 13;
+                s ^= s >> 17;
+                s ^= s << 5;
+                *v = (s % 256) as f32 / 255.0;
+            }
+            if s.is_multiple_of(5) {
+                px[3] = 0.0;
+            }
+        }
+        for win in [(2, 2, 40, 26), (0, 0, 40, 26), (40, 24, 48, 32), (44, 28, 48, 32)] {
+            let exact = local_blur_exact(&data, w, h, ch, Some(3), win, 12.0);
+            let fast = local_blur(&data, w, h, ch, Some(3), win, 12.0);
+            assert_eq!(exact.len(), fast.len(), "win {win:?}");
+            let err = exact.iter().zip(&fast).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+            assert!(err < 0.02, "win {win:?}: max error {err}");
+        }
+    }
+
+    #[test]
+    fn box_passes_keep_the_colour_of_transparent_pixels() {
+        // `blur_ignores_transparent_colour`, on the σ > 4 path: the original colour stays under the
+        // nearly-transparent pixels the box passes would zero out.
+        let (w, h, ch) = (8, 1, 4);
+        let data: Vec<f32> = (0..w).flat_map(|x| if x < 4 { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 0.0] }).collect();
+        let b = local_blur(&data, w, h, ch, Some(3), (2, 0, 6, 1), 12.0);
         for p in b.as_chunks::<4>().0 {
             if p[3] > 0.01 {
                 assert!(p[0] > 0.99 && p[1] < 0.01, "{p:?}");

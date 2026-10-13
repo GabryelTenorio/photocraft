@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (`~` held with the Brush or Pencil erases with its brush; Clear painting mode) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Blur tool's per-stamp blur radius now scales with the brush size) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -93,7 +93,7 @@ tablets against Photoshop side by side.
 | Pattern Stamp (aligned, impressionist) | done | |
 | History Brush | done | Art History Brush missing |
 | Spot Healing, Healing | partial | grain not matched on flat colour (#2104), "horrible in general" (#1092), stops responding after switching (#1751) |
-| Blur, Sharpen, Smudge (premultiplied, Sample All Layers, spacing) | done | BUG-207-2/3, #2171 |
+| Blur, Sharpen, Smudge (premultiplied, Sample All Layers, spacing) | done | BUG-207-2/3, #2171; Blur's per-stamp radius calibrated to the tip (σ = 0.10·size, capped at 64; three box passes beyond σ 4 as Gaussian Blur; agent-facing `sigma` param), 2026-10-13 |
 | Dodge, Burn, Sponge | done | |
 | Background Eraser, Magic Eraser | done | |
 | Color Replacement | missing as a tool | engine command exists |
@@ -114,3 +114,4 @@ tablets against Photoshop side by side.
 |---|---|---|
 | 2026-10-10 | major | First version, from a source audit and the open issues |
 | 2026-10-11 | minor | `~` held with the Brush or Pencil erases with that tool's brush, and Clear joins their Mode menus (#3439) |
+| 2026-10-13 | minor | Blur tool's per-stamp radius calibrated to the brush tip: σ = 0.10·size capped at 64 (Kovesi box passes beyond σ 4, as Gaussian Blur), plus an agent-facing `sigma` param; Sharpen keeps its fixed σ |

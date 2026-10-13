@@ -670,6 +670,23 @@ fn per_dab(e: f32, spacing: f32) -> f32 {
     1.0 - (1.0 - e.clamp(0.0, 1.0)).powf(spacing.clamp(0.01, 1.0))
 }
 
+/// Per-stamp σ of the Blur tool as a fraction of the brush size, and its cap.
+const BLUR_SIGMA_PER_SIZE: f32 = 0.10;
+const BLUR_SIGMA_MAX: f32 = 64.0;
+
+/// The Blur tool's per-stamp Gaussian σ: a fraction of the brush size, capped for cost, so the
+/// blur follows the tip as in Photoshop (Strength sets the amount, not the radius). The `sigma`
+/// param overrides it for automation; Photoshop's Blur tool has no radius control.
+fn blur_sigma(p: &Value, size: f32, cmd: &str) -> Result<f32> {
+    let Some(v) = p.get("sigma").filter(|v| !v.is_null()) else {
+        return Ok((size * BLUR_SIGMA_PER_SIZE).clamp(1.0, BLUR_SIGMA_MAX));
+    };
+    match v.as_f64() {
+        Some(s) if s.is_finite() && s > 0.0 && s <= f64::from(BLUR_SIGMA_MAX) => Ok(s as f32),
+        _ => Err(bad(cmd, format!("`sigma` must be a number within 0 < σ ≤ {BLUR_SIGMA_MAX}"))),
+    }
+}
+
 /// Apply an RGB colour transform `f(rgb, strength)` to each covered pixel of a dab (through straight
 /// RGBA, so it works for Gray/CMYK/Lab too; untouched pixels are never round-tripped).
 fn color_dab(fmt: &PixelFormat, work: &mut Region, fp: &Footprint, strength: f32, spacing: f32, f: impl Fn([f32; 3], f32) -> [f32; 3]) {
@@ -817,7 +834,9 @@ impl DabTool {
                     sharpen,
                     strength: num(p, "strength", 50.0).clamp(1.0, 100.0) / 100.0,
                     protect: flag(p, "protectDetail", true),
-                    sigma: (stroke.brush.size * 0.03).clamp(1.0, 4.0),
+                    // Sharpen is a fixed-σ unsharp mask (its σ only pads the halo); the Blur
+                    // tool's σ follows the brush tip.
+                    sigma: if sharpen { (stroke.brush.size * 0.03).clamp(1.0, 4.0) } else { blur_sigma(p, stroke.brush.size, cmd)? },
                 };
                 (tool, if sharpen { "Sharpen Tool" } else { "Blur Tool" })
             }
@@ -1211,7 +1230,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Blur",
             menu: &[],
             shortcut: None,
-            params: brush_params!(r#","strength":1..100=50,"sampleAllLayers":bool=false"#),
+            params: brush_params!(r#","strength":1..100=50,"sigma":0<σ≤64?=0.1·size (the per-stamp Gaussian σ; automation only — the tool derives it from the tip as Photoshop's does),"sampleAllLayers":bool=false"#),
             enabled: has_pixel_layer,
             run: |s, p| dab_cmd(s, p, "paint.blur"),
             journal: true,
