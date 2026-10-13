@@ -11,6 +11,13 @@ use serde_json::{Map, Value};
 use crate::PhotocraftApp;
 use crate::state::{Tool, ToolOptions};
 
+/// Explicit choices override temporary pen and held-key tools, even when selecting the same tool.
+pub(crate) fn select(app: &mut PhotocraftApp, tool: Tool) {
+    app.stylus.tool_before_eraser = None;
+    app.ui.spring = None;
+    app.ui.tool = tool;
+}
+
 /// Temporary canvas overrides do not change `ui.tool`. Spring-loaded letters and the pen's
 /// eraser end do, so remember the tool they will return to instead. A different explicit choice
 /// (or beginning a type edit) owns the tool and stands, just as in `spring_tools::tick`.
