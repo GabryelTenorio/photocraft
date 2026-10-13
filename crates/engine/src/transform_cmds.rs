@@ -180,15 +180,17 @@ impl PreparedShapeMask {
         }
         let center = ((f64::from(self.bounds.x0) + f64::from(self.bounds.x1)) / 2.0, (f64::from(self.bounds.y0) + f64::from(self.bounds.y1)) / 2.0);
         let scale = h.local_scale(center.0, center.1);
-        let warped = if interpolation != Interp::Nearest && scale > 0.0 && scale < 0.5 {
-            let factor = 2f64.powf(scale.log2().ceil()).min(1.0);
+        // Match the committed warp: only Bicubic prefilters downscales, using the
+        // whole local scale. Bilinear samples the original mask directly.
+        let warped = if interpolation == Interp::Bicubic && scale > 0.0 && scale < 0.999 {
+            let factor = scale.max(1.0 / 64.0);
             let reduced = {
                 let mut cache = self.reduced.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(existing) = cache.get(&factor.to_bits()) {
                     existing.clone()
                 } else {
-                    // Normal document-sized masks use at most eleven levels; cap hostile
-                    // subpixel scale sequences without retaining hundreds of tiny tiles.
+                    // Dragging can request many distinct scales; cap retained reductions
+                    // without retaining hundreds of tiny tiles.
                     if cache.len() >= 32 {
                         cache.pop_first();
                     }

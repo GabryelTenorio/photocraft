@@ -32,6 +32,8 @@ fn prepared_shape_mask_matches_exact_preview_formats_defaults_and_downscales() {
                     Affine { m: [1.2, 0.3, -0.3, 1.2, 7.0, -5.0] },
                     Affine { m: [0.125, 0.0, 0.0, 0.125, 24.0, 30.0] },
                     Affine { m: [0.125, 0.0, 0.0, 0.125, 30.0, 32.0] },
+                    Affine { m: [0.3, 0.0, 0.0, 0.3, 24.0, 30.0] },
+                    Affine { m: [0.75, 0.0, 0.0, 0.75, 7.0, -5.0] },
                 ] {
                     let exact = preview_shape_transform(&source, id, affine, interpolation).unwrap();
                     let shown = preview_shape_transform_geometry_clipped(&source, id, affine, interpolation, clip, Some(&prepared)).unwrap();
