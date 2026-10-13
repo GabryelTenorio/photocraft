@@ -681,6 +681,36 @@ fn only_cmyk_stacks_with_ink_adjustments_render_on_their_inks() {
     assert_eq!(render_tiled(&d, d.bounds(), 1).px, whole.px);
 }
 
+/// Groups at full opacity without a mask are inlined: a pass-through group's adjustment reaches
+/// the layers below it, and an isolated group of raster layers composites as its children would.
+/// An isolated group's adjustment (which only sees the group) or a translucent group keeps the
+/// RGB compositor.
+#[test]
+fn cmyk_ink_compositing_inlines_open_groups() {
+    use photocraft_color::convert::cmyk_to_rgb;
+    let r = Rect::new(0, 0, 4, 4);
+    let mut d = cmyk_doc([0.2, 0.4, 0.6, 0.1], SampleType::U16);
+    let stored: [f32; 4] = std::array::from_fn(|c| d.layers[0].surface().unwrap().pixel(0, 0)[c]);
+    let mut g = Layer::group("g", vec![Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert))]);
+    g.blend = BlendMode::PassThrough;
+    d.layers.push(g);
+    let c = cmyk_to_rgb(stored.map(|v| 1.0 - v));
+    assert!(close4(px(&d, 1, 1), [c[0], c[1], c[2], 1.0]), "a pass-through group's Invert reaches the inks below");
+    d.layers[1].blend = BlendMode::Normal;
+    assert!(native::render_cmyk(&d, r, 64).is_none(), "an isolated group's adjustment");
+    d.layers[1].blend = BlendMode::PassThrough;
+    d.layers[1].opacity = 0.5;
+    assert!(native::render_cmyk(&d, r, 64).is_none(), "a translucent group");
+    // An isolated group of raster layers, with an adjustment above it, still composites on the inks.
+    let mut top = Layer::raster("top", d.pixel_format());
+    top.surface_mut().unwrap().fill_rect(Rect::new(0, 0, 2, 4), &[0.9, 0.0, 0.0, 0.0, 1.0]);
+    d.layers[1] = Layer::group("raster", vec![top]);
+    d.layers.push(Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert)));
+    assert!(native::render_cmyk(&d, r, 64).is_some());
+    let c = cmyk_to_rgb(stored.map(|v| 1.0 - v));
+    assert!(close4(px(&d, 3, 1), [c[0], c[1], c[2], 1.0]), "outside the group's layer");
+}
+
 #[test]
 fn cmyk_document_renders_via_rgb() {
     let mut d = Document::new("c", Size::new(2, 2), ColorMode::Cmyk, SampleType::U8);

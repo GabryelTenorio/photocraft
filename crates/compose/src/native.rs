@@ -95,6 +95,48 @@ enum Item<'a> {
     Adjust(InkOp<'a>, f32, Option<&'a LayerMask>),
 }
 
+/// Groups nested deeper than this keep the RGB compositor.
+const MAX_DEPTH: usize = 64;
+
+/// `layers`' visible steps, appended to `items`; `None` when one needs the RGB compositor. A group
+/// at full opacity without a mask is inlined: pass-through groups composite their children straight
+/// onto the backdrop, and so do isolated (Normal) groups of raster layers alone, since Normal
+/// composites associatively; an adjustment inside an isolated group would only see the group's
+/// own content, so such a group keeps the RGB compositor (`adjustments` false).
+fn collect<'a>(layers: &'a [Layer], depth: SampleType, adjustments: bool, items: &mut Vec<Item<'a>>, level: usize) -> Option<()> {
+    if level > MAX_DEPTH {
+        return None;
+    }
+    for layer in layers.iter().filter(|l| l.visible) {
+        let alpha = (layer.opacity * layer.fill_opacity).clamp(0.0, 1.0);
+        let mask = layer.mask.as_ref().filter(|m| m.enabled);
+        if let LayerContent::Group(g) = &layer.content {
+            let open = g.artboard.is_none()
+                && alpha >= 1.0
+                && mask.is_none()
+                && !layer.clipped
+                && layer.vector_mask.as_ref().is_none_or(|v| !v.enabled)
+                && !crate::effects::has_effects(layer)
+                && layer.excluded_channels == 0
+                && layer.blend_if.is_default()
+                && layer.advanced.is_default();
+            match layer.blend {
+                BlendMode::PassThrough if open => collect(&g.children, depth, adjustments, items, level + 1)?,
+                BlendMode::Normal if open => collect(&g.children, depth, false, items, level + 1)?,
+                _ => return None,
+            }
+            continue;
+        }
+        let item = match plain(layer) {
+            Some(s) => Item::Layer(s, alpha, mask),
+            None if adjustments => Item::Adjust(ink_op(layer, depth)?, alpha, mask),
+            None => return None,
+        };
+        items.push(item);
+    }
+    Some(())
+}
+
 /// A CMYK document's visible layers, prepared for compositing on their ink values.
 pub struct InkStack<'a> {
     items: Vec<Item<'a>>,
@@ -102,22 +144,15 @@ pub struct InkStack<'a> {
 }
 
 impl<'a> InkStack<'a> {
-    /// `None` unless `doc` is CMYK and every visible layer is a plain raster layer or a plain
-    /// adjustment layer the inks carry exactly (see the module docs).
+    /// `None` unless `doc` is CMYK and every visible layer is a plain raster layer, a plain
+    /// adjustment layer the inks carry exactly, or a group that can be inlined (see the module
+    /// docs and [`collect`]).
     pub fn new(doc: &'a Document) -> Option<Self> {
-        if doc.mode != ColorMode::Cmyk || doc.layers.iter().any(|l| l.clipped) {
+        if doc.mode != ColorMode::Cmyk {
             return None;
         }
         let mut items = Vec::new();
-        for layer in doc.layers.iter().filter(|l| l.visible) {
-            let alpha = (layer.opacity * layer.fill_opacity).clamp(0.0, 1.0);
-            let mask = layer.mask.as_ref().filter(|m| m.enabled);
-            let item = match plain(layer) {
-                Some(s) => Item::Layer(s, alpha, mask),
-                None => Item::Adjust(ink_op(layer, doc.depth)?, alpha, mask),
-            };
-            items.push(item);
-        }
+        collect(&doc.layers, doc.depth, true, &mut items, 0)?;
         Some(InkStack { items, depth: doc.depth })
     }
 
