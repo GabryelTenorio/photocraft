@@ -146,7 +146,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Gradient",
             menu: &[],
             shortcut: None,
-            params: r##"{"from":[x,y],"to":[x,y],"style":"linear|radial|angle|reflected|diamond"="linear","colors":["#rrggbb",…]? (evenly spaced),"gradient":preset name?,"stops":[[t,"#rrggbb"|"foreground"|"background"],…]?,"transparency":[[t,0..100],…]? (default: the current gradient, see gradient.presets.select),"reverse":bool=false,"dither":bool=true,"opacity":1..100=100,"mode":"normal|multiply|…"="normal","target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target}"##,
+            params: r##"{"from":[x,y],"to":[x,y],"style":"linear|radial|angle|reflected|diamond"="linear","colors":["#rrggbb",…]? (evenly spaced),"gradient":preset name?,"stops":[[t,"#rrggbb"|"foreground"|"background"],…]?,"transparency":[[t,0..100],…]? (default: the current gradient, see gradient.presets.select),"reverse":bool=false,"dither":bool=true,"opacity":1..100=100,"mode":"normal|multiply|…"="normal","target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target,"coalesce":key? (the same key on consecutive calls: one undo step)} (the fill is Photoshop's Gradient tool: the ramp runs between from and to and pixels beyond each end keep the first/last stop colour; without a selection the whole layer is filled, with a selection only the selection — its bounds and mask — and an empty selection behaves as none; to confine a gradient, select first or target the layer mask)"##,
             enabled: crate::commands::has_paintable,
             run: gradient,
             journal: true,
