@@ -282,7 +282,6 @@ pub fn show(ctx: &Context) {
         let shared = r.clone();
         let vid = egui::ViewportId::from_hash_of(("screen-color", generation, n));
         let builder = viewport_builder(ctx, &image);
-        let mut raised = false;
         // Immediate, so it paints inside the main window's own frame: as a deferred viewport the
         // main window stopped being redrawn on Windows (OpenGL) once the picker was up, so a click
         // or Esc was never turned into an answer and the overlay could not be left.
@@ -340,8 +339,9 @@ pub fn show(ctx: &Context) {
             // Showing a new native viewport before this frame is painted can briefly cover
             // the screen with the window's default white clear color.
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Visible(true));
-            if !raised {
-                raised = true;
+            // Once per picker window: `show` runs every frame, so a local flag would resend it.
+            let raised = Id::new(("screen-picker-raised", ui.ctx().viewport_id()));
+            if !ui.ctx().data_mut(|d| std::mem::replace(d.get_temp_mut_or_default::<bool>(raised), true)) {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
             }
         });
