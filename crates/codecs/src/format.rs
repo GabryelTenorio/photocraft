@@ -31,6 +31,8 @@ pub enum Format {
     Fits,
     /// DPX (SMPTE 268M Digital Picture Exchange): luma, RGB or RGBA film and video frames.
     Dpx,
+    /// Kodak Cineon (`.cin`, the 10-bit film-scan format DPX grew from): read-only.
+    Cineon,
 }
 
 /// What a format can hold **and** what this crate reads/writes for it.
@@ -73,6 +75,11 @@ pub const ASYMMETRIC_EXCEPTIONS: &[(Format, &str)] = &[
          until a pure-Rust AV1 decoder is viable. Only enabled with the non-default `avif` feature.",
     ),
     (
+        Format::Cineon,
+        "Cineon frames are imported for film work; this crate has no Cineon writer, so save an \
+         imported frame as DPX, TIFF or EXR instead.",
+    ),
+    (
         Format::Heif,
         "HEIC decode uses heic-rs (pure Rust, in the optional photocraft-heif crate behind the \
          non-default `heif` feature, which official builds enable), so iPhone and Mac photos open; \
@@ -89,7 +96,7 @@ const ALL_LAYOUTS: &[ChannelLayout] = &[L::Gray, L::GrayA, L::Rgb, L::Rgba, L::C
 
 impl Format {
     /// Every format known to the crate (enabled or not).
-    pub const ALL: [Format; 18] = [
+    pub const ALL: [Format; 19] = [
         Format::Png,
         Format::Jpeg,
         Format::Tiff,
@@ -108,6 +115,7 @@ impl Format {
         Format::Heif,
         Format::Fits,
         Format::Dpx,
+        Format::Cineon,
     ];
 
     pub fn caps(self) -> FormatCaps {
@@ -140,6 +148,7 @@ impl Format {
             Format::Heif => "HEIF",
             Format::Fits => "FITS",
             Format::Dpx => "DPX",
+            Format::Cineon => "Cineon",
         }
     }
 
@@ -165,6 +174,7 @@ impl Format {
             Format::Heif => &["heic", "heif", "hif"],
             Format::Fits => &["fits", "fit", "fts"],
             Format::Dpx => &["dpx"],
+            Format::Cineon => &["cin"],
         }
     }
 
@@ -188,6 +198,7 @@ impl Format {
             Format::Heif => "image/heif",
             Format::Fits => "image/fits",
             Format::Dpx => "image/x-dpx",
+            Format::Cineon => "image/x-cin",
         }
     }
 
@@ -242,6 +253,7 @@ pub fn caps(format: Format) -> FormatCaps {
         Format::Fits => FormatCaps { depths: &[S::U8, S::U16, S::F32], layouts: &[L::Gray, L::Rgb], alpha: false, text: true, ..base },
         // `text`: the DPX header fields only (see `fidelity_warnings_with`).
         Format::Dpx => FormatCaps { depths: &[S::U8, S::U16], layouts: &[L::Gray, L::Rgb, L::Rgba], text: true, ..base },
+        Format::Cineon => FormatCaps { read: true, write: false, depths: &[S::U16], layouts: &[L::Gray, L::Rgb], alpha: false, ..base },
     }
 }
 
@@ -292,6 +304,9 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     }
     if b.starts_with(b"SDPX") || b.starts_with(b"XPDS") {
         return Some(Format::Dpx);
+    }
+    if crate::codecs::dpx::is_cineon(b) {
+        return Some(Format::Cineon);
     }
     if b.starts_with(b"SIMPLE  =") {
         return Some(Format::Fits);
