@@ -606,6 +606,81 @@ fn a_16_bit_lab_invert_layer_keeps_greys_neutral() {
     assert!((lab[0] - 75.0).abs() < 0.1 && lab[1].abs() < 0.05 && lab[2].abs() < 0.05, "{lab:?}");
 }
 
+/// A CMYK document of one opaque raster layer holding `ink` everywhere, at `depth`.
+fn cmyk_doc(ink: [f32; 4], depth: SampleType) -> Document {
+    let mut d = Document::new("c", Size::new(4, 4), ColorMode::Cmyk, depth);
+    let mut l = Layer::raster("bg", d.pixel_format());
+    l.surface_mut().unwrap().fill_rect(Rect::new(0, 0, 4, 4), &[ink[0], ink[1], ink[2], ink[3], 1.0]);
+    d.layers.push(l);
+    d
+}
+
+/// Adjustment layers Photoshop evaluates on the inks composite on the document's own inks, not on
+/// a separation of the RGB composite: exact for Invert, Posterize, Threshold, Brightness/Contrast
+/// and CMYK Levels / Curves (photoshop corpus cmyk8 and cmyk16 oracles), through opacity and an
+/// (unfeathered) mask as linear ink mixes.
+#[test]
+fn cmyk_ink_adjustments_composite_on_the_documents_inks() {
+    use photocraft_color::convert::cmyk_to_rgb;
+    let ink = [0.2, 0.4, 0.6, 0.1];
+    let rgb = |i: [f32; 4]| {
+        let c = cmyk_to_rgb(i);
+        [c[0], c[1], c[2], 1.0]
+    };
+    for depth in [SampleType::U8, SampleType::U16] {
+        let mut d = cmyk_doc(ink, depth);
+        // Stored inks, as the document's surface rounds them.
+        let stored: [f32; 4] = std::array::from_fn(|c| d.layers[0].surface().unwrap().pixel(0, 0)[c]);
+        d.layers.push(Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert)));
+        assert!(close4(px(&d, 1, 1), rgb(stored.map(|v| 1.0 - v))), "{depth:?} invert");
+        // Half opacity and a half mask mix the inks linearly: a quarter of the way.
+        d.layers[1].opacity = 0.5;
+        let mut m = LayerMask::reveal_all();
+        m.surface.fill_rect(Rect::new(0, 0, 4, 4), &[0.5]);
+        d.layers[1].mask = Some(m);
+        let k = 0.5 * d.layers[1].mask.as_ref().unwrap().value(1, 1);
+        assert!(close4(px(&d, 1, 1), rgb(stored.map(|v| v + (1.0 - 2.0 * v) * k))), "{depth:?} mixed");
+        // Brightness/Contrast curves each ink's stored value.
+        let table = adjust::ink_brightness_contrast_lut(25.0, 30.0, true);
+        d.layers[1] = Layer::new("bc", LayerContent::Adjustment(Adjustment::BrightnessContrast { brightness: 25.0, contrast: 30.0, legacy: true }));
+        assert!(close4(px(&d, 1, 1), rgb(stored.map(|v| adjust::ink_through(&table, v)))), "{depth:?} brightness/contrast");
+        // Flattening keeps the adjusted inks exactly, with no trip through RGB.
+        let flat = flatten_to_surface(&d, d.pixel_format(), None);
+        let got = flat.pixel(2, 2);
+        for c in 0..4 {
+            let want = adjust::ink_through(&table, stored[c]);
+            let q = if depth == SampleType::U8 { 255.0 } else { 65535.0 };
+            assert!((got[c] - want).abs() <= 0.5 / q + 1e-6, "{depth:?} flattened ink {c}: {} vs {want}", got[c]);
+        }
+    }
+}
+
+/// Only stacks with ink adjustments take the ink compositor for display: plain CMYK layers keep
+/// the RGB compositor (which the GPU matches), and so does any stack with an adjustment the inks
+/// don't carry or a layer they can't composite.
+#[test]
+fn only_cmyk_stacks_with_ink_adjustments_render_on_their_inks() {
+    let r = Rect::new(0, 0, 4, 4);
+    let mut d = cmyk_doc([0.2, 0.4, 0.6, 0.1], SampleType::U8);
+    assert!(native::render_cmyk(&d, r, 64).is_none(), "plain layers");
+    d.layers.push(Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert)));
+    assert!(native::render_cmyk(&d, r, 64).is_some());
+    let hue = Adjustment::HueSaturation { hue: 30.0, saturation: 0.0, lightness: 0.0, colorize: false, ranges: photocraft_doc::adjust::HueRange::defaults() };
+    d.layers.push(Layer::new("hue", LayerContent::Adjustment(hue)));
+    assert!(native::render_cmyk(&d, r, 64).is_none(), "an adjustment the inks don't carry");
+    d.layers.pop();
+    d.layers[1].blend = BlendMode::Multiply;
+    assert!(native::render_cmyk(&d, r, 64).is_none(), "a blend mode");
+    d.layers[1].blend = BlendMode::Normal;
+    let mut rgb = cmyk_doc([0.2, 0.4, 0.6, 0.1], SampleType::U8);
+    rgb.mode = ColorMode::Rgb;
+    rgb.layers.push(Layer::new("inv", LayerContent::Adjustment(Adjustment::Invert)));
+    assert!(native::render_cmyk(&rgb, r, 64).is_none(), "not a CMYK document");
+    // Tiles render alike whatever their size.
+    let whole = render_tiled(&d, d.bounds(), 64);
+    assert_eq!(render_tiled(&d, d.bounds(), 1).px, whole.px);
+}
+
 #[test]
 fn cmyk_document_renders_via_rgb() {
     let mut d = Document::new("c", Size::new(2, 2), ColorMode::Cmyk, SampleType::U8);
@@ -2640,4 +2715,27 @@ fn modern_lut_timing() {
         std::hint::black_box(adjust::modern_lut(-50.0, 30.0));
     }
     println!("modern_lut(-50, 30): {:?} each", t.elapsed() / 100);
+}
+
+#[test]
+#[ignore = "timing: cargo test --release -p photocraft-compose cmyk_ink_render_timing -- --ignored --nocapture"]
+fn cmyk_ink_render_timing() {
+    // 24 MP CMYK8 photo-sized noise with one adjustment layer: the ink path (Invert) against the
+    // RGB compositor (Exposure, which the inks don't carry).
+    let (w, h) = (6000, 4000);
+    let mut d = Document::new("c", Size::new(w, h), ColorMode::Cmyk, SampleType::U8);
+    let mut l = Layer::raster("bg", d.pixel_format());
+    let data: Vec<f32> = (0..(w * h) as usize)
+        .flat_map(|i| [(i % 251) as f32 / 255.0, (i % 241) as f32 / 255.0, (i % 239) as f32 / 255.0, (i % 97) as f32 / 255.0, 1.0])
+        .collect();
+    l.surface_mut().unwrap().write_region(Rect::new(0, 0, w as i32, h as i32), &data);
+    d.layers.push(l);
+    for adj in [Adjustment::Invert, Adjustment::Exposure { exposure: 0.5, offset: 0.0, gamma: 1.0 }] {
+        d.layers.truncate(1);
+        d.layers.push(Layer::new("adj", LayerContent::Adjustment(adj.clone())));
+        let _ = render(&d, Rect::new(0, 0, 512, 512));
+        let t = std::time::Instant::now();
+        let b = render(&d, d.bounds());
+        println!("{}: {:?} ({} px)", adj.label(), t.elapsed(), b.px.len());
+    }
 }
