@@ -50,15 +50,15 @@ fn number(d: Option<&Descriptor>, key: &str, default: Option<f64>, low: f64, hig
     Ok(value)
 }
 
-fn translate(step: &photocraft_psd::atn::Step) -> Result<(String, Value)> {
-    if step.enabled && step.dialog {
+fn translate(step: &photocraft_psd::atn::AtnItem) -> Result<(String, Value)> {
+    if step.enabled && step.with_dialog {
         return Err(bad("interactive Photoshop dialog steps are not supported"));
     }
     let d = step.descriptor.as_ref();
-    let plain = match step.event.as_str() {
+    let plain = match step.event.id().as_str() {
         "invert" | "Invr" => Some("image.adjustments.invert"),
         "desaturate" | "Dstt" => Some("image.adjustments.desaturate"),
-        "flattenImage" | "FltI" => Some("layer.flattenImage"),
+        "flattenImage" | "Fltn" | "FltI" => Some("layer.flattenImage"),
         "mergeVisible" | "MrgV" => Some("layer.mergeVisible"),
         "mergeLayersNew" | "Mrg2" => Some("layer.mergeLayers"),
         _ => None,
@@ -67,7 +67,7 @@ fn translate(step: &photocraft_psd::atn::Step) -> Result<(String, Value)> {
         descriptor_keys(d, &[])?;
         return Ok((id.into(), json!({})));
     }
-    let (id, params) = match step.event.as_str() {
+    let (id, params) = match step.event.id().as_str() {
         "gaussianBlur" | "GsnB" => {
             descriptor_keys(d, &["Rds "])?;
             ("filter.blur.gaussianBlur", json!({"radius": number(d, "Rds ", None, 0.1, 1000.0, true)?}))
@@ -107,7 +107,7 @@ fn translate(step: &photocraft_psd::atn::Step) -> Result<(String, Value)> {
             descriptor_keys(d, &["Lvl "])?;
             ("image.adjustments.threshold", json!({"level": number(d, "Lvl ", None, 1.0, 255.0, false)?}))
         }
-        _ => return Err(bad(format!("unsupported Photoshop event `{}`", step.event))),
+        _ => return Err(bad(format!("unsupported Photoshop event `{}`", step.event.id()))),
     };
     Ok((id.into(), params))
 }
@@ -119,6 +119,9 @@ fn validate(actions: &[Action], existing: &[Action]) -> Result<()> {
     let mut names: BTreeSet<&str> = existing.iter().map(|a| a.name.as_str()).collect();
     let mut count = existing.iter().fold(0usize, |count, action| count.saturating_add(action.steps.len()));
     for action in actions {
+        if action.set.as_ref().is_some_and(|set| set.len() > MAX_NAME_BYTES) {
+            return Err(bad("action set names exceed 4096 UTF-8 bytes"));
+        }
         if action.name.len() > MAX_NAME_BYTES {
             return Err(bad("action names exceed 4096 UTF-8 bytes"));
         }
@@ -129,14 +132,16 @@ fn validate(actions: &[Action], existing: &[Action]) -> Result<()> {
         if count > MAX_STEPS {
             return Err(bad("action library exceeds 10000 steps"));
         }
-        if action.disabled.iter().any(|i| *i >= action.steps.len()) {
-            return Err(bad(format!("invalid disabled step in `{}`", action.name)));
+        if action.disabled.iter().chain(&action.dialogs).any(|i| *i >= action.steps.len()) {
+            return Err(bad(format!("invalid disabled or dialog step in `{}`", action.name)));
         }
         for (id, params) in &action.steps {
             if id.len() > 256 {
                 return Err(bad("action command ids exceed 256 bytes"));
             }
-            if !crate::actions_cmds::replayable(id) || !(params.is_object() || params.is_null()) {
+            let replayable = crate::actions_cmds::replayable(id)
+                || matches!(id.as_str(), crate::atn_cmds::PHOTOSHOP_STEP | crate::atn_cmds::STOP_MESSAGE | "actions.conditional");
+            if !replayable || !(params.is_object() || params.is_null()) {
                 return Err(bad(format!("unsupported action command or params `{id}`")));
             }
         }
@@ -151,6 +156,16 @@ fn name_calls(actions: &mut [Action]) -> Result<()> {
     let known: BTreeSet<&str> = names.iter().map(String::as_str).collect();
     for action in actions {
         for (id, params) in &mut action.steps {
+            if id == "actions.conditional" {
+                for key in ["then", "else"] {
+                    match params.get(key) {
+                        None | Some(Value::Null) => {}
+                        Some(Value::String(name)) if name.trim().is_empty() || known.contains(name.as_str()) => {}
+                        _ => return Err(bad("conditional action target must belong to the imported set")),
+                    }
+                }
+                continue;
+            }
             if id != "actions.play" {
                 continue;
             }
@@ -168,6 +183,42 @@ fn name_calls(actions: &mut [Action]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+// Count the exact portable representation before appending. Separate counting from buffering
+// so an oversized library cannot allocate an unbounded export buffer.
+struct PortableWriter {
+    len: usize,
+    bytes: Option<Vec<u8>>,
+}
+
+impl std::io::Write for PortableWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let len = self.len.saturating_add(bytes.len());
+        if len > MAX_FILE_BYTES {
+            return Err(std::io::Error::other("action file exceeds 32 MiB"));
+        }
+        if let Some(out) = &mut self.bytes {
+            out.extend_from_slice(bytes);
+        }
+        self.len = len;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn portable_file(actions: &[Action], buffer: bool) -> Result<Vec<u8>> {
+    #[derive(serde::Serialize)]
+    struct File<'a> {
+        version: u32,
+        actions: &'a [Action],
+    }
+    let mut writer = PortableWriter { len: 0, bytes: buffer.then(Vec::new) };
+    serde_json::to_writer_pretty(&mut writer, &File { version: 1, actions }).map_err(|e| bad(e.to_string()))?;
+    Ok(writer.bytes.unwrap_or_default())
 }
 
 fn import(s: &mut Session, p: &Value) -> Result<Value> {
@@ -192,14 +243,21 @@ fn import(s: &mut Session, p: &Value) -> Result<Value> {
             (file.actions, Vec::<String>::new())
         }
         "atn" => {
-            let set = photocraft_psd::atn::parse(&bytes).map_err(|e| bad(e.to_string()))?;
+            let set = photocraft_psd::atn::parse_bounded(&bytes).map_err(|e| bad(e.to_string()))?;
             let mut actions = Vec::with_capacity(set.actions.len());
+            let set_name = set.name.to_string_lossy();
             for a in set.actions {
-                let mut action = Action::new(a.name, Vec::with_capacity(a.steps.len()));
-                for (i, step) in a.steps.iter().enumerate() {
+                let mut action = Action::new(a.name.to_string_lossy(), Vec::with_capacity(a.items.len()));
+                if !set_name.trim().is_empty() {
+                    action.set = Some(set_name.clone());
+                }
+                for (i, step) in a.items.iter().enumerate() {
                     let mapped = translate(step).map_err(|e| bad(format!("action `{}`, step {}: {e}", action.name, i + 1)))?;
                     if !step.enabled {
                         action.disabled.insert(i);
+                    }
+                    if step.with_dialog {
+                        action.dialogs.insert(i);
                     }
                     action.steps.push(mapped);
                 }
@@ -211,6 +269,11 @@ fn import(s: &mut Session, p: &Value) -> Result<Value> {
     };
     validate(&actions, &s.actions.list)?;
     name_calls(&mut actions)?;
+    let mut combined = s.actions.list.clone();
+    name_calls(&mut combined)?;
+    combined.extend(actions.iter().cloned());
+    validate(&combined, &[])?;
+    portable_file(&combined, false)?;
     let imported: Vec<String> = actions.iter().map(|a| a.name.clone()).collect();
     let index = s.actions.list.len();
     s.actions.list.extend(actions);
@@ -229,12 +292,8 @@ fn export(s: &mut Session, _p: &Value) -> Result<Value> {
     validate(&s.actions.list, &[]).map_err(export_error)?;
     let mut actions = s.actions.list.clone();
     name_calls(&mut actions).map_err(export_error)?;
-    let file = ActionsFile { version: 1, actions };
-    let bytes = serde_json::to_vec_pretty(&file).map_err(|e| EngineError::Other(e.to_string()))?;
-    if bytes.len() > photocraft_psd::atn::MAX_BYTES {
-        return Err(export_error(bad("action file exceeds 32 MiB")));
-    }
-    Ok(json!({"filename": "Actions.pcactions", "data": crate::paint::tile::b64_encode(&bytes), "count": file.actions.len()}))
+    let bytes = portable_file(&actions, true).map_err(export_error)?;
+    Ok(json!({"filename": "Actions.pcactions", "data": crate::paint::tile::b64_encode(&bytes), "count": actions.len()}))
 }
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -268,6 +327,23 @@ mod tests {
 
     fn params(file: &ActionsFile) -> Value {
         json!({"format":"json", "data":crate::paint::tile::b64_encode(&serde_json::to_vec(file).unwrap())})
+    }
+
+    #[test]
+    fn cumulative_serialized_size_is_checked_before_mutating_the_library() {
+        let mut s = Session::new();
+        s.actions.list.push(Action::new("Existing", vec![("layer.new.layer".into(), json!({"name":"x".repeat(MAX_FILE_BYTES - 4096)}))]));
+        assert!(portable_file(&s.actions.list, false).is_ok());
+        let before = s.actions.clone();
+        let file = ActionsFile { version: 1, actions: vec![Action::new("Incoming", vec![("layer.new.layer".into(), json!({"name":"y".repeat(8192)}))])] };
+        let error = s.execute(IMPORT, params(&file)).unwrap_err().to_string();
+        assert!(error.contains("32 MiB"), "{error}");
+        assert_eq!(s.actions, before);
+        assert!(portable_file(&s.actions.list, false).is_ok());
+        let mut writer = PortableWriter { len: MAX_FILE_BYTES - 1, bytes: Some(Vec::new()) };
+        assert!(std::io::Write::write(&mut writer, &[0, 0]).is_err());
+        assert_eq!(writer.len, MAX_FILE_BYTES - 1);
+        assert!(writer.bytes.as_ref().unwrap().is_empty());
     }
 
     #[test]
@@ -308,13 +384,34 @@ mod tests {
             assert!(error.len() < 512);
             assert_eq!(s.actions, before);
         }
-        let step = photocraft_psd::atn::Step {
+        let step = photocraft_psd::atn::AtnItem {
             enabled: true,
-            dialog: false,
-            event: "Invr".into(),
+            with_dialog: false,
+            event: photocraft_psd::atn::AtnEvent::Name("Invr".into()),
             descriptor: Some(Descriptor::new("Invr").with(&"x".repeat(8192), DValue::Boolean(true))),
+            ..Default::default()
         };
         assert!(translate(&step).unwrap_err().to_string().len() < 512);
+    }
+
+    #[test]
+    fn portable_sets_preserve_main_atn_metadata_and_kept_photoshop_steps() {
+        let bytes = atn(&[("unsupportedEvent", true, None)]);
+        let mut s = Session::new();
+        s.execute("actions.load", json!({"data": crate::paint::tile::b64_encode(&bytes)})).unwrap();
+        s.actions.list[0].dialogs.insert(0);
+        s.actions.list.push(Action::new("Conditional", vec![("actions.conditional".into(), json!({"if":"always", "then":"Imported"}))]));
+        assert_eq!(s.actions.list[0].set.as_deref(), Some("Studio"));
+        assert_eq!(s.actions.list[0].steps[0].0, crate::atn_cmds::PHOTOSHOP_STEP);
+        let result = s.execute("actions.export", json!({})).unwrap();
+        let mut other = Session::new();
+        other.execute(IMPORT, json!({"format":"json", "data":result["data"]})).unwrap();
+        assert_eq!(s.actions.list, other.actions.list);
+        let before = other.actions.clone();
+        let broken =
+            ActionsFile { version: 1, actions: vec![Action::new("Broken", vec![("actions.conditional".into(), json!({"if":"always", "then":"Outside"}))])] };
+        assert!(other.execute(IMPORT, params(&broken)).is_err());
+        assert_eq!(other.actions, before);
     }
 
     #[test]
@@ -341,7 +438,7 @@ mod tests {
             ActionsFile { version: 2, actions: vec![Action::new("New", vec![])] },
             ActionsFile { version: 1, actions: vec![Action::new("New", vec![]), Action::new("Kept", vec![])] },
             ActionsFile { version: 1, actions: vec![Action::new("New", vec![("unknown".into(), json!({}))])] },
-            ActionsFile { version: 1, actions: vec![Action { name: "New".into(), steps: vec![], disabled: BTreeSet::from([0]) }] },
+            ActionsFile { version: 1, actions: vec![Action { name: "New".into(), steps: vec![], disabled: BTreeSet::from([0]), ..Default::default() }] },
         ] {
             assert!(s.execute(IMPORT, params(&file)).is_err());
             assert_eq!(s.actions, before);
@@ -360,30 +457,31 @@ mod tests {
 
     #[test]
     fn maps_photoshop_units_and_rejects_unknown_fields_and_dialogs() {
-        let mut step = photocraft_psd::atn::Step {
+        let mut step = photocraft_psd::atn::AtnItem {
             enabled: true,
-            dialog: false,
-            event: "GsnB".into(),
+            with_dialog: false,
+            event: photocraft_psd::atn::AtnEvent::Name("GsnB".into()),
             descriptor: Some(Descriptor::new("GsnB").with("Rds ", DValue::UnitFloat { unit: *b"#Pxl", value: 2.5 })),
+            ..Default::default()
         };
         assert_eq!(translate(&step).unwrap(), ("filter.blur.gaussianBlur".into(), json!({"radius":2.5})));
         step.descriptor = Some(Descriptor::new("GsnB").with("Rds ", DValue::UnitFloat { unit: *b"#Prc", value: 2.5 }));
         assert!(translate(&step).is_err());
-        step.event = "Invr".into();
+        step.event = photocraft_psd::atn::AtnEvent::Name("Invr".into());
         step.descriptor = Some(Descriptor::new("Invr").with("unknown", DValue::Boolean(true)));
         assert!(translate(&step).is_err());
         step.descriptor = None;
-        step.dialog = true;
+        step.with_dialog = true;
         assert!(translate(&step).is_err());
-        step.dialog = false;
-        step.event = "select".into();
+        step.with_dialog = false;
+        step.event = photocraft_psd::atn::AtnEvent::Name("select".into());
         assert!(translate(&step).is_err());
-        step.event = "BrgC".into();
+        step.event = photocraft_psd::atn::AtnEvent::Name("BrgC".into());
         step.descriptor = Some(Descriptor::new("BrgC").with("Cntr", DValue::Integer(25)).with("useLegacy", DValue::Boolean(false)));
         assert_eq!(translate(&step).unwrap().1, json!({"brightness":0.0,"contrast":25.0,"legacy":false}));
         step.descriptor = Some(Descriptor::new("BrgC").with("Cntr", DValue::Integer(25)));
         assert!(translate(&step).is_err(), "never guess a brightness algorithm");
-        step.event = "exposure".into();
+        step.event = photocraft_psd::atn::AtnEvent::Name("exposure".into());
         step.descriptor = Some(Descriptor::new("exposure").with("Exps", DValue::Double(1.0)).with("gammaCorrection", DValue::Double(1.2)));
         assert_eq!(translate(&step).unwrap().1, json!({"exposure":1.0,"offset":0.0,"gamma":1.2}));
         step.descriptor = Some(Descriptor::new("exposure").with("gammaCorrection", DValue::Double(f64::NAN)));

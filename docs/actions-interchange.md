@@ -8,26 +8,37 @@ press Play to apply it through the existing engine. Stop recording or playback b
 or saving.
 
 Save writes the entire library as `.pcactions` (JSON), retaining action names, order, parameters,
-disabled steps and nested action calls. `.json` is also accepted as a save extension. Calls
+disabled steps, dialog toggles, set names and nested action calls. `.json` is also accepted as a save extension. Calls
 using numerical action indices are converted to names so loading beside another library cannot
 redirect them. The same version-1 JSON shape is used by PhotoCraft's existing preset store.
-Save does not export Photoshop `.atn` files.
+Portable Save does not export Photoshop `.atn` files; use the panel group’s Save Actions menu for that format.
 
 Loading appends a validated set. Empty or conflicting action names, unsupported commands,
 invalid step indices, broken nested references and malformed files fail without adding any
 actions. Rename an existing action before loading a set with the same names. Cancellation and
 failed writes leave the library intact. Files are limited to 32 MiB, 10,000 actions and 10,000
-total steps; descriptors use the existing bounded PSD parser.
+total steps in the combined library; appending checks the serialized library against the
+32 MiB save limit before changing state. Descriptors use the existing bounded PSD parser.
 Names are limited to 1,024 UTF-16 units in `.atn` and 4,096 UTF-8 bytes in `.pcactions`;
 event/command identifiers to 256 bytes and Photoshop step labels to 4,096 bytes. Unknown
 parameter keys are abbreviated in errors so hostile labels cannot create enormous UI messages.
+
+## Compatibility with the Actions panel
+
+PhotoCraft also provides the broader Photoshop interchange commands `actions.load` and
+`actions.save` through the panel group's Load/Save Actions menu. Those commands retain
+unsupported Photoshop steps, action sets and dialog toggles, and can export `.atn` files.
+The Load/Save menu at the bottom of the panel provides conservative import and portable
+`.pcactions` interchange described here. Portable files retain set names, dialog toggles,
+conditional calls and kept Photoshop steps loaded by the broader importer. Unsupported
+Photoshop steps still fail by name at playback; portable save does not make them executable.
 
 ## Photoshop compatibility
 
 This is a conservative **version-16 import subset**, not full Photoshop action compatibility.
 The parser reads the layout documented by the contributor in [PR #1257](https://github.com/storytold/photocraft/pull/1257)
-and uses the existing PSD ActionDescriptor implementation. The new parser implements that
-documented layout independently; it does not include code or commits from that open PR.
+and uses the existing PSD ActionDescriptor implementation. The conservative importer uses the shared `photocraft_psd::atn` reader already on main,
+with a bounded entry point. It does not include code or commits from that open PR.
 
 | Event | PhotoCraft command | Parameters |
 |---|---|---|
@@ -46,7 +57,8 @@ String and four-character event identifiers are accepted for the documented alia
 events, unknown or duplicate parameter keys, unsupported value types/units, non-finite or
 out-of-range values, and enabled steps that require a Photoshop dialog reject the **entire set**.
 The error names the action and step. Even disabled unsupported events are rejected, since
-users can later enable them. Enabled/disabled flags are retained. Function-key bindings,
+users can later enable them. Set names, enabled/disabled flags and disabled dialog flags are
+retained. Function-key bindings,
 button colours and expansion state are omitted with an import warning.
 
 Levels, Curves, Hue/Saturation, recorded selections/targets, Photoshop scripts and plug-ins
