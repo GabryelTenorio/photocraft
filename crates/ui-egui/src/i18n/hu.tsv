@@ -3396,6 +3396,7 @@ cameraRaw	Yellow	Sárga
 	Photomerge	Fotóegyesítés
 	Pick a screen pixel or press Esc to cancel	Válassz egy pixelt a képernyőn, vagy nyomd meg az Esc billentyűt a megszakításhoz
 	Pick screen color	Szín kiválasztása a képernyőről
+	Pick Color From Image	Szín felvétele a képről
 	Pins	Tűk
 	Pixel Layer	Pixelréteg
 	Place Scale Marker	Méretarány-jelölő elhelyezése
@@ -4010,4 +4011,4 @@ cameraRaw	Yellow	Sárga
 	Load settings from a Camera Raw .xmp file	Beállítások betöltése Camera Raw .xmp-fájlból
 	Loaded Camera Raw settings from {file}	Camera Raw-beállítások betöltve innen: {file}
 	Loaded Camera Raw settings from {file} ({n} not supported)	Camera Raw-beállítások betöltve innen: {file} ({n} nem támogatott)
-	Pick Color From Image	Szín felvétele a képről
+	Auto Add/Delete	Automatikus hozzáadás/törlés

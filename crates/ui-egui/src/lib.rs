@@ -1450,6 +1450,11 @@ impl PhotocraftApp {
                 }
                 Ok(())
             });
+            // The file the document now lives in goes to the top of Open Recent and the Home
+            // screen, as opening it does (#4400). Automation saves don't touch the user's list.
+            if hooks {
+                self.push_recent(path);
+            }
         }
         self.ui.status_error = false;
         let what = crate::i18n::fmt(tl!("Saved {name}"), &[("name", file_open::display_name(path).as_str())]);
@@ -2395,6 +2400,9 @@ mod warp_text_dialog_tests;
 
 #[cfg(test)]
 mod blend_dropdown_wheel_tests;
+
+#[cfg(test)]
+mod options_bar_mode_wheel_tests;
 
 #[cfg(test)]
 mod dropdown_press_tests;
