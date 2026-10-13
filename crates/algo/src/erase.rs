@@ -153,10 +153,7 @@ mod tests {
         let mut s = Surface::new(PixelFormat::RGBA8);
         s.fill_rect(Rect::new(0, 0, 1, 1), &[1.0, 0.0, 0.0, 1.0]);
         let before = s.pixel(0, 0);
-        let oversized = Region {
-            bbox: Rect::new(i32::MIN, i32::MIN, i32::MAX, i32::MAX),
-            mask: vec![255],
-        };
+        let oversized = Region { bbox: Rect::new(i32::MIN, i32::MIN, i32::MAX, i32::MAX), mask: vec![255] };
         assert_eq!(magic_erase(&mut s, &oversized, 1.0, None, None), Rect::EMPTY);
         assert_eq!(s.pixel(0, 0), before);
     }
