@@ -4047,3 +4047,11 @@ cameraRaw	Yellow	Sárga
 	Color Indicates:	A szín jelzése:
 	Ink Characteristics	Festék jellemzői
 	Solidity:	Fedőképesség:
+
+# Contextual task bar.
+	Contextual Task Bar	Környezetfüggő feladatsáv
+	Drag contextual task bar	Környezetfüggő feladatsáv húzása
+	Reset position	Pozíció visszaállítása
+	Hide contextual task bar	Környezetfüggő feladatsáv elrejtése
+	Contextual task bar options	Környezetfüggő feladatsáv beállításai
+	Hide the background with an editable layer mask.	A háttér elrejtése szerkeszthető rétegmaszkkal.

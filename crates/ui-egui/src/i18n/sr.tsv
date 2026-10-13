@@ -4201,3 +4201,11 @@ shape	Appearance	Izgled
 	Color Indicates:	Boja označava:
 	Ink Characteristics	Karakteristike mastila
 	Solidity:	Punoća:
+
+# Contextual task bar.
+	Contextual Task Bar	Kontekstualna traka zadataka
+	Drag contextual task bar	Prevucite kontekstualnu traku zadataka
+	Reset position	Vrati položaj
+	Hide contextual task bar	Sakrij kontekstualnu traku zadataka
+	Contextual task bar options	Opcije kontekstualne trake zadataka
+	Hide the background with an editable layer mask.	Sakrijte pozadinu pomoću maske sloja koja se može uređivati.

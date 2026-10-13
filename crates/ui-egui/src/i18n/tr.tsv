@@ -3858,3 +3858,11 @@ cameraData	Lens	Lens
 	Color Indicates:	Rengin Gösterdiği:
 	Ink Characteristics	Mürekkep Özellikleri
 	Solidity:	Doluluk:
+
+# Contextual task bar.
+	Contextual Task Bar	Bağlamsal Görev Çubuğu
+	Drag contextual task bar	Bağlamsal görev çubuğunu sürükle
+	Reset position	Konumu sıfırla
+	Hide contextual task bar	Bağlamsal görev çubuğunu gizle
+	Contextual task bar options	Bağlamsal görev çubuğu seçenekleri
+	Hide the background with an editable layer mask.	Arka planı düzenlenebilir bir katman maskesiyle gizleyin.

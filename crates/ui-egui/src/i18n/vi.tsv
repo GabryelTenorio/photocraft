@@ -3611,3 +3611,11 @@ curves	Smooth	Làm mượt
 	Choose a gradient file (.grd).	Chọn tệp chuyển sắc (.grd).
 	Auto Add/Delete	Tự động thêm/xóa
 	ICO is limited to 256 × 256 pixels	ICO giới hạn ở 256 × 256 pixel
+
+# Contextual task bar.
+	Contextual Task Bar	Thanh tác vụ theo ngữ cảnh
+	Drag contextual task bar	Kéo thanh tác vụ theo ngữ cảnh
+	Reset position	Đặt lại vị trí
+	Hide contextual task bar	Ẩn thanh tác vụ theo ngữ cảnh
+	Contextual task bar options	Tùy chọn thanh tác vụ theo ngữ cảnh
+	Hide the background with an editable layer mask.	Ẩn nền bằng mặt nạ lớp có thể chỉnh sửa.

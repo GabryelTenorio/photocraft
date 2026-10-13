@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -191,8 +191,10 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 
 ## Panels and workspace
 
-30 of 35 Window-menu panels exist (measured). Missing: Libraries, Comments, Contextual Task Bar,
-Discover, Generative variations. Dock tabs: Layers, Channels, Paths, History, Actions, Layer
+31 of 35 Window-menu panels exist (measured). Missing: Libraries, Comments, Discover,
+Generative variations. The [Contextual Task Bar](contextual-taskbar.md) offers Remove Background
+for pixel and rendered Smart Object layers, with drag/reset/hide and automation; additional
+context-specific actions remain open. Dock tabs: Layers, Channels, Paths, History, Actions, Layer
 Comps, Properties, Adjustments, Navigator, Histogram, Info, Color, Swatches, Character,
 Paragraph; the rest open as in-app floating windows.
 
@@ -202,9 +204,10 @@ Paragraph; the rest open as in-app floating windows.
 | Drag panels to reorder and regroup | partial | #2272, #2305 |
 | Docked resize pushes the neighbour | partial | #2573 |
 | Color panel wheel and RGB/HSB/CMYK/Lab sliders | missing | UI-217-17, #2569 |
+| Contextual Task Bar: floating background removal, placement and visibility | partial | `contextual_taskbar.rs`; other contextual actions remain open |
 | Window size and dock width remembered | done | UI-217-2 |
 | Command palette with recents | done | UI-217-7 |
-| Every preference takes effect | partial | 46 of 149 do nothing (scorecard) |
+| Every preference takes effect | partial | 45 of 150 do nothing (scorecard) |
 | UI scale presets | missing | UI-217-9, #2492 |
 | History snapshots: camera button, snapshot rows (click returns, rename, delete), `history.*Snapshot` commands | partial | `history_cmds.rs`, `snapshot_rows` in `panels.rs`; New Snapshot dialog, first snapshot and History Options to come (#2966) |
 | Themes: Photoshop's four greys | partial | five themes; #2661 |
@@ -216,6 +219,7 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | Contextual Task Bar exists with one real background-removal action, placement, visibility and automation; full action coverage remains partial; other audit estimates unchanged |
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |
 | 2026-10-10 | minor | Fixed Crop live resize snapping feedback and outdated-camera rendering, applied ratios immediately to centred inscribed previews, and removed two-point options-bar overflow; added pointer, rendering, dropdown/Enter, Swap/X and scrolling regressions |
 | 2026-10-11 | minor | Flick panning done: releasing a moving Hand drag (tool, Space or middle button) glides and decays, gated by Enable Flick Panning |

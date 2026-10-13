@@ -55,6 +55,7 @@ pub mod clip_line_ui;
 pub mod color_picker_ui;
 pub mod color_range_ui;
 pub mod comps_ui;
+pub mod contextual_taskbar;
 pub mod control;
 pub mod credits;
 pub mod crop_mode;
@@ -1818,6 +1819,7 @@ impl eframe::App for PhotocraftApp {
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
             canvas::document_area(self, ui);
         });
+        contextual_taskbar::show(self, &ctx);
         panels::properties_window(self, &ctx);
         brush_panel::window(self, &ctx);
         preset_panels::windows(self, &ctx);
@@ -1849,6 +1851,7 @@ impl eframe::App for PhotocraftApp {
         // remembered once the pointer is up. Here, after every panel, rather than in the
         // picker's own code: the control channel can set it while the picker is closed.
         brush_picker::persist(self, &ctx);
+        contextual_taskbar::persist(self, &ctx);
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         // So are View › Extras, Show and Snap To (#3762).
