@@ -423,6 +423,7 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
     sync_rulers(app);
     sync_display_scale(app, ctx);
     sync_appearance(app, ctx);
+    crate::theme::sync_scrollbars(ctx, app.session.prefs().interface.scrollbar_visibility);
     crate::theme::set_ui_font_size(ctx, app.session.prefs().interface.ui_font_size);
     presets_store(app);
     sync_tooltips(app, ctx);
@@ -1038,6 +1039,7 @@ fn humanize(key: &str) -> String {
         "appearanceMode" => return "Appearance Mode".into(),
         "darkTheme" => return "Dark Theme".into(),
         "lightTheme" => return "Light Theme".into(),
+        "scrollbarVisibility" => return "Scrollbar Visibility".into(),
         _ => {}
     }
     // These controls appear only for WebP, so reuse the existing translated labels.
@@ -1070,6 +1072,7 @@ fn humanize(key: &str) -> String {
 
 fn choice_label(v: &str) -> String {
     match v {
+        "autoHide" => "Auto Hide".into(),
         "cm" => "Centimeters".into(),
         "mm" => "Millimeters".into(),
         "75" | "80" | "85" | "90" | "95" | "100" | "125" | "150" | "175" | "200" | "250" | "300" => format!("{v}%"),

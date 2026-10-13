@@ -3788,8 +3788,15 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     // Scrollbars (scrollbars.rs): drawn over the canvas edges, they take the pointer there.
     let t0 = crate::gpu_canvas::now_ms();
     let before = view.center;
-    let over_bars = app.ui.view.shows_scrollbars()
-        && crate::scrollbars::show(ui, rect, &mut view, flip, aspect, app.session.prefs().tools.overscroll, egui::Id::new(("pc-canvas", idx)));
+    let bar_mode = app.session.prefs().interface.scrollbar_visibility;
+    let show_bars = app.ui.view.shows_scrollbars()
+        && match bar_mode {
+            photocraft_engine::prefs::ScrollbarVisibility::Hidden => false,
+            photocraft_engine::prefs::ScrollbarVisibility::AutoHide => ui.rect_contains_pointer(rect) || ui.input(|i| i.pointer.any_down()),
+            _ => true,
+        };
+    let over_bars =
+        show_bars && crate::scrollbars::show(ui, rect, &mut view, flip, aspect, app.session.prefs().tools.overscroll, egui::Id::new(("pc-canvas", idx)));
     ctx.data_mut(|d| d.insert_temp(bars_id, over_bars));
     if view.center != before {
         ctx.request_repaint();

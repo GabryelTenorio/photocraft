@@ -3610,4 +3610,6 @@ curves	Smooth	Làm mượt
 	Import .GRD	Nhập .GRD
 	Choose a gradient file (.grd).	Chọn tệp chuyển sắc (.grd).
 	Auto Add/Delete	Tự động thêm/xóa
+	Scrollbar Visibility	Hiển thị thanh cuộn
+	Hidden	Ẩn
 	ICO is limited to 256 × 256 pixels	ICO giới hạn ở 256 × 256 pixel

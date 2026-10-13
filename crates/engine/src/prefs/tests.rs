@@ -22,6 +22,26 @@ fn defaults_match_photoshop() {
     }
 }
 
+#[test]
+fn scrollbar_visibility_round_trips_and_old_preferences_keep_the_theme_default() {
+    let old = serde_json::from_value::<Preferences>(json!({"interface": {"uiFontSize": "small"}})).unwrap();
+    assert_eq!(old.interface.scrollbar_visibility, ScrollbarVisibility::Default);
+    assert_eq!(choices("interface.scrollbarVisibility"), Some(ScrollbarVisibility::NAMES));
+    let mut s = Session::new();
+    for mode in ScrollbarVisibility::NAMES {
+        s.execute("prefs.set", json!({"values": {"interface.scrollbarVisibility": mode}})).unwrap();
+        let saved = s.prefs().to_json();
+        let loaded: Preferences = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(loaded.interface.scrollbar_visibility, s.prefs().interface.scrollbar_visibility);
+        assert_eq!(saved["interface"]["scrollbarVisibility"], json!(mode));
+    }
+    let before = s.prefs().to_json();
+    assert!(s.execute("prefs.set", json!({"values": {"interface.scrollbarVisibility": "sometimes"}})).is_err());
+    assert_eq!(s.prefs().to_json(), before);
+    s.execute("prefs.reset", json!({"path": "interface.scrollbarVisibility"})).unwrap();
+    assert_eq!(s.prefs().interface.scrollbar_visibility, ScrollbarVisibility::Default);
+}
+
 /// #2264: the Studio workspace dot pattern can be hidden without changing themes.
 #[test]
 fn canvas_dot_grid_can_be_disabled_persisted_and_reset() {

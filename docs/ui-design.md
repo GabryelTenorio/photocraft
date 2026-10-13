@@ -164,6 +164,12 @@ On Windows and Linux, System Title Bar displays “Applies at next launch.” be
 including before editing and after Apply. Saving this preference does not restart the app or
 change the current window's decorations; the next launch reads the saved choice.
 
+Interface → Scrollbar Visibility applies immediately. Default follows the selected theme.
+Always keeps scrollbars expanded when the content needs them; Auto Hide uses overlay bars
+that appear while hovering or scrolling. Hidden removes the bars while keeping wheel,
+trackpad and keyboard scrolling available. The setting also applies to the canvas in
+Standard Screen Mode and survives restarts and theme changes (#3262).
+
 ## High DPI and 4K displays
 
 Edit → Preferences → Interface → UI Scale applies immediately. Auto follows the operating

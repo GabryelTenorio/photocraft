@@ -2808,4 +2808,6 @@ curves	Smooth	Suavizar
 	Step {step} is waiting for its dialog	El paso {step} está esperando su cuadro de diálogo
 @plural	{n} action|{n} actions	{n} acción|{n} acciones
 	Auto Add/Delete	Añadir/eliminar automáticamente
+	Scrollbar Visibility	Visibilidad de las barras de desplazamiento
+	Hidden	Oculto
 	ICO is limited to 256 × 256 pixels	ICO está limitado a 256 × 256 píxeles

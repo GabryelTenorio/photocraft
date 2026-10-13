@@ -3914,4 +3914,5 @@ layerLabel	No Color	Sem cor
 	Step {step} is waiting for its dialog	A etapa {step} está aguardando sua caixa de diálogo
 @plural	{n} action|{n} actions	{n} ação|{n} ações
 	Auto Add/Delete	Adicionar/excluir automaticamente
+	Scrollbar Visibility	Visibilidade das barras de rolagem
 	ICO is limited to 256 × 256 pixels	ICO é limitado a 256 × 256 pixels
