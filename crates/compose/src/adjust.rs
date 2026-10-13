@@ -235,11 +235,16 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
 
 /// Legacy Brightness/Contrast as one channel's tone curve (see [`apply_depth`]).
 fn legacy_brightness_contrast(brightness: f32, contrast: f32) -> impl Fn(f32) -> f32 {
+    legacy_brightness_contrast_at(brightness, contrast, LEGACY_PIVOT)
+}
+
+/// [`legacy_brightness_contrast`] with contrast pivoting at `pivot`.
+fn legacy_brightness_contrast_at(brightness: f32, contrast: f32, pivot: f32) -> impl Fn(f32) -> f32 {
     let b = brightness / 255.0;
     let c = contrast.clamp(-100.0, 99.0);
     let k = if c >= 0.0 { 1.0 / (1.0 - c / 100.0) } else { 1.0 + c / 100.0 };
     let (pre, post) = if c >= 0.0 { (b, 0.0) } else { (0.0, b) };
-    move |v: f32| ((v + pre - LEGACY_PIVOT) * k + LEGACY_PIVOT + post).clamp(0.0, 1.0)
+    move |v: f32| ((v + pre - pivot) * k + pivot + post).clamp(0.0, 1.0)
 }
 
 /// Applies an adjustment in a document of colour `mode`: [`apply_depth`], except that in Lab
@@ -251,7 +256,7 @@ pub fn apply_in(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth: O
     } else if mode == ColorMode::Cmyk && cmyk_channel_adjustment(adj) {
         use photocraft_color::convert::{cmyk_to_rgb, rgb_to_cmyk};
         if let Adjustment::BrightnessContrast { brightness, contrast, legacy } = adj {
-            let table = brightness_contrast_lut(*brightness, *contrast, *legacy);
+            let table = ink_brightness_contrast_lut(*brightness, *contrast, *legacy);
             map_rgb(buf, |c| cmyk_to_rgb(rgb_to_cmyk(c).map(|v| ink_through(&table, v))));
         } else {
             map_rgb(buf, |c| {
@@ -291,13 +296,16 @@ pub fn cmyk_channel_adjustment(adj: &Adjustment) -> bool {
     stored_channel_adjustment(adj) || matches!(adj, Adjustment::BrightnessContrast { .. })
 }
 
-/// Brightness/Contrast as one channel's lookup table (4096 samples over 0..1): [`modern_lut`],
-/// or the legacy linear curve.
-pub fn brightness_contrast_lut(brightness: f32, contrast: f32, legacy: bool) -> Vec<f32> {
+/// Brightness/Contrast as the lookup table (4096 samples over 0..1) a CMYK ink's stored value,
+/// `1 - ink`, goes through ([`ink_through`]): [`modern_lut`], or the legacy linear curve with its
+/// contrast pivoting at 128 in ink, which is 127 of 255 stored (photoshop corpus cmyk16
+/// brightness-contrast-legacy.psd sits 0.43 of a level off around 128 stored, as a one-level
+/// pivot shift times contrast +30's slope predicts).
+pub fn ink_brightness_contrast_lut(brightness: f32, contrast: f32, legacy: bool) -> Vec<f32> {
     if !legacy {
         return modern_lut(brightness, contrast);
     }
-    let curve = legacy_brightness_contrast(brightness, contrast);
+    let curve = legacy_brightness_contrast_at(brightness, contrast, 1.0 - LEGACY_PIVOT);
     (0..LUT_SIZE).map(|k| curve(k as f32 / (LUT_SIZE - 1) as f32)).collect()
 }
 
@@ -1719,15 +1727,22 @@ mod tone_tests {
         let red = [0.9, 0.2, 0.1];
         for legacy in [false, true] {
             let adj = Adjustment::BrightnessContrast { brightness: 25.0, contrast: 30.0, legacy };
-            let table = brightness_contrast_lut(25.0, 30.0, legacy);
+            let table = ink_brightness_contrast_lut(25.0, 30.0, legacy);
             let want = cmyk_to_rgb(rgb_to_cmyk(red).map(|v| 1.0 - lut(&table, 1.0 - v)));
             assert!(near(in_cmyk(&adj, red), want, 2e-3), "legacy {legacy}");
             assert!(near(in_cmyk(&adj, [1.0; 3]), [1.0; 3], 2e-3), "legacy {legacy}: paper");
             let solid = cmyk_to_rgb([1.0; 4]);
             assert!(near(in_cmyk(&adj, solid), cmyk_to_rgb(rgb_to_cmyk(solid).map(|v| ink_through(&table, v))), 2e-3));
         }
+        // Legacy +25 / +30 on Photoshop's own 16-bit inks (photoshop corpus cmyk16
+        // brightness-contrast-legacy.psd): contrast pivots at 128 in ink, 127 stored.
+        let legacy = ink_brightness_contrast_lut(25.0, 30.0, true);
+        for (ink, ps) in [(139.0, 108.0), (160.0, 137.99), (172.0, 155.13), (183.0, 170.85), (196.0, 189.42), (98.0, 49.42), (128.0, 92.28), (168.0, 149.42)] {
+            let got = ink_through(&legacy, ink / 255.0) * 255.0;
+            assert!((got - ps).abs() < 0.1, "ink {ink}: {got} vs Photoshop {ps}");
+        }
         let brighter = Adjustment::BrightnessContrast { brightness: 60.0, contrast: 0.0, legacy: false };
-        let ink = brightness_contrast_lut(60.0, 0.0, false);
+        let ink = ink_brightness_contrast_lut(60.0, 0.0, false);
         assert!(ink_through(&ink, 0.5) < 0.5 && ink_through(&ink, 0.0) == 0.0 && (ink_through(&ink, 1.0) - 1.0).abs() < 1e-6);
         // On the screen colour it would land elsewhere.
         let mut rgb = Buffer::filled(crate::Rect::new(0, 0, 1, 1), [red[0], red[1], red[2], 1.0]);

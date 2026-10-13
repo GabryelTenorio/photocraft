@@ -98,7 +98,7 @@ fn adjusted(s: &Surface, r: Rect, adj: &Adjustment, selection: Option<&Surface>,
         && fmt.mode == mode
         && mode == photocraft_color::ColorMode::Cmyk
     {
-        let table = adjust::brightness_contrast_lut(*brightness, *contrast, *legacy);
+        let table = adjust::ink_brightness_contrast_lut(*brightness, *contrast, *legacy);
         return adjusted_channels(s, r, selection, |ch| ch.iter_mut().for_each(|v| *v = adjust::ink_through(&table, *v)));
     }
     let n = fmt.channels();

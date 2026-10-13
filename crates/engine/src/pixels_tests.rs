@@ -358,7 +358,7 @@ fn brightness_contrast_curves_cmyk_inks_as_stored() {
     let ink = [0.2, 0.4, 0.6, 0.1, 1.0];
     for legacy in [false, true] {
         let adj = Adjustment::BrightnessContrast { brightness: 25.0, contrast: 30.0, legacy };
-        let table = adjust::brightness_contrast_lut(25.0, 30.0, legacy);
+        let table = adjust::ink_brightness_contrast_lut(25.0, 30.0, legacy);
         let got = adjusted_pixel(cmyk, &ink, &adj, None);
         for c in 0..4 {
             let want = adjust::ink_through(&table, ink[c]);
