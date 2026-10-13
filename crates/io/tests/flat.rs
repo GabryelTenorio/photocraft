@@ -963,3 +963,19 @@ fn tga_default_bits_follow_the_alpha_channels() {
     assert_eq!(tga_default_bits(&with_alpha_channel(d, "Alpha 1")), TgaBits::Bits32);
     assert_eq!((TgaBits::from_bits(24), TgaBits::from_bits(32), TgaBits::from_bits(16)), (Some(TgaBits::Bits24), Some(TgaBits::Bits32), None));
 }
+
+#[test]
+fn a_lab_document_is_written_as_a_lab_tiff_and_opens_as_lab() {
+    // #4936: TIFF stores CIE L*a*b* (CIELab): a Lab document with one layer keeps its pixels.
+    for depth in [SampleType::U8, SampleType::U16] {
+        let d = single(ColorMode::Lab, depth, false);
+        let r = export(&d, "tif", &ExportOptions::default()).unwrap();
+        assert!(r.warnings.iter().all(|w| !w.contains("sRGB") && !w.contains("flattened")), "{depth:?}: {:?}", r.warnings);
+        let back = import("x.tif", &r.bytes).unwrap().document;
+        assert_eq!((back.mode, back.depth), (ColorMode::Lab, depth));
+        pixels_eq(&d, &back, if depth == SampleType::U8 { 0.0 } else { 1.5 / 65535.0 });
+    }
+    // Other formats still go through sRGB.
+    let r = export(&single(ColorMode::Lab, SampleType::U8, false), "png", &ExportOptions::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("sRGB")), "{:?}", r.warnings);
+}
