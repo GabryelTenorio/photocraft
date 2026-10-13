@@ -2368,19 +2368,26 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     widgets::panel_footer(ui, |ui| {
         let active_layer = active.and_then(|id| doc.layer(id));
-        let (delete, label) = if app.ui.vector_mask_target && active_layer.is_some_and(|l| l.vector_mask.is_some()) {
-            ("layer.vectorMask.delete", "Delete Vector Mask")
+        let selected_filter = app.session.active().and_then(|st| crate::smart_ui::selected_filter(&ctx, st.doc.id));
+        let (delete, label, filter_trash) = if app.ui.vector_mask_target && active_layer.is_some_and(|l| l.vector_mask.is_some()) {
+            ("layer.vectorMask.delete", "Delete Vector Mask", None)
         } else if app.ui.mask_target && active_layer.is_some_and(|l| l.mask.is_some()) {
-            ("layer.layerMask.delete", "Delete Layer Mask")
+            ("layer.layerMask.delete", "Delete Layer Mask", None)
+        } else if let Some((layer, Some(index))) = selected_filter {
+            ("layer.smartFilter.delete", "Delete filter", Some((layer, index)))
         } else {
-            ("layer.delete", "Delete layer")
+            ("layer.delete", "Delete layer", None)
         };
         let trash = icons::button(ui, "trash", 26.0, false, tl!(label));
         if trash.clicked() {
-            // Like Photoshop, ⌥/Alt-click deletes without asking.
-            let confirm = delete == "layer.delete" && !ui.input(|i| i.modifiers.alt);
-            let params = if confirm { json!({"__trash": true}) } else { json!({}) };
-            actions.push((delete.into(), params));
+            if let Some((layer, index)) = filter_trash {
+                actions.push(("layer.smartFilter.delete".into(), json!({"layer": layer, "index": index})));
+            } else {
+                // Like Photoshop, ⌥/Alt-click deletes without asking.
+                let confirm = delete == "layer.delete" && !ui.input(|i| i.modifiers.alt);
+                let params = if confirm { json!({"__trash": true}) } else { json!({}) };
+                actions.push((delete.into(), params));
+            }
         }
         actions.extend(footer_drop(ui, &trash, footer_drag, "layer.delete"));
         actions.extend(fx_trash_drop(ui, &trash, fx_footer_drag));
