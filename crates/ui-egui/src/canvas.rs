@@ -1991,9 +1991,10 @@ fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
             let labels: Vec<&str> =
                 app.session.documents().iter().map(|st| st.doc.name.as_str()).chain(opening.iter().map(|(_, name, _)| name.as_str())).collect();
             let mut picked = None;
-            // Like Photoshop's, the menu lists every open document, not only the hidden ones (#4487).
+            // Like Photoshop's, the menu lists every open document, not only the hidden ones, and checks
+            // the active one (#4487).
             let every: Vec<usize> = (0..labels.len()).collect();
-            crate::tab_strip::overflow_button(ui, ui.id().with("dtab-overflow"), r, tl!("More documents"), &labels, &every, &mut picked);
+            crate::tab_strip::overflow_button(ui, ui.id().with("dtab-overflow"), r, tl!("More documents"), &labels, &every, Some(selected), &mut picked);
             match picked {
                 Some(i) if i < tab_count => activate = Some(i),
                 Some(i) => focus_open = opening.get(i - tab_count).map(|(job, _, _)| *job).or(focus_open),
@@ -2312,9 +2313,10 @@ fn pro_tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         let r = Rect::from_min_size(egui::pos2(left, strip.top()), egui::vec2(crate::tab_strip::CHEVRON_W, strip.height()));
         let labels: Vec<&str> = titles.iter().map(String::as_str).collect();
         let mut picked = None;
-        // Like Photoshop's, the menu lists every open document, not only the hidden ones (#4487).
+        // Like Photoshop's, the menu lists every open document, not only the hidden ones, and checks
+        // the active one (#4487).
         let every: Vec<usize> = (0..labels.len()).collect();
-        crate::tab_strip::overflow_button(ui, ui.id().with("ptab-overflow"), r, tl!("More documents"), &labels, &every, &mut picked);
+        crate::tab_strip::overflow_button(ui, ui.id().with("ptab-overflow"), r, tl!("More documents"), &labels, &every, Some(selected), &mut picked);
         match picked {
             Some(i) if i < tab_count => activate = Some(i),
             Some(i) => focus_open = opening.get(i - tab_count).map(|(job, _, _)| *job).or(focus_open),

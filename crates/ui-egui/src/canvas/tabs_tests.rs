@@ -182,7 +182,8 @@ fn elided_on_strip(h: &Harness<'_, PhotocraftApp>) -> bool {
 }
 
 /// #4487: a crowded strip keeps whole names on the tabs it shows and moves the rest into the »
-/// menu instead of shrinking them all, and the menu lists every open document, as Photoshop's does.
+/// menu instead of shrinking them all, and the menu lists every open document with the active one
+/// checked, as Photoshop's does.
 #[test]
 fn crowded_tabs_keep_their_whole_names_and_the_menu_lists_every_document() {
     for theme in [ThemeKind::Pro, ThemeKind::Studio] {
@@ -190,14 +191,25 @@ fn crowded_tabs_keep_their_whole_names_and_the_menu_lists_every_document() {
         let s = strip(&h);
         assert!(s.tabs.len() > 1 && s.tabs.len() < 14, "{theme:?}: {} shown", s.tabs.len());
         assert!(!elided_on_strip(&h), "{theme:?}: no tab title is cut");
-        let pro = crate::theme::Tokens::get(&h.ctx).pro;
-        let labels: Vec<String> = (0..14).map(|i| if pro { pro_tab_title(h.state(), i) } else { h.state().session.documents()[i].doc.name.clone() }).collect();
-        // A tab on the strip carries its document's name too: count, so the menu entry is what's seen.
-        let before: Vec<usize> = labels.iter().map(|l| h.query_all_by_label(l).count()).collect();
-        h.get_by_label("More documents").click();
-        h.run_steps(2);
-        for (i, label) in labels.iter().enumerate() {
-            assert_eq!(h.query_all_by_label(label).count(), before[i] + 1, "{theme:?}: document {i} is in the menu: {label}");
+        // The last new document is active; then one that was behind the menu, then the first.
+        for active in [13, 5, 0] {
+            h.state_mut().session.set_active(active);
+            h.run_steps(2);
+            let pro = crate::theme::Tokens::get(&h.ctx).pro;
+            let labels: Vec<String> =
+                (0..14).map(|i| if pro { pro_tab_title(h.state(), i) } else { h.state().session.documents()[i].doc.name.clone() }).collect();
+            h.get_by_label("More documents").click();
+            h.run_steps(2);
+            for (i, label) in labels.iter().enumerate() {
+                // The menu bar's padding: an unchecked row keeps the check mark's room, so names line up.
+                let (on, off) = (format!("✔ {label}"), format!("   {label}"));
+                let (want, other) = if i == active { (&on, &off) } else { (&off, &on) };
+                assert_eq!(h.query_all_by_label(want).count(), 1, "{theme:?}, active {active}: document {i} is in the menu as {want:?}");
+                assert_eq!(h.query_all_by_label(other).count(), 0, "{theme:?}, active {active}: document {i} is not {other:?}");
+            }
+            h.key_press(egui::Key::Escape);
+            h.run_steps(2);
+            assert!(h.query_by_label(&format!("✔ {}", labels[active])).is_none(), "{theme:?}: the menu closed");
         }
     }
 }
