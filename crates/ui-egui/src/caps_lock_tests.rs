@@ -142,7 +142,13 @@ fn caps_lock_swaps_the_other_cursors_between_their_icon_and_the_crosshair() {
         h.run_steps(2);
         other(&mut h, "standard");
         let standard = fp(&h);
-        assert_eq!(standard.icon, CursorIcon::None, "{tool:?}: the standard cursor is the tool's own icon, drawn");
+        let native_pipette = cfg!(not(target_arch = "wasm32")) && matches!(tool, Tool::Eyedropper | Tool::ColorSampler);
+        if native_pipette {
+            assert_eq!(standard.icon, CursorIcon::Crosshair, "{tool:?}: visible fallback underneath the native pipette");
+            assert!(standard.image.is_some(), "{tool:?}: the standard pipette must reach the OS");
+        } else {
+            assert_eq!(standard.icon, CursorIcon::None, "{tool:?}: the standard cursor is the tool's own icon, drawn");
+        }
         other(&mut h, "precise");
         let precise = fp(&h);
         assert_ne!(standard, precise, "{tool:?}: Standard and Precise differ");

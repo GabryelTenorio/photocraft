@@ -10,6 +10,7 @@ use std::sync::Arc;
 use egui::{CursorIcon, CustomCursorImage, Painter, Pos2, Stroke, Vec2, vec2};
 
 mod hand;
+mod symbols;
 
 /// The largest cursor bitmap (physical pixels; points on macOS, see [`native_scale`]); a larger tip
 /// paints its outline instead, with a small OS crosshair at the hotspot, and that outline trails
@@ -27,6 +28,8 @@ enum Shape {
     Circle { radius: f32, centre: bool },
     Crosshair { length: f32, gap: f32 },
     Hand { closed: bool },
+    Zoom { out: bool },
+    Pipette,
     Outline { rings: Arc<[Vec<Vec2>]>, centre: bool },
 }
 
@@ -71,6 +74,29 @@ pub(crate) fn circle(painter: &Painter, at: Pos2, radius: f32, centre: bool) -> 
 
 pub(crate) fn crosshair(painter: &Painter, at: Pos2, length: f32, gap: f32) -> CursorIcon {
     show(painter, at, Shape::Crosshair { length, gap })
+}
+
+/// Windows has no stock zoom cursors. Other platforms retain their native magnifiers.
+pub(crate) fn zoom(painter: &Painter, at: Pos2, out: bool) -> CursorIcon {
+    if cfg!(target_os = "windows") {
+        show(painter, at, Shape::Zoom { out })
+    } else if out {
+        CursorIcon::ZoomOut
+    } else {
+        CursorIcon::ZoomIn
+    }
+}
+
+/// The tip stays on the sampled pixel. Native root viewports upload the bitmap; web and
+/// immediate viewports draw the same geometry without an interactive overlay widget.
+pub(crate) fn pipette(ctx: &egui::Context, at: Pos2) -> CursorIcon {
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("pc-tool-pointer")));
+    show(&painter, at, Shape::Pipette)
+}
+
+/// Draw the same pipette inside the sampling HUD, including offscreen captures.
+pub(crate) fn sampling_pipette(painter: &Painter, at: Pos2) {
+    paint(painter, at, &Shape::Pipette);
 }
 
 pub(crate) fn outline(painter: &Painter, at: Pos2, rings: Vec<Vec<Vec2>>, centre: bool) -> CursorIcon {
@@ -144,6 +170,29 @@ fn paint(painter: &Painter, at: Pos2, shape: &Shape) {
     if extent(shape).is_none() {
         return;
     }
+    if matches!(shape, Shape::Pipette) {
+        let scale = painter.ctx().pixels_per_point();
+        let Some(image) = cached_image(painter.ctx(), shape, scale) else { return };
+        let id = egui::Id::new("pc-pipette-texture");
+        let cached = painter.ctx().data(|data| data.get_temp::<(u32, egui::TextureHandle)>(id));
+        let texture = if let Some((_, texture)) = cached.filter(|(bits, _)| *bits == scale.to_bits()) {
+            texture
+        } else {
+            let pixels = egui::ColorImage::from_rgba_unmultiplied([usize::from(image.size[0]), usize::from(image.size[1])], &image.rgba);
+            let texture = painter.ctx().load_texture("pc-pipette-icon", pixels, egui::TextureOptions::LINEAR);
+            painter.ctx().data_mut(|data| data.insert_temp(id, (scale.to_bits(), texture.clone())));
+            texture
+        };
+        let hot = vec2(f32::from(image.hotspot[0]), f32::from(image.hotspot[1])) / scale;
+        let size = vec2(f32::from(image.size[0]), f32::from(image.size[1])) / scale;
+        painter.image(
+            texture.id(),
+            egui::Rect::from_min_size(at - hot, size),
+            egui::Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
+        return;
+    }
     let [dark, light] = crate::theme::Tokens::cursor_outline();
     for (width, color) in [(3.0, dark), (1.0, light)] {
         let stroke = Stroke::new(width, color);
@@ -167,6 +216,8 @@ fn paint(painter: &Painter, at: Pos2, shape: &Shape) {
             }
             // Only ever a bitmap: without one the OS draws its own grab cursors.
             Shape::Hand { .. } => {}
+            Shape::Zoom { out } => symbols::paint_zoom(painter, at, *out, stroke),
+            Shape::Pipette => {}
         }
     }
 }
@@ -214,6 +265,8 @@ fn extent(shape: &Shape) -> Option<f32> {
             if *centre { e.max(3.0) } else { e }
         }
         Shape::Hand { .. } => hand::HALF,
+        Shape::Zoom { .. } => 14.0,
+        Shape::Pipette => 23.0,
     })
 }
 
@@ -261,6 +314,8 @@ fn coverage(shape: &Shape, dx: f32, dy: f32, scale: f32) -> (f32, f32) {
             let crease = (0.45 * scale + 0.5 - hand::crease(*closed, lx, ly) * scale).clamp(0.0, 1.0);
             (inside * (1.0 - crease), outline.max(inside * crease))
         }
+        Shape::Zoom { out } => stroke_coverage(symbols::zoom_distance(dx / scale, dy / scale, *out) * scale, scale),
+        Shape::Pipette => (0.0, 0.0), // SVG rasterization supplies these pixels.
     }
 }
 
@@ -347,8 +402,10 @@ fn rasterize(shape: &Shape, scale: f32) -> Option<CustomCursorImage> {
     let hot = half as u16;
     let side = hot * 2 + 1;
     let bytes = usize::from(side).checked_mul(usize::from(side))?.checked_mul(4)?;
-    // Transparent to start; only pixels a shape can reach are evaluated below (a big tip's
-    // outline is a thin ring in a large square, #1343).
+    if matches!(shape, Shape::Pipette) {
+        return rasterize_pipette(scale, side, hot);
+    }
+    // Transparent to start; evaluate only pixels the shape can reach.
     let mut rgba = vec![0u8; bytes];
     let [dark, light] = crate::theme::Tokens::cursor_outline();
     let n = usize::from(side);
@@ -407,6 +464,26 @@ fn rasterize(shape: &Shape, scale: f32) -> Option<CustomCursorImage> {
             }
         }
     }
+    Some(CustomCursorImage { rgba: Arc::from(rgba), size: [side, side], hotspot: [hot, hot] })
+}
+
+/// Use the toolbar's actual SVG, with its lower-left tip (2, 22) at the hotspot.
+/// Both native and painted cursors share these pixels; only the contrast halo is added.
+fn rasterize_pipette(scale: f32, side: u16, hot: u16) -> Option<CustomCursorImage> {
+    let icon = include_str!("../../../assets/icons/pipette.svg");
+    let dark = icon.replace("currentColor", "#000000").replace("stroke-width=\"2\"", "stroke-width=\"3.75\"");
+    let light = icon.replace("currentColor", "#ffffff").replace("stroke-width=\"2\"", "stroke-width=\"1.75\"");
+    let size = f32::from(side) / scale;
+    let x = f32::from(hot) / scale - 2.0;
+    let y = f32::from(hot) / scale - 22.0;
+    let svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {size} {size}\"><g transform=\"translate({x} {y})\">{dark}{light}</g></svg>");
+    let image = egui_extras::image::load_svg_bytes_with_size(
+        svg.as_bytes(),
+        egui::load::SizeHint::Size { width: u32::from(side), height: u32::from(side), maintain_aspect_ratio: false },
+        &Default::default(),
+    )
+    .ok()?;
+    let rgba: Vec<u8> = image.pixels.iter().flat_map(|pixel| pixel.to_srgba_unmultiplied()).collect();
     Some(CustomCursorImage { rgba: Arc::from(rgba), size: [side, side], hotspot: [hot, hot] })
 }
 
