@@ -34,9 +34,24 @@ fn target_shape_layer(s: &Session, p: &Value) -> Option<LayerId> {
     if matches!(layer.content, LayerContent::Shape(_)) { Some(id) } else { None }
 }
 
-/// The colour fill keys also recolor a targeted shape layer's fill.
+fn target_type_layer(s: &Session, p: &Value) -> Option<LayerId> {
+    if let Some(t) = p.get("target")
+        && (t.as_str() == Some("mask") || t.as_str() == Some("quickMask") || t.get("channel").is_some())
+    {
+        return None;
+    }
+    let st = s.active()?;
+    if st.channel_view.target == crate::channel_cmds::ChannelTarget::LayerMask {
+        return None;
+    }
+    let id = if let Some(v) = p.get("layer") { LayerId(v.as_u64()?) } else { st.active_layer? };
+    let layer = st.doc.layer(id)?;
+    if matches!(layer.content, LayerContent::Text(_)) { Some(id) } else { None }
+}
+
+/// The colour fill keys also recolor a targeted shape layer's fill or a type layer's colour.
 fn enabled(s: &Session) -> std::result::Result<(), String> {
-    if target_shape_layer(s, &Value::Null).is_some() {
+    if target_shape_layer(s, &Value::Null).is_some() || target_type_layer(s, &Value::Null).is_some() {
         return Ok(());
     }
     fill_enabled(s)
@@ -67,6 +82,14 @@ fn fill(s: &mut Session, p: &Value, cmd: &str, background: bool, preserve: bool)
         };
         let shape_edit = crate::commands::find("shape.edit").ok_or_else(|| EngineError::Other("shape.edit is unavailable".into()))?;
         return (shape_edit.run)(s, &json!({ "layer": id.0, "fill": hex }));
+    }
+
+    if let Some(id) = target_type_layer(s, p) {
+        let c = if background { s.tools.background } else { s.tools.foreground };
+        let q_u8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let hex = format!("#{:02x}{:02x}{:02x}", q_u8(c[0]), q_u8(c[1]), q_u8(c[2]));
+        let set = crate::commands::find("type.setStyle").ok_or_else(|| EngineError::Other("type.setStyle is unavailable".into()))?;
+        return (set.run)(s, &json!({ "layer": id.0, "color": hex }));
     }
 
     // The colour and transparency handling are what the key means; don't let params override them.
@@ -259,6 +282,26 @@ mod tests {
             assert!(s.execute(id, json!({"layer": 99_999})).is_err(), "{id}");
             assert!(s.execute(id, json!({"target": {"channel": 42}})).is_err(), "{id}");
         }
+    }
+
+    /// #4580: Fill with Foreground / Background recolors a type layer instead of staying disabled.
+    #[test]
+    fn fill_keys_recolor_a_type_layer() {
+        let mut s = session();
+        let id = s.execute("type.create", json!({"text": "Hi", "x": 2, "y": 8, "size": 12, "color": "#00ff00"})).unwrap()["layer"].as_u64().unwrap();
+        assert!(s.is_enabled("edit.fillForeground"));
+        assert!(s.is_enabled("edit.fillBackground"));
+        s.execute("edit.fillForeground", json!({})).unwrap();
+        let color = |s: &Session| match &s.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().content {
+            LayerContent::Text(t) => Some(t.color.to_rgb()),
+            _ => None,
+        };
+        let fg = color(&s).expect("type colour");
+        assert!((fg[0] - 1.0).abs() < 1e-3 && fg[1].abs() < 1e-3 && fg[2].abs() < 1e-3, "{fg:?}");
+        s.execute("edit.fillBackground", json!({})).unwrap();
+        let bg = color(&s).expect("type colour");
+        assert!(bg[2] > 0.9 && bg[0].abs() < 1e-3, "{bg:?}");
+        assert!(matches!(s.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().content, LayerContent::Text(_)));
     }
 
     #[test]
