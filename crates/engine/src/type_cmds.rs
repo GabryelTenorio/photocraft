@@ -715,7 +715,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "New Type Layer",
             menu: &["Layer", "New"],
             shortcut: None,
-            params: r##"{"x":px,"y":px (baseline anchor of point text),"text":str,"box":[x,y,w,h]? (paragraph text),"name":str?,"align":"left|center|right|justify…"?,"orientation":"horizontal|vertical"="horizontal", …character keys: "font","size":pt=12,"color",…} → {"layer":id,"bounds":[x,y,w,h]}"##,
+            params: r##"{"x":px,"y":px (point text: y of the FIRST baseline; "box" positions paragraph text by its top-left),"text":str,"box":[x,y,w,h]? (paragraph text),"name":str?,"align":"left|center|right|justify…"?,"orientation":"horizontal|vertical"="horizontal", …character keys: "font","size":pt=12,"color",…} → {"layer":id,"bounds":[x,y,w,h]} (the new layer becomes the active layer, like every layer-creating command; re-select the target with layer.select)"##,
             enabled: has_doc,
             journal: true,
             run: |s, p| {
@@ -1154,6 +1154,7 @@ mod tests {
         let mut s = session();
         let r = s.execute("type.create", json!({"x": 10, "y": 50, "text": "Hello", "size": 24, "color": "#ff0000"})).unwrap();
         let id = r["layer"].as_u64().unwrap();
+        assert_eq!(s.active().unwrap().active_layer, Some(LayerId(id)), "the new layer becomes the active layer");
         let b = r["bounds"].as_array().unwrap();
         assert!(b[0].as_i64().unwrap() >= 9 && b[1].as_i64().unwrap() + b[3].as_i64().unwrap() <= 56, "{b:?}");
         let t = text_layer(&s, id);

@@ -17,6 +17,8 @@ described in [development.md](development.md). UI tools require a running deskto
 - `command_list`: discover engine ids, parameter docs and current enabled state; accepts
   `filter` and `enabled_only`.
 - `command_run`: `id`, optional `params` and `wait`. Command parameters remain engine-defined.
+  Every command that creates a layer (`layer.new.*`, `shape.create`, `type.create`, …) makes the
+  new layer the active layer, as Photoshop does; re-select the previous target with `layer.select`.
 - `command_batch`: ordered `steps`, optional `stop_on_error` (default true); stops at the first
   error unless false. Not an atomic transaction: earlier successful steps stay applied, with
   no rollback. Existing per-step results and reply budgets are preserved.

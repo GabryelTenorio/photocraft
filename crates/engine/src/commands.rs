@@ -554,7 +554,7 @@ fn build() -> Vec<CommandSpec> {
             "Layer…",
             ["Layer", "New"],
             Some("Cmd+Shift+N"),
-            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error),"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)}"##,
+            r##"{"name":str?,"clipToPrevious":bool=false (Use Previous Layer to Create Clipping Mask; inside a clip group the layer joins it anyway),"color":"none|red|orange|yellow|green|seafoam|blue|indigo|magenta|fuchsia|violet|gray"="none","mode":"Normal|Multiply|…"="Normal","opacity":0..1=1,"fillNeutral":bool=false (fill with the mode's neutral color: modes without one are an error),"above":id?,"position":"top"? (landing: above the active layer by default, directly above the `above` layer, or topmost; both given, an unknown id or position is an error)} → {"layer":id} (the new layer becomes the active layer, like every layer-creating command; re-select the target with layer.select)"##,
             has_doc,
             crate::new_layer::run
         ),
