@@ -740,6 +740,7 @@
 	Reset All Tools	Obnovit všechny nástroje
 	Reset all tools to their default settings?	Obnovit výchozí nastavení všech nástrojů?
 	Lock Workspace	Zamknout pracovní prostor
+	Open Panels Floating	Otevírat panely jako plovoucí
 	Theme	Motiv
 	Pro Theme	Motiv Pro
 	Pro Medium Gray Theme	Motiv Pro (středně šedý)
@@ -3734,3 +3735,9 @@ navigator	Zoom	Zvětšení
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
 	Auto Add/Delete	Automaticky přidat/odstranit
 	ICO is limited to 256 × 256 pixels	ICO je omezen na 256 × 256 pixelů
+	Move to Separate Window	Přesunout do samostatného okna
+	Return to PhotoCraft Window	Vrátit do okna PhotoCraft
+	Dock Panel Group	Ukotvit skupinu panelů
+	Dock to Icon Bar	Ukotvit na lištu ikon
+	Remove from Icon Bar	Odebrat z lišty ikon
+	Move Icon	Přesunout ikonu

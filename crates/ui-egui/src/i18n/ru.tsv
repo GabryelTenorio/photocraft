@@ -1478,6 +1478,7 @@
 	Reset All Tools	Сбросить все инструменты
 	Reset all tools to their default settings?	Сбросить все инструменты к настройкам по умолчанию?
 	Lock Workspace	Заблокировать рабочую среду
+	Open Panels Floating	Открывать панели плавающими
 	Photography	Фотография
 	Graphic and web	Графика и web
 	Painting	Живопись
@@ -3071,3 +3072,9 @@ curves	Smooth	Сгладить
 @plural	{n} action|{n} actions	{n} операция|{n} операции|{n} операций
 	Auto Add/Delete	Автодобавление/удаление
 	ICO is limited to 256 × 256 pixels	ICO ограничен размером 256 × 256 пикселей
+	Move to Separate Window	Переместить в отдельное окно
+	Return to PhotoCraft Window	Вернуть в окно PhotoCraft
+	Dock Panel Group	Закрепить группу панелей
+	Dock to Icon Bar	Закрепить на панели значков
+	Remove from Icon Bar	Убрать с панели значков
+	Move Icon	Переместить значок

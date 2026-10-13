@@ -792,7 +792,7 @@ fn resize(layout: &mut DockLayout, heights: &[(Group, f32)], i: usize, dy: f32) 
 
 /// What `prefs.panelLayout` holds: the live layout and open panels.
 fn snapshot(app: &PhotocraftApp) -> Value {
-    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
+    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingWindows": app.ui.docking_windows, "railPanels": app.ui.rail_panels, "railGroups": app.ui.rail_groups, "dockingCollapsed": app.ui.docking_collapsed})
 }
 
 /// Remember the layout in the preferences once the user lets go of the mouse (Workspace ›
@@ -831,6 +831,10 @@ pub fn apply(app: &mut PhotocraftApp, v: &Value) {
     app.ui.docking_reveal = None;
     app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
     app.ui.docking_hidden = v.get("dockingHidden").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.docking_windows = v.get("dockingWindows").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.rail_panels = v.get("railPanels").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()).unwrap_or_default().into_iter().filter(|p| crate::panel_docking::normalize(p) == Some(p.as_str())).take(32).collect();
+    app.ui.rail_groups = v.get("railGroups").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    app.ui.rail_open = None;
     app.ui.docking = v.get("docking").and_then(|d| serde_json::from_value(d.clone()).ok()).filter(crate::panel_docking::valid);
     if let Some(mut p) = v.get("panels").and_then(|p| serde_json::from_value::<Panels>(p.clone()).ok()) {
         // The embedding host owns these flags, including for layouts that serialize them.

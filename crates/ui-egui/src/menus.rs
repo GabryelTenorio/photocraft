@@ -32,6 +32,11 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.panel.dock", "Dock Panel", &[], None),
     ("window.panel.activate", "Activate Panel", &[], None),
     ("window.panel.close", "Close Panel", &[], None),
+    ("window.panel.detach", "Move to Separate Window", &[], None),
+    ("window.panel.attach", "Return to PhotoCraft Window", &[], None),
+    ("window.panel.toRail", "Dock to Icon Bar", &[], None),
+    ("window.panel.fromRail", "Remove from Icon Bar", &[], None),
+    ("window.panel.railMove", "Move Icon", &[], None),
     ("file.open", "Open…", &["File"], Some("Cmd+O")),
     ("file.save", "Save", &["File"], Some("Cmd+S")),
     ("file.saveAs", "Save As…", &["File"], Some("Cmd+Shift+S")),
@@ -73,6 +78,8 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.togglePanels", "Show/Hide All Panels", &[], Some("Tab")),
     ("window.toggle.dock", "Show/Hide Panels", &[], Some("Shift+Tab")),
     ("window.toggle.options", "Options", &["Window"], None),
+    // A dock panel opened from the Window menu floats, ready to drag and resize (off: it docks).
+    ("window.workspace.openPanelsFloating", "Open Panels Floating", &["Window", "Workspace"], None),
     // Photoshop's Ctrl+Tab and Ctrl+Shift+Tab, on macOS too (⌘Tab belongs to the system, #2340).
     ("window.nextDocument", "Next Document", &[], Some("Ctrl+Tab")),
     ("window.previousDocument", "Previous Document", &[], Some("Ctrl+Shift+Tab")),
@@ -744,7 +751,16 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     }
     match id {
         "window.panel.activate" | "window.panel.layout" => true,
-        "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
+        "window.panel.group"
+        | "window.panel.move"
+        | "window.panel.float"
+        | "window.panel.dock"
+        | "window.panel.close"
+        | "window.panel.detach"
+        | "window.panel.attach"
+        | "window.panel.toRail"
+        | "window.panel.fromRail"
+        | "window.panel.railMove" => !app.session.prefs().workspace_locked,
         "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
         i if i.starts_with("file.openRecent.") => true,
         i if i.starts_with(DOCUMENT_ITEM) => true,
@@ -1520,6 +1536,10 @@ pub fn apply_workspace(app: &mut PhotocraftApp) {
     app.ui.docking_generation = app.ui.docking_generation.wrapping_add(1);
     app.ui.docking = None;
     app.ui.docking_hidden.clear();
+    app.ui.docking_windows.clear();
+    app.ui.rail_panels.clear();
+    app.ui.rail_groups.clear();
+    app.ui.rail_open = None;
     app.ui.docking_collapsed.clear();
     app.ui.dock_tabs = Default::default();
     let p = &mut app.ui.panels;

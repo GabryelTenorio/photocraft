@@ -714,6 +714,7 @@
 	Reset All Tools	Alle gereedschappen herstellen
 	Reset all tools to their default settings?	Alle gereedschappen herstellen naar hun standaardinstellingen?
 	Lock Workspace	Werkruimte vergrendelen
+	Open Panels Floating	Deelvensters zwevend openen
 	Theme	Thema
 	Pro Theme	Pro-thema
 	Pro Medium Gray Theme	Pro-thema middelgrijs
@@ -3885,3 +3886,9 @@ curves	Smooth	Vloeiend maken
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
 	Auto Add/Delete	Automatisch toevoegen/verwijderen
 	ICO is limited to 256 × 256 pixels	ICO is beperkt tot 256 × 256 pixels
+	Move to Separate Window	Naar apart venster verplaatsen
+	Return to PhotoCraft Window	Terug naar PhotoCraft-venster
+	Dock Panel Group	Deelvenstergroep koppelen
+	Dock to Icon Bar	Koppelen aan pictogrammenbalk
+	Remove from Icon Bar	Verwijderen uit pictogrammenbalk
+	Move Icon	Pictogram verplaatsen

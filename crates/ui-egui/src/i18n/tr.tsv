@@ -703,6 +703,7 @@
 	Reset All Tools	Tüm Araçları Sıfırla
 	Reset all tools to their default settings?	Tüm araçlar varsayılan ayarlarına sıfırlansın mı?
 	Lock Workspace	Çalışma Alanını Kilitle
+	Open Panels Floating	Panelleri kayan olarak aç
 	Theme	Tema
 	Pro Theme	Profesyonel Tema
 	Pro Medium Gray Theme	Pro Orta Gri Tema
@@ -3858,3 +3859,9 @@ cameraData	Lens	Lens
 	Color Indicates:	Rengin Gösterdiği:
 	Ink Characteristics	Mürekkep Özellikleri
 	Solidity:	Doluluk:
+	Move to Separate Window	Ayrı Pencereye Taşı
+	Return to PhotoCraft Window	PhotoCraft Penceresine Geri Döndür
+	Dock Panel Group	Panel Grubunu Yerleştir
+	Dock to Icon Bar	Simge Çubuğuna Yerleştir
+	Remove from Icon Bar	Simge Çubuğundan Kaldır
+	Move Icon	Simgeyi Taşı

@@ -2641,6 +2641,7 @@
 	Lock Layers	Κλείδωμα επιπέδων
 	Lock Slices	Κλείδωμα τομών
 	Lock Workspace	Κλείδωμα χώρου εργασίας
+	Open Panels Floating	Άνοιγμα πλαισίων ως αιωρούμενων
 	Lock all	Κλείδωμα όλων
 	Lock image pixels	Κλείδωμα εικονοστοιχείων εικόνας
 	Lock layer	Κλείδωμα επιπέδου
@@ -3823,3 +3824,9 @@ curves	Smooth	Εξομάλυνση
 @plural	{n} action|{n} actions	{n} ενέργεια|{n} ενέργειες
 	Auto Add/Delete	Αυτόματη προσθήκη/διαγραφή
 	ICO is limited to 256 × 256 pixels	Το ICO περιορίζεται σε 256 × 256 εικονοστοιχεία
+	Move to Separate Window	Μετακίνηση σε ξεχωριστό παράθυρο
+	Return to PhotoCraft Window	Επιστροφή στο παράθυρο του PhotoCraft
+	Dock Panel Group	Αγκύρωση ομάδας πλαισίων
+	Dock to Icon Bar	Αγκύρωση στη γραμμή εικονιδίων
+	Remove from Icon Bar	Αφαίρεση από τη γραμμή εικονιδίων
+	Move Icon	Μετακίνηση εικονιδίου

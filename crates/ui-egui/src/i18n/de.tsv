@@ -729,6 +729,7 @@
 	Reset All Tools	Alle Werkzeuge zurücksetzen
 	Reset all tools to their default settings?	Alle Werkzeuge auf ihre Standardeinstellungen zurücksetzen?
 	Lock Workspace	Arbeitsbereich sperren
+	Open Panels Floating	Bedienfelder schwebend öffnen
 	Theme	Design
 	Pro Theme	Pro-Design
 	Pro Medium Gray Theme	Pro-Design (Mittelgrau)
@@ -2768,3 +2769,9 @@ curves	Smooth	Glätten
 @plural	{n} action|{n} actions	{n} Aktion|{n} Aktionen
 	Auto Add/Delete	Autom. hinzuf./löschen
 	ICO is limited to 256 × 256 pixels	ICO ist auf 256 × 256 Pixel begrenzt
+	Move to Separate Window	In separates Fenster verschieben
+	Return to PhotoCraft Window	Zurück ins PhotoCraft-Fenster
+	Dock Panel Group	Bedienfeldgruppe andocken
+	Dock to Icon Bar	An Symbolleiste andocken
+	Remove from Icon Bar	Aus Symbolleiste entfernen
+	Move Icon	Symbol verschieben

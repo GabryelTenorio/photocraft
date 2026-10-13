@@ -711,6 +711,7 @@
 	Reset All Tools	모든 도구 초기화
 	Reset all tools to their default settings?	모든 도구를 기본 설정으로 초기화하시겠습니까?
 	Lock Workspace	작업 영역 잠금
+	Open Panels Floating	패널을 떠 있는 창으로 열기
 	Theme	테마
 	Pro Theme	프로 테마
 	Pro Medium Gray Theme	프로 중간 회색 테마
@@ -3299,3 +3300,9 @@ curves	Smooth	매끄럽게
 @plural	{n} action|{n} actions	액션 {n}개
 	Auto Add/Delete	자동 추가/삭제
 	ICO is limited to 256 × 256 pixels	ICO는 256 × 256픽셀로 제한됩니다
+	Move to Separate Window	별도 창으로 이동
+	Return to PhotoCraft Window	PhotoCraft 창으로 되돌리기
+	Dock Panel Group	패널 그룹 고정
+	Dock to Icon Bar	아이콘 막대에 고정
+	Remove from Icon Bar	아이콘 막대에서 제거
+	Move Icon	아이콘 이동

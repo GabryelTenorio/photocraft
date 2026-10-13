@@ -736,6 +736,7 @@
 	Reset All Tools	Restablecer todas las herramientas
 	Reset all tools to their default settings?	¿Restablecer todas las herramientas a sus valores predeterminados?
 	Lock Workspace	Bloquear espacio de trabajo
+	Open Panels Floating	Abrir paneles flotantes
 	Theme	Tema
 	Pro Theme	Tema Pro
 	Pro Medium Gray Theme	Tema Pro (gris medio)
@@ -2809,3 +2810,9 @@ curves	Smooth	Suavizar
 @plural	{n} action|{n} actions	{n} acción|{n} acciones
 	Auto Add/Delete	Añadir/eliminar automáticamente
 	ICO is limited to 256 × 256 pixels	ICO está limitado a 256 × 256 píxeles
+	Move to Separate Window	Mover a una ventana independiente
+	Return to PhotoCraft Window	Volver a la ventana de PhotoCraft
+	Dock Panel Group	Acoplar grupo de paneles
+	Dock to Icon Bar	Acoplar a la barra de iconos
+	Remove from Icon Bar	Quitar de la barra de iconos
+	Move Icon	Mover icono

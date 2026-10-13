@@ -744,6 +744,7 @@
 	Reset All Tools	重設所有工具
 	Reset all tools to their default settings?	要將所有工具重設為預設設定嗎？
 	Lock Workspace	鎖定工作區
+	Open Panels Floating	以浮動方式開啟面板
 	Theme	主題
 	Pro Theme	專業主題
 	Pro Medium Gray Theme	專業中灰主題
@@ -2719,3 +2720,9 @@ curves	Smooth	平滑
 @plural	{n} action|{n} actions	{n} 個動作
 	Auto Add/Delete	自動增加/刪除
 	ICO is limited to 256 × 256 pixels	ICO 最大為 256 × 256 像素
+	Move to Separate Window	移到獨立視窗
+	Return to PhotoCraft Window	返回 PhotoCraft 視窗
+	Dock Panel Group	停駐面板群組
+	Dock to Icon Bar	停駐到圖示列
+	Remove from Icon Bar	從圖示列移除
+	Move Icon	移動圖示

@@ -718,6 +718,7 @@
 	Reset All Tools	Redefinir todas as ferramentas
 	Reset all tools to their default settings?	Redefinir todas as ferramentas para as configurações padrão?
 	Lock Workspace	Bloquear espaço de trabalho
+	Open Panels Floating	Abrir painéis flutuantes
 	Theme	Tema
 	Pro Theme	Tema Pro
 	Pro Medium Gray Theme	Tema Pro cinza médio
@@ -3915,3 +3916,9 @@ layerLabel	No Color	Sem cor
 @plural	{n} action|{n} actions	{n} ação|{n} ações
 	Auto Add/Delete	Adicionar/excluir automaticamente
 	ICO is limited to 256 × 256 pixels	ICO é limitado a 256 × 256 pixels
+	Move to Separate Window	Mover para janela separada
+	Return to PhotoCraft Window	Voltar para a janela do PhotoCraft
+	Dock Panel Group	Encaixar grupo de painéis
+	Dock to Icon Bar	Encaixar na barra de ícones
+	Remove from Icon Bar	Remover da barra de ícones
+	Move Icon	Mover ícone
