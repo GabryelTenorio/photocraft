@@ -852,10 +852,22 @@ fn reveal_focused_control(ui: &egui::Ui) {
 
 // ----------------------------------------------------------------------------- options bar
 
+/// Options bar height: Preferences ▸ Workspace ▸ Enable Narrow Options Bar trims it, as in
+/// Photoshop, leaving the document more room.
+fn options_bar_height(pro: bool, narrow: bool) -> f32 {
+    match (pro, narrow) {
+        (true, false) => 36.0,
+        (true, true) => 30.0,
+        (false, false) => 42.0,
+        (false, true) => 34.0,
+    }
+}
+
 pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
+    let narrow = app.session.prefs().workspace.narrow_options_bar();
     egui::Panel::top("options_bar")
-        .exact_size(if t.pro { 36.0 } else { 42.0 })
+        .exact_size(options_bar_height(t.pro, narrow))
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(10, 0)))
         .show(ui, |ui| {
             ui.style_mut().spacing.scroll = egui::style::ScrollStyle { bar_width: 4.0, ..egui::style::ScrollStyle::floating() };
@@ -2001,9 +2013,8 @@ fn simple_lock_toggle(background: bool, l: &Layer) -> (String, Value) {
     if background {
         return ("layer.new.layerFromBackground".into(), json!({}));
     }
-    let k = &l.locks;
-    let locked = k.transparency || k.pixels || k.position || k.artboard || k.all;
-    let locks = if locked { json!({"transparency": false, "pixels": false, "position": false, "artboard": false, "all": false}) } else { json!({"all": true}) };
+    let locks =
+        if l.locks.any() { json!({"transparency": false, "pixels": false, "position": false, "artboard": false, "all": false}) } else { json!({"all": true}) };
     ("layer.setProps".into(), json!({"layer": l.id.0, "locks": locks}))
 }
 
@@ -2162,7 +2173,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 });
             }
             if !t.pro {
-                let locked = l.locks.transparency || l.locks.position || l.locks.all;
+                let locked = l.locks.any();
                 if icons::button(ui, if locked { "lock" } else { "lock-open" }, 22.0, locked, tl!("Lock layer")).clicked() {
                     actions.push(simple_lock_toggle(bg, l));
                 }
@@ -3595,6 +3606,7 @@ fn paint_mode_dropdown(ui: &mut egui::Ui, id: &str, b: &mut photocraft_engine::B
 fn smoothing_field(ui: &mut egui::Ui, b: &mut photocraft_engine::BrushSettings, width: f32) {
     let mut sm = (b.smoothing.amount * 100.0).round();
     if widgets::value_field(ui, &mut sm, 0.0..=100.0, "%", width).changed() {
+        b.smoothing.enabled = true;
         b.smoothing.amount = (sm / 100.0).clamp(0.0, 1.0);
     }
 }
@@ -3919,7 +3931,7 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
         );
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone()));
         if resp.double_clicked() {
-            crate::layer_style::open(app, kind);
+            crate::layer_style::open_for_layer(app, l.id, kind);
         }
         // #2846: right-click opens the layer style menu (Create Layer, Copy Layer Style…), as in Photoshop.
         resp.context_menu(|ui| {
@@ -4591,7 +4603,7 @@ mod lock_tests {
         click_lock(&mut app);
         let l = &app.session.active().unwrap().doc.layers[0];
         assert_eq!(l.name, "Layer 0");
-        assert!(!(l.locks.transparency || l.locks.pixels || l.locks.position || l.locks.all));
+        assert!(!l.locks.any());
         erase_line(&mut app);
         assert!(!app.ui.status_error, "{}", app.ui.status);
         assert_eq!(app.session.active().unwrap().doc.layers[0].surface().unwrap().rgba(50, 40)[3], 0.0, "erased to transparency");
@@ -4599,8 +4611,7 @@ mod lock_tests {
         click_lock(&mut app);
         assert!(app.session.active().unwrap().doc.layers[0].locks.all);
         click_lock(&mut app);
-        let k = app.session.active().unwrap().doc.layers[0].locks;
-        assert!(!(k.transparency || k.pixels || k.position || k.artboard || k.all));
+        assert!(!app.session.active().unwrap().doc.layers[0].locks.any());
         // A layer with only transparency locked unlocks in one click.
         app.run("layer.setProps", json!({"locks": {"transparency": true}})).unwrap();
         click_lock(&mut app);
@@ -5554,6 +5565,34 @@ mod compact_visual_regressions {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_narrow_options_bar_preference_shortens_the_bar() {
+        assert_eq!(options_bar_height(true, false), 36.0);
+        assert_eq!(options_bar_height(true, true), 30.0);
+        assert_eq!(options_bar_height(false, false), 42.0);
+        assert_eq!(options_bar_height(false, true), 34.0);
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        crate::theme::apply(&ctx, crate::theme::ThemeKind::ALL[0]);
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let screen = Rect::from_min_size(egui::Pos2::ZERO, vec2(1600.0, 900.0));
+        let run = |app: &mut PhotocraftApp| {
+            let mut top = 0.0;
+            let mut out = ctx.run_ui(input_at_scale(screen, 1.0), |ui| {
+                options_bar(app, ui);
+                top = ui.available_rect_before_wrap().top();
+            });
+            out.textures_delta.clear();
+            top
+        };
+        let normal = run(&mut app);
+        assert_eq!(normal, options_bar_height(Tokens::get(&ctx).pro, false));
+        app.session.execute("prefs.set", json!({"path": "workspace.enableNarrowOptionsBar", "value": true})).unwrap();
+        let narrow = run(&mut app);
+        assert_eq!(narrow, options_bar_height(Tokens::get(&ctx).pro, true));
+        assert!(narrow < normal, "narrow {narrow} must trim the bar under {normal}");
     }
 
     #[test]
