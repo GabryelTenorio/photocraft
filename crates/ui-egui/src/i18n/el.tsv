@@ -998,7 +998,6 @@
 	Choose…	Επιλογή…
 	Select Folder…	Επιλογή φακέλου…
 	Override Action "Save" Commands	Παράκαμψη εντολών αποθήκευσης της ενέργειας
-	File Naming	Ονομασία αρχείων
 	Compatibility	Συμβατότητα
 	Include ICC Profile	Συμπερίληψη προφίλ ICC
 	Error File	Αρχείο σφαλμάτων
@@ -3761,6 +3760,8 @@ curves	Smooth	Εξομάλυνση
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	Αποθηκεύτηκε {n} ενέργεια στο {file}|Αποθηκεύτηκαν {n} ενέργειες στο {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	Παραλείφθηκε {n} βήμα χωρίς αντίστοιχο στο Photoshop|Παραλείφθηκαν {n} βήματα χωρίς αντίστοιχο στο Photoshop
 
+	File Naming	Ονομασία αρχείων
+	Starting serial	Αρχικός αριθμός σειράς
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Εισαγωγή διακοπής…
 	Save Set…	Αποθήκευση συνόλου…
@@ -3771,4 +3772,3 @@ curves	Smooth	Εξομάλυνση
 	Action playback stopped	Η αναπαραγωγή της ενέργειας σταμάτησε
 	Step {step} is waiting for its dialog	Το βήμα {step} περιμένει το παράθυρο διαλόγου του
 @plural	{n} action|{n} actions	{n} ενέργεια|{n} ενέργειες
-	Starting serial	Αρχικός αριθμός σειράς

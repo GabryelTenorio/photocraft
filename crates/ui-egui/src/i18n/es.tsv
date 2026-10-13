@@ -2744,6 +2744,8 @@ curves	Smooth	Suavizar
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	Se guardó {n} acción en {file}|Se guardaron {n} acciones en {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	{n} paso sin equivalente en Photoshop omitido|{n} pasos sin equivalente en Photoshop omitidos
 
+	File Naming	Nombres de archivo
+	Starting serial	Número de serie inicial
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Insertar detención…
 	Save Set…	Guardar conjunto…
@@ -2754,5 +2756,3 @@ curves	Smooth	Suavizar
 	Action playback stopped	Reproducción de la acción detenida
 	Step {step} is waiting for its dialog	El paso {step} está esperando su cuadro de diálogo
 @plural	{n} action|{n} actions	{n} acción|{n} acciones
-	File Naming	Nombres de archivo
-	Starting serial	Número de serie inicial

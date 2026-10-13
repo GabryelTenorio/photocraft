@@ -2414,7 +2414,6 @@
 	Choose…	Pilih…
 	Select Folder…	Pilih Folder…
 	Override Action "Save" Commands	Timpa Perintah Action "Save"
-	File Naming	Penamaan Berkas
 	Compatibility	Kompatibilitas
 	Mac OS	Mac OS
 	Unix	Unix
@@ -3051,6 +3050,8 @@ curves	Smooth	Haluskan
 @plural	Saved {n} action to {file}|Saved {n} actions to {file}	{n} tindakan disimpan ke {file}
 @plural	{n} step with no Photoshop equivalent left out|{n} steps with no Photoshop equivalent left out	{n} langkah tanpa padanan Photoshop dilewati
 
+	File Naming	Penamaan Berkas
+	Starting serial	Nomor urut awal
 # Actions panel: set folders, dialog toggle, Insert Stop
 	Insert Stop…	Sisipkan Berhenti…
 	Save Set…	Simpan Set…
@@ -3061,4 +3062,3 @@ curves	Smooth	Haluskan
 	Action playback stopped	Pemutaran tindakan dihentikan
 	Step {step} is waiting for its dialog	Langkah {step} menunggu dialognya
 @plural	{n} action|{n} actions	{n} tindakan
-	Starting serial	Nomor urut awal
