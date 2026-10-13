@@ -2302,8 +2302,8 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // An effect row can be dropped on Delete too (#3102), and a mask's thumbnail (#3113, #3119).
     let fx_footer_drag = ctx.data(|d| d.get_temp::<FxDrag>(fx_drag_key()));
     fx_drag_feedback(&ctx, &doc);
-    crate::mask_transfer_ui::drag_feedback(&ctx, &doc);
     let mask_footer_drag = ctx.data(|d| d.get_temp::<MaskDrag>(mask_drag_key()));
+    crate::mask_transfer_ui::drag_feedback(&ctx, &doc);
     if let Some((_, kind)) = mask_footer_drag
         && !crate::mask_transfer_ui::dragging(&ctx)
         && let Some(p) = ctx.input(|i| i.pointer.interact_pos())
@@ -2614,6 +2614,7 @@ fn layer_row(
     // Photoshop's default (medium) thumbnails: 32 pt rows.
     let row_h = if t.pro { 32.0 } else { 46.0 };
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click_and_drag());
+    let mut deferred_layer_drag = None;
     // A drag from a mask's thumbnail drags that mask, not the layer (#3113, #3119).
     let mask_drag = starts_mask_drag(ctx, l, &resp);
     if let Some(kind) = mask_drag {
@@ -2621,6 +2622,9 @@ fn layer_row(
     }
     let mask_drag = mask_drag.is_some();
     fx_drop(ctx, ui, l, rect, actions);
+    if resp.drag_started() && !mask_drag {
+        deferred_layer_drag = Some(l.id);
+    }
     // Rows are painted: name them for screen readers and UI tests.
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &l.name));
     // A row scrolled out of view only keeps its place (#125): a layout's hundreds of rows would
@@ -2697,8 +2701,8 @@ fn layer_row(
     crate::mask_transfer_ui::drag_row(ctx, ui, doc, l, &resp, rect, &masks, actions);
     if !crate::mask_transfer_ui::dragging(ctx) {
         layer_drag_and_drop(app, ctx, ui, l, rect, &resp, actions);
-        if resp.drag_started() && !mask_drag {
-            crate::layer_transfer::begin_from_panel(app, ctx, l.id);
+        if let Some(layer) = deferred_layer_drag {
+            crate::layer_transfer::begin_from_panel(app, ctx, layer);
         }
     }
     let mask_rect = masks.thumb(crate::mask_thumbs_ui::MaskKind::Pixel);
