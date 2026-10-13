@@ -54,6 +54,9 @@ pub unsafe extern "C" fn pc_filter(buf: *mut f32, len: u32, _width: u32, _height
     if n == 0 {
         return 1;
     }
+    if len % 4 != 0 {
+        return 1;
+    }
     // SAFETY: see the function's contract.
     let px = unsafe { core::slice::from_raw_parts_mut(buf, len as usize / 4) };
     let alpha = format & HAS_ALPHA != 0;
