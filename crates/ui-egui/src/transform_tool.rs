@@ -1659,94 +1659,56 @@ pub(crate) fn apply_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2], mods
             let Some(inv) = h.inverse() else { return };
             let (u, v) = inv.apply(p[0], p[1]);
             let (pu, pv) = inv.apply(g.pivot0[0], g.pivot0[1]);
-            // Moving edges/corner in unit space: [u0, v0, u1, v1] starting as [0, 0, 1, 1].
-            let mut r = [0.0f64, 0.0, 1.0, 1.0];
-            let (mu, mv) = match g.hit {
-                Hit::Corner(0) => ((true, false), (true, false)),
-                Hit::Corner(1) => ((false, true), (true, false)),
-                Hit::Corner(2) => ((false, true), (false, true)),
-                Hit::Corner(3) => ((true, false), (false, true)),
-                Hit::Edge(0) => ((false, false), (true, false)),
-                Hit::Edge(1) => ((false, true), (false, false)),
-                Hit::Edge(2) => ((false, false), (false, true)),
-                _ => ((true, false), (false, false)),
+            // The side of the unit box each axis drags (0 = left/top, 1 = right/bottom), if any.
+            let (du, dv) = match g.hit {
+                Hit::Corner(0) => (Some(0.0), Some(0.0)),
+                Hit::Corner(1) => (Some(1.0), Some(0.0)),
+                Hit::Corner(2) => (Some(1.0), Some(1.0)),
+                Hit::Corner(3) => (Some(0.0), Some(1.0)),
+                Hit::Edge(0) => (None, Some(0.0)),
+                Hit::Edge(1) => (Some(1.0), None),
+                Hit::Edge(2) => (None, Some(1.0)),
+                _ => (Some(0.0), None),
             };
-            if mu.0 {
-                r[0] = u;
-            }
-            if mu.1 {
-                r[2] = u;
-            }
-            if mv.0 {
-                r[1] = v;
-            }
-            if mv.1 {
-                r[3] = v;
-            }
-            // ⌥: symmetric about the reference point.
-            if mods.alt {
-                if mu.0 {
-                    r[2] = 2.0 * pu - r[0];
-                }
-                if mu.1 {
-                    r[0] = 2.0 * pu - r[2];
-                }
-                if mv.0 {
-                    r[3] = 2.0 * pv - r[1];
-                }
-                if mv.1 {
-                    r[1] = 2.0 * pv - r[3];
-                }
-            }
+            // Each axis scales about an anchor: the opposite side, or with ⌥ the reference point
+            // wherever it is (#5019: mirroring the box about it re-centred the box on a moved
+            // reference point). An axis that isn't dragged follows about the middle (⌥: the
+            // reference point).
+            let anchor = |side: Option<f64>, pivot: f64| if mods.alt { pivot } else { side.map_or(0.5, |s| 1.0 - s) };
+            let (au, av) = (anchor(du, pu), anchor(dv, pv));
+            // The factor that takes the dragged side to the pointer. A reference point on that
+            // side leaves no such factor, so that axis keeps its size.
+            let factor = |side: Option<f64>, to: f64, anchor: f64| {
+                side.map_or(1.0, |side| {
+                    let f = (to - anchor) / (side - anchor);
+                    if (side - anchor).abs() > 1e-9 && f.is_finite() { f } else { 1.0 }
+                })
+            };
+            let (mut fu, mut fv) = (factor(du, u, au), factor(dv, v, av));
             // Corners and edges scale proportionally by default; ⇧ frees them (the legacy
             // preference swaps the two for corners and always stretches edges, `legacy_mods`).
-            let corner = matches!(g.hit, Hit::Corner(_));
-            if !corner && !mods.shift {
-                // An edge sets the scale of its own axis, and the other axis follows by the same
-                // factor about the middle of the box (⌥: about the reference point, as for
-                // corners), so the opposite edge's handle stays put. Past the opposite edge only
-                // the dragged axis flips.
-                if mu.0 || mu.1 {
-                    let k = (r[2] - r[0]).abs();
-                    let c = if mods.alt { pv } else { 0.5 };
-                    r[1] = c - k / 2.0;
-                    r[3] = c + k / 2.0;
+            if !mods.shift {
+                if matches!(g.hit, Hit::Corner(_)) {
+                    // The larger factor wins; each axis keeps its own flip.
+                    let k = fu.abs().max(fv.abs());
+                    (fu, fv) = (k.copysign(fu), k.copysign(fv));
+                } else if du.is_some() {
+                    // An edge sets the scale of its own axis and the other axis follows by the same
+                    // factor, so the opposite edge's handle stays put. Past the opposite edge only
+                    // the dragged axis flips.
+                    fv = fu.abs();
                 } else {
-                    let k = (r[3] - r[1]).abs();
-                    let c = if mods.alt { pu } else { 0.5 };
-                    r[0] = c - k / 2.0;
-                    r[2] = c + k / 2.0;
+                    fu = fv.abs();
                 }
             }
-            if corner && !mods.shift {
-                let (sx, sy) = (r[2] - r[0], r[3] - r[1]);
-                let k = if sx.abs() > sy.abs() { sx.abs() } else { sy.abs() };
-                let (nx, ny) = (k * sx.signum(), k * sy.signum());
-                let (ax, ay) = if mods.alt { (pu, pv) } else { (if mu.0 { r[2] } else { r[0] }, if mv.0 { r[3] } else { r[1] }) };
-                let fx = if mods.alt {
-                    0.5
-                } else if mu.0 {
-                    1.0
-                } else {
-                    0.0
-                };
-                let fy = if mods.alt {
-                    0.5
-                } else if mv.0 {
-                    1.0
-                } else {
-                    0.0
-                };
-                r[0] = ax - nx * fx;
-                r[2] = r[0] + nx;
-                r[1] = ay - ny * fy;
-                r[3] = r[1] + ny;
-            }
+            // The unit interval [0, 1] scaled by `f` about `a`.
+            let span = |a: f64, f: f64| (a - f * a, a + f * (1.0 - a));
+            let ((u0, u1), (v0, v1)) = (span(au, fu), span(av, fv));
             let map = |a: f64, b: f64| {
                 let (x, y) = h.apply(a, b);
                 [x, y]
             };
-            s.quad = [map(r[0], r[1]), map(r[2], r[1]), map(r[2], r[3]), map(r[0], r[3])];
+            s.quad = [map(u0, v0), map(u1, v0), map(u1, v1), map(u0, v1)];
             // ⌥ scales about the reference point, so it stays put; otherwise it rides along with
             // the box, keeping its place in it (#1329).
             s.pivot = if mods.alt { g.pivot0 } else { carry_pivot(g.quad0, s.quad, g.pivot0) };
@@ -3575,6 +3537,66 @@ mod tests {
         let mut s = session();
         drag(&mut s, [100.0, 25.0], [150.0, 25.0], egui::Modifiers { alt: true, shift: true, ..Default::default() });
         assert!(close(s.quad, corners([-50.0, 0.0, 150.0, 50.0])), "{:?}", s.quad);
+    }
+
+    /// #5019: with the reference point moved off the middle, ⌥ scales about it where it is: the
+    /// box doesn't jump to centre on it when the drag starts, and keeps it at the same place.
+    #[test]
+    fn alt_scales_about_a_moved_reference_point_without_jumping() {
+        let alt = egui::Modifiers::ALT;
+        let alt_shift = egui::Modifiers { alt: true, shift: true, ..Default::default() };
+        let moved = || {
+            let mut s = session();
+            s.pivot = [20.0, 10.0];
+            s
+        };
+        // Pressing a handle without moving changes nothing, corner or edge, free or proportional.
+        for (from, mods) in [([100.0, 50.0], alt_shift), ([100.0, 50.0], alt), ([100.0, 25.0], alt), ([50.0, 0.0], alt_shift)] {
+            let mut s = moved();
+            drag(&mut s, from, from, mods);
+            assert!(close(s.quad, corners([0.0, 0.0, 100.0, 50.0])), "{from:?} {mods:?}: {:?}", s.quad);
+        }
+        // ⇧⌥ on a corner (the report's gesture): ×2 on both axes about (20, 10).
+        let mut s = moved();
+        drag(&mut s, [100.0, 50.0], [180.0, 90.0], alt_shift);
+        assert!(close(s.quad, corners([-20.0, -10.0, 180.0, 90.0])), "{:?}", s.quad);
+        assert!(near(s.pivot, [20.0, 10.0]), "{:?}", s.pivot);
+        // ⌥ on a corner keeps the proportions: the larger factor (×2, not ×1.5) wins.
+        let mut s = moved();
+        drag(&mut s, [100.0, 50.0], [180.0, 70.0], alt);
+        assert!(close(s.quad, corners([-20.0, -10.0, 180.0, 90.0])), "{:?}", s.quad);
+        // ⌥ on an edge: the other axis follows by the same factor about the reference point.
+        let mut s = moved();
+        drag(&mut s, [100.0, 25.0], [180.0, 25.0], alt);
+        assert!(close(s.quad, corners([-20.0, -10.0, 180.0, 90.0])), "{:?}", s.quad);
+        // ⇧⌥ on an edge: its axis only.
+        let mut s = moved();
+        drag(&mut s, [100.0, 25.0], [180.0, 25.0], alt_shift);
+        assert!(close(s.quad, corners([-20.0, 0.0, 180.0, 50.0])), "{:?}", s.quad);
+        // Past the reference point the dragged side flips over it.
+        let mut s = moved();
+        drag(&mut s, [100.0, 25.0], [0.0, 25.0], alt_shift);
+        assert!(close(s.quad, corners([25.0, 0.0, 0.0, 50.0])), "{:?}", s.quad);
+        // A reference point on the dragged edge leaves no factor to scale that axis by: it keeps its
+        // size instead of going to infinity or NaN.
+        let mut s = session();
+        s.pivot = [100.0, 10.0];
+        drag(&mut s, [100.0, 25.0], [150.0, 25.0], alt_shift);
+        assert!(close(s.quad, corners([0.0, 0.0, 100.0, 50.0])), "{:?}", s.quad);
+
+        // The report's steps through the canvas: ⌥-click moves the reference point to (40, 40),
+        // then a ⇧⌥ corner drag from (24, 24) to (25, 25) shrinks the box by 15/16 about it.
+        let mut app = app_with_square(64, photocraft_geom::Rect::new(8, 8, 24, 24));
+        begin(&mut app, &egui::Context::default()).unwrap();
+        pointer(&mut app, ToolEvent::Down { x: 40.0, y: 40.0, pressure: 1.0 }, alt);
+        pointer(&mut app, ToolEvent::Up { x: 40.0, y: 40.0 }, alt);
+        assert_eq!(app.ui.transform.as_ref().unwrap().quad, corners([8.0, 8.0, 24.0, 24.0]));
+        pointer(&mut app, ToolEvent::Down { x: 24.0, y: 24.0, pressure: 1.0 }, alt_shift);
+        pointer(&mut app, ToolEvent::Move { x: 25.0, y: 25.0, pressure: 1.0 }, alt_shift);
+        pointer(&mut app, ToolEvent::Up { x: 25.0, y: 25.0 }, alt_shift);
+        let t = app.ui.transform.as_ref().unwrap();
+        assert!(close(t.quad, corners([10.0, 10.0, 25.0, 25.0])), "{:?}", t.quad);
+        assert_eq!(t.pivot, [40.0, 40.0]);
     }
 
     fn near(a: [f64; 2], b: [f64; 2]) -> bool {
