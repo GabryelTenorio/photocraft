@@ -71,3 +71,13 @@ color sampling, brush size and selection add/subtract/deselect. The quick layout
 benchmark completed; no baseline was updated and tablet frame time was not measured.
 Crop/transform completion, polygon closure, fullscreen recovery and physical pinch
 feel still require device confirmation. [Screenshots and reproduction steps](../../docs/android-touch-controls.md).
+
+### Updated 0.8.0 PR validation
+
+With the touch tray forward-port: 2308 UI units passed, 11 ignored, and the same
+unchanged Windows export-artboard path separator assertion failed. All seven new
+touch-control tests passed, including real canvas clicks and virtual Ctrl layer
+selection. Host and Android clippy (all targets), layers and wasm passed. Vietnamese
+labels were added without dropping newer upstream translations. The 0.8.0 press-stroke
+boolean is cleared during sampling; Android development versionCode is 4.
+The published APK remains the independently tested 0.7.0 alpha.3 build.
