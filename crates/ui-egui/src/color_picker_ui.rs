@@ -88,7 +88,7 @@ pub fn rgb_to_hsv(c: [f32; 3]) -> [f32; 3] {
 
 pub fn hex(c: [f32; 3]) -> String {
     let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    format!("#{:02x}{:02x}{:02x}", q(c[0]), q(c[1]), q(c[2]))
+    format!("#{:02X}{:02X}{:02X}", q(c[0]), q(c[1]), q(c[2]))
 }
 
 pub fn parse_hex(s: &str) -> Option<[f32; 3]> {
@@ -871,10 +871,10 @@ mod tests {
         assert_eq!(h.get_by_role(Role::TextInput).value().as_deref(), Some("ff88"));
         assert_eq!(color(&h), "#000000");
         type_keys(&mut h, "00");
-        assert_eq!(color(&h), "#ff8800");
+        assert_eq!(color(&h), "#FF8800");
         h.key_press(egui::Key::Tab);
         h.run_steps(2);
-        assert_eq!(color(&h), "#ff8800");
+        assert_eq!(color(&h), "#FF8800");
     }
 
     #[test]
@@ -884,7 +884,7 @@ mod tests {
         assert!(hex_field.is_focused(), "the hex field automatically has focus on open");
         // Typing directly replaces the selected hex digits without manual clicking or Command+A.
         type_keys(&mut h, "ff8800");
-        assert_eq!(color(&h), "#ff8800", "typing replaces the selected hex code");
+        assert_eq!(color(&h), "#FF8800", "typing replaces the selected hex code");
     }
 
     #[test]
@@ -901,7 +901,7 @@ mod tests {
         }
         h.key_press(egui::Key::Enter);
         h.run_steps(3);
-        assert_eq!(hex([h.state().session.tools.foreground[0], h.state().session.tools.foreground[1], h.state().session.tools.foreground[2]]), "#ff8800");
+        assert_eq!(hex([h.state().session.tools.foreground[0], h.state().session.tools.foreground[1], h.state().session.tools.foreground[2]]), "#FF8800");
     }
 
     #[test]
@@ -1057,8 +1057,8 @@ mod tests {
                 assert!((back[i] - c[i]).abs() < 1e-5, "{c:?} -> {h:?} -> {back:?}");
             }
         }
-        assert_eq!(hex([1.0, 0.5, 0.0]), "#ff8000");
-        assert_eq!(parse_hex("#FF8000").map(hex).as_deref(), Some("#ff8000"));
+        assert_eq!(hex([1.0, 0.5, 0.0]), "#FF8000");
+        assert_eq!(parse_hex("#FF8000").map(hex).as_deref(), Some("#FF8000"));
     }
 
     #[test]
@@ -1116,7 +1116,7 @@ mod tests {
         d.fields.insert("color".into(), json!("#3366cc"));
         let fields = d.fields.clone();
         confirm(&mut app, &fields).unwrap();
-        assert_eq!(hex([app.session.tools.background[0], app.session.tools.background[1], app.session.tools.background[2]]), "#3366cc");
+        assert_eq!(hex([app.session.tools.background[0], app.session.tools.background[1], app.session.tools.background[2]]), "#3366CC");
     }
 
     /// #4196: CMYK values typed into the picker survive OK, so the colour fills a CMYK document with those inks and
@@ -1150,12 +1150,12 @@ mod tests {
         let id = open(&mut app, "foreground");
         assert_eq!(top(&app), Some(id));
         sample_at(&mut app, 25.5, 5.5);
-        assert_eq!(dialog_color(&app, id), "#00ff00");
+        assert_eq!(dialog_color(&app, id), "#00FF00");
         assert_eq!(app.ui.dialog_mut(id).unwrap().fields["__orig"], json!("#000000"), "the current colour stays");
         // Off the image or over transparency nothing changes.
         for (x, y) in [(35.0, 5.0), (-3.0, 5.0), (5.0, 20.0), (1e12, -1e12), (f64::NAN, f64::INFINITY)] {
             sample_at(&mut app, x, y);
-            assert_eq!(dialog_color(&app, id), "#00ff00", "({x}, {y})");
+            assert_eq!(dialog_color(&app, id), "#00FF00", "({x}, {y})");
         }
 
         // Agents: `ui.pointer` samples into the picker instead of driving the tool.
@@ -1165,7 +1165,7 @@ mod tests {
         let events = json!([{"kind": "down", "x": 5, "y": 5}, {"kind": "up", "x": 5, "y": 5}]);
         let (req, _rx) = crate::control::ControlRequest::new("ui.pointer", json!({"events": events}));
         let _ = crate::control::handle(&mut app, &ctx, &req);
-        assert_eq!(dialog_color(&app, id), "#ff0000");
+        assert_eq!(dialog_color(&app, id), "#FF0000");
         assert_eq!(app.session.active().unwrap().revision, rev, "the Brush must not paint");
         assert_eq!(app.session.tools.foreground, [0.0, 0.0, 0.0, 1.0], "only OK sets the foreground");
 
@@ -1173,10 +1173,10 @@ mod tests {
         let about = app.ui.open_dialog(DialogKind::About, Map::new());
         assert_eq!(top(&app), None);
         sample_at(&mut app, 25.0, 5.0);
-        assert_eq!(dialog_color(&app, id), "#ff0000");
+        assert_eq!(dialog_color(&app, id), "#FF0000");
         app.ui.close_dialog(about);
         sample_at(&mut app, 25.0, 5.0);
-        assert_eq!(dialog_color(&app, id), "#00ff00");
+        assert_eq!(dialog_color(&app, id), "#00FF00");
     }
 }
 
@@ -1212,7 +1212,7 @@ mod screen_integration_tests {
         assert_eq!(h.state().ui.dialogs.last().unwrap().fields["__label"], "Color Picker (Text Color)");
         h.get_by_label("Pick screen color").click();
         h.run_steps(6);
-        assert_eq!(h.state().ui.dialogs.last().unwrap().fields["color"], "#ff8800");
+        assert_eq!(h.state().ui.dialogs.last().unwrap().fields["color"], "#FF8800");
         assert_eq!(h.state().session.active().unwrap().history.entries().len(), before, "sampling is only a dialog field change");
         assert_eq!(h.state().session.tools.foreground, fg);
         h.get_by_label("OK").click();
