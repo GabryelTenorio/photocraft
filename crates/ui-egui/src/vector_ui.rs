@@ -187,17 +187,20 @@ fn pen_to_json(pen: &PenPath, closed: bool) -> Value {
     json!({"subpaths": [{"closed": closed, "knots": pen.knots.iter().enumerate().map(|(i, k)| json!({"anchor": k[0], "in": k[1], "out": k[2], "smooth": !pen.unlinked.contains(&i) && (k[1] != k[0] || k[2] != k[0])})).collect::<Vec<_>>()}]})
 }
 
+/// The next click closes the path: at least two anchors, and the pointer is on the first one.
+pub(crate) fn close_ready(pen: &PenPath, x: f64, y: f64, tol: f64) -> bool {
+    pen.knots.len() >= 2 && pen.knots.first().is_some_and(|k| (k[0][0] - x).hypot(k[0][1] - y) < tol)
+}
+
 /// Pen press: close on the first anchor, reshape the last anchor's outgoing handle,
 /// or add a new anchor (dragging a new anchor pulls symmetrical handles).
 pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
     let tol = 6.0 / app.point_zoom().max(0.01) as f64;
     let pen = app.ui.pen.get_or_insert_with(PenPath::default);
-    if let Some(first) = pen.knots.first().map(|k| k[0])
-        && pen.knots.len() >= 2
-        && (first[0] - x).hypot(first[1] - y) < tol
-    {
+    if close_ready(pen, x, y, tol) {
         // Pressing the first anchor closes the path on release. Until then a stand-in for it
         // takes the drag, which pulls out that anchor's handles (close-drag, #3306).
+        let first = pen.knots[0][0];
         pen.knots.push([first; 3]);
         pen.dragging = true;
         pen.adjusting_last = false;
@@ -880,6 +883,11 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
                 }
             } else {
                 painter.add(egui::Shape::dashed_line(&[to_scr(last[0]), to_scr(h)], Stroke::new(1.0, accent), 4.0, 3.0));
+            }
+            // A small circle beside the pointer: the next click closes on the first anchor (#4596).
+            let tol = 6.0 / app.point_zoom().max(0.01) as f64;
+            if close_ready(pen, h[0], h[1], tol) {
+                painter.circle_stroke(to_scr(h) + vec2(11.0, -11.0), 4.0, Stroke::new(1.5, accent));
             }
         }
         for (i, k) in pen.knots.iter().enumerate() {
@@ -1690,6 +1698,16 @@ pub fn paths_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_ready_only_when_the_pointer_is_on_the_first_anchor() {
+        let mut pen = PenPath::default();
+        pen.knots.push([[0.0, 0.0]; 3]);
+        assert!(!close_ready(&pen, 0.0, 0.0, 6.0), "one anchor is not a path to close");
+        pen.knots.push([[20.0, 0.0]; 3]);
+        assert!(close_ready(&pen, 2.0, 2.0, 6.0));
+        assert!(!close_ready(&pen, 20.0, 0.0, 6.0), "the last anchor is not the close target");
+    }
 
     #[test]
     fn all_shape_tools_and_open_pen_use_the_complete_stroke_defaults() {
